@@ -1,1 +1,1 @@
-Visit <https://SuperFastPython.com>
+<https://SuperFastPython.com>
