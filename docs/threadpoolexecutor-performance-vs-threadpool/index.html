@@ -68,6 +68,305 @@ with ThreadPoolExecutor(10) as tp:
 <p>Both thread pools support the ability to issue one-off asynchronous tasks. The <strong>ThreadPool</strong> provides the <a href="../threadpool-apply_async/"><strong>apply_async()</strong> method</a> that takes a function name and any arguments and returns a <strong>ResultAsync</strong> object. The <strong>ThreadPoolExecutor</strong> provides the <strong>submit()</strong> method that takes a function name and any arguments and returns a <strong>Future</strong> object.</p>
 <p>We can define a benchmark function that creates a thread pool with a fixed number of workers (e.g. 100), then issues a fixed number of one-off async tasks (e.g. 1,000) and waits for them to complete.</p>
 <p>For example:</p>
+<pre><code># issue tasks with thread pool
+def use_threadpool():
+    # create the thread pool
+    with ThreadPoolExecutor(100) as tp:
+        # issue one-off tasks
+        _ = [tp.submit(task, i) for i in range(1000)]
+    # wait for tasks to complete
+</code></pre>
+<p>The task executed in both cases will be the same, e.g. a function that takes one argument and sleeps for a moment to simulate effort. The sleep ensures the experiment takes a non-trivial time to execute and that some tasks are blocked from immediate execution, allowing them to be managed internally within the thread pool.</p>
+<p>For example:</p>
+<pre><code># task executed in the thread pool
+def task(value):
+    sleep(1)
+</code></pre>
+<h3>Benchmark Batched Tasks</h3>
+<p>Both thread pools support the ability to issue batches of tasks. The <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> classes both provide a <a href="../threadpool-map/"><strong>map()</strong> method</a> that takes a function name and an iterable of arguments to provide to each task and returns an iterable of task results.</p>
+<p>We can again define a benchmark function that creates a thread pool with a fixed number of workers (e.g. 100), then issues a fixed number of batched tasks (e.g. 1,000) and iterates the returned results.</p>
+<p>For example:</p>
+<pre><code># issue tasks with thread pool
+def use_threadpool():
+    # create the thread pool
+    with ThreadPoolExecutor(100) as tp:
+        # issue batch of tasks
+        for result in tp.map(task, range(1000), chunksize=10):
+            pass
+</code></pre>
+<p>The task function must take an argument and return a value. As above, the task will sleep for a moment to simulate effort, to ensure that some tasks are forced to wait before execution.</p>
+<p>For example:</p>
+<pre><code># task executed in the thread pool
+def task(value):
+    sleep(1)
+    return value
+</code></pre>
+<p>In both cases, the <strong>map()</strong> method takes a "<strong>chunksize</strong>" argument. This argument controls the number of tasks that are grouped together and issued to each worker in batch. This argument can be set consistently across each thread pool (e.g. an even division of tasks across workers).</p>
+<p>You can learn more about how to configure the chunksize argument in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map-chunksize/">How to Configure ThreadPool map() Chunksize</a></li>
+</ul>
+<p>Note, the <a href="../threadpoolexecutor-map/"><strong>map()</strong> method</a> in the <strong>ThreadPoolExecutor</strong> does take a "<strong>chunksize</strong>" argument, but this has no effect.</p>
+<h3>Benchmarking the Use Cases</h3>
+<p>Each of the above use cases can be defined as a function that performs the activity in a given time, e.g. <strong>use_threadpool()</strong>.</p>
+<p>We can then call the function multiple times, timing the duration of each function call and then reporting the average over all trials.</p>
+<p>For example:</p>
+<pre><code># benchmark the thread pool
+n_trials = 3
+results = list()
+for trial in range(n_trials):
+    # record start time
+    start_time = time()
+    # perform task
+    use_threadpool()
+    # calculate duration
+    duration = time() - start_time
+    results.append(duration)
+    print(f'Trial {trial} took {duration} seconds')
+# report average result
+average = sum(results) / n_trials
+print(f'Benchmark: {average:.3f} seconds')
+</code></pre>
+<p>This general benchmark code can be the same across all classes and use cases.</p>
+<p>This provides a general framework that you can adapt for your own use cases, to see if the choice of thread pool makes a performance difference.</p>
+<p>Now that we have some ideas on how to benchmark the two classes, let's explore some worked examples.</p>
+<h2>ThreadPoolExecutor vs ThreadPool One-Off Async Tasks</h2>
+<p>In this section, we will compare the general performance of the <strong>ThreadPoolExecutor</strong> and <strong>ThreadPool</strong> classes when issuing one-off asynchronous tasks.</p>
+<h3>ThreadPool One-Off Async Tasks</h3>
+<p>The <strong>ThreadPool</strong> can issue one-off asynchronous tasks via the <strong>apply_async()</strong> method which returns a <strong>ResultAsync</strong> object.</p>
+<p>You can learn more about the <strong>apply_async()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-apply_async/">How to Use ThreadPool apply_async() in Python</a></li>
+</ul>
+<p>Once issued, we can wait for all tasks to complete by closing and joining the thread pool.</p>
+<p>You can learn more about joining the thread pool in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-join/">How to Join a ThreadPool in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark threadpool with one-off async tasks
+from multiprocessing.pool import ThreadPool
+from time import sleep
+from time import time
+
+# task executed in the thread pool
+def task(value):
+    sleep(1)
+
+# issue tasks with thread pool
+def use_threadpool():
+    # create the thread pool
+    with ThreadPool(100) as tp:
+        # issue one-off tasks
+        _ = [tp.apply_async(task, args=(i,)) for i in range(1000)]
+        # close the pool
+        tp.close()
+        # wait for tasks to complete
+        tp.join()
+
+# benchmark the thread pool
+n_trials = 3
+results = list()
+for trial in range(n_trials):
+    # record start time
+    start_time = time()
+    # perform task
+    use_threadpool()
+    # calculate duration
+    duration = time() - start_time
+    results.append(duration)
+    print(f'Trial {trial} took {duration} seconds')
+# report average result
+average = sum(results) / n_trials
+print(f'Benchmark: {average:.3f} seconds')
+</code></pre>
+<p>Running the example benchmarks the performance of the <strong>ThreadPool</strong> class with 100 workers issuing 1,000 one-off tasks asynchronously.</p>
+<p>This use case is then performed 3 times and the average time taken is reported, in this case about 10.040 seconds.</p>
+<pre><code>Trial 0 took 10.046485900878906 seconds
+Trial 1 took 10.041562795639038 seconds
+Trial 2 took 10.03199815750122 seconds
+Benchmark: 10.040 seconds</code></pre>
+<h3>ThreadPoolExecutor One-Off Async Tasks</h3>
+<p>The <strong>ThreadPoolExecutor</strong> can issue one-off asynchronous tasks via the <strong>submit()</strong> method which returns a <strong>Future</strong> object.</p>
+<p>You can learn more about the <strong>submit()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-map-vs-submit/">map() vs. submit() With the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>Once issued, we can wait for all tasks to be completed by exiting the context manager block, which automatically closes the thread pool and blocks until all tasks are done.</p>
+<p>You can learn more about shutting down the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-shutdown/">How to Shutdown the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark threadpoolexecutor with one-off async tasks
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+from time import time
+
+# task executed in the thread pool
+def task(value):
+    sleep(1)
+
+# issue tasks with thread pool
+def use_threadpool():
+    # create the thread pool
+    with ThreadPoolExecutor(100) as tp:
+        # issue one-off tasks
+        _ = [tp.submit(task, i) for i in range(1000)]
+    # wait for tasks to complete
+
+# benchmark the thread pool
+n_trials = 3
+results = list()
+for trial in range(n_trials):
+    # record start time
+    start_time = time()
+    # perform task
+    use_threadpool()
+    # calculate duration
+    duration = time() - start_time
+    results.append(duration)
+    print(f'Trial {trial} took {duration} seconds')
+# report average result
+average = sum(results) / n_trials
+print(f'Benchmark: {average:.3f} seconds')
+</code></pre>
+<p>Running the example benchmarks the performance of the <strong>ThreadPoolExecutor</strong> class with 100 workers issuing 1,000 one-off tasks asynchronously.</p>
+<p>This use case is then performed 3 times and the average time taken is reported, in this case about 10.035 seconds.</p>
+<pre><code>Trial 0 took 10.036842107772827 seconds
+Trial 1 took 10.036179065704346 seconds
+Trial 2 took 10.032454013824463 seconds
+Benchmark: 10.035 seconds</code></pre>
+<h3>Comparison of Results</h3>
+<p>We can see very little difference in the average time taken to complete this use case between the <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong>.</p>
+<p>Specifically, the <strong>ThreadPool</strong> took about 10.040 seconds to issue and execute 1,000 asynchronous tasks, whereas the <strong>ThreadPoolExecutor</strong> took about 10.035 seconds.</p>
+<p>The difference was 0.005 seconds or 5 milliseconds, in favor of the <strong>ThreadPoolExecutor</strong>.</p>
+<p>This means that there is no strong justification to choose the <strong>ThreadPool</strong> over the <strong>ThreadPoolExecutor</strong> for performance reasons when using the class to execute and wait for many asynchronous tasks.</p>
+<p>If anything, the results may suggest a bias toward choosing the <strong>ThreadPoolExecutor</strong> over the <strong>ThreadPool</strong> class for performance reasons.</p>
+<h2>ThreadPoolExecutor vs ThreadPool Batch Tasks</h2>
+<p>In this section, we will compare the general performance of the <strong>ThreadPoolExecutor</strong> and <strong>ThreadPool</strong> classes when issuing batches of tasks and iterating their results.</p>
+<h3>ThreadPool Batch Tasks</h3>
+<p>The <strong>ThreadPool</strong> can issue batches of tasks via the <strong>map()</strong> method which takes a function name and iterable of arguments and returns an iterable of task results that can be traversed.</p>
+<p>You can learn more about the <strong>map()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map/">How to Use ThreadPool map() in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark threadpool with batch tasks
+from multiprocessing.pool import ThreadPool
+from time import sleep
+from time import time
+
+# task executed in the thread pool
+def task(value):
+    sleep(1)
+    return value
+
+# issue tasks with thread pool
+def use_threadpool():
+    # create the thread pool
+    with ThreadPool(100) as tp:
+        # issue batch of tasks
+        for result in tp.map(task, range(1000), chunksize=10):
+            pass
+        # close the pool
+        tp.close()
+        # wait for tasks to complete
+        tp.join()
+
+# benchmark the thread pool
+n_trials = 3
+results = list()
+for trial in range(n_trials):
+    # record start time
+    start_time = time()
+    # perform task
+    use_threadpool()
+    # calculate duration
+    duration = time() - start_time
+    results.append(duration)
+    print(f'Trial {trial} took {duration} seconds')
+# report average result
+average = sum(results) / n_trials
+print(f'Benchmark: {average:.3f} seconds')
+</code></pre>
+<p>Running the example benchmarks the performance of the <strong>ThreadPool</strong> class with 100 workers issuing a batch of 1,000 tasks, chunked into groups of 10.</p>
+<p>This use case is then performed 3 times and the average time taken is reported, in this case about 10.039 seconds.</p>
+<pre><code>Trial 0 took 10.04787564277649 seconds
+Trial 1 took 10.036479949951172 seconds
+Trial 2 took 10.031333923339844 seconds
+Benchmark: 10.039 seconds</code></pre>
+<h3>ThreadPoolExecutor Batch Tasks</h3>
+<p>The <strong>ThreadPoolExecutor</strong> can issue batches of tasks via the <strong>map()</strong> method which takes a function name and iterable of arguments and returns an iterable of task results that can be traversed.</p>
+<p>You can learn more about the <strong>map()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-map/">How to Use map() with the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>Note, the <strong>map()</strong> method in the <strong>ThreadPoolExecutor</strong> does take a "<strong>chunksize</strong>" argument, but this has no effect.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark threadpoolexecutor with batch tasks
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+from time import time
+
+# task executed in the thread pool
+def task(value):
+    sleep(1)
+    return value
+
+# issue tasks with thread pool
+def use_threadpool():
+    # create the thread pool
+    with ThreadPoolExecutor(100) as tp:
+        # issue batch of tasks
+        for result in tp.map(task, range(1000), chunksize=10):
+            pass
+
+# benchmark the thread pool
+n_trials = 3
+results = list()
+for trial in range(n_trials):
+    # record start time
+    start_time = time()
+    # perform task
+    use_threadpool()
+    # calculate duration
+    duration = time() - start_time
+    results.append(duration)
+    print(f'Trial {trial} took {duration} seconds')
+# report average result
+average = sum(results) / n_trials
+print(f'Benchmark: {average:.3f} seconds')
+</code></pre>
+<p>Running the example benchmarks the performance of the <strong>ThreadPoolExecutor</strong> class with 100 workers issuing a batch of 1,000 tasks.</p>
+<p>This use case is then performed 3 times and the average time taken is reported, in this case about 10.039 seconds.</p>
+<pre><code>Trial 0 took 10.039137125015259 seconds
+Trial 1 took 10.043791055679321 seconds
+Trial 2 took 10.035258293151855 seconds
+Benchmark: 10.039 seconds</code></pre>
+<h3>Comparison of Results</h3>
+<p>We can see no difference in the average time taken to complete this use case between the <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong>.</p>
+<p>Specifically, both the <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> classes took about 10.039 seconds to issue and execute and traverse the results of 1,000 tasks in batch.</p>
+<p>This means that there is no strong justification to choose the <strong>ThreadPool</strong> over the <strong>ThreadPoolExecutor</strong> for performance reasons when using the class to execute batches of tasks.</p>
+<h2>Recommendations</h2>
+<p>Generally, it cannot be justified to choose the <strong>ThreadPool</strong> class over the <strong>ThreadPoolExecutor</strong> class for performance reasons in the two use cases described above.</p>
+<p>I suspect that this generalizes to other similar use cases, but to confirm, I would encourage you to update the benchmark code for your specific use cases and collect hard data (please share below if you do).</p>
+<p>The <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> classes are not identical, they offer different nuanced capabilities. You can learn more about these differences in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-vs-threadpoolexecutor/">ThreadPool vs ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>In practice, unless you need a specific capability of the <strong>ThreadPool</strong> class, I would encourage you to use the <strong>ThreadPoolExecutor</strong> class. Reasons:</p>
+<ul>
+<li>The <strong>ThreadPoolExecutor</strong> may be slightly faster in some use cases (e.g. one-off async tasks).</li>
+<li>The <strong>ThreadPoolExecutor</strong> uses a modern design pattern and interface that may be simpler and more convenient (e.g. reduced complexity).</li>
+<li>I suspect at some point in the future that the <strong>Pool</strong> and <strong>ThreadPool</strong> classes will be deprecated (e.g. future-proof).</li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know how to compare the performance of the <strong>ThreadPoolExecutor</strong> and <strong>ThreadPool</strong> classes in Python.</p>
 </main>
 </body>
 </html>

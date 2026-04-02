@@ -135,6 +135,609 @@ def log_all_tasks_helper(excluded=list()):
 <p>This is a big task but might be possible for small and moderately sized programs.</p>
 <p>It requires defining a helper function used to create and issue all tasks. It uses a dictionary global variable to store the task name and start time (using some reliable clock like the event loop time or similar).</p>
 <p>For example</p>
+<pre><code># helper function for starting tasks and recording their start time
+# uses default task names, assumes they are unique (reasonable)
+def start_task(coroutine):
+    # create the task
+    task = asyncio.create_task(coroutine)
+    # store the record
+    TASK_DICT[task.get_name()] = time.monotonic()
+    # return the created task
+    return task
+</code></pre>
+<p>This assumes that each task has a unique name, which is probably true if you're using default task names.</p>
+<p>The <strong>TASK_DICT</strong> global variable must be declared and defined somewhere early in your program.</p>
+<pre><code>...
+# set of all tasks we've started
+TASK_DICT = dict()</code></pre>
+<p>We can then define a monitor coroutine.</p>
+<p>This coroutine runs forever in a loop. Each iteration it checks all coroutines that are running checks how long they have been running, then logs the details of those that have been alive for too long.</p>
+<p>Any task that is running and is not known to the <strong>TASK_DICT</strong> dict, is ignored. We can also have an exclusion list for tasks we know run a long time, like the <strong>main()</strong> coroutine.</p>
+<pre><code># report duration of all current tasks
+async def monitor(task_limit_sec, exclude=[]):
+    # access global state
+    global TASK_DICT
+    # loop forever
+    while True:
+        # get all tasks
+        for task in asyncio.all_tasks():
+            # skip excluded tasks
+            if task in exclude:
+                continue
+            # get task name
+            name = task.get_name()
+            # skip tasks not known to the mechanism
+            if name not in TASK_DICT:
+                continue
+            # compute duration for current task
+            duration = time.monotonic() - TASK_DICT
+            # check if not too long
+            if duration &lt; task_limit_sec:
+                continue
+            # report task that has been alive too long
+            logging.debug(f'{name} alive for too long: {duration:.3f} seconds')
+        # check every second
+        await asyncio.sleep(1)
+</code></pre>
+<p>In this case, we report the task name.</p>
+<p>This could just as easily be the string representation of the entire task or the entire stack trace for the task, as in the previous section.</p>
+<p>The monitor loop also runs every second, but this could be every minute or every 10 minutes for long-running asyncio programs.</p>
+<p>We can then kick off this monitor coroutine at the beginning of our program.</p>
+<pre><code>...
+# create the monitor task
+monitor_coro = monitor(3.0, [asyncio.current_task()])
+# start the monitor task
+monitor_task = asyncio.create_task(monitor_coro)
+</code></pre>
+<p>We must also explicitly cancel it when shutting down our program.</p>
+<pre><code>...
+# shutdown the monitor
+monitor_task.cancel()
+</code></pre>
+<p>The obvious limitation of this approach is the need to centralize the creation of all asyncio tasks via the helper function.</p>
+<p>Next, let's look at removing this limitation.</p>
+<h3>Monitor All Active Tasks</h3>
+<p>Extending the above, the monitor alone can keep track of all active tasks over time.</p>
+<p>This removes the need for explicitly recording the start time of tasks via the helper function.</p>
+<p>Instead, the monitor records the first time a task is seen, then reports task details for those tasks that have been running too long.</p>
+<p>For example, the main loop of the <strong>monitor()</strong> coroutine is updated to add the task to the dict if not seen before, rather than skipping over it.</p>
+<pre><code>...
+# check if not previously known
+if name not in task_dict:
+    # add start time (first time seen)
+    task_dict = time.monotonic()
+    continue
+</code></pre>
+<p>The updated monitor with this change is listed below.</p>
+<pre><code># report duration of all current tasks
+# assumes task names are unique
+async def monitor(task_limit_sec, exclude=[]):
+    # record of all task names and their start times
+    task_dict = dict()
+    # loop forever
+    while True:
+        # get all tasks
+        for task in asyncio.all_tasks():
+            # skip excluded tasks
+            if task in exclude:
+                continue
+            # get task name
+            name = task.get_name()
+            # check if not previously known
+            if name not in task_dict:
+                # add start time (first time seen)
+                task_dict = time.monotonic()
+                continue
+            # compute duration for current task
+            duration = time.monotonic() - task_dict
+            # check if not too long
+            if duration &lt; task_limit_sec:
+                continue
+            # report task that has been alive too long
+            logging.debug(f'{name} alive for too long: {duration:.3f} seconds')
+        # check every second
+        await asyncio.sleep(1)
+</code></pre>
+<p>As above, the monitor can be started when the asyncio program is first started, excluding the main coroutine. Then canceled right before exiting.</p>
+<pre><code>...
+# create the monitor task
+monitor_coro = monitor(3.0, [asyncio.current_task()])
+# start the monitor task
+monitor_task = asyncio.create_task(monitor_coro)
+# the program
+...
+# shutdown the monitor
+monitor_task.cancel()
+</code></pre>
+<p>You could put this in a context manager or a simple try-finally block.</p>
+<p>Now that we know how to find stuck and zombie asyncio tasks that have been alive for a long time, let's look at some worked examples.</p>
+<h2>Example of Logging a Trace For All Current Tasks</h2>
+<p>We can explore an example that reports a trace for all currently active asyncio tasks.</p>
+<p>In this example, we will define a simple coroutine worker task that takes an argument, sleeps for 5 seconds, then returns a result.</p>
+<pre><code># long running task
+async def work(value):
+    # sleep to simulate waiting
+    await asyncio.sleep(5)
+    # return value
+    return value * 100
+</code></pre>
+<p>We can then create a <strong>TaskGroup</strong> and issue 3 of these tasks for execution and give them a few seconds to execute.</p>
+<pre><code># asyncio entry point
+async def main():
+    # create a task group
+    async with asyncio.TaskGroup() as group:
+        # issue many tasks
+        _ = [group.create_task(work(i)) for i in range(3)]
+        # let the tasks start
+        await asyncio.sleep(3)
+</code></pre>
+<p>If you are new to asyncio.<strong>TaskGroup</strong>, see the tutorial:</p>
+<ul>
+<li><a href="../asyncio-taskgroup/">How to use asyncio.TaskGroup</a></li>
+</ul>
+<p>Then, while the tasks are still running, we can call our <strong>log_all_tasks_helper()</strong> function defined above. The current task <strong>main()</strong> will be excluded from the report.</p>
+<pre><code>...
+# log status of all tasks, exclude self
+log_all_tasks_helper([asyncio.current_task()])</code></pre>
+<p>This will report stack information for all 3 running <strong>work()</strong> coroutines.</p>
+<p>The <strong>log_all_tasks_helper()</strong> is a function that does some blocking IO, e.g. printing to standard out. This could be performed in a new thread (e.g. <strong><a href="../asyncio-to_thread/">to_thread()</a></strong>) if it is expected to spend a long time printing.</p>
+<p>We can then configure simple logging and start the event loop.</p>
+<pre><code>...
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of reporting stack of all running coroutines and tasks
+import logging
+import io
+import asyncio
+
+# helper to log details of all tasks
+def log_all_tasks_helper(excluded=list()):
+    # get all tasks
+    for task in asyncio.all_tasks():
+        # skip excluded tasks
+        if task in excluded:
+            continue
+        # create a string buffer
+        buffer = io.StringIO("")
+        # print the task stack
+        task.print_stack(file=buffer)
+        # log the trace
+        logging.debug(buffer.getvalue())
+        # close the string buffer
+        buffer.close()
+
+# long running task
+async def work(value):
+    # sleep to simulate waiting
+    await asyncio.sleep(5)
+    # return value
+    return value * 100
+
+# asyncio entry point
+async def main():
+    # create a task group
+    async with asyncio.TaskGroup() as group:
+        # issue many tasks
+        _ = [group.create_task(work(i)) for i in range(3)]
+        # let the tasks start
+        await asyncio.sleep(3)
+        # log status of all tasks, exclude self
+        log_all_tasks_helper([asyncio.current_task()])
+        # wait for tasks to complete...
+    print('All done')
+
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first issues the three <strong>work()</strong> coroutines for execution and then suspends for 3 seconds.</p>
+<p>The <strong>work()</strong> coroutines begin executing and suspend for 5 seconds.</p>
+<p>The <strong>main()</strong> coroutine resumes and then calls our custom <strong>log_all_tasks_helper()</strong> function.</p>
+<p>This reports stack information for all 3 currently running tasks and the line on which they are currently suspended.</p>
+<p>This highlights how we can introspect the state of all running tasks in our asyncio programs.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+DEBUG:root:Stack for &lt;Task pending name='Task-2' coro=&lt;work() running at ...&gt; wait_for=&lt;Future pending cb=[Task.task_wakeup()]&gt; cb=[TaskGroup._on_task_done()]&gt; (most recent call last):
+  File "...", line 26, in work
+    await asyncio.sleep(5)
+
+DEBUG:root:Stack for &lt;Task pending name='Task-4' coro=&lt;work() running at ...&gt; wait_for=&lt;Future pending cb=[Task.task_wakeup()]&gt; cb=[TaskGroup._on_task_done()]&gt; (most recent call last):
+  File "...", line 26, in work
+    await asyncio.sleep(5)
+
+DEBUG:root:Stack for &lt;Task pending name='Task-3' coro=&lt;work() running at ...&gt; wait_for=&lt;Future pending cb=[Task.task_wakeup()]&gt; cb=[TaskGroup._on_task_done()]&gt; (most recent call last):
+  File "...", line 26, in work
+    await asyncio.sleep(5)
+</code></pre>
+<p>Next, let's explore an example of explicitly recording the start time of all tasks.</p>
+<h2>Example of Recording Start Time for All Tasks</h2>
+<p>We can explore an example of explicitly recording the start time of all asyncio tasks in a program.</p>
+<p>This may be required in cases where we cannot trust the monitor to determine how long tasks have been running (in the next section), and the program is small enough that we can centralize the creation and scheduling of all tasks in the program via our <strong>start_task()</strong> helper function, developed above.</p>
+<pre><code># helper function for starting tasks and recording their start time
+# uses default task names, assumes they are unique (reasonable)
+def start_task(coroutine):
+    # create the task
+    task = asyncio.create_task(coroutine)
+    # store the record
+    TASK_DICT[task.get_name()] = time.monotonic()
+    # return the created task
+    return task
+</code></pre>
+<p>The <strong>monitor()</strong> coroutine, also developed above, will run for the life of the program and report the details of those tasks that have been alive for "too long", in this case, 3 seconds or more.</p>
+<p>We will just report the task name and time alive, but this could be updated to report all task details or even the task stack trace.</p>
+<pre><code># report duration of all current tasks
+async def monitor(task_limit_sec, exclude=[]):
+    # access global state
+    global TASK_DICT
+    # loop forever
+    while True:
+        # get all tasks
+        for task in asyncio.all_tasks():
+            # skip excluded tasks
+            if task in exclude:
+                continue
+            # get task name
+            name = task.get_name()
+            # skip tasks not known to the mechanism
+            if name not in TASK_DICT:
+                continue
+            # compute duration for current task
+            duration = time.monotonic() - TASK_DICT
+            # check if not too long
+            if duration &lt; task_limit_sec:
+                continue
+            # report task that has been alive too long
+            logging.debug(f'{name} alive for too long: {duration:.3f} seconds')
+        # check every second
+        await asyncio.sleep(1)
+</code></pre>
+<p>Firstly, we will define a <strong>do_work()</strong> coroutine that will sleep for a random number of seconds between 1 and 10.</p>
+<p>This will give some variety in results each time we run the example. Some tasks will take a long time, some won't.</p>
+<pre><code># simple worker coroutine
+async def do_work():
+    # generate value in [1, 10]
+    value = 1 + (random.random() * 10)
+    # block
+    await asyncio.sleep(value)
+    # report a message
+    print(f'Task with {value} is done.')
+</code></pre>
+<p>Next, in the <strong>main()</strong> coroutine, we will create and start the monitor coroutine, then issue 10 of our <strong>do_work()</strong> coroutines.</p>
+<p>Importantly, the work tasks are created using our custom <strong>start_task()</strong> helper function.</p>
+<p>The <strong>main()</strong> coroutine will then suspend and wait for all tasks to complete.</p>
+<p>Once all tasks are done, the monitor will be explicitly canceled.</p>
+<pre><code># asyncio entry point
+async def main():
+    # create the monitor task
+    monitor_coro = monitor(3.0, [asyncio.current_task()])
+    # start the monitor task
+    monitor_task = asyncio.create_task(monitor_coro)
+    # create a bunch of worker tasks
+    workers = [start_task(do_work()) for _ in range(10)]
+    # wait for all tasks
+    _ = await asyncio.gather(*workers)
+    # report final message
+    print('All done')
+    # shutdown the monitor
+    monitor_task.cancel()
+</code></pre>
+<p>Finally, logging is enabled and the event loop is started.</p>
+<p>The <strong>monitor()</strong> coroutines require a global variable to keep track of task start times. This can be declared and defined before starting the event loop.</p>
+<pre><code>...
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# set of all tasks we've started
+TASK_DICT = dict()
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of recording start time for all tasks
+import time
+import logging
+import random
+import asyncio
+
+# helper function for starting tasks and recording their start time
+# uses default task names, assumes they are unique (reasonable)
+def start_task(coroutine):
+    # create the task
+    task = asyncio.create_task(coroutine)
+    # store the record
+    TASK_DICT[task.get_name()] = time.monotonic()
+    # return the created task
+    return task
+
+# report duration of all current tasks
+async def monitor(task_limit_sec, exclude=[]):
+    # access global state
+    global TASK_DICT
+    # loop forever
+    while True:
+        # get all tasks
+        for task in asyncio.all_tasks():
+            # skip excluded tasks
+            if task in exclude:
+                continue
+            # get task name
+            name = task.get_name()
+            # skip tasks not known to the mechanism
+            if name not in TASK_DICT:
+                continue
+            # compute duration for current task
+            duration = time.monotonic() - TASK_DICT
+            # check if not too long
+            if duration &lt; task_limit_sec:
+                continue
+            # report task that has been alive too long
+            logging.debug(f'{name} alive for too long: {duration:.3f} seconds')
+        # check every second
+        await asyncio.sleep(1)
+
+# simple worker coroutine
+async def do_work():
+    # generate value in [1, 10]
+    value = 1 + (random.random() * 10)
+    # block
+    await asyncio.sleep(value)
+    # report a message
+    print(f'Task with {value} is done.')
+
+# asyncio entry point
+async def main():
+    # create the monitor task
+    monitor_coro = monitor(3.0, [asyncio.current_task()])
+    # start the monitor task
+    monitor_task = asyncio.create_task(monitor_coro)
+    # create a bunch of worker tasks
+    workers = [start_task(do_work()) for _ in range(10)]
+    # wait for all tasks
+    _ = await asyncio.gather(*workers)
+    # report final message
+    print('All done')
+    # shutdown the monitor
+    monitor_task.cancel()
+
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# set of all tasks we've started
+TASK_DICT = dict()
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the <strong>monitor()</strong> coroutine, configured to report any tasks that take longer than 3 seconds, and ignores the <strong>main()</strong> coroutine.</p>
+<p>Next, all 3 worker tasks are created and scheduled using our helper function. This records the start time of each task.</p>
+<p>The <strong>main()</strong> coroutine then suspends waiting for the tasks to complete.</p>
+<p>The tasks execute, each sleeping for a random number of seconds.</p>
+<p>The <strong>monitor()</strong> coroutine runs every second and checks how long each task has been alive. As soon as some tasks have been seen to be alive for "too long", debug log messages are reported.</p>
+<p>This continues until all tasks are completed.</p>
+<p>We can see by the end only a handful of tasks have been alive for a long time, e.g. 10 seconds.</p>
+<p>Before exiting, the <strong>main()</strong> coroutine cancels the monitor task.</p>
+<p>This highlights how we can explicitly record task start times, then monitor all known tasks and report debug messages when they have been alive for too long.</p>
+<p>This approach can be used to aromatically discover long-running tasks in an asyncio program.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+Task with 1.9772543942425427 is done.
+Task with 1.9905760955882492 is done.
+DEBUG:root:Task-9 alive for too long: 3.004 seconds
+DEBUG:root:Task-12 alive for too long: 3.004 seconds
+DEBUG:root:Task-7 alive for too long: 3.005 seconds
+DEBUG:root:Task-10 alive for too long: 3.005 seconds
+DEBUG:root:Task-4 alive for too long: 3.005 seconds
+DEBUG:root:Task-3 alive for too long: 3.005 seconds
+DEBUG:root:Task-8 alive for too long: 3.005 seconds
+DEBUG:root:Task-11 alive for too long: 3.005 seconds
+Task with 3.258507369197187 is done.
+Task with 3.296558610302638 is done.
+DEBUG:root:Task-9 alive for too long: 4.008 seconds
+DEBUG:root:Task-12 alive for too long: 4.008 seconds
+DEBUG:root:Task-7 alive for too long: 4.008 seconds
+DEBUG:root:Task-10 alive for too long: 4.008 seconds
+DEBUG:root:Task-8 alive for too long: 4.008 seconds
+DEBUG:root:Task-11 alive for too long: 4.008 seconds
+Task with 4.5930908540696915 is done.
+DEBUG:root:Task-9 alive for too long: 5.010 seconds
+DEBUG:root:Task-12 alive for too long: 5.010 seconds
+DEBUG:root:Task-7 alive for too long: 5.010 seconds
+DEBUG:root:Task-10 alive for too long: 5.010 seconds
+DEBUG:root:Task-11 alive for too long: 5.010 seconds
+Task with 5.443777515592201 is done.
+DEBUG:root:Task-9 alive for too long: 6.012 seconds
+DEBUG:root:Task-7 alive for too long: 6.012 seconds
+DEBUG:root:Task-10 alive for too long: 6.012 seconds
+DEBUG:root:Task-11 alive for too long: 6.013 seconds
+Task with 6.3947516177117825 is done.
+DEBUG:root:Task-7 alive for too long: 7.014 seconds
+DEBUG:root:Task-10 alive for too long: 7.014 seconds
+DEBUG:root:Task-11 alive for too long: 7.014 seconds
+DEBUG:root:Task-7 alive for too long: 8.018 seconds
+DEBUG:root:Task-10 alive for too long: 8.018 seconds
+DEBUG:root:Task-11 alive for too long: 8.018 seconds
+Task with 8.804928052685764 is done.
+DEBUG:root:Task-7 alive for too long: 9.020 seconds
+DEBUG:root:Task-11 alive for too long: 9.020 seconds
+Task with 9.69970472122514 is done.
+DEBUG:root:Task-11 alive for too long: 10.023 seconds
+</code></pre>
+<p>Next, let's look at an example that does not require explicit recording of start times via a helper function.</p>
+<h2>Example of Monitoring All Active Tasks</h2>
+<p>We can explore an example of automatically monitoring all active tasks in an asyncio program.</p>
+<p>This can be achieved by keeping track of tasks the first time they are seen, then reporting on those tasks if they have been around for too long, e.g. are still active after a given time limit.</p>
+<p>We will use the updated <strong>monitor()</strong> coroutine developed above.</p>
+<pre><code># report duration of all current tasks
+# assumes task names are unique
+async def monitor(task_limit_sec, exclude=[]):
+    # record of all task names and their start times
+    task_dict = dict()
+    # loop forever
+    while True:
+        # get all tasks
+        for task in asyncio.all_tasks():
+            # skip excluded tasks
+            if task in exclude:
+                continue
+            # get task name
+            name = task.get_name()
+            # check if not previously known
+            if name not in task_dict:
+                # add start time (first time seen)
+                task_dict = time.monotonic()
+                continue
+            # compute duration for current task
+            duration = time.monotonic() - task_dict
+            # check if not too long
+            if duration &lt; task_limit_sec:
+                continue
+            # report task that has been alive too long
+            logging.debug(f'{name} alive for too long: {duration:.3f} seconds')
+        # check every second
+        await asyncio.sleep(1)
+</code></pre>
+<p>In this case, we do not need to define a global variable dict for tracking tasks and create times, this state is kept within the <strong>monitor()</strong> coroutine.</p>
+<p>We will use the same work tasks from the previous section that run for a random number of seconds.</p>
+<p>Similarly, the <strong>monitor()</strong> coroutine can be created at the beginning of the program and canceled before shutdown.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of monitoring all active tasks
+import time
+import logging
+import random
+import asyncio
+
+# report duration of all current tasks
+# assumes task names are unique
+async def monitor(task_limit_sec, exclude=[]):
+    # record of all task names and their start times
+    task_dict = dict()
+    # loop forever
+    while True:
+        # get all tasks
+        for task in asyncio.all_tasks():
+            # skip excluded tasks
+            if task in exclude:
+                continue
+            # get task name
+            name = task.get_name()
+            # check if not previously known
+            if name not in task_dict:
+                # add start time (first time seen)
+                task_dict = time.monotonic()
+                continue
+            # compute duration for current task
+            duration = time.monotonic() - task_dict
+            # check if not too long
+            if duration &lt; task_limit_sec:
+                continue
+            # report task that has been alive too long
+            logging.debug(f'{name} alive for too long: {duration:.3f} seconds')
+        # check every second
+        await asyncio.sleep(1)
+
+# simple worker coroutine
+async def do_work():
+    # generate value in [1, 10]
+    value = 1 + (random.random() * 10)
+    # block
+    await asyncio.sleep(value)
+    # report a message
+    print(f'Task with {value} is done.')
+
+# asyncio entry point
+async def main():
+    # create the monitor task
+    monitor_coro = monitor(3.0, [asyncio.current_task()])
+    # start the monitor task
+    monitor_task = asyncio.create_task(monitor_coro)
+    # create a bunch of worker tasks
+    workers = [asyncio.create_task(do_work()) for _ in range(10)]
+    # wait for all tasks
+    _ = await asyncio.gather(*workers)
+    # report final message
+    print('All done')
+    # shutdown the monitor
+    monitor_task.cancel()
+
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the <strong>monitor()</strong> coroutine, configured to report any tasks that take longer than 3 seconds, and ignore the <strong>main()</strong> coroutine.</p>
+<p>Next, all 3 worker tasks are created and scheduled normally, not using any helper function.</p>
+<p>The <strong>main()</strong> coroutine then suspends waiting for the tasks to complete.</p>
+<p>The tasks execute, each sleeping for a random number of seconds.</p>
+<p>The <strong>monitor()</strong> coroutine runs every second. The first time each task is seen, it is recorded in the dict, including its name and timestamp.</p>
+<p>The monitor then checks how long each task has been alive. As soon as some tasks have been seen to be alive for "too long", debug log messages are reported.</p>
+<p>This continues until all tasks are completed.</p>
+<p>We can see by the end only a handful of tasks have been alive for a long time, e.g. 9 and 10 seconds.</p>
+<p>Before exiting, the <strong>main()</strong> coroutine cancels the monitor task.</p>
+<p>This example highlights how we can report the details of any task that has been alive for "too long" in an asyncio program by adding a simple monitoring coroutine.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+Task with 1.9136662677241314 is done.
+Task with 2.2405586633208943 is done.
+DEBUG:root:Task-2 alive for too long: 3.007 seconds
+DEBUG:root:Task-9 alive for too long: 3.007 seconds
+DEBUG:root:Task-12 alive for too long: 3.007 seconds
+DEBUG:root:Task-10 alive for too long: 3.007 seconds
+DEBUG:root:Task-5 alive for too long: 3.007 seconds
+DEBUG:root:Task-3 alive for too long: 3.007 seconds
+DEBUG:root:Task-8 alive for too long: 3.007 seconds
+DEBUG:root:Task-4 alive for too long: 3.007 seconds
+DEBUG:root:Task-6 alive for too long: 3.007 seconds
+DEBUG:root:Task-2 alive for too long: 4.008 seconds
+DEBUG:root:Task-9 alive for too long: 4.008 seconds
+DEBUG:root:Task-12 alive for too long: 4.008 seconds
+DEBUG:root:Task-10 alive for too long: 4.008 seconds
+DEBUG:root:Task-5 alive for too long: 4.008 seconds
+DEBUG:root:Task-3 alive for too long: 4.008 seconds
+DEBUG:root:Task-8 alive for too long: 4.008 seconds
+DEBUG:root:Task-4 alive for too long: 4.008 seconds
+DEBUG:root:Task-6 alive for too long: 4.008 seconds
+Task with 4.749781880137062 is done.
+DEBUG:root:Task-2 alive for too long: 5.013 seconds
+DEBUG:root:Task-9 alive for too long: 5.013 seconds
+DEBUG:root:Task-12 alive for too long: 5.013 seconds
+DEBUG:root:Task-10 alive for too long: 5.013 seconds
+DEBUG:root:Task-5 alive for too long: 5.013 seconds
+DEBUG:root:Task-8 alive for too long: 5.013 seconds
+DEBUG:root:Task-4 alive for too long: 5.013 seconds
+DEBUG:root:Task-6 alive for too long: 5.013 seconds
+Task with 5.5793955396904575 is done.
+DEBUG:root:Task-2 alive for too long: 6.018 seconds
+DEBUG:root:Task-9 alive for too long: 6.019 seconds
+DEBUG:root:Task-12 alive for too long: 6.019 seconds
+DEBUG:root:Task-10 alive for too long: 6.019 seconds
+DEBUG:root:Task-8 alive for too long: 6.019 seconds
+DEBUG:root:Task-4 alive for too long: 6.019 seconds
+DEBUG:root:Task-6 alive for too long: 6.019 seconds
+DEBUG:root:Task-2 alive for too long: 7.022 seconds
+DEBUG:root:Task-9 alive for too long: 7.022 seconds
+DEBUG:root:Task-12 alive for too long: 7.022 seconds
+DEBUG:root:Task-10 alive for too long: 7.022 seconds
+DEBUG:root:Task-8 alive for too long: 7.022 seconds
+DEBUG:root:Task-4 alive for too long: 7.022 seconds
+DEBUG:root:Task-6 alive for too long: 7.022 seconds
+Task with 7.1677185075795125 is done.
+Task with 7.686247693655644 is done.
+Task with 7.703480666260263 is done.
+Task with 7.716391784426704 is done.
+DEBUG:root:Task-2 alive for too long: 8.024 seconds
+DEBUG:root:Task-4 alive for too long: 8.025 seconds
+DEBUG:root:Task-9 alive for too long: 8.025 seconds
+Task with 8.95468939551258 is done.
+DEBUG:root:Task-2 alive for too long: 9.028 seconds
+DEBUG:root:Task-4 alive for too long: 9.028 seconds
+DEBUG:root:Task-2 alive for too long: 10.030 seconds
+DEBUG:root:Task-4 alive for too long: 10.030 seconds
+Task with 10.868886389657645 is done.
+All done
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to detect and report on stuck long-running asyncio tasks.</p>
 </main>
 </body>
 </html>

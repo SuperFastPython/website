@@ -621,6 +621,829 @@ array = Array(ctype._type_, data)</code></pre>
 <p>The function will take the shared ctype array as an argument.</p>
 <p>Firstly, it will check that the contents of the array match what was expected, e.g. what was passed in from the parent process. It will then change the content of the array to all zero values and confirm that the content of the array was changed.</p>
 <p>The <strong>task()</strong> function listed below implements this.</p>
+<pre><code># task executed in a child process
+def task(array):
+    # check some data in the array
+    print(array[:10], len(array))
+    # change data in the array
+    for i in range(len(array)):
+        array = 0.0
+    # confirm the data was changed
+    print(array[:10], len(array))
+</code></pre>
+<p>Next, the main process will create a new array with a modest size, initialized to all one values.</p>
+<p>It then reports the contents of the array, to confirm it indeed contains all one values.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000
+# create the numpy array
+data = ones((n,))
+print(data[:10], data.shape)</code></pre>
+<p>Next, the main process gets the ctype equivalent for the array type and uses this type, along with the content of the array to create a new shared ctype <strong>Array</strong> without a mutex lock.</p>
+<p>A lock is not required in this case as we know that the two processes will not be modifying the array at the same time.</p>
+<pre><code>...
+# get ctype for our array
+ctype = as_ctypes(data)
+# create ctype array initialized from our array
+array = Array(ctype._type_, data, lock=False)</code></pre>
+<p>We can then confirm that the new shared ctype <strong>Array</strong> contains the same data as the numpy array.</p>
+<pre><code>...
+# confirm the contents of the shared array
+print(array[:10], len(array))</code></pre>
+<p>The parent process then creates a new child process, configured to execute our task() function, and passes it the shared ctype <strong>Array</strong> as an argument.</p>
+<p>The child process is started and the main process blocks until the child process terminates.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(array,))
+# start the child process
+child.start()
+# wait for the child process to complete
+child.join()</code></pre>
+<p>Finally, the parent process checks the contents of the array.</p>
+<pre><code>...
+# check some data in the shared array
+print(array[:10], len(array))</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># share numpy array via a shared ctype
+from multiprocessing import Process
+from multiprocessing.sharedctypes import Array
+from numpy import ones
+from numpy.ctypeslib import as_ctypes
+
+# task executed in a child process
+def task(array):
+    # check some data in the array
+    print(array[:10], len(array))
+    # change data in the array
+    for i in range(len(array)):
+        array = 0.0
+    # confirm the data was changed
+    print(array[:10], len(array))
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,))
+    print(data[:10], data.shape)
+    # get ctype for our array
+    ctype = as_ctypes(data)
+    # create ctype array initialized from our array
+    array = Array(ctype._type_, data, lock=False)
+    # confirm contents of the shared array
+    print(array[:10], len(array))
+    # create a child process
+    child = Process(target=task, args=(array,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the shared array
+    print(array[:10], len(array))
+</code></pre>
+<p>Running the example first creates a numpy array with 10,000 elements, initialized to one values.</p>
+<p>The content of the numpy array is then confirmed.</p>
+<p>Next, the ctype of the array is determined and is used along with the numpy array itself to create a new shared ctype <strong>Array</strong>.</p>
+<p>The content of the numpy array is copied into the shared ctype array and we confirm that the shared ctype array contains all one values.</p>
+<p>Next, the child process is created and started and the parent process blocks.</p>
+<p>The child process runs. It first confirms the contents of the shared ctype <strong>Array</strong> contains all one values.</p>
+<p>It then updates the shared array to contain all zero values and confirms the array's contents were changed.</p>
+<p>The child process terminates and the parent process resumes.</p>
+<p>The parent process checks the contents of the shared array and confirms that it was changed by the child process.</p>
+<p>This highlights that both parent and child processes operated upon the same single array in memory.</p>
+<pre><code>[1. 1. 1. 1. 1. 1. 1. 1. 1. 1.] (10000,)
+[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] 10000
+[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] 10000
+[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] 10000
+[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] 10000
+</code></pre>
+<h2>Method 06: Share a NumPy Array Via a ctype RawArray</h2>
+<p>We can share a numpy array between processes via shared ctypes.</p>
+<p>The <a href="https://docs.python.org/3/library/ctypes.html"><strong>ctypes</strong> module</a> provides tools for working with C data types.</p>
+<p>Python provides the capability to share ctypes between processes on one system.</p>
+<p>You can learn more about sharing ctypes between processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>We can use a shared ctype array as a buffer that backs a numpy array.</p>
+<p>Numpy arrays can be created in each Python process backed by the same shared ctype array and share data directly.</p>
+<p>This can be achieved by first creating a <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.sharedctypes.RawArray">multiprocessing.sharedctypes.RawArray</a></strong> with the required type and large enough to hold the data required by the numpy array.</p>
+<p>For example:</p>
+<pre><code>...
+# create the shared array
+array = RawArray('d', 10000)</code></pre>
+<p>A new numpy array can then be created with the given type specify the <strong>RawArray</strong> as the buffer, e.g. the pre-allocated memory for the array.</p>
+<p>This can be achieved by creating a new <strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html">numpy.ndarray</a></strong> directly and specifying the "<strong>buff</strong>" as the array buffer.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new numpy array that uses the raw array
+data = ndarray((len(array),), dtype=numpy.double, buffer=array)</code></pre>
+<p>It is generally not recommended to create ndarrays directly.</p>
+<p>Instead, we can use the <strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.frombuffer.html">nump</a>y.frombuffer()</strong> method to create the array for us with the given size, type, and backed by the RawArray.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new numpy array backed by the raw array
+data = frombuffer(array, dtype=double, count=len(array))</code></pre>
+<p>The RawArray instance can then be made available to other Python processes and used to create numpy arrays backed by the same memory.</p>
+<p>This allows each process to read and write the same array data directly without having to copy it between processes.</p>
+<p>You can learn more about sharing a numpy array backed by a RawArray between processes in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-shared-ctype-rawarray/">Share a Numpy Array Between Processes Backed By RawArray</a></li>
+</ul>
+<p>We can explore the case of creating a numpy array backed by a <strong>RawArray</strong> and sharing it among Python processes.</p>
+<p>In this example, we will create a <strong>RawArray</strong> and then create a numpy array from the <strong>RawArray</strong>. We will then populate it with data in the main process. The <strong>RawArray</strong> will then be shared with a child process which will use it to create another numpy array, backed by the same data. It will then change the data and terminate. Finally, the main process will confirm that the data in the array was changed by the child process.</p>
+<p>Firstly, we can define a function to execute in the child process.</p>
+<p>The function will take a <strong>RawArray</strong> as an argument and use the <strong>RawArray</strong> to create a new numpy array. It then confirms the content of the array, increments all values in the array, and confirms that the data in the array was modified.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task(array):
+    # create a new numpy array backed by the raw array
+    data = frombuffer(array, dtype=double, count=len(array))
+    # check the contents
+    print(f'Child {data[:10]}')
+    # increment the data
+    data[:] += 1
+    # confirm change
+    print(f'Child {data[:10]}')
+</code></pre>
+<p>Next, in the main process will create a new <strong>RawArray</strong> of double values that has 10,000,000 elements.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000000
+# create the shared array
+array = RawArray('d', n)</code></pre>
+<p>Next, the main process will create a new numpy array from the <strong>RawArray</strong> and populate it with one values and confirm that the data in the array was changed.</p>
+<pre><code>...
+# create a new numpy array backed by the raw array
+data = frombuffer(array, dtype=double, count=len(array))
+# populate the array
+data.fill(1.0)
+# confirm contents of the new array
+print(data[:10], len(data))</code></pre>
+<p>A child process is then configured to execute our <strong>task()</strong> function and pass it the <strong>RawArray</strong>. The process is started and the main process blocks until the child process terminates.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(array,))
+# start the child process
+child.start()
+# wait for the child process to complete
+child.join()</code></pre>
+<p>Finally, the main process confirms that the child process changed the content of the shared array.</p>
+<pre><code>...
+# check some data in the shared array
+print(data[:10])</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># share numpy array between processes via a shared raw array
+from multiprocessing import Process
+from multiprocessing.sharedctypes import RawArray
+from numpy import frombuffer
+from numpy import double
+
+# task executed in a child process
+def task(array):
+    # create a new numpy array backed by the raw array
+    data = frombuffer(array, dtype=double, count=len(array))
+    # check the contents
+    print(f'Child {data[:10]}')
+    # increment the data
+    data[:] += 1
+    # confirm change
+    print(f'Child {data[:10]}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the numpy array
+    n = 10000000
+    # create the shared array
+    array = RawArray('d', n)
+    # create a new numpy array backed by the raw array
+    data = frombuffer(array, dtype=double, count=len(array))
+    # populate the array
+    data.fill(1.0)
+    # confirm contents of the new array
+    print(data[:10], len(data))
+    # create a child process
+    child = Process(target=task, args=(array,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the shared array
+    print(data[:10])
+</code></pre>
+<p>Running the example first creates the RawArray with 10 million double elements.</p>
+<p>Next, a numpy array is created that holds double values and is backed by the RawArray. That is, it does not allocate new memory for the array and instead reuses the memory already allocated by the RawArray.</p>
+<p>Next, the main process fills the numpy array with one values and confirms the content of the array changed and that the shape of the array is as we expect.</p>
+<p>Next, a child process is started to execute our <strong>task()</strong> function and the main process blocks until the process terminates.</p>
+<p>The child process runs. It first creates a new numpy array using the <strong>RawArray</strong> passed in as an argument.</p>
+<p>Passing the <strong>RawArray</strong> to the child process does not make a copy of the array. Instead, it passes a reference to the <strong>RawArray</strong> to the process.</p>
+<p>The child process confirms the array contains one values, as set by the parent process. Next, it increments all values in the array and confirms that the values were changed.</p>
+<p>This highlights both that the child array can directly access the same array as the parent process and that it is able to read and write to this data.</p>
+<p>The child process terminates and the main process resumes. It confirms that the child process changed the content of the array.</p>
+<p>This highlights that changes made to the array in the child process are reflected in other processes, such as the parent process.</p>
+<pre><code>[1. 1. 1. 1. 1. 1. 1. 1. 1. 1.] 10000000
+Child [1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+Child [2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+</code></pre>
+<h2>Method 07: Share a NumPy Array Via SharedMemory</h2>
+<p>We can share numpy arrays between processes using shared memory.</p>
+<p>Python processes do not have shared memory. Instead, processes must simulate shared memory.</p>
+<p>Since Python 3.8 a new approach to shared memory was added to Python in the <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html"><strong>multiprocessing.shared_memory</strong> module</a>.</p>
+<p>The benefit of shared memory is speed and efficiency.</p>
+<p>No inter-process communication is required. Instead, processes are able to read and write the same shared memory block directly, although within constraints.</p>
+<p>The module provides three classes to support shared memory, they are:</p>
+<ul>
+<li><strong>multiprocessing.shared_memory.SharedMemory</strong></li>
+<li><strong>multiprocessing.shared_memory.ShareableList</strong></li>
+<li><strong>multiprocessing.managers.SharedMemoryManager</strong></li>
+</ul>
+<p>The <strong>SharedMemory</strong> class is the core class for providing shared memory.</p>
+<p>It allows a shared memory block to be created, named, and attached to. It provides a "<strong>buf</strong>" attribute to read and write data in an array-like structure and can be closed and destroyed.</p>
+<p>You can learn more about shared memory in the tutorial:</p>
+<ul>
+<li><a href="../what-is-multiprocessing-sharedmemory/">What is Multiprocessing Shared Memory</a></li>
+</ul>
+<p>A <strong>SharedMemory</strong> can be created in a process by calling the constructor and specifying a "<strong>size</strong>" in bytes and the "<strong>create</strong>" argument to True.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared memory
+shared_mem = SharedMemory(size=1024, create=True)</code></pre>
+<p>A shared memory object can be assigned a meaningful name via the "<strong>name</strong>" attribute to the constructor.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared memory with a name
+shared_mem = SharedMemory(name='MyMemory', size=1024, create=True)</code></pre>
+<p>Another process can access a shared memory via its name. This is called attaching to a shared memory.</p>
+<p>This can be achieved by specifying the name of the shared memory that has already been created and setting the "<strong>create</strong>" argument to <strong>False</strong> (the default).</p>
+<p>For example:</p>
+<pre><code>...
+# attach to a shared memory
+shared_mem = SharedMemory(name='MyMemory', create=False)</code></pre>
+<p>Once created data can be stored in the shared memory via the "<strong>buf</strong>" attribute that acts like an array of bytes.</p>
+<p>For example:</p>
+<pre><code>...
+# write data to shared memory
+shared_mem.buf[0] = 1</code></pre>
+<p>You can learn more about creating and using the SharedMemory class in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-sharedmemory/">How to Use SharedMemory in Python</a></li>
+</ul>
+<p>We can create a shared memory and use it as the basis for a numpy array.</p>
+<p>This means that multiple processes can interact with the same numpy array directly via the shared memory, rather than passing copies of the array around. This is significantly faster and mimics shared memory available between threads.</p>
+<p>A new <a href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html"><strong>numpy.ndarray</strong> instance</a> can be created and we can configure it to use the shared memory as the buffer via the "<strong>buffer</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new numpy array that uses the shared memory
+data = ndarray((n,), dtype=numpy.double, buffer=shared_mem.buf)</code></pre>
+<p>We must ensure that the <strong>SharedMemory</strong> has a "<strong>size</strong>" that is large enough for our numpy array.</p>
+<p>For example, if we create a numpy array to hold double values, each double is 8 bytes. Therefore, we can set the size of the <strong>SharedMemory</strong> to be 8 multiplied by the size of the array we need.</p>
+<p>For example:</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000
+# bytes required for the array (8 bytes per value for doubles)
+n_bytes = n * 8
+# create the shared memory
+shared_mem = SharedMemory(name='MyMemory', create=True, size=n_bytes)</code></pre>
+<p>You can learn more about sharing a <strong>SharedMemory</strong>-backed numpy array between processes in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-sharedmemory/">How to Share Numpy Array Using SharedMemory</a></li>
+</ul>
+<p>We can explore an example of sharing a numpy array between processes using shared memory.</p>
+<p>In this example, we will create a shared memory large enough to hold our array, then create an array backed by the shared memory. We will then start a child process and have it connect to the same shared memory and create an array backed by the shared memory and access the same data.</p>
+<p>This example will highlight how multiple processes can interact with the same numpy array in memory directly.</p>
+<p>Firstly, we will define a task to execute in the child process.</p>
+<p>The task will not take any arguments. It will first connect to the shared memory, then create a new numpy array of double values backed by the shared memory.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000
+# attach another shared memory block
+sm = SharedMemory('MyMemory')
+# create a new numpy array that uses the shared memory
+data = ndarray((n,), dtype=numpy.double, buffer=sm.buf)</code></pre>
+<p>Next, the task will report the first 10 values of the array, increment all data in the array and then confirm that the data in the array was changed.</p>
+<pre><code>...
+# check the contents
+print(f'Child {data[:10]}')
+# increment the data
+data[:] += 1
+# confirm change
+print(f'Child {data[:10]}')</code></pre>
+<p>Finally, the task will close its access to the shared memory.</p>
+<pre><code>...
+# close the shared memory
+sm.close()</code></pre>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task():
+    # define the size of the numpy array
+    n = 10000
+    # attach another shared memory block
+    sm = SharedMemory('MyMemory')
+    # create a new numpy array that uses the shared memory
+    data = ndarray((n,), dtype=numpy.double, buffer=sm.buf)
+    # check the contents
+    print(f'Child {data[:10]}')
+    # increment the data
+    data[:] += 1
+    # confirm change
+    print(f'Child {data[:10]}')
+    # close the shared memory
+    sm.close()
+</code></pre>
+<p>Next, the main process will create the shared memory with the required size.</p>
+<p>Given that we know we want a numpy array of a given size (10,000 elements) containing double values, we can calculate the size in memory required directly as 8 bytes (per double value) multiplied by the size of the array.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000
+# bytes required for the array (8 bytes per value for doubles)
+n_bytes = n * 8
+# create the shared memory
+sm = SharedMemory(name='MyMemory', create=True, size=n_bytes)</code></pre>
+<p>Double values may not always be 8 bytes, it is platform dependent.</p>
+<p>You can learn more about numpy data types here:</p>
+<ul>
+<li><a href="https://numpy.org/doc/stable/user/basics.types.html">Numpy Data types</a></li>
+</ul>
+<p>Note, we can create a shared memory with more space than that required by our array, but not less space. Ensure you allocate enough memory for your array and do some basic checks and calculations first if you're not sure.</p>
+<p>If the buffer is too small to hold the array, you will get an error like:</p>
+<pre><code>TypeError: buffer is too small for requested array</code></pre>
+<p>Next, the main process will create a new numpy array with the given size, containing double values, and backed by our shared memory with a specific size.</p>
+<pre><code>...
+# create a new numpy array that uses the shared memory
+data = ndarray((n,), dtype=numpy.double, buffer=sm.buf)</code></pre>
+<p>We will then fill the array with one value and then confirm the data in the array was changed and that the array has the expected dimensions, e.g. 10k elements.</p>
+<pre><code>...
+# populate the array
+data.fill(1.0)
+# confirm contents of the new array
+print(data[:10], len(data))</code></pre>
+<p>Next, we will create, configure and start a child process to execute our <strong>task()</strong> function and block until it is terminated.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task)
+# start the child process
+child.start()
+# wait for the child process to complete
+child.join()</code></pre>
+<p>If you are new to starting a child process to execute a target function, you can learn more in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<p>Finally, we will confirm the contents of the shared array were changed by the child process, then close access to the shared memory and release the shared memory.</p>
+<pre><code>...
+# check some data in the shared array
+print(data[:10])
+# close the shared memory
+sm.close()
+# release the shared memory
+sm.unlink()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># share numpy array via a shared memory
+from multiprocessing import Process
+from multiprocessing.shared_memory import SharedMemory
+from numpy import ones
+from numpy import ndarray
+import numpy
+
+# task executed in a child process
+def task():
+    # define the size of the numpy array
+    n = 10000
+    # attach another shared memory block
+    sm = SharedMemory('MyMemory')
+    # create a new numpy array that uses the shared memory
+    data = ndarray((n,), dtype=numpy.double, buffer=sm.buf)
+    # check the contents
+    print(f'Child {data[:10]}')
+    # increment the data
+    data[:] += 1
+    # confirm change
+    print(f'Child {data[:10]}')
+    # close the shared memory
+    sm.close()
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the numpy array
+    n = 10000
+    # bytes required for the array (8 bytes per value for doubles)
+    n_bytes = n * 8
+    # create the shared memory
+    sm = SharedMemory(name='MyMemory', create=True, size=n_bytes)
+    # create a new numpy array that uses the shared memory
+    data = ndarray((n,), dtype=numpy.double, buffer=sm.buf)
+    # populate the array
+    data.fill(1.0)
+    # confirm contents of the new array
+    print(data[:10], len(data))
+    # create a child process
+    child = Process(target=task)
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the shared array
+    print(data[:10])
+    # close the shared memory
+    sm.close()
+    # release the shared memory
+    sm.unlink()
+</code></pre>
+<p>Running the example first creates the shared memory with the name "<strong>MyMemory</strong>" and 80,000 bytes in size (e.g. 10k * 8 bytes per double).</p>
+<p>A new numpy array is then created with the given size and backed by the shared memory.</p>
+<p>The array is filled with one values and the contents and size of the array are confirmed.</p>
+<p>A child process is then created and configured to execute our <strong>task()</strong> function. The process is started and the main process blocks until the child process terminates.</p>
+<p>The child process runs and connects to the shared memory by name, e.g. "<strong>MyMemory</strong>". It then creates a new numpy array with the same size and data type as the parent process and backs it with the shared memory.</p>
+<p>The child process first confirms that the array contains one values, as set by the parent process. This confirms that the child process is operating with the same memory (same array) as the parent process.</p>
+<p>It increments all values in the array and confirms that the data was changed.</p>
+<p>The child process closes its access to the shared memory and terminates.</p>
+<p>The main process resumes and confirms that the contents of the array were changed by the child process. This confirms that changes made to the array by the child process are reflected in the parent process.</p>
+<p>Finally, the main process closes access to the shared memory and then releases the shared memory.</p>
+<pre><code>[1. 1. 1. 1. 1. 1. 1. 1. 1. 1.] 10000
+Child [1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+Child [2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+</code></pre>
+<h2>Method 08: Share a NumPy Array Via Memory-Mapped File</h2>
+<p>We can share a NumPy array via a memory-mapped file.</p>
+<p>A memory-mapped file is a structure that allows data to look and be used as though it exists in main memory, when in fact it is stored in a file on disk.</p>
+<p>It allows very large data structures to be read and written without having to have the contents of the structure in main memory, as we do normally.</p>
+<p>Numpy offers the ability for a NumPy array to be stored in a memory-mapped file and used as though the array exists in main memory.</p>
+<p>This capability is provided via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.memmap.html"><strong>numpy.memmap()</strong> function</a>.</p>
+<blockquote>
+<p>Memory-mapped files are used for accessing small segments of large files on disk, without reading the entire file into memory. NumPy’s memmap’s are array-like objects.</p>
+<cite>-- <a href="https://numpy.org/doc/stable/reference/generated/numpy.memmap.html">numpy.memmap API</a>.</cite></blockquote>
+<p>To use a memory-mapped file NumPy array, the <strong>numpy.memmap()</strong> function can be called to define the array.</p>
+<p>This includes the filename for where the array data will be stored, the data type of the array, the mode in which the array will be used (e.g. read, write, etc.), and the dimensional or shape of the array.</p>
+<p>For example, we can create a memory-mapped file NumPy array in the current working directory with the filename "<strong>data.np</strong>", to hold floating point values, that can be read and written and is one dimensional in shape with 1000 elements.</p>
+<pre><code>...
+# create a memory mapped numpy array
+data = memmap('data.np', dtype='float32', mode='w+', shape=(1000,))</code></pre>
+<p>The open modes are just like those used to open a file on disk, for example:</p>
+<ul>
+<li>'r' Open the array file in read-only mode.</li>
+<li>'r+' Open an existing array file for reading and writing.</li>
+<li>'w+' Create or overwrite an existing file for reading and writing.</li>
+<li>'c' Only make changes to the data in memory, called copy-on-write.</li>
+</ul>
+<p>The array can then be used as per normal, such as populate it with initial values via the <strong>fill()</strong> method.</p>
+<pre><code>...
+# populate the array
+data.fill(1.0)</code></pre>
+<p>Generally, changes to the array are written when we are finished with it.</p>
+<p>We can use a NumPy memory-mapped file to share a NumPy array between processes.</p>
+<p>If no array exists, one process can be responsible for creating the array.</p>
+<p>This can be achieved by specifying the filename and dimensional of the array and opening it in create mode, e.g. 'w+'.</p>
+<p>For example:</p>
+<pre><code>...
+# create a memory mapped numpy array
+data = memmap('data.np', dtype='float32', mode='w+', shape=(1000,))</code></pre>
+<p>Changes can be made to the file and then flushed with a call to the flush method.</p>
+<p>For example:</p>
+<pre><code>...
+# write changes to file
+data.flush()</code></pre>
+<p>Once the file exists on disk, other processes can then open the file.</p>
+<p>This might be in read-only mode, e.g. 'r' if the other processes need only read the data.</p>
+<p>For example:</p>
+<pre><code>...
+# open existing memory mapped array in read-only mode
+data = memmap('data.np', dtype='float32', mode='r', shape=(1000,))</code></pre>
+<p>Alternatively, if the processes need to read and then write the data in the array, it can be opened in read-write mode and changes can then be flushed once the process is finished.</p>
+<p>For example:</p>
+<pre><code>...
+# open existing memory-mapped array in read/write mode
+data = memmap('data.np', dtype='float32', mode='r+', shape=(1000,))
+# make changes
+...
+# write changes to file
+data.flush()</code></pre>
+<p>The other processes must open the same file, and use the same data types and array dimensions.</p>
+<p>This information could be provided to other processes from the main process via function arguments.</p>
+<p>For example:</p>
+<pre><code># task to work on shared numpy array
+def task(array_filename, array_type, array_shape):
+    # open existing memory mapped array in read/write mode
+    data = memmap(array_filename, dtype=array_type, mode='r+', shape=array_shape)
+    ...
+</code></pre>
+<p>You can learn more about sharing a numpy array between processes using a memory-mapped file in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-memory-mapped-file/">Share NumPy Array Using Memory-Mapped File</a></li>
+</ul>
+<p>We can explore an example of sharing a NumPy array between processes using a memory-mapped file.</p>
+<p>In this case, we will define a NumPy array backed by a memory-mapped file. The main process will then initialize the array and flush the changes. A new child process will then be created and passed the details of the NumPy array backed by the memory-mapped file. It will load the array in a read/write mode, make changes, and then have those changes flushed. Finally, the main process will resume and confirm the changes made to the array by the child process.</p>
+<p>Firstly, we can define the task function to execute in the child process.</p>
+<p>The function will take the details of the array, including the name of the file and the size, assuming it is one-dimensional.</p>
+<pre><code># load shared array
+def task(filename, n):
+    # ...
+</code></pre>
+<p>The function will then open the file-backed NumPy array in read/write mode and inspect the first few values.</p>
+<pre><code>...
+# load the memory-mapped file
+data = memmap(filename, dtype='float32', mode='r+', shape=(n,))
+# check the status of the data
+print(f'Child: {data[:10]}')</code></pre>
+<p>Next, the child process will update all data in the array, flush the change to the file, and confirm the array was updated.</p>
+<pre><code>...
+# change the data
+data[:] += 1
+# flush the changes
+data.flush()
+# check the status of the data
+print(f'Child: {data[:10]}')</code></pre>
+<p>Tying this together, the <strong>task()</strong> function below implements this.</p>
+<pre><code># load shared array
+def task(filename, n):
+    # load the memory-mapped file
+    data = memmap(filename, dtype='float32', mode='r+', shape=(n,))
+    # check the status of the data
+    print(f'Child: {data[:10]}')
+    # change the data
+    data[:] += 1
+    # flush the changes
+    data.flush()
+    # check the status of the data
+    print(f'Child: {data[:10]}')
+</code></pre>
+<p>Next, the main process will define the size of the array and where the array file will be stored. It then creates the array.</p>
+<pre><code>...
+# define the size of the data
+n = 1000
+# define the filename
+filename = 'data.np'
+# create the memory-mapped file
+data = memmap(filename, dtype='float32', mode='w+', shape=(n,))</code></pre>
+<p>Next, the main process initializes the array, flushes the change from memory to file, and confirms that the array data change was made.</p>
+<pre><code>...
+# populate the array
+data.fill(1.0)
+# flush the changes
+data.flush()
+# check the status of the data
+print(data[:10])</code></pre>
+<p>The main process then creates and starts the child process, passing the details of the memory-mapped file, including the filename and size of the array.</p>
+<p>The main process blocks until the child process is done.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(filename,n))
+# start the child process
+child.start()
+# wait for the child process to complete
+child.join()</code></pre>
+<p>Once done, the main process then inspects the content of the array and confirms that the child process made changes.</p>
+<pre><code>...
+# check the status of the data
+print(data[:10])</code></pre>
+<p>Tying this together, the complete example of sharing a memory-mapped file NumPy array is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a memory-mapped numpy array between processes
+from multiprocessing import Process
+from numpy import memmap
+
+# load shared array
+def task(filename, n):
+    # load the memory mapped file
+    data = memmap(filename, dtype='float32', mode='r+', shape=(n,))
+    # check the status of the data
+    print(f'Child: {data[:10]}')
+    # change the data
+    data[:] += 1
+    # flush the changes
+    data.flush()
+    # check the status of the data
+    print(f'Child: {data[:10]}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the data
+    n = 1000
+    # define the filename
+    filename = 'data.np'
+    # create the memory mapped file
+    data = memmap(filename, dtype='float32', mode='w+', shape=(n,))
+    # populate the array
+    data.fill(1.0)
+    # flush the changes
+    data.flush()
+    # check the status of the data
+    print(data[:10])
+    # create a child process
+    child = Process(target=task, args=(filename,n))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check the status of the data
+    print(data[:10])
+</code></pre>
+<p>Running the example first defines the properties of the memory-mapped file, then creates the file on disk with the given data type and size.</p>
+<p>If the file already exists, it is overwritten. This allows the program to be re-run many times without error.</p>
+<p>Next, the array is initialized to one values and the changes are written to the file. The main process then reports the first 10 values of the array, and we can see that it was initialized correctly.</p>
+<p>Next, the child process is created and configured to execute our <strong>task()</strong> function with the filename and array size as arguments.</p>
+<p>The child process is started and the main process blocks until it is done.</p>
+<p>The child process runs the <strong>task()</strong> function. It starts by opening the memory-mapped file with the given filename and size.</p>
+<p>It is careful to open the file in read-write mode, assuming the file exists. If the file is opened in write/overwrite mode, the contents of the file written by the main process will be lost.</p>
+<p>The child process reports the first 10 values in the array, confirming that the change made by the main process was written correctly and that the child process is able to see that change.</p>
+<p>The child process then updates the content of the array, adding one to all values, then flushes the change to file.</p>
+<p>The child process then reports the first 10 values of the array again, confirming that the content of the array was updated from one values to two values.</p>
+<p>The child process is terminated and the main process resumes.</p>
+<p>The main process finally reports the first 10 values of the array, showing that the change made by the child process was made and stored as expected and is visible to the main process.</p>
+<p>This highlights how we can share a NumPy array between processes using a memory-mapped file.</p>
+<pre><code>[1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+Child: [1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+Child: [2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]</code></pre>
+<h2>Method 09: Share a NumPy Array Via a Manager</h2>
+<p>We can share a numpy array efficiently between processes is to use a manager.</p>
+<p>Multiprocessing <strong>Manager</strong> provides a way of creating centralized Python objects that can be shared safely among processes.</p>
+<p>Manager objects create a server process that is used to host Python objects. Managers then return proxy objects used to interact with the hosted objects.</p>
+<p>You can learn more about multiprocessing Managers in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li>
+</ul>
+<p>A numpy array can be hosted by defining a custom <strong>Manager</strong> and configuring it to support numpy arrays.</p>
+<p>This requires first defining a custom <strong>Manager</strong> that extends the <strong>BaseManager</strong>.</p>
+<p>For example:</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>We can then register our numpy array with the custom manager via the <strong>register()</strong> function.</p>
+<p>One approach is to register a numpy function used to create a numpy array on the server process, such as the <a href="https://numpy.org/doc/stable/reference/generated/numpy.ones.html"><strong>numpy.ones()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# register a function for creating numpy arrays on the manager
+CustomManager.register('ones', ones)</code></pre>
+<p>We can then create the custom manager to start the server process.</p>
+<pre><code>...
+# create and start the custom manager
+with CustomManager() as manager:
+	# ...
+</code></pre>
+<p>The numpy array can then be created in the server process by calling the registered function, after which a proxy object is returned. The hosted numpy array can then be interacted with via the proxy object.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared numpy array
+data_proxy = manager.shared_array((10,10))</code></pre>
+<p>The proxy object can then be passed between processes, allowing multiple processes to manipulate the same hosted numpy array.</p>
+<p>You can learn more about hosting custom objects in manager processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager-custom-class/">Multiprocessing Manager With a Custom Class</a></li>
+</ul>
+<p>You can learn more about sharing a numpy array between processes using a multiprocessing manager in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-share-manager/">Share a Numpy Array Between Processes Using a Manager</a></li>
+</ul>
+<p>We can explore the case of sharing a numpy array hosed in a manager between processes.</p>
+<p>In this example, we will create an array hosted in a manager process and report the sum of the values in the array. We will then start a child process and pass it the proxy objects for the array and have it perform the same sum operation on the array.</p>
+<p>This will highlight how easy it is for multiple processes to operate on the same array efficiently via proxy objects.</p>
+<p>Firstly, we will define the custom manager class so that we can register numpy arrays.</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>Next, we will define a function to execute in a child process. The function will take the proxy object for the numpy array and calculate the sum of values in the array.</p>
+<pre><code># task executed in a child process
+def task(data_proxy):
+    # report details of the array
+    print(f'Array sum (in child): {data_proxy.sum()}')
+</code></pre>
+<p>Next, in the main process, we will register a function for creating the hosted numpy array with the custom manager.</p>
+<pre><code>...
+# register a function for creating numpy arrays on the manager
+CustomManager.register('shared_array', ones)</code></pre>
+<p>Next, we will create and start the custom manager and create the hosted numpy array with 100,000,000 elements.</p>
+<pre><code>...
+# create and start the custom manager
+with CustomManager() as manager:
+    # define the size of the numpy array
+    n = 100000000
+    # create a shared numpy array
+    data_proxy = manager.shared_array((n,))
+    print(f'Array created on host: {data_proxy}')
+</code></pre>
+<p>We will then calculate the sum of the values in the array on the server process, which we expect to equal 100,000,000, as all values equal one.</p>
+<pre><code>...
+# confirm content
+print(f'Array sum: {data_proxy.sum()}')</code></pre>
+<p>Finally, we will create and configure a child process, configured to execute our task() function, then start it and wait for it to terminate.</p>
+<pre><code>...
+# start a child process
+process = Process(target=task, args=(data_proxy,))
+process.start()
+process.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># share a numpy array between processes using a manager
+from multiprocessing import Process
+from multiprocessing.managers import BaseManager
+from numpy import ones
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# task executed in a child process
+def task(data_proxy):
+    # report details of the array
+    print(f'Array sum (in child): {data_proxy.sum()}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # register a function for creating numpy arrays on the manager
+    CustomManager.register('shared_array', ones)
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the size of the numpy array
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.shared_array((n,))
+        print(f'Array created on host: {data_proxy}')
+        # confirm content
+        print(f'Array sum: {data_proxy.sum()}')
+        # start a child process
+        process = Process(target=task, args=(data_proxy,))
+        process.start()
+        process.join()
+</code></pre>
+<p>Running the example first registers the numpy array with the custom manager.</p>
+<p>Next, the custom manager is created and started.</p>
+<p>The numpy array is created on the manager's server process and a proxy object is returned. The proxy object is printed, providing a string representation of the hosted array, confirming it has one values.</p>
+<p>The parent process then reports the sum of the values in the array. This is calculated on the server process and the value is then reported as 100 million, matching our expectations.</p>
+<p>Next, a child process is configured to execute our <strong>task()</strong> function and pass the proxy object. The parent process then blocks until the child process terminates.</p>
+<p>The child process runs and executes the <strong>task()</strong> function. The sum of the array is calculated on the server process and reported via the child process.</p>
+<p>This highlights that both processes are easily able to operate directly upon the same hosted array.</p>
+<pre><code>Array created on host: array([1., 1., 1., ..., 1., 1., 1.])
+Array sum: 100000000.0
+Array sum (in child): 100000000.0
+</code></pre>
+<h2>What Method Should You Use?</h2>
+<p>We have seen a number of ways that we might share NumPy arrays between processes.</p>
+<p>These methods could be divided into two main approaches:</p>
+<ol>
+<li>Methods that copy the array</li>
+<li>Methods that share access to the same array.</li>
+</ol>
+<p>Let's review the methods through these groupings and some recommendations, assuming we need or want to share arrays between processes.</p>
+<h3>Methods That Copy NumPy Arrays</h3>
+<p>There are four methods that make a copy of the array, which is then transmitted to another process.</p>
+<p>They are:</p>
+<ol>
+<li>Inherited array</li>
+<li>Function argument</li>
+<li>Pipe data structure</li>
+<li>Queue data structure</li>
+</ol>
+<p>These approaches are generally slow because a copy of the array must be made in memory, it must be pickled, transmitted between processes, and unpickled at the other end.</p>
+<p>The inter-process communication is generally slow and particularly because of the serialization and deserialization of the arrays.</p>
+<p>As such these methods are appropriate when the arrays to be transmitted are small, when the transmission is not frequent and when changes to arrays in one process do not need to be visible in other processes.</p>
+<ul>
+<li>If many processes need access to the same data in an array, then inheritance should be used because it is faster than the other methods.</li>
+<li>If a small array needs to be shared with another process in a one-offer manner, then a function argument is probably preferred for its simplicity.</li>
+<li>If a multi-step pipeline is operating on small NumPy arrays, like images or similar, then perhaps Queues are are appropriate.</li>
+</ul>
+<h3>Methods That Use Shared Memory</h3>
+<p>There are perhaps five methods that make use of an array backed by shared memory, or simulate this effect.</p>
+<p>They are:</p>
+<ol>
+<li>Shared ctype Array</li>
+<li>Shared ctype RawArray</li>
+<li>SharedMemory</li>
+<li>Memory-Mapped File</li>
+<li>Manager</li>
+</ol>
+<p>The benefit of these approaches is they are not limited by slow transmission of arrays via inter-process communication.</p>
+<p>The shared downside is that some methods are generally limited to one-dimensional structures requiring transforms to simulate multiple dimensions. Other methods may require additional mechanisms like mutex locks to avoid race conditions.</p>
+<ul>
+<li>If we are not strictly limited to using a NumPy array, e.g. we don't need the NumPy API methods and functions, then the shared ctype <strong>Array</strong> is preferred for speed, at the cost of making a copy of the array.</li>
+<li>If we want to operate on a structure that looks and feels like a NumPy array, than an array backed by a <strong>RawArray</strong> or SharedMemory buffer is preferred.</li>
+<li>If we don't need to pass the array around via queues or function arguments, then reconstructing the array from the named <strong>SharedMemory</strong> buffer is an elegant solution.</li>
+<li>If the array is very large, then not loading it into memory and instead accessing it via a memory-mapped file is a preferred approach.</li>
+<li>If we just need to perform operations on the array or get summary statistics from the data, then hosting the array in a <strong>Manager</strong> and creating some helpful wrapper methods might be a preferred approach.</li>
+</ul>
+<h3>Choose Based On Performance</h3>
+<p>The performance of these methods is a big concern. </p>
+<p>Often, we want to choose a method for sharing a NumPy array that meets our requiremens and is the fastest. This is because we are using multiprocessing to achieve a sped-up because of parallelism.</p>
+<p>Here are some recommendations based on performance:</p>
+<ul>
+<li>If the shared array can be read-only, then the fastest method to share the array between processes is via inheritance.</li>
+<li>If multiple processes need to read and write the shared NumPy array then a memory-mapped file or shared memory-backed array is the fastest.</li>
+<li>Sharing NumPy arrays using queues and pipes is slower by nearly two orders of magnitude than other methods.</li>
+</ul>
+<p>You can learn more about how each approach to sharing a NumPy compares to each other and which approach is the fastest in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-share-fastest/">Fastest Way To Share NumPy Array Between Processes</a></li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know a suite of approaches that you can use to share a NumPy array between Python processes.</p>
+<p>Join the discussion on <a href="https://news.ycombinator.com/item?id=37303695">HackerNews</a>.</p>
 </main>
 </body>
 </html>

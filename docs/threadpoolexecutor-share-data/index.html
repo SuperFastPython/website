@@ -262,6 +262,69 @@ def worker_init(value):
     print('Variable defined')
 </code></pre>
 <p>We can update the task function to report the worker thread name along with the shared data, to confirm that multiple worker threads were created and are being used to execute tasks.</p>
+<pre><code># task executed in the thread pool
+def task():
+    # report the data
+    print(f'Data in Task: {worker_value} [thread={current_thread().name}]')
+    # block for a moment
+    sleep(1)
+</code></pre>
+<p>We can then issue many tasks to the thread pool for execution to test whether the global variable is only defined once, and is still accessible to all tasks executed by all worker threads.</p>
+<pre><code>...
+# issue many tasks to the thread pool
+_ = [tpe.submit(task) for _ in range(10)]</code></pre>
+<p>Tying this together, the complete example with these changes is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing data using a global variable defined in worker init
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+
+# worker initialization function
+def worker_init(value):
+    # check if the variable has already been defined
+    if 'worker_value' in globals():
+        # do not define the variable again
+        return
+    # declare a global variable for the worker
+    global worker_value
+    # define the worker global variable
+    worker_value = value
+    # report that the global variable has been defined once
+    print('Variable defined')
+
+# task executed in the thread pool
+def task():
+    # report the data
+    print(f'Data in Task: {worker_value}')
+    # block for a moment
+    sleep(1)
+
+# define the data
+data = '12345'
+# report data in the main thread
+print(f'Data in Main: {data}')
+# create the thread pool
+with ThreadPoolExecutor(initializer=worker_init, initargs=(data,)) as tpe:
+    # issue many tasks to the thread pool
+    _ = [tpe.submit(task) for _ in range(10)]
+# wait for all tasks to complete
+</code></pre>
+<p>Running the example, we can see that the "<em>Variable defined</em>" message is only reported once. This means that the global variable is only defined once in the initialization function, even though many worker threads were created.</p>
+<p>Next, we can see that all 10 tasks are able to access the shared global variable, regardless of the thread used to execute it.</p>
+<pre><code>Data in Main: 12345
+Variable defined
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_0]
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_1]
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_2]
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_3]
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_4]
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_5]
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_6]
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_7]
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_8]
+Data in Task: 12345 [thread=ThreadPoolExecutor-0_9]</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share data from the main thread with tasks executed by workers in the <strong>ThreadPoolExecutor</strong>.</p>
 </main>
 </body>
 </html>

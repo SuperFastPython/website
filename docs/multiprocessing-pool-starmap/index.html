@@ -37,6 +37,274 @@
 <p>The <strong>starmap()</strong> function takes the name of a function to apply and an iterable.</p>
 <p>It will then convert the provided iterable into a list and issue one task for each item in the iterable.</p>
 <p>Importantly, each item in the iterable provided to the <strong>starmap()</strong> function may itself be an iterable containing the arguments to provide to the target task function.</p>
+<blockquote><p>Like map() except that the elements of the iterable are expected to be iterables that are unpacked as arguments. Hence an iterable of [(1,2), (3, 4)] results in [func(1,2), func(3,4)].</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This allows the target task function to receive multiple arguments.</p>
+<p>For example, we may have an iterable in which each item in the iterable is an iterable of arguments for each function call.</p>
+<p>We might have a target task function that takes two arguments.</p>
+<pre><code># target task function
+def task(arg1, arg2):
+	# ...
+</code></pre>
+<p>We may then define an iterable that contains 3 items and will result in 3 calls to the target task function.</p>
+<pre><code>...
+# define an iterable
+items = [(1,2), (3,4), (5,6)]
+</code></pre>
+<p>Each item in the iterable is a tuple that contains two items, for the two arguments to the target task function.</p>
+<p>We can issue this to the process pool using the <strong>starmap()</strong> function and traverse the iterable of return values.</p>
+<pre><code>...
+# issue tasks and iterate the results from the issued tasks
+for result in pool.starmap(task, items):
+	# ...
+</code></pre>
+<p>This will result in three tasks in the process pool, each calling the target <strong>task()</strong> function with two arguments:</p>
+<ul><li><strong>task(1,2)</strong></li><li><strong>task(3,4)</strong></li><li><strong>task(5,6)</strong></li></ul>
+<p>Like the <strong>Pool.map()</strong> function the <strong>Pool.starmap()</strong> allows us to issue tasks in chunks to the process pool. That is, we can group a fixed number of items from the input iterable and issue them as one task to be executed by a child worker process.</p>
+<p>This can make completing a large number of tasks in a very long iterable more efficient as arguments and return values from the target task function can be transmitted in batches with less computational overhead.</p>
+<p>This can be achieved via the "<strong>chunksize</strong>" argument to <strong>starmap()</strong>.</p>
+<blockquote><p>The chunksize argument is the same as the one used by the map() method. For very long iterables using a large value for chunksize can make the job complete much faster than using the default value of 1.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# issue tasks in chunks and iterate the results
+for result in pool.starmap(task, items, chunksize=10):
+	# ...
+</code></pre>
+<p>Next, let's take a closer look at how the <strong>starmap()</strong> function compares to other functions on the process pool.</p>
+<h3>Difference Between starmap() and map()</h3>
+<p>How does the <strong>Pool.starmap()</strong> function compare to the <strong>Pool.map()</strong> for issuing tasks to the process pool?</p>
+<p>Both the <strong>starmap()</strong> and <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.map">map()</a></strong> may be used to issue tasks that call a function to all items in an iterable via the process pool.</p>
+<ol><li>The key difference between the <strong>starmap()</strong> function and the <strong>map()</strong> function is that <strong>starmap()</strong> supports a target function with more than one argument, whereas the <strong>map()</strong> function supports target functions with only one argument.</li></ol>
+<h3>Difference Between starmap() and starmap_async()</h3>
+<p>How does the <strong>Pool.starmap()</strong> function compare to the <strong>Pool.starmap_async()</strong> for issuing tasks to the process pool?</p>
+<p>Both the <strong>starmap()</strong> and <strong>starmap_async()</strong> may be used to issue tasks that call a function in the process pool with more than one argument.</p>
+<p>The following summarizes the key differences between these two functions:</p>
+<ol><li>The <strong>starmap()</strong> function blocks, whereas the <strong>starmap_async() </strong>function does not block.</li><li>The <strong>starmap()</strong> function returns an iterable of return values from the target function, whereas the <strong>starmap_async() </strong>function returns an <strong>AsyncResult</strong>.</li><li>The <strong>starmap() </strong>function does not support callback functions, whereas the <strong>starmap_async() </strong>function can execute callback functions on return values and errors.</li></ol>
+<p>The <strong>starmap()</strong> function should be used for issuing target task functions to the process pool where the caller can or must block until all function calls are complete.</p>
+<p>The <strong>starmap_async()</strong> function should be used for issuing target task functions to the process pool where the caller cannot or must not block while the task is executing.</p>
+<p>Now that we know how to use the <strong>starmap()</strong> function to execute tasks in the process pool, let's look at some worked examples.</p>
+<h2>Example of Pool.starmap()</h2>
+<p>We can explore how to use the <strong>starmap()</strong> function with the process pool.</p>
+<p>In this example, we can define a target task function that takes two arguments, reports the values then returns the values that were passed in. We can then call this function for each integer between 0 and 9 using the process pool <strong>starmap()</strong>.</p>
+<p>This will apply the function to each integer in parallel using as many cores as are available in the system.</p>
+<p>Firstly, we can define the target task function.</p>
+<p>The function takes an integer identifier and floating point value. It reports the values, then blocks for a fraction of a second to simulate computational effort, then returns the values that were provided as arguments.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+</code></pre>
+<p>We can then create and configure a process pool.</p>
+<p>We will use the context manager interface to ensure the pool is shutdown automatically once we are finished with it.</p>
+<p>If you are new to the context manager interface of the process pool, you can learn more in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>We can then define an iterable that provides the arguments to the <strong>task()</strong> function. The iterable will be a list of tuples, where each tuple will contain an integer value and randomly generated floating point value between 0 and 1.</p>
+<p>This can be prepared in a list comprehension.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, random()) for i in range(10)]</code></pre>
+<p>We can then call the <strong>starmap()</strong> function on the process pool to apply our <strong>task()</strong> function to each tuple of arguments in the prepared list.</p>
+<p>This returns an iterator over the results returned from the <strong>task()</strong> function, in the order that function calls are completed. We will iterate over the results and report each in turn.</p>
+<p>This can all be achieved in a for-loop.</p>
+<pre><code>...
+# execute tasks and process results in order
+for result in pool.starmap(task, items):
+    print(f'Got result: {result}', flush=True)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using starmap() with the process pool
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(10)]
+        # execute tasks and process results in order
+        for result in pool.starmap(task, items):
+            print(f'Got result: {result}', flush=True)
+    # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the process pool with a default configuration.</p>
+<p>It will have one child worker process for each logical CPU in your system.</p>
+<p>The list of function arguments is then prepared, then the <strong>starmap()</strong> function is then called for the target function and the list of arguments.</p>
+<p>This issues ten calls to the <strong>task()</strong> function, one for each tuple of arguments. An iterator is returned with the result for each function call, in order.</p>
+<p>Each call to the task function reports the arguments as a message, blocks, then returns a tuple of the arguments.</p>
+<p>The main process iterates over the values returned from the calls to the <strong>task()</strong> function and reports the values, matching those reported in each child process.</p>
+<p>Importantly, all <strong>task()</strong> function calls are issued and executed before the iterator of results is returned. We cannot iterate over results as they are completed by the caller.</p>
+<pre><code>Task 0 executing with 0.7713147455455241
+Task 1 executing with 0.1964734654902801
+Task 2 executing with 0.6086237770389655
+Task 3 executing with 0.8567952900043411
+Task 4 executing with 0.17564858314614085
+Task 5 executing with 0.761031383838424
+Task 6 executing with 0.8954732687092991
+Task 7 executing with 0.8908427671343335
+Task 8 executing with 0.4626459009945638
+Task 9 executing with 0.873074346713649
+Got result: (0, 0.7713147455455241)
+Got result: (1, 0.1964734654902801)
+Got result: (2, 0.6086237770389655)
+Got result: (3, 0.8567952900043411)
+Got result: (4, 0.17564858314614085)
+Got result: (5, 0.761031383838424)
+Got result: (6, 0.8954732687092991)
+Got result: (7, 0.8908427671343335)
+Got result: (8, 0.4626459009945638)
+Got result: (9, 0.873074346713649)
+</code></pre>
+<p>Next, let's look at an example where we might call a <strong>starmap()</strong> for a function with no return value.</p>
+<h2>Example of Pool.starmap() with No Return Value</h2>
+<p>We can explore using the <strong>starmap()</strong> function to call a target task function that does not have a return value.</p>
+<p>This means that we are not interested in the iterable of results returned by the call to <strong>starmap()</strong> and instead are only interested that all issued tasks get executed.</p>
+<p>This can be achieved by updating the previous example so that the <strong>task()</strong> function does not return a value.</p>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+</code></pre>
+<p>Then, in the main process, we can call <strong>starmap()</strong> with our <strong>task()</strong> function and the list of arguments, and not iterate the results.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, random()) for i in range(10)]
+# issue tasks to the process pool and wait for tasks to complete
+pool.starmap(task, items)</code></pre>
+<p>Importantly, the call to <strong>starmap()</strong> on the process pool will block the main process until all issued tasks are completed.</p>
+<p>Once completed, the call will return and the process pool will be closed by the context manager.</p>
+<p>This is a helpful pattern to issue many tasks to the process pool with a single function call.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using starmap() in the process pool with no return values
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(10)]
+        # issue tasks to the process pool and wait for tasks to complete
+        pool.starmap(task, items)
+    # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the process pool with a default configuration.</p>
+<p>The list of arguments is prepared, then the <strong>starmap()</strong> function is then called to apply the target function to each tuple in the list. This issues ten tasks into the process pool. An iterator is returned with the result for each function call, but is ignored in this case.</p>
+<p>Each call to the <strong>task()</strong> function reports a message, then blocks.</p>
+<p>The main process blocks until the <strong>starmap()</strong> function returns.</p>
+<p>The tasks finish, <strong>starmap()</strong> returns, then the process pool is closed.</p>
+<p>This example again highlights that the call to <strong>starmap()</strong> blocks until all issued tasks are completed.</p>
+<pre><code>Task 0 executing with 0.38123755597856135
+Task 1 executing with 0.9844199135059981
+Task 2 executing with 0.053600569179194535
+Task 3 executing with 0.45685585285522523
+Task 4 executing with 0.6808662719854731
+Task 5 executing with 0.47334579051992776
+Task 6 executing with 0.22903377728790164
+Task 7 executing with 0.3971896553074561
+Task 8 executing with 0.37187226790578587
+Task 9 executing with 0.891073904474667</code></pre>
+<p>Next, let's explore the chunksize argument to the <strong>starmap()</strong> function.</p>
+<h2>Example of Pool.starmap() with chunksize</h2>
+<p>The <strong>starmap()</strong> function will apply a function to each item in an iterable.</p>
+<p>If the iterable has a large number of items, it may be inefficient to issue function calls to the target function for each item.</p>
+<p>This is for two reasons:</p>
+<ol><li>One task is created for each item in the iterable to be passed as an argument to the target function.</li><li>The argument data for each task must be transmitted to a child process and the return value transmitted back to the parent process.</li></ol>
+<p>A more efficient approach would be to divide the items in the iterable into chunks and issue chunks of items to each worker process to which the target function can be applied.</p>
+<p>This can be achieved with the "<strong>chunksize</strong>" argument to the <strong>starmap()</strong> function.</p>
+<p>The example below updates the example to use a chunksize of 2 when issuing tasks into the process pool. With 10 function calls, this results in 5 tasks, each composed of two calls to the target task function.</p>
+<pre><code>...
+# execute tasks and process results in order
+for result in pool.starmap(task, items, chunksize=2):
+    print(f'Got result: {result}', flush=True)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using starmap() in the process pool with chunksize
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(10)]
+        # execute tasks and process results in order
+        for result in pool.starmap(task, items, chunksize=2):
+            print(f'Got result: {result}', flush=True)
+    # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the process pool of child process workers.</p>
+<p>The <strong>starmap()</strong> function is then called with an iterable of 10 items and a chunksize of 2.</p>
+<p>This issues 5 units of work to the process pool, each unit of work composed of 2 calls to the <strong>task()</strong> function.</p>
+<p>Each call to the task function reports a message, blocks, then returns a tuple value.</p>
+<p>The main process iterates over the values returned from the calls to the <strong>task() </strong>function and reports the values, matching those reported in each child process.</p>
+<pre><code>Task 0 executing with 0.5098929421833336
+Task 2 executing with 0.6780121197069486
+Task 4 executing with 0.627066315440481
+Task 6 executing with 0.5677011542683361
+Task 8 executing with 0.6175545306082948
+Task 1 executing with 0.49330278222648494
+Task 7 executing with 0.7563975246943004
+Task 9 executing with 0.191260636374323
+Task 5 executing with 0.15345573717211092
+Task 3 executing with 0.841694729779332
+Got result: (0, 0.5098929421833336)
+Got result: (1, 0.49330278222648494)
+Got result: (2, 0.6780121197069486)
+Got result: (3, 0.841694729779332)
+Got result: (4, 0.627066315440481)
+Got result: (5, 0.15345573717211092)
+Got result: (6, 0.5677011542683361)
+Got result: (7, 0.7563975246943004)
+Got result: (8, 0.6175545306082948)
+Got result: (9, 0.191260636374323)</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to issue tasks to the process pool that take multiple arguments in Python.</p>
 </main>
 </body>
 </html>

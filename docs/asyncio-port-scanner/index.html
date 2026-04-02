@@ -176,6 +176,465 @@ asyncio.run(main(host, ports))
 <p>This requires first creating the coroutines. With one coroutine per port, this would be a collection of more than 1,000 coroutines.</p>
 <p>We can achieve this using a list comprehension.</p>
 <p>For example:</p>
+<pre><code>...
+# create all coroutines
+coros = [test_port_number(host, port) for port in ports]</code></pre>
+<p>Next, we can execute all of these coroutines concurrently.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.gather"><strong>asyncio.gather()</strong> function</a>.</p>
+<p>This function takes awaitables as arguments and will not return until the awaitables are complete. It does not take a list of awaitables, therefore we must expand our list into separate expressions using the star (<strong>*</strong>) operator.</p>
+<p>For example:</p>
+<pre><code>...
+# execute all coroutines concurrently
+results = await asyncio.gather(*coros)</code></pre>
+<p>You can learn more about the <strong>asyncio.gather()</strong> function in the tutorial:</p>
+<ul><li><a href="../asyncio-gather/">Asyncio gather() to Run Many Tasks Concurrently</a></li></ul>
+<p>This will execute all coroutines concurrently and will return an iterable of return values from each coroutine in the order provided.</p>
+<p>We can then traverse the list of return values along with the list of ports and report the results.</p>
+<p>Recall that we can traverse two or more iterables together using the <a href="https://docs.python.org/3/library/functions.html#zip">built-in <strong>zip()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# report results
+for port,result in zip(ports, results):
+    if result :
+        print(f'&gt; {host}:{port} [OPEN]')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio concurrent port scanner using gather
+import asyncio
+
+# returns True if a connection can be made, False otherwise
+async def test_port_number(host, port, timeout=3):
+    # create coroutine for opening a connection
+    coro = asyncio.open_connection(host, port)
+    # execute the coroutine with a timeout
+    try:
+        # open the connection and wait for a moment
+        _,writer = await asyncio.wait_for(coro, timeout)
+        # close connection once opened
+        writer.close()
+        # indicate the connection can be opened
+        return True
+    except asyncio.TimeoutError:
+        # indicate the connection cannot be opened
+        return False
+
+# main coroutine
+async def main(host, ports):
+    # report a status message
+    print(f'Scanning {host}...')
+    # create all coroutines
+    coros = [test_port_number(host, port) for port in ports]
+    # execute all coroutines concurrently
+    results = await asyncio.gather(*coros)
+    # report results
+    for port,result in zip(ports, results):
+        if result :
+            print(f'&gt; {host}:{port} [OPEN]')
+
+# define a host and ports to scan
+host = 'python.org'
+ports = range(1, 1024)
+# start the asyncio program
+asyncio.run(main(host, ports))
+</code></pre>
+<p>Running the example executes the <strong>main()</strong> coroutine as the entry point into the asyncio program.</p>
+<p>A list of coroutines is first created.</p>
+<p>The coroutines are then all executed concurrently using <strong>asyncio.gather()</strong>.</p>
+<p>This suspends the <strong>main()</strong> coroutine until all coroutines are completed. Each coroutine tests one port, attempting to open a connection and suspending it until either the connection is open or the timeout is elapsed.</p>
+<p>Once all tasks are completed the <strong>main()</strong> coroutine resumes and all results are reported.</p>
+<p>Two open ports are reported the same as before.</p>
+<p>The big difference is the speed of execution. In this case, it takes about 3.1 seconds, compared to more than 50 minutes in the previous example.</p>
+<p>That is about 3063 seconds faster or a 3063x speed-up.</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 [OPEN]
+&gt; python.org:443 [OPEN]</code></pre>
+<p>Next, let's explore how we might scan ports concurrently as independent tasks.</p>
+<h3>Concurrent Port Scanner with wait()</h3>
+<p>Each port to be scanned can be issued as a separate asyncio task.</p>
+<p>The task will execute independently, whenever possible, e.g. when other coroutines are not running.</p>
+<p>We can then wait for all tasks to complete and report results, as before.</p>
+<p>This can be achieved by calling the <strong>asyncio.create_task()</strong> function for each coroutine. This will wrap the coroutine in a task and schedule it for execution.</p>
+<p>For example:</p>
+<pre><code>...
+# create all tasks
+tasks = [asyncio.create_task(test_port_number(host, port)) for port in ports]</code></pre>
+<p>You can learn more about issuing asyncio tasks in the tutorial:</p>
+<ul><li><a href="../asyncio-create-task/">How to Create an Asyncio Task in Python</a></li></ul>
+<p>This will return a list of asyncio.Task objects immediately.</p>
+<p>We can then wait for all of these tasks to complete via the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait"><strong>asyncio.wait()</strong> function</a>.</p>
+<p>This will take a collection of awaitables and by default, it will not return until all awaitables are done.</p>
+<p>For example:</p>
+<pre><code>...
+# execute all coroutines concurrently
+_ = await asyncio.wait(tasks)</code></pre>
+<p>You can learn more about the <strong>asyncio.wait()</strong> function in the tutorial:</p>
+<ul><li><a href="../asyncio-wait/">How to Use Asyncio wait() in Python</a></li></ul>
+<p>We can then traverse the list of tasks and ports in the same order and report the results from each.</p>
+<p>We can get the result from each task either by awaiting it or getting its return value or via the <strong>result()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# report results
+for port,task in zip(ports, tasks):
+    # check the return value from each task
+    if await task:
+        print(f'&gt; {host}:{port} [OPEN]')
+</code></pre>
+<p>Or:</p>
+<pre><code>...
+# report results
+for port,task in zip(ports, tasks):
+    # check the return value from each task
+    if task.result():
+        print(f'&gt; {host}:{port} [OPEN]')
+</code></pre>
+<p>You can learn more about getting results from asyncio tasks in the tutorial:</p>
+<ul><li><a href="../asyncio-task-result/">How to Get Asyncio Task Results</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio concurrent port scanner using wait()
+import asyncio
+
+# returns True if a connection can be made, False otherwise
+async def test_port_number(host, port, timeout=3):
+    # create coroutine for opening a connection
+    coro = asyncio.open_connection(host, port)
+    # execute the coroutine with a timeout
+    try:
+        # open the connection and wait for a moment
+        _,writer = await asyncio.wait_for(coro, timeout)
+        # close connection once opened
+        writer.close()
+        # indicate the connection can be opened
+        return True
+    except asyncio.TimeoutError:
+        # indicate the connection cannot be opened
+        return False
+
+# main coroutine
+async def main(host, ports):
+    # report a status message
+    print(f'Scanning {host}...')
+    # create all tasks
+    tasks = [asyncio.create_task(test_port_number(host, port)) for port in ports]
+    # execute all coroutines concurrently
+    _ = await asyncio.wait(tasks)
+    # report results
+    for port,task in zip(ports, tasks):
+        # check the return value from each task
+        if await task :
+            print(f'&gt; {host}:{port} [OPEN]')
+
+# define a host and ports to scan
+host = 'python.org'
+ports = range(1, 1024)
+# start the asyncio program
+asyncio.run(main(host, ports))
+</code></pre>
+<p>Running the example executes the <strong>main()</strong> coroutine as the entry point into the asyncio program.</p>
+<p>The coroutines are created and issued as independent tasks in a list comprehension.</p>
+<p>This returns immediately with a list of <strong>asyncio.Task</strong> objects that provide a handle on each issued task.</p>
+<p>The <strong>main()</strong> coroutine then suspends and waits for all tasks to complete. This allows the tasks to begin executing.</p>
+<p>Each coroutine tests one port, attempting to open a connection and suspending it until either the connection is open or the timeout is elapsed.</p>
+<p>Once all tasks are completed the <strong>main()</strong> coroutine resumes and all results are reported.</p>
+<p>Two open ports are reported the same as before and the example completes in about the same time as the above concurrent example.</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 [OPEN]
+&gt; python.org:443 [OPEN]</code></pre>
+<p>Next, let's look at how we might report results dynamically.</p>
+<h2>Asyncio Dynamic Port Scanner</h2>
+<p>In the previous examples, we executed the coroutines concurrently and reported the results after all tasks had been completed.</p>
+<p>An alternative approach would be to report results as the tasks are completed.</p>
+<p>This would allow the program to be more responsive and show results to the user as they are available.</p>
+<p>We could achieve this by having the <strong>test_port_number()</strong> report its result directly.</p>
+<p>Another approach is to traverse coroutines in the order they are completed, as they complete.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.as_completed"><strong>asyncio.as_completed()</strong> function</a>.</p>
+<p>This function takes a collection of awaitables. If they are coroutines, they are issued as tasks.</p>
+<p>The function then returns an iterable of the coroutines that are yielded in the order that they are completed.</p>
+<p>We can traverse this iterable directly, we do not need to use the "<strong>async for</strong>" expression reserved for asynchronous iterables.</p>
+<p>For example:</p>
+<pre><code>...
+# execute coroutines and handle results as they complete
+for coro in asyncio.as_completed(coros):
+    # check the return value from the coroutine
+    	# ...</code></pre>
+<p>You can learn more about the <strong>asyncio.as_completed()</strong> function in the tutorial:</p>
+<ul><li><a href="../asyncio-as_completed/">How to Use Asyncio as_completed() in Python</a></li></ul>
+<p>The downside is that we don't have an easy way to relate the coroutine to the port that was tested. Therefore, we can update our <strong>test_port_number()</strong> coroutine to return whether the port is open and the port was tested.</p>
+<p>For example:</p>
+<pre><code># returns True if a connection can be made, False otherwise
+async def test_port_number(host, port, timeout=3):
+    # create coroutine for opening a connection
+    coro = asyncio.open_connection(host, port)
+    # execute the coroutine with a timeout
+    try:
+        # open the connection and wait for a moment
+        _,writer = await asyncio.wait_for(coro, timeout)
+        # close connection once opened
+        writer.close()
+        # indicate the connection can be opened
+        return True,port
+    except asyncio.TimeoutError:
+        # indicate the connection cannot be opened
+        return False,port
+</code></pre>
+<p>We can then traverse the coroutines in the order they are completed and get the details of the port and whether it is open from each and report it.</p>
+<p>For example:</p>
+<pre><code>...
+# execute coroutines and handle results as they complete
+for coro in asyncio.as_completed(coros):
+    # check the return value from the coroutine
+    result, port = await coro
+    if result:
+        print(f'&gt; {host}:{port} [OPEN]')
+</code></pre>
+<p>This will execute all coroutines concurrently and will report open ports as they are discovered, rather than all at the end.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio concurrent port scanner using as_completed()
+import asyncio
+
+# returns True if a connection can be made, False otherwise
+async def test_port_number(host, port, timeout=3):
+    # create coroutine for opening a connection
+    coro = asyncio.open_connection(host, port)
+    # execute the coroutine with a timeout
+    try:
+        # open the connection and wait for a moment
+        _,writer = await asyncio.wait_for(coro, timeout)
+        # close connection once opened
+        writer.close()
+        # indicate the connection can be opened
+        return True,port
+    except asyncio.TimeoutError:
+        # indicate the connection cannot be opened
+        return False,port
+
+# main coroutine
+async def main(host, ports):
+    # report a status message
+    print(f'Scanning {host}...')
+    # create all coroutines
+    coros = [test_port_number(host, port) for port in ports]
+    # execute coroutines and handle results as they complete
+    for coro in asyncio.as_completed(coros):
+        # check the return value from the coroutine
+        result, port = await coro
+        if result:
+            print(f'&gt; {host}:{port} [OPEN]')
+
+# define a host and ports to scan
+host = 'python.org'
+ports = range(1, 1024)
+# start the asyncio program
+asyncio.run(main(host, ports))
+</code></pre>
+<p>Running the example executes the <strong>main()</strong> coroutine as the entry point into the asyncio program.</p>
+<p>A list of coroutines is first created.</p>
+<p>The coroutines are then passed to the <strong>asyncio.as_completed()</strong> function.</p>
+<p>This wraps each in another coroutine and executes them all concurrently and independently.</p>
+<p>It returns immediately with an iterable of coroutines.</p>
+<p>Internally, it awaits and yields coroutines as they are completed.</p>
+<p>The return value from each coroutine is retrieved and results are reported as they are made available.</p>
+<p>The example shows the same ports and executes in about the same time as the previous concurrent examples, except the program is more responsive.</p>
+<p>Ports are shown as open almost immediately, as opposed to after all ports in the range have been checked and timed out.</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 [OPEN]
+&gt; python.org:443 [OPEN]</code></pre>
+<p>Next, let's explore the case where we might want to limit the number of concurrent port scanning coroutines.</p>
+<h2>Asyncio Port Scanner Limit Concurrent Connections</h2>
+<p>A limitation of the above concurrent port scanning examples is that all ports are scanned concurrently.</p>
+<p>This is reasonable as we are only scanning about 1,000 port numbers.</p>
+<p>What if we wanted to scan the entire domain of possible port numbers, e.g. nearly 65,000?</p>
+<p>We may be able to run 65,000 concurrent coroutines easily, but maybe not. Perhaps attempting to open so many concurrent connections to a server will be seen as a hostile act, alerting the server administrator or our internet service provider.</p>
+<p>As such, we may prefer to limit the number of open connections attempted at the same time.</p>
+<p>There are many ways we could achieve this.</p>
+<p>One approach is to start a fixed number of port scanning coroutines. Each runs a loop that checks one port number per iteration.</p>
+<p>This way, the program never attempts to open more than a fixed number of socket connections at any one time.</p>
+<p>We can achieve this by defining a queue of port numbers to check. We can then have port scanning coroutines read one port number per iteration from this queue, scan it and report the result. This can continue until there are no further ports to scan and the coroutines can terminate.</p>
+<p>This also has the benefit of reporting results as soon as they are available, e.g. dynamically, as we did in the previous section.</p>
+<p>Firstly, we can define a coroutine that will scan ports.</p>
+<p>This will take the host as an argument and a queue from which to read port numbers to check.</p>
+<pre><code>...
+# coroutine to scan ports as fast as possible
+async def scanner(host, task_queue):
+	# ...
+</code></pre>
+<p>It will then loop forever, first getting a port number to check from the queue.</p>
+<p>This can be achieved using an <strong><a href="https://docs.python.org/3/library/asyncio-queue.html">asyncio.Queue</a></strong> and call the <strong>get()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# read tasks forever
+while True:
+    # read one task from the queue
+    port = await task_queue.get()
+</code></pre>
+<p>You can learn more about working with asyncio queues in the tutorial:</p>
+<ul><li><a href="../asyncio-queue/">Asyncio Queue in Python</a></li></ul>
+<p>Next, we can check if the port read is in fact a special message indicating that there are no further ports to scan. If so, we can exit our out loop scanning ports.</p>
+<pre><code>...
+# check for a request to stop scanning
+if port is None:
+    # add it back for the other scanners
+    await task_queue.put(port)
+    # stop scanning
+    break
+</code></pre>
+<p>Otherwise, we can scan the port and if the port is open, report this fact with a message.</p>
+<pre><code>...
+# scan the port
+if await test_port_number(host, port):
+    # report the report if open
+    print(f'&gt; {host}:{port} [OPEN]')
+</code></pre>
+<p>Finally, once the port number has been processed, we can mark it as such using the <strong>task_done()</strong> method.</p>
+<p>This will be needed later when the <strong>main()</strong> coroutine needs to know that all port numbers have been processed.</p>
+<pre><code>...
+# mark the item as processed
+task_queue.task_done()
+</code></pre>
+<p>Tying this together, the complete <strong>scanner()</strong> coroutine is listed below.</p>
+<pre><code># coroutine to scan ports as fast as possible
+async def scanner(host, task_queue):
+    # read tasks forever
+    while True:
+        # read one task from the queue
+        port = await task_queue.get()
+        # check for a request to stop scanning
+        if port is None:
+            # add it back for the other scanners
+            await task_queue.put(port)
+            # stop scanning
+            break
+        # scan the port
+        if await test_port_number(host, port):
+            # report the report if open
+            print(f'&gt; {host}:{port} [OPEN]')
+        # mark the item as processed
+        task_queue.task_done()
+</code></pre>
+<p>Next, we can update the <strong>main()</strong> coroutine.</p>
+<p>First, we can create the shared queue used to share port numbers to scan with the <strong>scanner()</strong> coroutines.</p>
+<pre><code>...
+# create the task queue
+task_queue = asyncio.Queue()</code></pre>
+<p>Next, we can create a fixed number of <strong>scanner()</strong> coroutines and have them run independently as asyncio tasks.</p>
+<pre><code>...
+# start the port scanning coroutines
+workers = [asyncio.create_task(scanner(host, task_queue)) for _ in range(limit)]</code></pre>
+<p>We can then put all port numbers to the queue for the <strong>scanner()</strong> coroutines to consume and scan as fast as they are able.</p>
+<pre><code>...
+# issue tasks as fast as possible
+for port in ports:
+    # add task to scan this port
+    await task_queue.put(port)
+</code></pre>
+<p>Finally, we can wait for all ports to be scanned.</p>
+<p>Because port numbers are marked as scanned via the <strong>task_done()</strong> method, the <strong>main()</strong> coroutine can call the <strong>join()</strong> method which will block until all port numbers on the queue have been marked as done.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to be complete
+await task_queue.join()</code></pre>
+<p>The <strong>main()</strong> coroutine can then signal all <strong>scanner()</strong> coroutines that no further port numbers are to be expected by sending a None value. This will cause the <strong>scanner()</strong> coroutines to exit their loop and terminate.</p>
+<pre><code>...
+# signal no further tasks
+await task_queue.put(None)</code></pre>
+<p>Tying this together, the updated <strong>main()</strong> coroutine is listed below.</p>
+<pre><code># main coroutine
+async def main(host, ports, limit=100):
+    # report a status message
+    print(f'Scanning {host}...')
+    # create the task queue
+    task_queue = asyncio.Queue()
+    # start the port scanning coroutines
+    workers = [asyncio.create_task(scanner(host, task_queue)) for _ in range(limit)]
+    # issue tasks as fast as possible
+    for port in ports:
+        # add task to scan this port
+        await task_queue.put(port)
+    # wait for all tasks to be complete
+    await task_queue.join()
+    # signal no further tasks
+    await task_queue.put(None)
+</code></pre>
+<p>Tying all of this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio concurrent port scanner that limits concurrent connections
+import asyncio
+
+# returns True if a connection can be made, False otherwise
+async def test_port_number(host, port, timeout=3):
+    # create coroutine for opening a connection
+    coro = asyncio.open_connection(host, port)
+    # execute the coroutine with a timeout
+    try:
+        # open the connection and wait for a moment
+        _,writer = await asyncio.wait_for(coro, timeout)
+        # close connection once opened
+        writer.close()
+        # indicate the connection can be opened
+        return True
+    except asyncio.TimeoutError:
+        # indicate the connection cannot be opened
+        return False
+
+# coroutine to scan ports as fast as possible
+async def scanner(host, task_queue):
+    # read tasks forever
+    while True:
+        # read one task from the queue
+        port = await task_queue.get()
+        # check for a request to stop scanning
+        if port is None:
+            # add it back for the other scanners
+            await task_queue.put(port)
+            # stop scanning
+            break
+        # scan the port
+        if await test_port_number(host, port):
+            # report the report if open
+            print(f'&gt; {host}:{port} [OPEN]')
+        # mark the item as processed
+        task_queue.task_done()
+
+# main coroutine
+async def main(host, ports, limit=100):
+    # report a status message
+    print(f'Scanning {host}...')
+    # create the task queue
+    task_queue = asyncio.Queue()
+    # start the port scanning coroutines
+    workers = [asyncio.create_task(scanner(host, task_queue)) for _ in range(limit)]
+    # issue tasks as fast as possible
+    for port in ports:
+        # add task to scan this port
+        await task_queue.put(port)
+    # wait for all tasks to be complete
+    await task_queue.join()
+    # signal no further tasks
+    await task_queue.put(None)
+
+# define a host and ports to scan
+host = 'python.org'
+ports = range(1, 1024)
+# start the asyncio program
+asyncio.run(main(host, ports))
+</code></pre>
+<p>Running the example executes the <strong>main()</strong> coroutine as the entry point into the asyncio program.</p>
+<p>Firstly, the shared queue is created.</p>
+<p>Then 100 <strong>scanner()</strong> coroutines are created and passed the host and shared queue from which to read port numbers as fast as they are able.</p>
+<p>The <strong>main()</strong> coroutine then adds all of the port numbers to the queue, then suspends, waiting for all port numbers to be processed.</p>
+<p>The <strong>scanner()</strong> coroutines consume and test port numbers as fast as they are able, reporting open ports as they are discovered.</p>
+<p>Once all port numbers are checked and marked as done, the <strong>main()</strong> coroutine resumes and adds a None to the queue that signals the <strong>scanner()</strong> coroutines to stop processing.</p>
+<p>The None message is read, re-added to the queue and causes the <strong>scanner()</strong> coroutines to break their loop and terminate. Re-adding the message allows each coroutine to consume and respond to the message in turn.</p>
+<p>The results are the same as before, showing 2 open ports.</p>
+<p>The example is slower, completing in about 33 seconds, or about 10x slower than the concurrent version. This is to be expected as we are scanning 10x fewer ports concurrently, e.g. 100 vs 1,000.</p>
+<p>This highlights how we can limit the number of concurrent open connections in the asyncio program.</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 [OPEN]
+&gt; python.org:443 [OPEN]</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to develop a concurrent port scanner using asyncio in Python.</p>
 </main>
 </body>
 </html>

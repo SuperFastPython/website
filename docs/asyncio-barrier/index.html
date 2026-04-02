@@ -136,6 +136,317 @@ async def work(barrier, number):
 n_tasks = 5
 barrier = asyncio.Barrier(n_tasks + 1)</code></pre>
 <p>Next, we can create and schedule five <strong>work()</strong> tasks to run in the background, providing the barrier to each.</p>
+<pre><code>...
+# issue all of the tasks
+_ = [asyncio.create_task(work(barrier, i)) for i in range(n_tasks)]</code></pre>
+<p>The main coroutine can wait on the barrier for all tasks to perform their calculation.</p>
+<p>We will use the context manager interface in this case.</p>
+<p>Once the coroutines are finished, the barrier will be lifted and the worker coroutines will terminate and the main coroutine will report a message.</p>
+<pre><code>...
+# wait for all tasks to finish
+print('Main is waiting on all results...')
+async with barrier:
+    # report once all tasks are done
+    print('All tasks have their result')
+</code></pre>
+<p>Finally, we can start the event loop and execute our <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio barrier
+from random import random
+import asyncio
+
+# coroutine that prepares work and waits on a barrier
+async def work(barrier, number):
+    # generate a unique value
+    value = random() * 10
+    # suspend for a moment to simulate work
+    await asyncio.sleep(value)
+    # report result
+    print(f'Task {number} done, got: {value}, waiting...')
+    # wait on all other tasks to complete
+    await barrier.wait()
+
+# main coroutine
+async def main():
+    # create a barrier
+    n_tasks = 5
+    barrier = asyncio.Barrier(n_tasks + 1)
+    # issue all of the tasks
+    _ = [asyncio.create_task(work(barrier, i)) for i in range(n_tasks)]
+    # wait for all tasks to finish
+    print('Main is waiting on all results...')
+    async with barrier:
+        # report once all tasks are done
+        print('All tasks have their result')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the barrier with 6 parties. It then creates and issues 5 tasks and prints a message and waits on the barrier.</p>
+<p>The <strong>work()</strong> tasks run. Each generates a random number fraction of 10 and sleeps for that many seconds.</p>
+<p>The <strong>work()</strong> tasks resume and report a message that includes their random value, then wait on the barrier.</p>
+<p>Once all <strong>work()</strong> tasks make it to the barrier, the barrier is released.</p>
+<p>The <strong>work()</strong> tasks resume and terminate as they have no further work to complete.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final message.</p>
+<p>This highlights how we can coordinate multiple coroutines using a barrier.</p>
+<pre><code>Main is waiting on all results...
+Task 4 done, got: 2.873148965038761, waiting...
+Task 0 done, got: 6.587379562960236, waiting...
+Task 2 done, got: 7.210118403603204, waiting...
+Task 1 done, got: 9.314866458885717, waiting...
+Task 3 done, got: 9.40438957381003, waiting...
+All tasks have their result</code></pre>
+<p>Next, let's explore using the barrier with a timeout.</p>
+<h2>Example of Using an Asyncio Barrier With Timeout and Abort</h2>
+<p>We can explore an example of using the barrier with a timeout.</p>
+<p>In this case, the <strong>main()</strong> coroutine will wait on the barrier with a timeout of 5 seconds. If all tasks don't make it to the barrier within the timeout then the barrier is aborted. This causes any coroutines on the barrier to stop waiting and any future coroutines that reach the barrier to not wait.</p>
+<p>Firstly, we can update the <strong>work()</strong> coroutine to handle the case if the barrier is aborted.</p>
+<p>If aborted, the barrier will raise a <strong>BrokenBarrierError</strong> exception. We can handle this exception when waiting on the barrier and report a message.</p>
+<pre><code>...
+# report result
+print(f'Task {number} done, got: {value}, waiting...')
+try:
+    # wait on all other tasks to complete
+    await barrier.wait()
+except asyncio.BrokenBarrierError:
+    # report the task is no longer waiting
+    print(f'Task {number} aborted waiting on the barrier')
+</code></pre>
+<p>The updated <strong>work()</strong> coroutine with this change is listed below.</p>
+<pre><code># coroutine that prepares work and waits on a barrier
+async def work(barrier, number):
+    # generate a unique value
+    value = random() * 10
+    # suspend for a moment to simulate work
+    await asyncio.sleep(value)
+    # report result
+    print(f'Task {number} done, got: {value}, waiting...')
+    try:
+        # wait on all other tasks to complete
+        await barrier.wait()
+    except asyncio.BrokenBarrierError:
+        # report the task is no longer waiting
+        print(f'Task {number} aborted waiting on the barrier')
+</code></pre>
+<p>Next, the <strong>main()</strong> coroutine needs to be updated to use a timeout.</p>
+<p>We will use the <strong>asyncio.timeout()</strong> context manager.</p>
+<p>This context manager will allow the body block of code to execute for a given number of seconds. If the body does not complete before the timeout, a <strong>TimeoutError</strong> exception is raised.</p>
+<p>If raised, we will then await the <strong>abort()</strong> method on the barrier.</p>
+<pre><code>...
+print('Main is waiting on all results...')
+try:
+    # wait on all other tasks to complete with a timeout
+    async with asyncio.timeout(5):
+        # wait on the barrier
+        await barrier.wait()
+        # report once all tasks are done
+        print('All tasks have their result')
+except asyncio.TimeoutError:
+    # abort the barrier
+    print('Main is aborting the barrier')
+</code></pre>
+<p>You can learn more about the <strong>asyncio.timeout()</strong> context manager in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-timeout/">Wait and Cancel Tasks With asyncio.timeout()</a></li>
+</ul>
+<p>The updated <strong>main()</strong> coroutine with this change is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # create a barrier
+    n_tasks = 5
+    barrier = asyncio.Barrier(n_tasks + 1)
+    # issue all of the tasks
+    _ = [asyncio.create_task(work(barrier, i)) for i in range(n_tasks)]
+    # wait for all tasks to finish
+    print('Main is waiting on all results...')
+    try:
+        # wait on all other tasks to complete with a timeout
+        async with asyncio.timeout(5):
+            # wait on the barrier
+            await barrier.wait()
+            # report once all tasks are done
+            print('All tasks have their result')
+    except asyncio.TimeoutError:
+        # abort the barrier
+        print('Main is aborting the barrier')
+        await barrier.abort()
+    # wait around
+    await asyncio.sleep(5)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio barrier with a timeout and abort
+from random import random
+import asyncio
+
+# coroutine that prepares work and waits on a barrier
+async def work(barrier, number):
+    # generate a unique value
+    value = random() * 10
+    # suspend for a moment to simulate work
+    await asyncio.sleep(value)
+    # report result
+    print(f'Task {number} done, got: {value}, waiting...')
+    try:
+        # wait on all other tasks to complete
+        await barrier.wait()
+    except asyncio.BrokenBarrierError:
+        # report the task is no longer waiting
+        print(f'Task {number} aborted waiting on the barrier')
+
+# main coroutine
+async def main():
+    # create a barrier
+    n_tasks = 5
+    barrier = asyncio.Barrier(n_tasks + 1)
+    # issue all of the tasks
+    _ = [asyncio.create_task(work(barrier, i)) for i in range(n_tasks)]
+    # wait for all tasks to finish
+    print('Main is waiting on all results...')
+    try:
+        # wait on all other tasks to complete with a timeout
+        async with asyncio.timeout(5):
+            # wait on the barrier
+            await barrier.wait()
+            # report once all tasks are done
+            print('All tasks have their result')
+    except asyncio.TimeoutError:
+        # abort the barrier
+        print('Main is aborting the barrier')
+        await barrier.abort()
+    # wait around
+    await asyncio.sleep(5)
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the barrier with 6 parties. It then creates and issues 5 tasks and prints a message.</p>
+<p>The <strong>main()</strong> coroutine then opens the <strong>asyncio.timeout()</strong> context manager with a timeout of 5 seconds. Within the timeout context manager, it then suspends and awaits the barrier.</p>
+<p>The <strong>work()</strong> tasks run. Each generates a random number fraction of 10 and sleeps for that many seconds.</p>
+<p>Some <strong>work()</strong> tasks resume and report a message that includes their random value, then wait on the barrier.</p>
+<p>After 5 seconds, not all tasks have reached the barrier. The timeout elapses and a TimeoutError is raised.</p>
+<p>The <strong>main()</strong> coroutine handles the <strong>TimeoutError</strong> and reports a message before aborting the barrier. It then sleeps for 5 seconds, so that the program does not terminate early and we can see what happens to the tasks.</p>
+<p>The <strong>work()</strong> tasks waiting on the barrier raise a <strong>BrokenBarrierError</strong>, which is handled, and a message is reported.</p>
+<p>The remaining <strong>work()</strong> tasks complete, report their message, then wait on the barrier, immediately raising a <strong>BrokenBarrierError</strong> and reporting that the barrier was aborted.</p>
+<p>This highlights how we can coordinate multiple coroutines using a barrier and abort the barrier after a timeout.</p>
+<pre><code>Main is waiting on all results...
+Task 2 done, got: 1.0488582339038333, waiting...
+Task 0 done, got: 1.1906875368978564, waiting...
+Main is aborting the barrier
+Task 2 aborted waiting on the barrier
+Task 0 aborted waiting on the barrier
+Task 3 done, got: 5.568018087287427, waiting...
+Task 3 aborted waiting on the barrier
+Task 1 done, got: 6.0924256738274885, waiting...
+Task 1 aborted waiting on the barrier
+Task 4 done, got: 6.577359157841062, waiting...
+Task 4 aborted waiting on the barrier
+</code></pre>
+<p>Next, let's explore executing a final action after the parties leave the barrier.</p>
+<h2>Example of Using an Asyncio Barrier With Final Action</h2>
+<p>We can explore the case of running a final action by the last party to leave the barrier after it is raised.</p>
+<p>In this case, the <strong>main()</strong> coroutine will no longer wait on the barrier. The <strong>work()</strong> coroutines will check if they are the last party to leave the barrier and if so perform a special action.</p>
+<p>Firstly, we can update the <strong>work()</strong> coroutine to use the context manager interface when waiting on the barrier.</p>
+<p>Once all parties have arrived, each <strong>work()</strong> coroutine instance will check their position. If they have the position of zero, they are the last party to leave the barrier and report a special message.</p>
+<pre><code>...
+# wait on all other tasks to complete
+async with barrier as position:
+    # check if this is the last task to leave
+    if position == 0:
+        # perform a special action
+        print('This is a special action!')
+</code></pre>
+<p>Note that we are able to get the position directly by the context manager interface on the barrier instance itself.</p>
+<p>The updated <strong>work()</strong> coroutine with this change is listed below.</p>
+<pre><code># coroutine that prepares work and waits on a barrier
+async def work(barrier, number):
+    # generate a unique value
+    value = random() * 10
+    # suspend for a moment to simulate work
+    await asyncio.sleep(value)
+    # report result
+    print(f'Task {number} done, got: {value}, waiting...')
+    # wait on all other tasks to complete
+    async with barrier as position:
+        # check if this is the last task to leave
+        if position == 0:
+            # perform a special action
+            print('This is a special action!')
+</code></pre>
+<p>We can then update the <strong>main()</strong> coroutine to no longer wait on the barrier.</p>
+<p>It will wait for all tasks to be completed. This can be achieved by creating and scheduling the tasks via an <strong>asyncio.TaskGroup</strong> with a context manager interface. This will suspend until all issued tasks are done.</p>
+<p>You can learn more about the <strong>asyncio.TaskGroup</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-taskgroup/">How to use asyncio.TaskGroup</a></li>
+</ul>
+<p>The updated <strong>main()</strong> coroutine with these changes is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # create a barrier
+    n_tasks = 5
+    barrier = asyncio.Barrier(n_tasks)
+    # issue all of the tasks
+    async with asyncio.TaskGroup() as group:
+        _ = [group.create_task(work(barrier, i)) for i in range(n_tasks)]
+        # wait for tasks to be done...
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio barrier with a final action
+from random import random
+import asyncio
+
+# coroutine that prepares work and waits on a barrier
+async def work(barrier, number):
+    # generate a unique value
+    value = random() * 10
+    # suspend for a moment to simulate work
+    await asyncio.sleep(value)
+    # report result
+    print(f'Task {number} done, got: {value}, waiting...')
+    # wait on all other tasks to complete
+    async with barrier as position:
+        # check if this is the last task to leave
+        if position == 0:
+            # perform a special action
+            print('This is a special action!')
+
+# main coroutine
+async def main():
+    # create a barrier
+    n_tasks = 5
+    barrier = asyncio.Barrier(n_tasks)
+    # issue all of the tasks
+    async with asyncio.TaskGroup() as group:
+        _ = [group.create_task(work(barrier, i)) for i in range(n_tasks)]
+        # wait for tasks to be done...
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the barrier with 5 parties.</p>
+<p>It then creates an <strong>asyncio.TaskGroup</strong> and uses the context manager interface and creates and issues 5 <strong>work()</strong> tasks. It then suspends and waits on the <strong>asyncio.TaskGroup</strong> for all tasks to be done.</p>
+<p>The <strong>work()</strong> tasks run. Each generates a random number fraction of 10 and sleeps for that many seconds.</p>
+<p>The <strong>work()</strong> tasks resume and report a message that includes their random value, then wait on the barrier.</p>
+<p>Once all <strong>work()</strong> tasks make it to the barrier, the barrier is released.</p>
+<p>The <strong>work()</strong> tasks resume and terminate as they have no further work to complete.</p>
+<p>The last task to leave the barrier has a position of zero and reports a special message.</p>
+<p>This highlights how we can coordinate multiple coroutines using a barrier and have a special action performed by the last party to leave the barrier.</p>
+<pre><code>Task 1 done, got: 0.767816304788077, waiting...
+Task 4 done, got: 1.824525567415607, waiting...
+Task 0 done, got: 3.1450961858118, waiting...
+Task 2 done, got: 4.138987095243019, waiting...
+Task 3 done, got: 7.077700100405522, waiting...
+This is a special action!</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use the barrier synchronization primitive in asyncio programs.</p>
 </main>
 </body>
 </html>

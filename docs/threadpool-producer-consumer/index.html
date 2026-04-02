@@ -143,6 +143,178 @@ def producer_task(queue):
 </code></pre>
 <p>We will then define a thread pool with 20 workers and issue 20 producers into the pool to complete as fast as they are able.</p>
 <p>For example:</p>
+<pre><code># producer manager task
+def producer_manager(queue):
+    # create thread pool
+    with ThreadPool(20) as pool:
+        # use threads to generate items and put into the queue
+        _ = [pool.apply_async(producer_task, args=(queue,)) for _ in range(20)]
+        # wait for all tasks to complete
+        pool.close()
+        pool.join()
+    # put a signal to expect no further tasks
+    queue.put(None)
+    # report a message
+    print('&gt;producer_manager done.')
+</code></pre>
+<p>The consumer task will run in a loop until explicitly stopped.</p>
+<p>In each iteration, the consumer task will retrieve an item from the shared queue. If the item is a message that indicates no further work, it will re-add the message to the queue for other consumers to process and exit. Otherwise, it will retrieve the value, block for that number of seconds to simulate work, and repeat the process.</p>
+<p>For example:</p>
+<pre><code># consumer manager
+def consumer_manager(queue):
+    # create thread pool
+    with ThreadPool(5) as pool:
+        # start consumer tasks
+        _ = [pool.apply_async(consumer_task, args=(queue,)) for _ in range(5)]
+        # wait for all tasks to complete
+        pool.close()
+        pool.join()
+    print('&gt;consumer_manager done.')
+</code></pre>
+<p>The consumer manager will create and manage a pool of 5 consumer tasks which will run for as long as there is work on the shared queue to complete.</p>
+<pre><code># consumer manager
+def consumer_manager(queue):
+    # create thread pool
+    with ThreadPool(5) as pool:
+        # start consumer tasks
+        _ = [pool.apply_async(consumer_task, args=(queue,)) for _ in range(5)]
+        # wait for all tasks to complete
+        pool.close()
+        pool.join()
+    print('&gt;consumer_manager done.')
+</code></pre>
+<p>Finally, the main process will start a separate thread for each of the producer and consumer managers and wait for all work to be completed.</p>
+<pre><code># protect the entry point
+if __name__ == '__main__':
+    # create the shared queue
+    queue = Queue()
+    # run the consumer
+    consumer = Thread(target=consumer_manager, args=(queue,))
+    consumer.start()
+    # run the producer
+    producer = Thread(target=producer_manager, args=(queue,))
+    producer.start()
+    # wait for the producer to finish
+    producer.join()
+    # wait for the consumer to finish
+    consumer.join()
+    # report a final message
+    print('&gt;main done.')
+</code></pre>
+<p>Tying this together, the complete example of producer and consumer thread pools connected via a shared queue is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of producer and consumer thread pools
+from random import random
+from time import sleep
+from threading import Thread
+from multiprocessing.pool import ThreadPool
+from queue import Queue
+
+# producer task
+def producer_task(queue):
+    # generate a random number between 0 and 10
+    value = random() * 10
+    # block for a moment to simulate work
+    sleep(value)
+    # push data into queue
+    queue.put(value)
+
+# producer manager task
+def producer_manager(queue):
+    # create thread pool
+    with ThreadPool(20) as pool:
+        # use threads to generate items and put into the queue
+        _ = [pool.apply_async(producer_task, args=(queue,)) for _ in range(20)]
+        # wait for all tasks to complete
+        pool.close()
+        pool.join()
+    # put a signal to expect no further tasks
+    queue.put(None)
+    # report a message
+    print('&gt;producer_manager done.')
+
+# consumer task
+def consumer_task(queue):
+    # run until there is no more work
+    while True:
+        # retrieve one item from the queue
+        value = queue.get()
+        # check for signal of no more work
+        if not value:
+            # put back on the queue for other consumers
+            queue.put(value)
+            # shutdown
+            return
+        # block for a moment to simulate work
+        sleep(value)
+        # report the value
+        print(f'Consumer got: {value}')
+
+# consumer manager
+def consumer_manager(queue):
+    # create thread pool
+    with ThreadPool(5) as pool:
+        # start consumer tasks
+        _ = [pool.apply_async(consumer_task, args=(queue,)) for _ in range(5)]
+        # wait for all tasks to complete
+        pool.close()
+        pool.join()
+    print('&gt;consumer_manager done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared queue
+    queue = Queue()
+    # run the consumer
+    consumer = Thread(target=consumer_manager, args=(queue,))
+    consumer.start()
+    # run the producer
+    producer = Thread(target=producer_manager, args=(queue,))
+    producer.start()
+    # wait for the producer to finish
+    producer.join()
+    # wait for the consumer to finish
+    consumer.join()
+    # report a final message
+    print('&gt;main done.')
+</code></pre>
+<p>Running the example first creates the shared queue.</p>
+<p>Next, the consumer manager thread is started.</p>
+<p>This in turn starts the consumer thread pool and all five consumer workers. The workers run and await items to appear on the shared queue.</p>
+<p>Next, a new thread is created and started for the producer manager. This starts a thread pool with 20 workers and issues 20 tasks to the pool, each producing one item onto the shared queue as fast as they are able.</p>
+<p>The main thread then waits for the threads to complete.</p>
+<p>Each producer task generates a random number, sleeps, and places the value on the shared queue before exiting.</p>
+<p>Consumers read a value from the shared queue, sleep, then report the message before repeating the process.</p>
+<p>All consumers finish and the producer manager places a signal to expect no further tasks on the shared queue, then shuts down.</p>
+<p>The consumer tasks continue to retrieve items from the queue until the shutdown message is read. Each consumer then shuts down in turn and finally, the consumer manager shuts down.</p>
+<p>All items have been produced and consumed and the main thread then exits.</p>
+<p>This highlights how to develop a producer and consumer thread pool connected by a shared queue.</p>
+<pre><code>Consumer got: 0.5610484753890665
+Consumer got: 0.6569748244844098
+Consumer got: 1.2038347369908609
+Consumer got: 2.4707941999782745
+Consumer got: 2.9249689060927073
+Consumer got: 2.9535460714993613
+Consumer got: 3.128798374575743
+Consumer got: 3.487363956384005
+&gt;producer_manager done.
+Consumer got: 3.992346728553197
+Consumer got: 4.459087650477308
+Consumer got: 4.499602838944
+Consumer got: 4.538986711148029
+Consumer got: 5.13572403183367
+Consumer got: 5.345232979458765
+Consumer got: 5.815908080748752
+Consumer got: 5.921058518398532
+Consumer got: 6.092388941145181
+Consumer got: 6.307448212661738
+Consumer got: 7.2477538938409864
+Consumer got: 7.634070399288417
+&gt;consumer_manager done.
+&gt;main done.
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to create producer and consumer thread pools connected by a queue.</p>
 </main>
 </body>
 </html>

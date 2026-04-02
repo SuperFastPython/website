@@ -94,6 +94,163 @@ def task(name):
     return f'Task={name}: {value:.2f}'
 </code></pre>
 <p>Next, we can start the process pool using the context manager then submit 10 tasks and collect their <strong>Future</strong> objects into a list.</p>
+<pre><code>...
+# start the process pool
+with ProcessPoolExecutor(10) as executor:
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+</code></pre>
+<p>We can then pass the collection of <strong>Future</strong> objects to the <strong>wait() </strong>function and set the <strong>return_when</strong> argument to the constant <strong>FIRST_COMPLETED</strong> so that we get the <strong>Future</strong> for the first task to be marked "<em>done</em>".</p>
+<pre><code>...
+# wait until any task completes
+done, not_done = wait(futures, return_when=FIRST_COMPLETED)
+</code></pre>
+<p>Finally, we can retrieve the <strong>Future</strong> from the set of done tasks and the value from the first completed task.</p>
+<pre><code>...
+# get the future from the done set
+future = done.pop()
+# get the result from the first task to complete
+result = future.result()
+print(result)
+</code></pre>
+<p>Tying this all together, the complete example of submitting a collection of tasks to the <strong>ProcessPoolExecutor</strong> and waiting for the first result is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for the first result
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from concurrent.futures import FIRST_COMPLETED
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    value = random()
+    sleep(value * 10)
+    return f'Task={name}: {value:.2f}'
+
+# entry point
+if __name__ == '__main__':
+    # start the process pool
+    with ProcessPoolExecutor(10) as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # wait until any task completes
+        done, not_done = wait(futures, return_when=FIRST_COMPLETED)
+        # get the future from the done set
+        future = done.pop()
+        # get the result from the first task to complete
+        result = future.result()
+        print(result)
+</code></pre>
+<p>Running the example first starts the process pool and submits the ten tasks.</p>
+<p>We then wait for the first result from the collection of tasks.</p>
+<p>A task completes and we first retrieve the <strong>Future</strong> object from the set of done tasks, then the result from the <strong>Future</strong> object.</p>
+<p>In this case the task with <strong>id=7</strong> was the first complete that slept for a tenth of a second. Your results will vary given the use of random numbers in the task.</p>
+<p>We then close the process pool and wait for all other tasks to complete before moving on.</p>
+<pre><code>Task=7: 0.01</code></pre>
+<h2 id="example-of-waiting-for-the-first-result-with-a-timeout">Example of Waiting for the First Result with a Timeout</h2>
+<p>We can also add a timeout when calling the <strong>wait()</strong> function.</p>
+<p>This can be helpful if we require a result but only have a limited number of seconds in which we can wait for the first result.</p>
+<p>This can be achieved by passing a "<strong>timeout</strong>" argument to the <strong>wait()</strong> function.</p>
+<p>For example, we may want to limit our wait time to a fraction of a second.</p>
+<pre><code>...
+# wait until any task completes
+done, not_done = wait(futures, timeout=0.05, return_when=FIRST_COMPLETED)
+</code></pre>
+<p>If the timeout is exceeded before a task is completed, then the done set will be empty and we must check for this condition.</p>
+<pre><code>...
+# check if no results were received
+if len(done) == 0:
+    print('No result!')
+</code></pre>
+<p>Tying this together, the complete example of waiting for the first result with a timeout is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for the first result with a timeout
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from concurrent.futures import FIRST_COMPLETED
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    value = random()
+    sleep(value * 10)
+    return f'Task={name}: {value:.2f}'
+
+# entry point
+if __name__ == '__main__':
+    # start the process pool
+    with ProcessPoolExecutor(10) as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # wait until any task completes
+        done, not_done = wait(futures, timeout=0.05, return_when=FIRST_COMPLETED)
+        # check if no results were received
+        if len(done) == 0:
+            print('No result!')
+        else:
+            # get the future from the done set
+            future = done.pop()
+            # get the result from the first task to complete
+            result = future.result()
+            print(result)
+</code></pre>
+<p>In this case, the timeout is too short and no tasks were able to complete in time.</p>
+<pre><code>No result!</code></pre>
+<p>We can update the example to cancel any scheduled tasks and shutdown the process pool without waiting for the running tasks to complete.</p>
+<p>This requires that we create and shutdown the process pool manually instead of using the context manager, for example:</p>
+<pre><code>...
+# start the process pool
+executor = ProcessPoolExecutor(10)
+...
+print('Got result, shutting down pool')
+executor.shutdown(wait=False, cancel_futures=True)
+</code></pre>
+<p>The updated version of this example that cancels all scheduled tasks and shuts down the pool after we get the first result is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for the first result then shutting down the process pool
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from concurrent.futures import FIRST_COMPLETED
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    value = random()
+    sleep(value * 10)
+    return f'Task={name}: {value:.2f}'
+
+# entry point
+if __name__ == '__main__':
+    # start the process pool
+    executor = ProcessPoolExecutor(10)
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # wait until any task completes
+    done, not_done = wait(futures, return_when=FIRST_COMPLETED)
+    # shutdown the pool, cancel scheduled tasks and not wait for running tasks
+    print('Got result, shutting down pool')
+    executor.shutdown(wait=False, cancel_futures=True)
+    # get the future from the done set
+    future = done.pop()
+    # get the result from the first task to complete
+    result = future.result()
+    print(result)
+    # do other things...
+</code></pre>
+<p>Running the example creates the process pool and submits the tasks as before.</p>
+<p>This time, the process pool is shut down as soon as we get the first result and we carry on with our program, processing the result.</p>
+<p>Note, the main process will not exit until all worker processes in the main process have completed. It just so happens that our small example does not have much work to do after we get the result so we have to wait around a moment for the program to end.</p>
+<pre><code>Got result, shutting down pool
+Task=6: 0.09
+</code></pre>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to wait for the first results from the <strong>ProcessPoolExecutor</strong> in Python.</p>
 </main>
 </body>
 </html>

@@ -58,6 +58,284 @@ if result.ready():
 <ul><li><a href="../threadpool-asyncresult/">How to Use ThreadPool AsyncResult</a></li></ul>
 <p>We can issue a large number of tasks with the <strong>apply_async()</strong>, then check the status of the <strong>AsyncResult</strong> objects in order to determine how many tasks remain in the <strong>ThreadPool</strong>.</p>
 <p>This can be performed in a loop that runs until all tasks are completed.</p>
+<pre><code>...
+# issue many tasks
+results = [pool.apply_async(task) for _ in range(50)]
+# report remaining tasks for a while
+count = len(results)
+while count:
+	# ...
+</code></pre>
+<p>In each iteration of the loop we can count the total number of <strong>AsyncResult</strong> objects where the <strong>ready()</strong> function returns False, meaning the tasks are still running.</p>
+<p>This can be achieved in a list comprehension, where the resulting list can be summed to give the count.</p>
+<p>For example:</p>
+<pre><code>...
+# check all tasks and count the number that are not done
+count = sum()</code></pre>
+<p>The number of remaining tasks can then be reported and the caller can block for a moment in a busy-wait loop.</p>
+<pre><code>...
+# report the number of remaining tasks
+print(f'&gt;{count}/{len(results)} tasks remain')
+# wait a moment
+sleep(0.5)</code></pre>
+<p>You can learn more about the busy wait loop in the tutorial:</p>
+<ul><li><a href="../thread-busy-waiting-in-python/">How to Use Busy Waiting in Python</a></li></ul>
+<p>The complete loop may look as follows:</p>
+<pre><code>...
+# issue many tasks
+results = [pool.apply_async(task) for _ in range(50)]
+# report remaining tasks for a while
+count = len(results)
+while count:
+    # check all tasks and count the number that are not done
+    count = sum()
+    # report the number of remaining tasks
+    print(f'&gt;{count}/{len(results)} tasks remain')
+    # wait a moment
+    sleep(0.5)
+</code></pre>
+<p>This approach could be expanded to track the <strong>AsyncResult</strong> objects returned from other functions used to issue tasks, such as <strong>map_async()</strong> and <strong>starmap_async()</strong>. The <strong>AsyncResult</strong> objects returned could be added to the same list of results and their status checked each iteration of the loop.</p>
+<p>The limitation of this approach is that although a function like <strong>map_async()</strong> may issue many tasks into the pool, it only returns a single <strong>AsyncResult</strong> object, allowing the batch of tasks to be treated as a single task when reporting the number of remaining tasks in the pool.</p>
+<p>Another limitation is the use of a busy wait loop which may be wasteful of resources if the wait time is not calibrated well with the typical task duration.</p>
+<h3>Remaining Tasks with imap_unordered()</h3>
+<p>The <strong>imap_unordered()</strong> function will call a target function for each argument in a provided iterable.</p>
+<p>Each call is issued as a task in the <strong>ThreadPool</strong>, one by one as workers become available. The function returns an iterable of return values. Return values are yielded in the order that tasks are completed, allowing the caller to be responsive to tasks completed in the pool.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks and respond each time a task is completed
+for result in pool.imap_unordered(task, range(50)):
+	# ...
+</code></pre>
+<p>You can learn more about how to use the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-imap_unordered/">How to Use ThreadPool imap_unordered() in Python</a></li></ul>
+<p>This function provides an effective way to dynamically report the number of tasks that remain in the <strong>ThreadPool</strong>.</p>
+<p>We can issue tasks using <strong>imap_unordered()</strong> and as each task completes, a result is yielded, allowing the caller to respond and report the number of tasks that remain.</p>
+<p>It requires that the number of tasks that were issued is known and that we keep track of the number of tasks that have been completed.</p>
+<p>For example:</p>
+<pre><code>...
+# number of tasks
+n_tasks = 50
+# keep track of the number of tasks completed
+completed = 0
+# issue tasks and respond each time a task is completed
+for _ in pool.imap_unordered(task, range(n_tasks)):
+    # updated completed tasks
+    completed += 1
+    # report the number of remaining tasks
+    print(f'&gt;{(n_tasks-completed)}/{n_tasks} tasks remain')
+</code></pre>
+<p>This approach will be effective, even if the target function does not return a value explicitly, e.g. returns None.</p>
+<p>This approach is more responsive and more efficient than the previous approach, only reporting changes to the number of remaining tasks when a task finishes, rather than at ad hoc times.</p>
+<p>A limitation of this approach is that it is limited to tracking the number of remaining tasks issued in a single batch. It does not allow the general status of the <strong>ThreadPool</strong> to be reported, e.g. across batches of tasks.</p>
+<p>Now that we have seen a few ways to report the number of remaining tasks, let's look at some worked examples.</p>
+<h2>Example of Remaining Tasks with apply_async()</h2>
+<p>We can explore how to report the number of remaining tasks in the <strong>ThreadPool</strong> issued with <strong>apply_async()</strong>.</p>
+<p>In this example, we will define a task that blocks for a random fraction of a second. We will then issue a large number of these tasks to the pool asynchronously and gather the <strong>AsyncResult</strong> objects. In the main thread, we will then loop until the count of running tasks is zero. For each iteration of the loop, we will count the number of running tasks via their <strong>AsyncResult</strong> objects, report the value, and block for a fraction of a second.</p>
+<p>Firstly, we can define a task function to simulate work by blocking for a random fraction of a second.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker thread
+def task():
+    # block for a fraction of a second
+    sleep(random())
+</code></pre>
+<p>In the main thread, we can first create the <strong>ThreadPool</strong> with a default configuration.</p>
+<p>We will use the context manager interface to ensure that the pool is closed once we are finished with it.</p>
+<pre><code>...
+# create the pool
+with ThreadPool() as pool:
+	# ...
+</code></pre>
+<p>We can then issue 50 calls to our custom <strong>task()</strong> function and gather the <strong>AsyncResult</strong> objects in a list.</p>
+<p>This can be achieved in a list comprehension.</p>
+<pre><code>...
+# issue many tasks
+results = [pool.apply_async(task) for _ in range(50)]</code></pre>
+<p>Next, we can define a count variable for the number of remaining tasks and loop until this count is zero. Initially, the number of remaining tasks equals the number of tasks that were issued.</p>
+<pre><code>...
+# report remaining tasks for a while
+count = len(results)
+while count:
+	# ...
+</code></pre>
+<p>For each iteration, we can first count the number of remaining tasks. This involves counting the number of tasks where the <strong>AsyncResult.ready()</strong> function returns False, indicating that the task is still running.</p>
+<p>This can be achieved in a list comprehension that first collects a <strong>True</strong> value for all tasks that are still running, then sums these True values into account.</p>
+<pre><code>...
+# check all tasks and count the number that are not done
+count = sum()</code></pre>
+<p>We can then report the number of tasks that remain running in the <strong>ThreadPool</strong>.</p>
+<pre><code>...
+# report the number of remaining tasks
+print(f'&gt;{count}/{len(results)} tasks remain')</code></pre>
+<p>Finally, we can block for a moment before checking the tasks again.</p>
+<p>This is called a busy-wait loop.</p>
+<pre><code>...
+# wait a moment
+sleep(0.5)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of reporting the number of remaining tasks with apply_async()
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a fraction of a second
+    sleep(random())
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the pool
+    with ThreadPool() as pool:
+        # issue many tasks
+        results = [pool.apply_async(task) for _ in range(50)]
+        # report remaining tasks for a while
+        count = len(results)
+        while count:
+            # check all tasks and count the number that are not done
+            count = sum()
+            # report the number of remaining tasks
+            print(f'&gt;{count}/{len(results)} tasks remain')
+            # wait a moment
+            sleep(0.5)
+</code></pre>
+<p>Running the example first starts the <strong>ThreadPool</strong>, then issues 50 tasks.</p>
+<p>The tasks begin executing in the pool.</p>
+<p>The main thread then checks the status of all tasks, reports the value, then blocks.</p>
+<p>This thread is repeated until all tasks are complete, e.g. are "<em>ready</em>".</p>
+<p>All tasks are completed and the busy-wait loop exits. The pool is then closed automatically via the context manager interface.</p>
+<p>An example output is listed below.</p>
+<pre><code>&gt;50/50 tasks remain
+&gt;44/50 tasks remain
+&gt;39/50 tasks remain
+&gt;31/50 tasks remain
+&gt;23/50 tasks remain
+&gt;17/50 tasks remain
+&gt;8/50 tasks remain
+&gt;4/50 tasks remain
+&gt;0/50 tasks remain
+</code></pre>
+<p>Next, let's explore how we might report the number of remaining tasks with the <strong>imap_unordered()</strong> function.</p>
+<h2>Example of Remaining Tasks with imap_unordered()</h2>
+<p>We can explore how to report the number of remaining tasks via the <strong>imap_unordered()</strong> function.</p>
+<p>In this example, we will again define a custom task that blocks for a fraction of a second to simulate work. We will then issue a large number of tasks via the <strong>imap_unordered()</strong> and then iterate the return values in the order that tasks are completed. As our task does not have a return value, it will be ignored and instead used as a prompt to dynamically report the status of the number of tasks that remain running in the pool.</p>
+<p>Firstly, we can define the task to be executed in the pool.</p>
+<p>The task blocks for a fraction of a second and does not return a value.</p>
+<pre><code># task executed in a worker thread
+def task(arg):
+    # block for a fraction of a second
+    sleep(random())
+</code></pre>
+<p>Next, we can create the <strong>ThreadPool</strong> using the default configuration.</p>
+<p>We will use the context manager interface to ensure that the pool is closed correctly once we are finished with it.</p>
+<pre><code>...
+# create the pool
+with ThreadPool() as pool:
+	# ...
+</code></pre>
+<p>Next, we will record the number of tasks that we will issue, which will help with reporting the number of remaining tasks later.</p>
+<p>We will also initialize a variable to keep track of the number of tasks that have been completed.</p>
+<pre><code>...
+# number of tasks
+n_tasks = 50
+# keep track of the number of tasks completed
+completed = 0</code></pre>
+<p>Next, we will issue the tasks via <strong>imap_unordered()</strong>.</p>
+<p>This function returns an iterable that yields results in the order that tasks are completed, e.g. out of order compared to how they were issued.</p>
+<p>We will look over the return values, <strong>None</strong> in this case, and use each completed task as a trigger to update the count of tasks completed. We will also report the number of tasks completed as the total tasks issued minus the number of tasks that have been completed.</p>
+<pre><code>...
+# issue tasks and respond each time a task is completed
+for _ in pool.imap_unordered(task, range(50)):
+    # updated completed tasks
+    completed += 1
+    # report the number of remaining tasks
+    print(f'&gt;{(n_tasks-completed)}/{n_tasks} tasks remain')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of reporting the number of remaining tasks with imap_unordered()
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(arg):
+    # block for a fraction of a second
+    sleep(random())
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the pool
+    with ThreadPool() as pool:
+        # number of tasks
+        n_tasks = 50
+        # keep track of the number of tasks completed
+        completed = 0
+        # issue tasks and respond each time a task is completed
+        for _ in pool.imap_unordered(task, range(50)):
+            # updated completed tasks
+            completed += 1
+            # report the number of remaining tasks
+            print(f'&gt;{(n_tasks-completed)}/{n_tasks} tasks remain')
+</code></pre>
+<p>Running the example first starts the <strong>ThreadPool</strong>, then issues tasks one by one as workers become available in the pool.</p>
+<p>The tasks begin executing in the pool.</p>
+<p>The main thread loops over return values as tasks are complete and updates the count of completed tasks and the total tasks remaining.</p>
+<p>Unlike the previous example, in this case, the status of the number of remaining tasks is updated only as tasks are completed and after each individual task completes, giving a fine-grained indication of the tasks that remain.</p>
+<p>Once all tasks have been completed, the loop exits, and the <strong>ThreadPool</strong> is closed automatically by the context manager.</p>
+<pre><code>&gt;49/50 tasks remain
+&gt;48/50 tasks remain
+&gt;47/50 tasks remain
+&gt;46/50 tasks remain
+&gt;45/50 tasks remain
+&gt;44/50 tasks remain
+&gt;43/50 tasks remain
+&gt;42/50 tasks remain
+&gt;41/50 tasks remain
+&gt;40/50 tasks remain
+&gt;39/50 tasks remain
+&gt;38/50 tasks remain
+&gt;37/50 tasks remain
+&gt;36/50 tasks remain
+&gt;35/50 tasks remain
+&gt;34/50 tasks remain
+&gt;33/50 tasks remain
+&gt;32/50 tasks remain
+&gt;31/50 tasks remain
+&gt;30/50 tasks remain
+&gt;29/50 tasks remain
+&gt;28/50 tasks remain
+&gt;27/50 tasks remain
+&gt;26/50 tasks remain
+&gt;25/50 tasks remain
+&gt;24/50 tasks remain
+&gt;23/50 tasks remain
+&gt;22/50 tasks remain
+&gt;21/50 tasks remain
+&gt;20/50 tasks remain
+&gt;19/50 tasks remain
+&gt;18/50 tasks remain
+&gt;17/50 tasks remain
+&gt;16/50 tasks remain
+&gt;15/50 tasks remain
+&gt;14/50 tasks remain
+&gt;13/50 tasks remain
+&gt;12/50 tasks remain
+&gt;11/50 tasks remain
+&gt;10/50 tasks remain
+&gt;9/50 tasks remain
+&gt;8/50 tasks remain
+&gt;7/50 tasks remain
+&gt;6/50 tasks remain
+&gt;5/50 tasks remain
+&gt;4/50 tasks remain
+&gt;3/50 tasks remain
+&gt;2/50 tasks remain
+&gt;1/50 tasks remain
+&gt;0/50 tasks remain
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to report the number of remaining tasks in the <strong>ThreadPool</strong>.</p>
 </main>
 </body>
 </html>

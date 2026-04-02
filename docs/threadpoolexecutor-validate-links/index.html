@@ -78,6 +78,427 @@ atags = soup.find_all('a')
 </code></pre>
 <p>We can then iterate through all of the found tags and retrieve the contents of the href property on each, e.g. get the links to files from each tag.</p>
 <p>This can be done in a list comprehension giving us a list of URLs to validate.</p>
+<pre><code>...
+# get all links from a tags
+return [tag.get('href') for tag in atags]
+</code></pre>
+<p>Tying this all together, the <strong>get_urls_from_html()</strong> function below takes the downloaded HTML content and returns a list of URLs to validate.</p>
+<pre><code># decode downloaded html and extract all &lt;a href=""&gt; links
+def get_urls_from_html(content):
+    # decode the provided content as ascii text
+    html = content.decode('utf-8')
+    # parse the document as best we can
+    soup = BeautifulSoup(html, 'html.parser')
+    # find all all of the &lt;a href=""&gt; tags in the document
+    atags = soup.find_all('a')
+    # get all links from a tags
+    return [tag.get('href') for tag in atags]
+</code></pre>
+<p>We will use this function to extract all of the links from the target HTML page that need to be validated.</p>
+<h3>Filter the Links</h3>
+<p>The list of links extracted from the target webpage need to be filtered.</p>
+<p>This includes removing any links that don't have any content or have a different protocol.</p>
+<pre><code>...
+# skip missing or bad urls
+if url is None or url.strip() is None:
+    continue
+# skip other protocols
+if url.startswith('javascript'):
+    continue
+</code></pre>
+<p>It also involves changing any links that are relative to be absolute.</p>
+<p>Only absolute URLs can be validated; relative URLs must be converted to be absolute before being validated.</p>
+<p>You may recall that a webpage link can be relative to the current webpage. For example, if the URL is <strong>https://www.python.org</strong> and links to <strong>/data/test1.html</strong>, then this is relative to the current webpage.</p>
+<p>We can convert a relative URL to be an absolute URL by pre-pending the URL path for the current webpage, e.g. <strong>/data/test1.html</strong> becomes <strong>https://www.python.org/data/test1.html</strong></p>
+<p>We can do this using the <strong>urljoin()</strong> function from the <strong>urllib.parse</strong> module.</p>
+<p>You can learn more about this module here:</p>
+<ul><li><a href="https://docs.python.org/3/library/urllib.parse.html">urllib.parse — Parse URLs into components</a></li></ul>
+<p>This is a crude check (that won't work for all cases) if a URL is relative is to determine if it does not start with "<strong>http</strong>" for the HTTP protocol part of the URL. If not, we might assume the URL is relative and convert it to be absolute.</p>
+<pre><code>...
+# check if the url is relative
+if not url.startswith('http'):
+    # join the base url with the absolute fragment
+    url = urljoin(base, url)
+</code></pre>
+<p>The <strong>filter_urls()</strong> function below takes the target webpage URL and the list of raw URLs extracted from the target webpage and filters the list.</p>
+<p>URLs with missing content or the wrong protocol are removed, relative URLs are converted to absolute URLs, and finally, we only keep one version of each absolute URL, using a set.</p>
+<p>This set of filtered unique absolute URLs is then returned, ready for validation.</p>
+<pre><code># filter out bad urls, convert relative to absolute if needed
+def filter_urls(base, urls):
+    filtered = set()
+    for url in urls:
+        # skip missing or bad urls
+        if url is None or url.strip() is None:
+            continue
+        # skip other protocols
+        if url.startswith('javascript'):
+            continue
+        # check if the url is relative
+        if not url.startswith('http'):
+            # join the base url with the absolute fragment
+            url = urljoin(base, url)
+        # store in the filtered set
+        filtered.add(url)
+    return filtered
+</code></pre>
+<h3>Validate the Links</h3>
+<p>The next step is to validate the set of filtered links.</p>
+<p>This can be achieved by enumerating the collection of URLs and attempting to download each.</p>
+<p>If a URL cannot be downloaded, it is probably broken and is reported.</p>
+<p>We can use the <strong>download_url()</strong> function developed previously to download each link</p>
+<p>The <strong>validate()</strong> function below takes a collection of filtered URLs and validates each, reporting with a print statement all those that appear to be broken.</p>
+<pre><code># validate a list of urls, report all broken urls
+def validate(filtered_links):
+    # validate each link
+    for link in filtered_links:
+        data = download_url(link)
+        if data is None:
+            print(f'.broken: {link}')
+</code></pre>
+<h3>Complete Example</h3>
+<p>We now have all of the elements to validate the links in a target webpage.</p>
+<p>First, we can download a target URL by calling the <strong>download_url()</strong> function, extract all of the raw links by calling <strong>get_urls_from_html()</strong>, filter the raw links by calling <strong>filter_urls()</strong>, then validate the filtered links by calling <strong>validate()</strong>.</p>
+<p>The <strong>validate_urls()</strong> function below implements this procedure for a given target webpage provided as an argument.</p>
+<pre><code># find all broken urls listed on this website
+def validate_urls(base):
+    # download the page
+    content = download_url(base)
+    if content is None:
+        print(f'Failed to download: {base}')
+        return
+    print(f'Downloaded: {base}')
+    # extract all the links
+    raw_links = get_urls_from_html(content)
+    print(f'.found {len(raw_links)} raw links')
+    # filter links
+    filtered_links = filter_urls(base, raw_links)
+    print(f'.found {len(filtered_links)} unique links')
+    # validate the links
+    validate(filtered_links)
+    print('Done')
+</code></pre>
+<p>We can then call this function for a target URL.</p>
+<p>We'll use <strong>www.python.org</strong> as the target website.</p>
+<pre><code>...
+# website to check
+URL = 'https://www.python.org/'
+# validate all urls
+validate_urls(URL)
+</code></pre>
+<p>Tying this together, the complete example of validating all URLs one by one in the target website python.org is listed below.</p>
+<pre><code># SuperFastPython.com
+# validate all urls on a webpage one at a time
+from urllib.request import urlopen
+from urllib.parse import urljoin
+from bs4 import BeautifulSoup
+
+# download a file from a URL, returns content of downloaded file
+def download_url(urlpath):
+    try:
+        # open a connection to the server
+        with urlopen(urlpath, timeout=3) as connection:
+            # read the contents of the url as bytes and return it
+            return connection.read()
+    except:
+        return None
+
+# decode downloaded html and extract all &lt;a href=""&gt; links
+def get_urls_from_html(content):
+    # decode the provided content as ascii text
+    html = content.decode('utf-8')
+    # parse the document as best we can
+    soup = BeautifulSoup(html, 'html.parser')
+    # find all all of the &lt;a href=""&gt; tags in the document
+    atags = soup.find_all('a')
+    # get all links from a tags
+    return [tag.get('href') for tag in atags]
+
+# filter out bad urls, convert relative to absolute if needed
+def filter_urls(base, urls):
+    filtered = set()
+    for url in urls:
+        # skip missing or bad urls
+        if url is None or url.strip() is None:
+            continue
+        # skip other protocols
+        if url.startswith('javascript'):
+            continue
+        # check if the url is relative
+        if not url.startswith('http'):
+            # join the base url with the absolute fragment
+            url = urljoin(base, url)
+        # store in the filtered set
+        filtered.add(url)
+    return filtered
+
+# validate a list of urls, report all broken urls
+def validate(filtered_links):
+    # validate each link
+    for link in filtered_links:
+        data = download_url(link)
+        if data is None:
+            print(f'.broken: {link}')
+
+# find all broken urls listed on this website
+def validate_urls(base):
+    # download the page
+    content = download_url(base)
+    if content is None:
+        print(f'Failed to download: {base}')
+        return
+    print(f'Downloaded: {base}')
+    # extract all the links
+    raw_links = get_urls_from_html(content)
+    print(f'.found {len(raw_links)} raw links')
+    # filter links
+    filtered_links = filter_urls(base, raw_links)
+    print(f'.found {len(filtered_links)} unique links')
+    # validate the links
+    validate(filtered_links)
+    print('Done')
+
+# website to check
+URL = 'https://www.python.org/'
+# validate all urls
+validate_urls(URL)
+</code></pre>
+<p>Running the example first downloads the target webpage.</p>
+<p>The downloaded web page is parsed and all links are extracted; in this case, 212 raw links are reported.</p>
+<p>The raw links are filtered, resulting in a set of 130 unique absolute URLs to be validated.</p>
+<p>The links are validated and only one is reported to be broken (<strong>http://www.saltstack.com</strong>). The link may not be broken; it may just not like being connected to from a <a href="https://en.wikipedia.org/wiki/User_agent">Python user agent</a>.</p>
+<pre><code>Downloaded: https://www.python.org/
+.found 212 raw links
+.found 130 unique links
+.broken: http://www.saltstack.com
+Done
+</code></pre>
+<p><strong>What results did you get?</strong><br/>Let me know in the comments below.</p>
+<p>The program works fine, but it is very slow as each link on the web page must be checked one by one.</p>
+<p>On my system, it took approximately 74 seconds to complete.</p>
+<p><strong>How long did it take to run on your computer?</strong><br/>Let me know in the comments below.</p>
+<p>Next, we will look at the <strong>ThreadPoolExecutor</strong> class that can be used to create a pool of worker threads that will allow us to speed up this validation process.</p>
+<h2>Create a Pool of Worker Threads</h2>
+<p>We can use the <strong>ThreadPoolExecutor</strong> to speed up the validation of multiple links on a webpage.</p>
+<p>The <strong>ThreadPoolExecutor</strong> class is provided as part of the <strong>concurrent.futures</strong> module for easily running concurrent tasks.</p>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of worker threads, which is different from the <strong>ProcessPoolExecutor</strong> that provides a pool of worker processes.</p>
+<p>Generally, <strong>ThreadPoolExecutor</strong> should be used for concurrent IO-bound tasks, like downloading URLs, and the <strong>ProcessPoolExecutor</strong> should be used for concurrent CPU-bound tasks, like calculating.</p>
+<p>Using the <strong>ThreadPoolExecutor</strong> was designed to be easy and straightforward. It is like the "<em>automatic mode</em>" for Python threads.</p>
+<ol><li>Create the thread pool by calling <strong>ThreadPoolExecutor()</strong>.</li><li>Submit tasks and get futures by calling <strong>submit()</strong>.</li><li>Wait and get results as tasks complete by calling <strong>as_completed()</strong>.</li><li>Shut down the thread pool by calling <strong>shutdown()</strong>.</li></ol>
+<h3>Create the Thread Pool</h3>
+<p>First, a <strong>ThreadPoolExecutor</strong> instance must be created. By default, it will create a pool of five times the number of CPUs you have available. This is good for most purposes.</p>
+<pre><code>...
+# create a thread pool with the default number of worker threads
+executor = ThreadPoolExecutor()
+</code></pre>
+<p>You can run tens to hundreds of concurrent IO-bound threads per CPU, although perhaps not thousands or tens of thousands. You can specify the number of threads to create in the pool via the <strong>max_workers</strong> argument; for example:</p>
+<pre><code>...
+# create a thread pool with 10 worker threads
+executor = ThreadPoolExecutor(max_workers=10)
+</code></pre>
+<h3>Submit Tasks to the Tread Pool</h3>
+<p>Once created, it can send tasks into the pool to be completed using the <strong>submit()</strong> function.</p>
+<p>This function takes the name of the function to call any and all arguments and returns a Future object.</p>
+<p>The <strong>Future</strong> object is a promise to return the results from the task (if any) and provides a way to determine if a specific task has been completed or not.</p>
+<pre><code>...
+# submit a task and get a future object
+future = executor.submit(task, arg1, arg2, ...)
+</code></pre>
+<p>The return from a function executed by the thread pool can be accessed via the <strong>result()</strong> function on the <strong>Future</strong> object. It will wait until the result is available, if needed, or return immediately if the result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from a future
+result = future.result()
+</code></pre>
+<h3>Get Results as Tasks Complete</h3>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available, rather than waiting for tasks to be completed in the order they were submitted.</p>
+<p>The concurrent.futures module provides a <strong>as_completed()</strong> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
+<p>We can call the function and provide it a list of <strong>Future</strong> objects created by calling <strong>submit()</strong> and it will return <strong>Future</strong> objects as they are completed in whatever order.</p>
+<p>For example, we can use a list comprehension to submit the tasks and create the list of <strong>Future</strong> objects:</p>
+<pre><code>...
+# submit all tasks into the thread pool and create a list of futures
+futures = [executor.submit(task, item) for item in items]
+</code></pre>
+<p>Then get results for tasks as they complete in a for loop:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+	# do something with the result...
+</code></pre>
+<h3>Shut Down the Thread Pool</h3>
+<p>Once all tasks are completed, we can close down the thread pool, which will release each thread and any resources it may hold (e.g. the stack space).</p>
+<pre><code>...
+# shutdown the thread pool
+executor.shutdown()
+</code></pre>
+<p>An easier way to use the thread pool is via the context manager (the "<strong>with</strong>" keyword), which ensures it is closed automatically once we are finished with it.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=10) as executor:
+	# submit tasks
+	futures = [executor.submit(task, item) for item in items]
+	# get results as they are available
+	for future in as_completed(futures):
+		# get the result
+		result = future.result()
+		# do something with the result...</code></pre>
+<p>Now that we are familiar with <strong>ThreadPoolExecutor</strong> and how to use it, let's look at how we can adapt our program for validating links to make use of it.</p>
+<h2>Validate Multiple Links Concurrently</h2>
+<p>The program for validating links can be adapted to use the <strong>ThreadPoolExecutor</strong> with very little change.</p>
+<p>The <strong>validate()</strong> function currently enumerates the list of links extracted from the target webpage and calls the <strong>download_url()</strong> function for each.</p>
+<p>This loop can be updated to <strong>submit()</strong> tasks to a <strong>ThreadPoolExecutor</strong> object, and then we can wait on the <strong>Future</strong> objects via a call to <strong>as_completed()</strong> and report progress.</p>
+<p>First, we can create the thread pool. We can create one thread for each page to be downloaded. To ensure we don't create too many threads, we can limit the total to 1,000 if needed.</p>
+<pre><code>...
+# select the number of workers, no more than 1,000
+n_threads = min(1000, len(filtered_links))
+# validate each link
+with ThreadPoolExecutor(n_threads) as executor:
+	# ...
+</code></pre>
+<p>Importantly, we need to know which URL each task is associated with so we can report a message if <strong>download_url()</strong> returns <strong>None</strong> to indicate a broken link.</p>
+<p>This can be achieved by first creating a dictionary that maps <strong>Future</strong> objects returned from the <strong>submit()</strong> function with the URL passed as an argument to <strong>download_url()</strong>.</p>
+<p>We can do this in a dictionary comprehension; for example:</p>
+<pre><code>...
+# validate each url
+futures_to_data = {executor.submit(download_url, link):link for link in filtered_links}
+</code></pre>
+<p>We can then process results in the order that pages are downloaded by calling the <strong>as_completed()</strong> module function on the <strong>futures_to_data</strong> that contains <strong>Future</strong> objects as keys.</p>
+<pre><code>...
+# report results as they are available
+for future in as_completed(futures_to_data):
+	# ...
+</code></pre>
+<p>For each result we get, we can then get the result from the <strong>Future</strong> by calling <strong>result()</strong>, and if it is <strong>None</strong> (e.g. broken), we can retrieve the URL for the task and report a message.</p>
+<pre><code>...
+# get result from the download
+data = future.result()
+# check for broken url
+if data is None:
+    print(f'.broken: {futures_to_data}')
+</code></pre>
+<p>Tying this together, the concurrent version of the <strong>validate()</strong> function for validating links concurrently using the <strong>ThreadPoolExecutor</strong> is listed below.</p>
+<pre><code># validate a list of urls, report all broken urls
+def validate(filtered_links):
+    # select the number of workers, no more than 1,000
+    n_threads = min(1000, len(filtered_links))
+    # validate each link
+    with ThreadPoolExecutor(n_threads) as executor:
+        # validate each url
+        futures_to_data = {executor.submit(download_url, link):link for link in filtered_links}
+        # report results as they are available
+        for future in as_completed(futures_to_data):
+            # get result from the download
+            data = future.result()
+            # get the link for the result
+            link = futures_to_data
+            # check for broken url
+            if data is None:
+                print(f'.broken: {link}')
+</code></pre>
+<p>The complete example with this updated <strong>validate()</strong> function is listed below.</p>
+<pre><code># SuperFastPython.com
+# validate all urls on a webpage concurrently
+from urllib.request import urlopen
+from urllib.parse import urljoin
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+from bs4 import BeautifulSoup
+
+# download a file from a URL, returns content of downloaded file
+def download_url(urlpath):
+    try:
+        # open a connection to the server
+        with urlopen(urlpath, timeout=5) as connection:
+            # read the contents of the url as bytes and return it
+            return connection.read()
+    except:
+        return None
+
+# decode downloaded html and extract all &lt;a href=""&gt; links
+def get_urls_from_html(content):
+    # decode the provided content as ascii text
+    html = content.decode('utf-8')
+    # parse the document as best we can
+    soup = BeautifulSoup(html, 'html.parser')
+    # find all all of the &lt;a href=""&gt; tags in the document
+    atags = soup.find_all('a')
+    # get all links from a tags
+    return [tag.get('href') for tag in atags]
+
+# filter out bad urls, convert relative to absolute if needed
+def filter_urls(base, urls):
+    filtered = set()
+    for url in urls:
+        # skip missing or bad urls
+        if url is None or url.strip() is None:
+            continue
+        # skip other protocols
+        if url.startswith('javascript'):
+            continue
+        # check if the url is relative
+        if not url.startswith('http'):
+            # join the base url with the absolute fragment
+            url = urljoin(base, url)
+        # store in the filtered set
+        filtered.add(url)
+    return filtered
+
+# validate a list of urls, report all broken urls
+def validate(filtered_links):
+    # select the number of workers, no more than 1,000
+    n_threads = min(1000, len(filtered_links))
+    # validate each link
+    with ThreadPoolExecutor(n_threads) as executor:
+        # validate each url
+        futures_to_data = {executor.submit(download_url, link):link for link in filtered_links}
+        # report results as they are available
+        for future in as_completed(futures_to_data):
+            # get result from the download
+            data = future.result()
+            # check for broken url
+            if data is None:
+                print(f'.broken: {futures_to_data}')
+
+# find all broken urls listed on this website
+def validate_urls(base):
+    # download the page
+    content = download_url(base)
+    if content is None:
+        print(f'Failed to download: {base}')
+        return
+    print(f'Downloaded: {base}')
+    # extract all the links
+    raw_links = get_urls_from_html(content)
+    print(f'.found {len(raw_links)} raw links')
+    # filter links
+    filtered_links = filter_urls(base, raw_links)
+    print(f'.found {len(filtered_links)} unique links')
+    # validate all links
+    validate(filtered_links)
+    print('Done')
+
+# website to check
+URL = 'https://www.python.org/'
+# validate all urls
+validate_urls(URL)
+</code></pre>
+<p>Running the example reports the same result as before, as we would expect.</p>
+<p>Importantly, the program is dramatically faster, taking only 4.8 seconds on my system compared to about 74 seconds for the sequential version we developed above. That is a 15x speedup.</p>
+<pre><code>Downloaded: https://www.python.org/
+.found 212 raw links
+.found 130 unique links
+.broken: http://www.saltstack.com
+Done
+</code></pre>
+<p><strong>How long did it take to run on your computer?</strong><br/>Let me know in the comments below.</p>
+<h2>Extensions</h2>
+<p>This section lists ideas for extending the tutorial.</p>
+<ul><li><strong>Parse URLs During Filtering</strong>: Update the example to parse the URLs during the filtering process and perhaps filter out and even report any that fail to parse correctly.</li><li><strong>Filter out More Protocols</strong>: Update the example to filter out more protocols, such as ftp, mailto, and anything else we might not want to validate.</li><li><strong>Change User Agent</strong>: Update the example to use a common browser agent and potentially allow more URLs to be validated correctly.</li></ul>
+<p>Share your extensions in the comments below; it would be great to see what you come up with.</p>
+<h2>Takeaways</h2>
+<p>In this tutorial, you discovered how to concurrently validate URL links in a webpage in Python.</p>
+<ul><li>How to validate all links in a webpage sequentially in Python and how slow it can be.</li><li>How to use the <strong>ThreadPoolExecutor</strong> to manage a pool of worker threads.</li><li>How to update the code to validate multiple URLs at the same time and dramatically accelerate the process.</li></ul>
 </main>
 </body>
 </html>

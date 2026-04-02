@@ -116,6 +116,84 @@ result = future.result(timeout=5) # blocks
 <ul><li><code>wait()</code>: Wait on one or more <code>Future</code> objects until they are completed.</li><li><code>as_completed()</code>: Returns <code>Future</code> objects from a collection as they complete their execution.</li></ul>
 <p>You can use both functions with <meta/><code>Future</code> objects created by one or more thread pools; they are not specific to any given thread pool in your application. This is helpful if you want to perform waiting operations across multiple thread pools that are executing different types of tasks.</p>
 <p>Both functions are useful to use with an idiom of dispatching multiple tasks into the thread pool via submit in a list comprehension; for example:</p>
+<pre><code>...
+# dispatch tasks into the thread pool and create a list of futures
+futures = [executor.submit(task, item) for item in items]
+</code></pre>
+<p>Here, <code>task</code> is our custom target task function; <code>item</code> is one element of data passed as an argument to <meta/><code>task</code>, and <code>items</code> is our source of <code>item</code> objects.</p>
+<p>We can then pass the <code>futures</code> to <code>wait()</code> or <code>as_completed()</code>.</p>
+<p>Creating a list of futures in this way is not required, just a common pattern when converting for loops into tasks submitted to a thread pool.</p>
+<h3>Wait for Futures to Complete with wait()</h3>
+<p>The <meta/><code>wait()</code> function can take one or more futures and will return when a specified action occurs, such as all tasks completing, one task completing, or one task throwing an exception.</p>
+<p>The function will return one set of future objects that match the condition set via the <code>return_when</code>. The second set will contain all of the futures for tasks that did not meet the condition. These are called the <code>done</code> and the <code>not_done</code> sets of futures.</p>
+<p>It is useful for waiting on a large batch of work and to stop waiting when we get the first result.</p>
+<p>This can be achieved via the <code>FIRST_COMPLETED</code> constant passed to the <meta/><code>return_when</code> argument.</p>
+<pre><code>...
+# wait until we get the first result
+done, not_done = wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+</code></pre>
+<p>Alternatively, we can wait for all tasks to complete via the <code>ALL_COMPLETED</code> constant.</p>
+<p>This can be helpful if you are using <code>submit()</code> to dispatch tasks and are looking for an easy way to wait for all work to be completed.</p>
+<pre><code>...
+# wait for all tasks to complete
+done, not_done = wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
+</code></pre>
+<p>There is also an option to wait for the first task to raise an exception via the <code>FIRST_EXCEPTION</code> constant.</p>
+<pre><code>...
+# wait for the first exception
+done, not_done = wait(futures, return_when=concurrent.futures.FIRST_EXCEPTION)
+</code></pre>
+<h3>Wait for Futures with as_completed()</h3>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available, rather than waiting for all tasks to be completed.</p>
+<p>The <code>as_completed()</code> function will return future objects for tasks as they are completed in the thread pool.</p>
+<p>We can call the function and provide it a list of future objects created by calling <code>submit()</code> and it will return future objects as they are completed in whatever order.</p>
+<p>It is common to use the <meta/><code>as_completed()</code> function in a loop over the list of futures created when calling <meta/><code>submit()</code>; for example:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result for the next completed task
+	result = future.result() # blocks
+</code></pre>
+<p><strong>Note</strong>: this is different to iterating over the results from calling <code>map()</code> in two ways. Firstly, <code>map()</code> returns an iterator over objects, not over futures. Secondly, <meta/><code>map()</code> returns results in the order that the tasks were submitted, not in the order that they are completed.</p>
+<h2>Step 4: Shut Down the Thread Pool</h2>
+<p>Once all tasks are completed, we can close down the thread pool, which will release each thread and any resources it may hold (e.g. the thread stack space).</p>
+<p>The thread pool can be shut down manually or automatically.</p>
+<h3><meta/>Shut Down Manually With shutdown()</h3>
+<p>You can shut down the thread pool manually by calling the <meta/><code>shutdown()</code> function.</p>
+<pre><code>...
+# shutdown the thread pool
+executor.shutdown() # blocks
+</code></pre>
+<p>The <code>shutdown()</code> function will wait for all tasks in the thread pool to complete before returning by default.</p>
+<p>This behavior can be changed by setting the <code>wait</code> argument to <code>False</code> when calling <meta/><code>shutdown()</code>, in which case the function will return immediately. The resources used by the thread pool will not be released until all current and queued tasks are completed.</p>
+<pre><code>...
+# shutdown the thread pool
+executor.shutdown(wait=False) # does not blocks
+</code></pre>
+<p>We can also instruct the pool to cancel all queued tasks to prevent their execution. This can be achieved by setting the <code>cancel_futures</code> argument to <code>True</code>. By default, queued tasks are not cancelled when calling <meta/><code>shutdown()</code>.</p>
+<pre><code>...
+# cancel all queued tasks
+executor.shutdown(cancel_futures=True) # blocks
+</code></pre>
+<p>If we forget to close the thread pool, the thread pool will be closed automatically when we exit the main thread. If we forget to close the pool and there are still tasks executing, the main thread will not exit until all tasks in the pool and all queued tasks have executed.</p>
+<h3>Shut Down Automatically With the Context Manager</h3>
+<p>A preferred way to work with the <meta/><code>ThreadPoolExecutor</code> class is to use a context manager.</p>
+<p>This matches the preferred way to work with other resources, such as files and sockets.</p>
+<p>Using the <code>ThreadPoolExecutor</code> with a context manager involves using the <code>with</code> keyword to create a block in which you can use the thread pool to execute tasks and get results.</p>
+<p>Once the block has completed, the thread pool is automatically shut down. Internally, the context manager will call the <code>shutdown()</code> function with the default arguments, waiting for all queued and executing tasks to complete before returning and carrying on.</p>
+<p>Below is a code snippet to demonstrate creating a thread pool using the context manager.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=10) as executor:
+	# submit tasks and get results
+	# ...
+	# automatically shutdown the thread pool...
+# the pool is shutdown at this point
+</code></pre>
+<p>This is a very handy idiom if you are converting a for loop to be multithreaded.</p>
+<p>It is less useful if you want the thread pool to operate in the background while you perform other work in the main thread of your program, or if you wish to reuse the thread pool multiple times throughout your program.</p>
+<h2>Takeaways</h2>
+<p>You now know how to get started with the <code>ThreadPoolExecutor</code> in Python.</p>
 </main>
 </body>
 </html>

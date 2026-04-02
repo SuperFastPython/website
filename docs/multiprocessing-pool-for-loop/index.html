@@ -43,6 +43,459 @@ for item in items:
 <p>Alternately, we might want the results from calling the same function multiple times with different data.</p>
 <p>This is often achieved using a list comprehension.</p>
 <p>For example:</p>
+<pre><code>...
+# get results from applying the same function to different data
+results = [task(item) for item in items]
+</code></pre>
+<p>Each iteration of the for-loop is performed sequentially. One after the other on one CPU core.</p>
+<p>This is a problem because we may have many CPU cores, such as 2, 4, 8 or even 32.</p>
+<p><strong>How can we convert a for-loop to be parallel?</strong></p>
+<h2>Prerequisite (prepare your code before we make it parallel)</h2>
+<p>Before we dive into discovering how to make for-loops parallel, there is a prerequisite.</p>
+<p>You will need to refactor your code so that each iteration of your loop calls the same target function each iteration with different arguments.</p>
+<p>This means you will need to create a new target function that takes one (or more) arguments with the specific data to operate on each iteration.</p>
+<p>For example, your for-loop may look as follows:</p>
+<pre><code>...
+# slow for loop executed sequentially
+for item in items:
+	# do one thing using item
+	# do another thing using item
+	...
+</code></pre>
+<p>You can convert into a loop that calls a target function each iteration that takes the unique data each iteration as an argument.</p>
+<p>For example:</p>
+<pre><code># task that operates on an item
+def task(item):
+	# do one thing using item
+	# do another thing using item
+
+# slow for loop executed sequentially
+for item in items:
+	task(item)
+</code></pre>
+<p>Generally, the function should be self-contained.</p>
+<p>It should not use any shared resources to avoid possible concurrency failure modes like race conditions.</p>
+<p>It should be a function with no side effects, taking data as arguments and returning any results via return values.</p>
+<p>If this is not the case, you must refactor your code so that this is the case, otherwise you may have to contend with mutex locks and such which will make everything a whole lot harder.</p>
+<p>Next, let's look at how we can execute for loops in parallel using all CPU cores.</p>
+<h2>How To Make For-Loop Parallel With Pool</h2>
+<p>We can make a for-loop parallel using the multiprocessing pool.</p>
+<p>A process pool is a programming pattern for automatically managing a pool of worker processes.</p>
+<p>The <strong>multiprocessing.Pool</strong> class provides a process pool with helpful functions for executing for loops in parallel.</p>
+<p>An instance of the Pool class can be created and by default it will use all available CPU cores. Once we are finished with it, we can close it to release the worker processes.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool that uses all cpus
+pool = multiprocessing.Pool()
+# ...
+# close the process pool
+pool.close()</code></pre>
+<p>We can use the context manager interface if we only need to use the pool for one for-loop. This will ensure the pool is closed for us automatically once we are finished using it, even if a task raises an exception.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool that uses all cpus
+with multiprocessing.Pool() as pool:
+	# ...
+</code></pre>
+<p>This is the recommended usage of the process pool.</p>
+<p>You can learn more about how to use the multiprocessing pool context manager in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Multiprocessing Pool Context Manager</a></li></ul>
+<p>The multiprocessing pool provides a parallel version of the built-in <strong>map()</strong> function that will call the same function for each item in a provided iterable, e.g. same function with different data.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool that uses all cpus
+with multiprocessing.Pool() as pool:
+	# call the function for each item in parallel
+	pool.map(task, items)
+</code></pre>
+<p>This will traverse the "<strong>items</strong>" iterable and issue one call to the <strong>task()</strong> function for each item and return once all tasks have completed.</p>
+<p>The map() function returns an iterable of return values from the target function which can be stored or iterated directly, if our target function has a return value.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool that uses all cpus
+with multiprocessing.Pool() as pool:
+	# call the function for each item in parallel
+	for result in pool.map(task, items):
+		print(result)</code></pre>
+<p>You can learn more about how to use the map() function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-map/">Multiprocessing Pool.map() in Python</a></li></ul>
+<p>The <strong>map()</strong> function on the multiprocessing pool only takes a single argument.</p>
+<p>If our target function takes more than one argument, we can use the <strong>starmap()</strong> function instead.</p>
+<p>It takes an iterable of iterable, where each nested iterable provides arguments for one call to the target task function.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool that uses all cpus
+with multiprocessing.Pool() as pool:
+	# prepare arguments for reach call to target function
+	items = [(1,2), (3,4), (5,6)]
+	# call the function for each item in parallel with multiple arguments
+	for result in pool.starmap(task, items):
+		print(result)</code></pre>
+<p>You can learn more about how to use the <strong>starmap()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-starmap/">Multiprocessing Pool.starmap() in Python</a></li></ul>
+<p>A problem with both map() and starmap() is they do not return their iterable of return values until all tasks have completed.</p>
+<p>Instead we can use the <strong>imap()</strong> function. This will only issue tasks to the multiprocessing pool once a worker becomes available, and will yield a return value as tasks are completed.</p>
+<p>This is helpful in order to save memory when issuing tasks, if we have thousands or millions of tasks to issue. It is also more responsive as we can process or show results as tasks finish rather than after all tasks have completed.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool that uses all cpus
+with multiprocessing.Pool() as pool:
+	# call the function for each item in parallel, get results as tasks complete
+	for result in pool.imap(task, items):
+		print(result)</code></pre>
+<p>You can learn more about how to use the <strong>imap()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-imap/">Multiprocessing Pool.imap() in Python</a></li></ul>
+<p>This was a crash course in using the multiprocessing pool.</p>
+<p>Now that we know how to convert our for-loops to be parallel, let's look at some worked examples that you can use as templates for your own project.</p>
+<h2>Example of Parallel For-Loop with map()</h2>
+<p>We can explore how to use <strong>map()</strong> to execute for-loops in parallel.</p>
+<p>In this example we will use a simple task function as a placeholder that you can replace with your own task function to be called each loop iteration.</p>
+<p>In this case, our task will take one integer argument to the task. It will then generate a random number between 0 and 1, then sleep for a fraction of a simulate work. Finally, it will either return the generated value as a result for the task.</p>
+<p>The <strong>task() </strong>function below implements this.</p>
+<pre><code># task to execute in another process
+def task(arg):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # return the generated value
+    return value
+</code></pre>
+<p>Let's dive-in.</p>
+<h3>Serial For-Loop with map()</h3>
+<p>Before we dive into parallel for-loops with <strong>map()</strong>, let's start with a sequential for-loop.</p>
+<p>We can use the built-in <strong>map()</strong> function to call our task function each iteration.</p>
+<p>Each function call will be executed sequentially, one after the other on one CPU core.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a sequential for loop
+from time import sleep
+from random import random
+
+# a task to execute in another process
+def task(arg):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # return the generated value
+    return value
+
+# entry point for the program
+if __name__ == '__main__':
+    # call the same function with different data sequentially
+    for result in map(task, range(10)):
+        # report the value to show progress
+        print(result)
+</code></pre>
+<p>Running the example calls the same <strong>task()</strong> function for each value in the iterable form 0 to 9.</p>
+<p>Different random numbers are generated each time the code is run.</p>
+<p>Each call to <strong>task()</strong> happens sequentially, and the entire example takes about 4-5 seconds, depending on the specific numbers generated.</p>
+<pre><code>0.12199618835333303
+0.5212357710994685
+0.7417626978125494
+0.0450874955439563
+0.4708361362483452
+0.46524023376998846
+0.32858199011122213
+0.468263433349433
+0.3856435694592504
+0.995716230169814</code></pre>
+<p>Next, let's look at converting the example to execute in parallel using the multiprocessing pool.</p>
+<h3>Parallel For-Loop with map()</h3>
+<p>We can update the previous example so that each call to the <strong>task()</strong> function is executed in parallel using all available CPU cores.</p>
+<p>For example, if we have 4 CPU cores, this might be seen as 8 logical CPU cores after hyperthreading. This means our system would be able to execute 8 calls to <strong>task()</strong> in parallel, then as calls complete the remaining calls to <strong>task()</strong> will be executed.</p>
+<p>First, we can create the multiprocessing pool configured by default to use all available CPU cores.</p>
+<pre><code>...
+# create the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>Next, we can call the <strong>map()</strong> function as before and iterate the result values, although this time the <strong>map()</strong> function is a method on the multiprocessing pool.</p>
+<pre><code>...
+# call the same function with different data in parallel
+for result in pool.map(task, range(10)):
+    # report the value to show progress
+    print(result)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a parallel for loop
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# task to execute in another process
+def task(arg):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # return the generated value
+    return value
+
+# entry point for the program
+if __name__ == '__main__':
+    # create the process pool
+    with Pool() as pool:
+        # call the same function with different data in parallel
+        for result in pool.map(task, range(10)):
+            # report the value to show progress
+            print(result)
+</code></pre>
+<p>Running the example first creates the multiprocessing pool with one worker per logical CPU in the system.</p>
+<p>All ten calls to the <strong>task()</strong> function are issued to the process pool and it completes them as fast as it is able.</p>
+<p>Once all tasks are completed, an iterable of return values is returned from <strong>map()</strong> and traversed, reporting the values that were generated.</p>
+<p>The loop completes in about one second, depending on the specific random numbers generated.</p>
+<pre><code>0.5884491047270914
+0.6946893602558559
+0.7169680024270103
+0.9433207432796479
+0.5374063478473085
+0.49870576951245515
+0.5229616564751852
+0.250982204375086
+0.670282828432953
+0.44766416300786493</code></pre>
+<p>Next, let's look at the same example if we did not have return values.</p>
+<h3>Parallel For-Loop with map() and No Return Values</h3>
+<p>We can update the <strong>task()</strong> function to no longer return a result.</p>
+<p>In that case, we do not need to traverse the iterable of return values from the <strong>map()</strong> function in the caller.</p>
+<p>First, we can update the task function to not return the value and instead to print the generated value directly.</p>
+<pre><code># task to execute in another process
+def task(arg):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # # report the value to show progress
+    print(f'{arg} got {value}', flush=True)
+</code></pre>
+<p>Note, print messages from child worker processes do not appear immediately by default, but are instead buffered until the child process is terminated.</p>
+<p>We can force messages to show immediately, by setting the "<strong>flush</strong>" argument to <strong>True</strong>.</p>
+<p>You can learn more about printing messages from child processes in the tutorial:</p>
+<ul><li><a href="../multiprocessing-print/">How to print() from a Child Process in Python</a></li></ul>
+<p>We can then call <strong>map()</strong> with our task function and arguments and not iterate the results.</p>
+<pre><code>...
+# create the process pool
+with Pool() as pool:
+    # call the same function with different data in parallel
+    pool.map(task, range(10))
+</code></pre>
+<p>Tying this together, a complete example with this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a parallel for loop with no return values
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# task to execute in another process
+def task(arg):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # # report the value to show progress
+    print(f'{arg} got {value}', flush=True)
+
+# entry point for the program
+if __name__ == '__main__':
+    # create the process pool
+    with Pool() as pool:
+        # call the same function with different data in parallel
+        pool.map(task, range(10))
+</code></pre>
+<p>Running the example creates the multiprocessing pool and issues all ten tasks.</p>
+<p>The tasks execute and report their messages.</p>
+<p>Once all tasks have completed, the <strong>map()</strong> function returns and the caller continues on closing the process pool automatically.</p>
+<pre><code>3 got 0.07495290707222657
+1 got 0.3551532315681727
+5 got 0.5775819151509843
+0 got 0.6205673200232464
+7 got 0.6050404433157823
+8 got 0.5876738799350407
+2 got 0.6776107991833116
+4 got 0.7459149152853299
+6 got 0.8483482745906772
+9 got 0.7278120326654482</code></pre>
+<p>Next, let's explore how to make a for-loop parallel where the target function has multiple arguments.</p>
+<h2>Example of Parallel For-Loop with starmap()</h2>
+<p>A limitation of the <strong>map()</strong> function is that it only takes one argument.</p>
+<p>If our target task function requires multiple arguments, we can use the <strong>starmap()</strong> function instead.</p>
+<p>The iterable passed to the <strong>starmap()</strong> function must have an iterable for each call to the task function containing the arguments for the function call.</p>
+<p>That is, an iterable of iterables, such as a list of tuples, where each tuple is a set of arguments for one function call.</p>
+<p>Let's demonstrate this with a worked example.</p>
+<p>We can update the <strong>task()</strong> function to take three arguments.</p>
+<pre><code># task to execute in another process
+def task(arg1, arg2, arg3):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # return the generated value
+    return value
+</code></pre>
+<p>We can then prepare an iterable of iterables as arguments for each function call.</p>
+<p>In this case, we will create a list of tuples, where each tuple has 3 arguments for a single call to <strong>task()</strong>.</p>
+<p>This can be achieved using a list comprehension.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, i*2, i*3) for i in range(10)]</code></pre>
+<p>We can then call the <strong>starmap()</strong> function to execute the for-loop in parallel and report results.</p>
+<pre><code>...
+# call the same function with different data in parallel
+for result in pool.starmap(task, items):
+    # report the value to show progress
+    print(result)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a parallel for loop with multiple arguments
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# task to execute in another process
+def task(arg1, arg2, arg3):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # return the generated value
+    return value
+
+# entry point for the program
+if __name__ == '__main__':
+    # create the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, i*2, i*3) for i in range(10)]
+        # call the same function with different data in parallel
+        for result in pool.starmap(task, items):
+            # report the value to show progress
+            print(result)
+</code></pre>
+<p>Running the example first creates the multiprocessing pool with one worker per logical CPU in the system.</p>
+<p>All ten calls to the <strong>task()</strong> function are issued to the process pool, each with three arguments.</p>
+<p>Once all tasks are completed, an iterable of return values is returned from <strong>starmap()</strong> and traversed, reporting the values that were generated.</p>
+<p>The loop completes in about one second, depending on the specific random numbers generated.</p>
+<pre><code>0.3649786159984052
+0.48469386498153644
+0.3880300260728501
+0.11865254960654414
+0.42234122971676635
+0.8348296520018135
+0.1768696329327919
+0.043473834132026656
+0.4244687958601574
+0.2971373822352351</code></pre>
+<p>Next, let's look at how we can use <strong>imap()</strong> to make our programs more responsive.</p>
+<h2>Example of Parallel For-Loop with imap()</h2>
+<p>A limitation of <strong>map()</strong> and <strong>starmap() </strong>is that they traverse the provided iterable immediately and issue all function calls to the multiprocessing pool.</p>
+<p>This may use a lot of memory if there are thousands or millions of tasks.</p>
+<p>Additionally, the iterable of return values is not returned until all tasks have completed. This can be problematic if we would prefer to show progress as tasks are completed.</p>
+<p>The <strong>imap()</strong> function overcomes these limitations by only issuing tasks one at a time as workers become available and yielding return values as tasks complete.</p>
+<p>The example below demonstrates a parallel for-loop using the more responsive <strong>imap()</strong> function.</p>
+<pre><code># SuperFastPython.com
+# example of a parallel for loop that is more responsive
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# task to execute in another process
+def task(arg):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # return the generated value
+    return value
+
+# entry point for the program
+if __name__ == '__main__':
+    # create the process pool
+    with Pool() as pool:
+        # call the same function with different data in parallel
+        for result in pool.imap(task, range(10)):
+            # report the value to show progress
+            print(result)
+</code></pre>
+<p>Running the example first creates the multiprocessing pool with one worker per logical CPU in the system.</p>
+<p>Tasks are issued to the process pool until all workers are occupied. Remaining tasks are only issued once workers become available.</p>
+<p>The <strong>imap()</strong> function returns an iterable immediately and begins yielding results as soon as tasks are completed. Return values are returned in the order that tasks were issued to the process pool.</p>
+<pre><code>0.835257932028165
+0.23239313640799752
+0.9100656574752977
+0.541963403413606
+0.771756987041196
+0.26518666284928805
+0.7566356594123003
+0.5955443214316828
+0.8208877725107132
+0.018073556089019838</code></pre>
+<p>Note, if the order of return values does not matter, the <strong>imap_unordered()</strong> function can be used instead, which may be even more responsive.</p>
+<p>You can learn more about how to use the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-imap_unordered/">Multiprocessing Pool.imap_unordered() in Python</a></li></ul>
+<h2>Common Questions</h2>
+<p>This section lists common questions about making for-loops parallel using the multiprocessing pool.</p>
+<p><strong>Do you have any questions?</strong><br/>Share your question in the comments and I may add it to this section.</p>
+<h3>How To Set The Number of Workers</h3>
+<p>You can set the number of workers via the "<strong>processes</strong>" argument to the <strong>multiprocessing.Pool</strong> class.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool with 4 workers
+pool = multiprocessing.Pool(processes=4)</code></pre>
+<p>Because it is the first argument, you can omit the argument name.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool with 4 workers
+pool = multiprocessing.Pool(4)</code></pre>
+<p>You can learn more about how to set the number of workers in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-num-workers/">Multiprocessing Pool Number of Workers in Python</a></li></ul>
+<h3>How Many Workers Should I Use?</h3>
+<p>Use the default, which is one worker per logical CPU.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool with one worker per logical CPU
+pool = multiprocessing.Pool()</code></pre>
+<h3>Shouldn't I Set Number of Workers to Be 1 Less Than The Number of CPUs?</h3>
+<p>You can if you want, but probably not.</p>
+<p>It only makes sense to do this if you have issued tasks to the multiprocessing pool asynchronously (e.g. using <strong>map_async()</strong>) and then intend to perform computational intensive work in the calling process.</p>
+<p>This topic is covered in more detail in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-num-workers/">Multiprocessing Pool Number of Workers in Python</a></li></ul>
+<h3>What is a Logical vs Physical CPU?</h3>
+<p>Modern CPUs typically make use of a technology called hyperthreading.</p>
+<p>Hyperthreading does not refer to a program using threads. Instead, it refers to a technology within the CPU cores themselves that allows each physical core or CPU to act as if it were two logical cores or two CPUs.</p>
+<ul><li><strong>Physical Cores</strong>: The number of CPU cores provided in the hardware, e.g. the chips.</li><li><strong>Logical Cores</strong>: The number of CPU cores after hyperthreading is taken into account.</li></ul>
+<p>It provides automatic in-core parallelism that can offer up to a 30% speed-up over CPU cores that do not offer the technology.</p>
+<p>As such, when we count CPU cores in a system, we typically count the number of logical CPU cores, not the number of physical CPU cores.</p>
+<p>If you know your system uses hyperthreading (it probably does), then you can get the number of physical CPUs in your system by dividing the number of logical CPUs by two.</p>
+<ul><li>Count Physical Cores = Count Logical Cores / 2</li></ul>
+<h3>How Many CPUs Do I Have?</h3>
+<p>There are a number of ways to get the number of CPUs in Python.</p>
+<p>The two pure Python approaches provided by the standard library are:</p>
+<ul><li><strong>multiprocessing.cpu_count()</strong> function</li><li><strong>os.cpu_count()</strong> function.</li></ul>
+<p>For example:</p>
+<pre><code>...
+# get the number of logical cpu cores
+n_cores = multiprocessing.cpu_count()</code></pre>
+<p>This will report the number of logical CPUs in your system.</p>
+<p>You can learn more about getting the number of CPUs in your system in the tutorial:</p>
+<ul><li><a href="../number-of-cpus-python/">Number of CPUs in Python</a></li></ul>
+<h3>What If I Need to Access a Shared Resource?</h3>
+<p>You may need to access a shared resource.</p>
+<p>If your task functions are just reading data, then it should be fine.</p>
+<p>If your task functions are writing data, then you may need a mutex lock to ensure that only one process can change the shared resource at a time.</p>
+<p>This is to avoid a race condition.</p>
+<p>You can learn more about how to use a mutex lock with the multiprocessing pool in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-mutex-lock/">Use a Lock in the Multiprocessing Pool</a></li></ul>
+<h3>What Types of Tasks Can Be Made Parallel?</h3>
+<p>All types.</p>
+<p>The multiprocessing pool is probably well suited to computationally intensive tasks that receive or return only very small amounts of data.</p>
+<p>For IO-bound tasks, use thread-based concurrency instead, such as the ThreadPoolExecutor or the ThreadPool.</p>
+<p>For tasks that receive or return a lot of data, consider having the processes store the data somewhere for the caller to retrieve later, such as in a file, database, or similar. This is to avoid the computational cost of serializing (pickling) the data for transmission between Python processes.</p>
+<h2>Takeaways</h2>
+<p>You now know how to convert a for-loop to be parallel using the multiprocessing pool.</p>
 </main>
 </body>
 </html>

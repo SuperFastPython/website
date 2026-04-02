@@ -85,6 +85,287 @@ def task():
     sleep(random())
 </code></pre>
 <p>Next, we can create a thread pool with four worker threads and submit 50 tasks.</p>
+<pre><code>...
+# number of worker threads
+n_workers = 4
+# start the process pool
+with ThreadPoolExecutor(n_workers) as executor:
+    # submit many tasks
+    futures = [executor.submit(task) for _ in range(50)]
+</code></pre>
+<p>In this example, we want to report an estimate of the number of remaining tasks frequently. One approach is to report the number of remaining tasks as each task in the pool is completed.</p>
+<p>This can be achieved by passing a list of all <code>Future</code> objects to the <code>as_completed()</code> function.</p>
+<pre><code>...
+# update each time a task finishes
+for _ in as_completed(futures):
+	# ...
+</code></pre>
+<p>Each iteration, we can then access the <code>_work_queue</code> member of the <meta/><code>ThreadPoolExecutor</code> class and report the size of this queue via the <code>qsize()</code> function.</p>
+<p>This will report the total number of tasks that are queued up and ready for execution. If we add the number of worker threads in the pool to this number, we will get a rough estimate of the number of remaining tasks.</p>
+<pre><code>...
+# report the number of remaining tasks
+size = executor._work_queue.qsize() + n_workers
+print(f'About {size} tasks remain')
+</code></pre>
+<p>Tying this together, the complete example of checking and reporting the number of remaining tasks in the thread pool is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of estimating the number of remaining tasks using a protected member
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# mock test that works for moment
+def task():
+    sleep(random())
+
+# number of worker threads
+n_workers = 4
+# start the process pool
+with ThreadPoolExecutor(n_workers) as executor:
+    # submit many tasks
+    futures = [executor.submit(task) for _ in range(50)]
+    # update each time a task finishes
+    for _ in as_completed(futures):
+        # report the number of remaining tasks
+        size = executor._work_queue.qsize() + n_workers
+        print(f'About {size} tasks remain')
+</code></pre>
+<p>Running the example creates the thread pool and submits the tasks as per normal.</p>
+<p>Then, as tasks are completed, the count of the number of remaining tasks is reported.</p>
+<p>We can see that the results are quite reasonable until the queue of tasks is empty, and then the estimate is fixed at a value of four. We could fix this by reporting something like "four or fewer tasks remain" at this point.</p>
+<pre><code>...
+About 10 tasks remain
+About 9 tasks remain
+About 8 tasks remain
+About 7 tasks remain
+About 6 tasks remain
+About 5 tasks remain
+About 4 tasks remain
+About 4 tasks remain
+About 4 tasks remain
+About 4 tasks remain
+About 4 tasks remain
+</code></pre>
+<p>We might not have access to the <code>Future</code> objects for tasks submitted to the thread pool.</p>
+<p>In this case, we can spin and check the <code>_work_queue</code> each iteration until the queue of tasks is empty.</p>
+<p>For example:</p>
+<pre><code>...
+# report the number of remaining tasks
+while executor._work_queue.qsize() &gt; 0:
+    size = executor._work_queue.qsize() + n_workers
+    print(f'About {size} tasks remain')
+    sleep(0.1)
+print('4 or fewer tasks remain...')
+</code></pre>
+<p>This is not ideal as the main thread will perform unnecessary computation, but it will provide a simple way of checking and reporting the progress of the thread pool without access to the <meta/><code>Future</code> objects.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# estimate remaining tasks using a protected member and no futures
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# mock test that works for moment
+def task():
+    sleep(random())
+
+# number of worker threads
+n_workers = 4
+# start the process pool
+with ThreadPoolExecutor(n_workers) as executor:
+    # submit many tasks
+    _ = [executor.submit(task) for _ in range(50)]
+    # report the number of remaining tasks
+    while executor._work_queue.qsize() &gt; 0:
+        size = executor._work_queue.qsize() + n_workers
+        print(f'About {size} tasks remain')
+        sleep(0.1)
+    print('4 or fewer tasks remain...')
+</code></pre>
+<p>Running the example creates the thread pool and submits the fifty tasks as before.</p>
+<p>We can see that this approach will report the same number of tasks occasionally and skip over numbers in the count as it is operating based on a sleep timer rather than responding to the actual completion of tasks in the pool.</p>
+<pre><code>...
+About 20 tasks remain
+About 19 tasks remain
+About 17 tasks remain
+About 14 tasks remain
+About 14 tasks remain
+About 14 tasks remain
+About 13 tasks remain
+About 13 tasks remain
+About 11 tasks remain
+About 11 tasks remain
+About 10 tasks remain
+About 10 tasks remain
+About 8 tasks remain
+About 8 tasks remain
+About 7 tasks remain
+About 7 tasks remain
+About 6 tasks remain
+About 5 tasks remain
+4 or fewer tasks remain...
+</code></pre>
+<h2 id="example-of-checking-the-number-of-remaining-tasks-with-a-count">Example of Checking the Number of Remaining Tasks With a Count</h2>
+<p>A simpler approach to checking and reporting the number of remaining tasks is to simply count.</p>
+<p>This requires both access to the <code>Future</code> objects in order to update the count as tasks finish, and to record the number of tasks that were submitted in the first place.</p>
+<p>First, we can define a constant that specifies the number of tasks that will be submitted.</p>
+<pre><code>...
+# total tasks
+TOTAL_TASKS = 50
+</code></pre>
+<p>Next, we can define a variable that will keep track of the number of tasks that have been completed.</p>
+<pre><code>...
+# the number of tasks that are completed
+completed = 0
+</code></pre>
+<p>Finally, we can use the <code>as_completed()</code> function to iterate <code>Future</code> objects as tasks are completed and update the count and report the current number of tasks that remain.</p>
+<pre><code>...
+# update each time a task finishes
+for _ in as_completed(futures):
+    # report the number of remaining tasks
+    completed += 1
+    size = TOTAL_TASKS - completed
+    print(f'About {size} tasks remain to be completed')
+</code></pre>
+<p>Tying this together, the complete example of using a count in the main thread to report the number of remaining tasks in the thread pool is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of estimating the number of remaining tasks using a count
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# mock test that works for moment
+def task():
+    sleep(random())
+
+# total tasks
+TOTAL_TASKS = 50
+# start the process pool
+with ThreadPoolExecutor(4) as executor:
+    # submit many tasks
+    futures = [executor.submit(task) for _ in range(TOTAL_TASKS)]
+    # the number of tasks that are completed
+    completed = 0
+    # update each time a task finishes
+    for _ in as_completed(futures):
+        # report the number of remaining tasks
+        completed += 1
+        size = TOTAL_TASKS - completed
+        print(f'About {size} tasks remain to be completed')
+</code></pre>
+<p>Running the example creates the thread pool and submits fifty tasks.</p>
+<p>As tasks are completed, the count of completed tasks is updated and we are able to report an accurate estimate of the number of tasks that remain.</p>
+<p>This is a reliable approach but does require access to the <meta/><code>Future</code> objects and the count of tasks that were submitted.</p>
+<pre><code>...
+About 10 tasks remain to be completed
+About 9 tasks remain to be completed
+About 8 tasks remain to be completed
+About 7 tasks remain to be completed
+About 6 tasks remain to be completed
+About 5 tasks remain to be completed
+About 4 tasks remain to be completed
+About 3 tasks remain to be completed
+About 2 tasks remain to be completed
+About 1 tasks remain to be completed
+About 0 tasks remain to be completed
+</code></pre>
+<h2 id="example-of-checking-the-number-of-remaining-tasks-with-a-callback">Example of Checking the Number of Remaining Tasks With a Callback</h2>
+<p>Another approach to checking and reporting the number of remaining tasks is to use a done callback.</p>
+<p>This requires that we know how many tasks were submitted, but does not require the <meta/><code>Future</code> objects, beyond registering the callback.</p>
+<p>As before, we must define the total number of tasks that were submitted. In this case, we will use a global constant.</p>
+<pre><code>...
+# total tasks
+TOTAL_TASKS = 50
+</code></pre>
+<p>Next, we need to define a count variable for the number of tasks that were completed and a mutual exclusion lock.</p>
+<p>A <code>Lock</code> is needed to update the count of completed tasks in the callback. This is because the callback function will increment the count and can be accessed concurrently by the worker thread in the thread pool that is executing the callback function.</p>
+<p>The <meta/><code>Lock</code> protects the critical section of updating the count by ensuring only one thread can execute the block at the same time.</p>
+<pre><code>...
+# lock for protecting the completed count
+lock = Lock()
+# the number of tasks that are completed
+completed = 0
+</code></pre>
+<p>Next, we can define our callback function.</p>
+<p>The function will need access to the count of completed tasks and the lock, both of which are global variables.</p>
+<p>The function can then acquire the lock using the context manager, a preferred approach so that we don’t have to explicitly call <code>acquire()</code> and <code>release()</code> on the lock.</p>
+<p>Once we have the lock, the function can update the count and report the current progress in terms of the number of remaining tasks.</p>
+<p>The complete callback function is listed below.</p>
+<pre><code># callback that keeps track of the number of completed tasks
+def completed_callback(future):
+    global completed, lock
+    with lock:
+        completed += 1
+        # check the number of remaining tasks
+        size = TOTAL_TASKS - completed
+        # report the total number of tasks that remain
+        print(f'About {size} tasks remain')
+</code></pre>
+<p>Next, all that remains is to register the callback function on the <meta/><code>Future</code> object for each submitted task.</p>
+<p>This can be achieved by calling the <code>add_done_callback()</code> function and specifying the callback function name.</p>
+<pre><code>...
+# add callbacks
+for future in futures:
+    future.add_done_callback(completed_callback)
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of checking and reporting the number of remaining tasks in the <meta/><code>ThreadPoolExecutor</code> using a callback is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of estimating the number of remaining tasks with a callback
+from time import sleep
+from random import random
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
+
+# mock test that works for moment
+def task():
+    sleep(random())
+
+# callback that keeps track of the number of completed tasks
+def completed_callback(future):
+    global completed, lock
+    with lock:
+        completed += 1
+        # check the number of remaining tasks
+        size = TOTAL_TASKS - completed
+        # report the total number of tasks that remain
+        print(f'About {size} tasks remain')
+
+# total tasks
+TOTAL_TASKS = 50
+# lock for protecting the completed count
+lock = Lock()
+# the number of tasks that are completed
+completed = 0
+# start the process pool
+with ThreadPoolExecutor(4) as executor:
+    # submit many tasks
+    futures = [executor.submit(task) for _ in range(TOTAL_TASKS)]
+    # add callbacks
+    for future in futures:
+        future.add_done_callback(completed_callback)
+    print('Waiting for tasks to complete...')
+</code></pre>
+<p>Running the example creates the thread pool and submits the tasks as before.</p>
+<p>The progress is then reported as each task is completed, providing an accurate estimate of the number of remaining tasks without access to the <meta/><code>Future</code> objects in the main thread.</p>
+<pre><code>...
+About 10 tasks remain
+About 9 tasks remain
+About 8 tasks remain
+About 7 tasks remain
+About 6 tasks remain
+About 5 tasks remain
+About 4 tasks remain
+About 3 tasks remain
+About 2 tasks remain
+About 1 tasks remain
+About 0 tasks remain
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to check the number of tasks remaining in the <code>ThreadPoolExecutor</code>.</p>
 </main>
 </body>
 </html>

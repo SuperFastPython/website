@@ -162,6 +162,125 @@ async def task(lock, num, value):
 <p>We can then create a large number of coroutines and pass the shared lock. Each coroutine will have a unique integer argument and a random floating point value between 0 and 1, which will be how long the coroutine will sleep while holding the lock.</p>
 <p>The coroutines are created in a list comprehension and provided to the <strong>asyncio.gather()</strong> function. The <strong>main()</strong> coroutine will then block until all coroutines are complete.</p>
 <p>The <strong>main()</strong> coroutine that implements this is listed below.</p>
+<pre><code># entry point
+async def main():
+    # create a shared lock
+    lock = asyncio.Lock()
+    # create many concurrent coroutines
+    coros = [task(lock, i, random()) for i in range(10)]
+    # execute and wait for tasks to complete
+    await asyncio.gather(*coros)
+</code></pre>
+<p>The <strong>asyncio.gather()</strong> function cannot take a list of coroutines directly, instead, we must unpack the expressions using the star operator. This can look confusing if this is the first time you are seeing the <strong>asyncio.gather()</strong> function.</p>
+<p>You can learn more about <strong>asyncio.gather()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather/">Asyncio gather() to Run Many Tasks Concurrently</a></li>
+</ul>
+<p>Tying this together, the complete example of using a lock is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio mutual exclusion (mutex) lock
+from random import random
+import asyncio
+
+# task coroutine with a critical section
+async def task(lock, num, value):
+    # acquire the lock to protect the critical section
+    async with lock:
+        # report a message
+        print(f'&gt;coroutine {num} got the lock, sleeping for {value}')
+        # block for a moment
+        await asyncio.sleep(value)
+
+# entry point
+async def main():
+    # create a shared lock
+    lock = asyncio.Lock()
+    # create many concurrent coroutines
+    coros = [task(lock, i, random()) for i in range(10)]
+    # execute and wait for tasks to complete
+    await asyncio.gather(*coros)
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs, first creating the shared lock.</p>
+<p>It then creates a list of coroutines, each is passed the shared lock, a unique integer, and a random floating point value.</p>
+<p>The list of coroutines is passed to the <strong>gather()</strong> function and the <strong>main()</strong> coroutine suspends until all coroutines are completed.</p>
+<p>A task coroutine executes, acquires the lock, reports a message, then awaits the sleep, suspending.</p>
+<p>Another coroutine resumes. It attempts to acquire the lock and is suspended, while it waits. This process is repeated with many if not all coroutines.</p>
+<p>The first coroutines resumes, exits the block, and releases the lock automatically via the asynchronous context manager.</p>
+<p>The first coroutine to wait on the lock resumes, acquires the lock, reports a message, and sleeps.</p>
+<p>This process repeats until all coroutines are given an opportunity to acquire the lock, execute the critical section and terminate.</p>
+<p>Once all tasks terminate, the <strong>main()</strong> coroutine resumes and terminates, closing the program.</p>
+<p>The output from the program will differ each time it is run given the use of random numbers.</p>
+<pre><code>&gt;coroutine 0 got the lock, sleeping for 0.35342849008361354
+&gt;coroutine 1 got the lock, sleeping for 0.7899604470736562
+&gt;coroutine 2 got the lock, sleeping for 0.10018104240779657
+&gt;coroutine 3 got the lock, sleeping for 0.7500987515008404
+&gt;coroutine 4 got the lock, sleeping for 0.5406680510135352
+&gt;coroutine 5 got the lock, sleeping for 0.5307431762593662
+&gt;coroutine 6 got the lock, sleeping for 0.44269144160147067
+&gt;coroutine 7 got the lock, sleeping for 0.7973281038321043
+&gt;coroutine 8 got the lock, sleeping for 0.49827720719979507
+&gt;coroutine 9 got the lock, sleeping for 0.1817735660777796</code></pre>
+<h2>Common Questions</h2>
+<p>This section lists common questions about the <strong>asyncio.Lock</strong> mutex in Python.</p>
+<h3>Is asyncio.Lock coroutine-safe?</h3>
+<p>Yes.</p>
+<p>An <strong>asyncio.Lock</strong> object can be used to protect a resource or critical section from concurrently executing coroutines within one event loop.</p>
+<h3>Is asyncio.Lock thread-safe?</h3>
+<p>No.</p>
+<p>An <strong>asyncio.Lock</strong> object cannot protect a resource or critical section from execution by multiple threads.</p>
+<p>Instead, you should use a <strong>threading.Lock</strong> object.</p>
+<p>See:</p>
+<ul>
+<li><a href="../thread-mutex-lock/">Threading Mutex Lock in Python</a></li>
+</ul>
+<h3>Is asyncio.Lock process-safe?</h3>
+<p>No.</p>
+<p>An <strong>asyncio.Lock</strong> object cannot protect a resource or critical section from execution by multiple processes.</p>
+<p>Instead, you should use a <strong>multiprocessing.Lock</strong> object.</p>
+<p>See:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<h3>Can asyncio Coroutines Have Race Conditions?</h3>
+<p>Yes.</p>
+<p>A critical section must have an await expression or similar causing the executing coroutine to suspend and for other coroutines to execute the same critical section or access the same resource.</p>
+<h3>Do We Need To Protect Critical Sections In Light of the GIL?</h3>
+<p>Yes.</p>
+<p>The GIL only pertains to threads, not coroutines.</p>
+<p>All coroutines for one asyncio event loop execute within a single thread, and a thread executes within a single process.</p>
+<p>The GIL does not prevent race conditions in critical sections in coroutines, threads, or processes.</p>
+<p>Race conditions at all three levels are possible.</p>
+<p>See:</p>
+<ul>
+<li><a href="../thread-race-condition-timing/">How to Fix a Race Condition With Timing in Python</a></li>
+<li><a href="../thread-race-condition-shared-variable/">Race Condition With a Shared Variable in Python</a></li>
+</ul>
+<h3>What If We Don't Release The Lock?</h3>
+<p>Not releasing the lock is a concurrency bug.</p>
+<p>If the lock is not released by a coroutine that acquired it, then it can not be acquired again and the code protected by the critical section cannot be executed again.</p>
+<p>This may result in a deadlock.</p>
+<p>See:</p>
+<ul>
+<li><a href="../thread-deadlock-in-python/">How to Identify a Deadlock in Python</a></li>
+</ul>
+<h3>What If We Ignore The Lock?</h3>
+<p>Ignoring the lock is a concurrency bug.</p>
+<p>You may write code so that some coroutines may obey the lock and some may not. This will likely result in a race condition and defeat the purpose of having a lock in the first place.</p>
+<p>The lock only protects the critical section (data, resources, etc.) if it is enforced in all accesses to the critical section.</p>
+<h3>Is the asyncio.Lock Reentrant?</h3>
+<p>No.</p>
+<p>A reentrant lock is a lock that if held by one coroutine can be acquired again by the same coroutine.</p>
+<p>At the time of writing, there does not appear to be support for a reentrant lock in asyncio.</p>
+<p>Also, see:</p>
+<ul>
+<li><a href="https://github.com/python/asyncio/issues/439">Reentrant locks in asyncio</a></li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know how to use mutex locks to protect critical sections from coroutines in Python.</p>
 </main>
 </body>
 </html>

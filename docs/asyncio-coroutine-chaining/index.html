@@ -85,6 +85,397 @@ async def func3():
 <p>One approach would be to define a new coroutine that takes an ordered list of coroutines that are then executed in sequence.</p>
 <p>This would assume that the coroutines are independent and that the result from one coroutine is not required by another coroutine.</p>
 <p>The <strong>chain()</strong> coroutine below implements this.</p>
+<pre><code># execute a collection of awaitables sequentially
+async def chain(*awaitables):
+	# return results from all awaitables, if any
+	return 
+</code></pre>
+<p>We can use this coroutine by providing a number of coroutines.</p>
+<p>For example:</p>
+<pre><code>...
+# create nested groups of coroutines
+await chain(func1(), func2(), func3())</code></pre>
+<p>Or, a list of coroutines can be prepared and unpacked using the star operator, for example:</p>
+<pre><code>...
+# create a list of coroutine objects
+coros = [coro(i) for i in range(100)]
+# create nested groups of coroutines
+await chain(*coros)
+</code></pre>
+<p>Unlike <strong>asyncio.gather()</strong>, the <strong>chain()</strong> coroutine ensures that the provided awaitables are executed in order and that the next awaitable is not executed until the one before it is done.</p>
+<p>Because the coroutines are executed sequentially, we lose any benefit we might get from executing the coroutines concurrently, given the coroutines are independent of each other.</p>
+<p>A benefit of the function is that it allows coroutines to be grouped and nested.</p>
+<p>For example:</p>
+<pre><code>...
+# create nested groups of coroutines
+await chain(func1(), chain(func2(), func3()))</code></pre>
+<p>Next, let's look at how we might automatically chain dependent coroutines using callback functions.</p>
+<h3>Automatically Chain Coroutines With Callbacks</h3>
+<p>Asyncio provides the ability to add and remove done callback functions to tasks.</p>
+<p>Callbacks are regular Python functions that are executed when the task is done and require that the coroutine first be scheduled as an asyncio task.</p>
+<p>A callback cannot await a coroutine or a task, but it can create and schedule a new task.</p>
+<p>This means that we can define a series of callbacks that are added to <strong>asyncio.Task</strong> instances in order to chain coroutines together.</p>
+<p>For example:</p>
+<pre><code># done callback function
+def callback(task):
+    # schedule the next task
+    task = asyncio.create_task(coro())
+    # add the next callback
+    task.add_done_callback(another_callback)
+</code></pre>
+<p>You can learn about done callback functions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-done-callback-functions/">How to Use Asyncio Task Done Callback Functions</a></li>
+</ul>
+<p>The callback function provides the task instance to which it was added as an argument so it is able to retrieve the result from the task and pass it to the next task via an argument to the coroutine.</p>
+<p>For example:</p>
+<pre><code># done callback function
+def callback(task):
+    # get the result
+    result = task.result()
+    # schedule the next task
+    task = asyncio.create_task(coro(result))
+    # add the next callback
+    task.add_done_callback(another_callback)
+</code></pre>
+<p>This allows a chain of dependent coroutines to be defined.</p>
+<p>For example:</p>
+<pre><code>coro1()
+	-&gt; callback1()
+		-&gt; coro2()
+			-&gt; callback2()
+				-&gt; coro3()
+					-&gt; callback3()</code></pre>
+<p>A limitation is that the call that initiates the chain has no way of knowing when the chain will be completed. There is also no easy way to get the result from the end of the chain back to the caller.</p>
+<p>This is because each coroutine is executed as an independent <strong>asyncio.Task</strong>.</p>
+<p>We can use a mechanism to signal to the caller that the chain is complete, such as an <strong>asyncio.Event</strong>.</p>
+<p>The caller can create the event, assign it to a global variable, and wait for it to be set.</p>
+<p>For example:</p>
+<pre><code>...
+# declare a global variable
+global event
+# define the event
+event = asyncio.Event()
+...
+# wait for the chain of tasks to be done
+await event.wait()
+</code></pre>
+<p>The final coroutine in the chain can access the same event global variable and set it when it is done, perhaps via a callback function designed for this purpose.</p>
+<p>For example:</p>
+<pre><code># done callback function
+def callback(task):
+    # declare the global variable
+    global event
+    # signal to the main process that the chain is done
+    event.set()
+</code></pre>
+<p>You can learn more about asyncio events in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-event/">How to Use an Asyncio Event in Python</a></li>
+</ul>
+<p>Now that we know how to define chains of coroutines in asyncio programs, let's look at some worked examples.</p>
+<h2>Example of Manual Coroutine Chaining</h2>
+<p>We can explore how to manually chain coroutines together.</p>
+<p>In this example, we will define three coroutines in a chain:</p>
+<ol>
+<li>The first coroutine will create and await a result from the second coroutine.</li>
+<li>The second coroutine will create and await a result from the third coroutine.</li>
+<li>The third coroutine will prepare and return a result.</li>
+</ol>
+<p>The <strong>main()</strong> coroutine will start the chain by creating the first coroutine and await the result of the chain.</p>
+<p>The chain looks as follows</p>
+<pre><code>result = func3(data + func2(data + func1(data)))</code></pre>
+<p>Notice the nesting structure of the chain. This is much like function calls, except here we assume that a non-blocking I/O is required to retrieve the data in each step of the chain.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of manually chaining coroutines
+import asyncio
+
+# third link in the chain
+async def func1():
+    # report status
+    print('&gt;func1()')
+    # calculate and return
+    return 1
+
+# second link in the chain
+async def func2():
+    # report status
+    print('&gt;func2()')
+    # calculate and return
+    return await func1() + 2
+
+# first link in the chain
+async def func3():
+    # report status
+    print('&gt;func3()')
+    # calculate and return
+    return await func2() + 100
+
+# main coroutine
+async def main():
+    # kick off the chain
+    result = await func3()
+    # report the result
+    print(f'Main: {result}')
+
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and starts the asyncio event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>func3()</strong> coroutine and waits for it to complete.</p>
+<p>The <strong>func3()</strong> coroutine runs and reports a message, it then creates the <strong>func2()</strong> coroutine and waits for it to complete.</p>
+<p>The <strong>func2()</strong> coroutine runs and reports a message, then creates the <strong>func1()</strong> coroutine and waits for it to complete.</p>
+<p>The <strong>func1()</strong> coroutine runs, reports a message, and returns a value.</p>
+<p>The <strong>func2()</strong> coroutine receives the value and adds it to its own value before returning the result.</p>
+<p>The <strong>func3()</strong> coroutine receives the value and adds it to its own value before returning the result.</p>
+<p>Finally, the <strong>main()</strong> coroutine receives the result and reports it.</p>
+<p>This highlights how we can manually chain coroutines in our asyncio programs.</p>
+<pre><code>&gt;func3()
+&gt;func2()
+&gt;func1()
+Main: 103</code></pre>
+<p>Next, let's look at how we might automatically chain independent coroutines.</p>
+<h2>Example of Automatic Chaining of Independent Coroutines</h2>
+<p>We can explore how to automatically chain independent coroutines.</p>
+<p>In this example, we will use our <strong>chain()</strong> utility coroutine developed above.</p>
+<pre><code># execute a collection of awaitables sequentially
+async def chain(*awaitables):
+    # return results from all awaitables, if any
+    return 
+</code></pre>
+<p>This allows us to execute a linear sequence of independent coroutines. They are independent because they do not interact with each other. There is no passing of results from one to the next.</p>
+<p>In this case, we will define a sequence of 3 sequential tasks where the second task is divided into 2 sub-tasks.</p>
+<p>For example:</p>
+<ul>
+<li>1. <strong>task1()</strong></li>
+<li>2a. <strong>task2_sub1()</strong></li>
+<li>2b. <strong>task2_sub2()</strong></li>
+<li>3. <strong>task3()</strong></li>
+</ul>
+<p>We will use our <strong>chain()</strong> utility to group or chain the two task2 subtasks together into one task.</p>
+<p>For example:</p>
+<pre><code>...
+chain(task2_sub1(), task2_sub2())</code></pre>
+<p>We will then chain the three tasks together in a linear sequence.</p>
+<p>For example:</p>
+<pre><code>...
+# complete all tasks
+results = await chain(task1(), chain(task2_sub1(), task2_sub2()), task3())</code></pre>
+<p>Each task will return a result and we will report all results once the chain is complete.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of automatically chaining independent coroutines
+import asyncio
+
+# execute a collection of awaitables sequentially
+async def chain(*awaitables):
+    # return results from all awaitables, if any
+    return 
+
+# independent task
+async def task1():
+    # report progress
+    print('&gt;task1()')
+    # simulate some work
+    await asyncio.sleep(1)
+    # return a result
+    return 1
+
+# independent task
+async def task2_sub1():
+    # report progress
+    print('&gt;task2_sub1()')
+    # simulate some work
+    await asyncio.sleep(1)
+    # return a result
+    return 2.1
+
+# independent task
+async def task2_sub2():
+    # report progress
+    print('&gt;task2_sub2()')
+    # simulate some work
+    await asyncio.sleep(1)
+    # return a result
+    return 2.2
+
+# independent task
+async def task3():
+    # report progress
+    print('&gt;task3()')
+    # simulate some work
+    await asyncio.sleep(1)
+    # return a result
+    return 3
+
+# main coroutine
+async def main():
+    # complete all tasks
+    results = await chain(task1(), chain(task2_sub1(), task2_sub2()), task3())
+    # report all results
+    print(results)
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and starts the asyncio event loop.</p>
+<p>The chain is defined as a sequence of three tasks where the second task consists of two subtasks.</p>
+<p>The <strong>main()</strong> coroutine blocks and waits for the chain to complete.</p>
+<p>The <strong>chain()</strong> coroutine runs and executes each task sequentially, starting with <strong>task1()</strong> which reports a message and returns a value.</p>
+<p>The two task2 subtasks run, report a message, and return a value.</p>
+<p>Finally, the <strong>task3()</strong> coroutine runs, reports a message, and returns a value.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports all return values.</p>
+<p>This highlights how we can chain independent coroutines together into a linear sequence and retrieve all of their return values.</p>
+<pre><code>&gt;task1()
+&gt;task2_sub1()
+&gt;task2_sub2()
+&gt;task3()
+[1, [2.1, 2.2], 3]</code></pre>
+<p>Next, let's explore how we might chain coroutines together using done callback functions.</p>
+<h2>Example of Automatic Chaining of Coroutines With Callbacks</h2>
+<p>We can explore how to chain coroutines together using done callback functions.</p>
+<p>In this example, we will define three coroutines that are intended to be executed in a linear chain.</p>
+<ol>
+<li>The first task prepares some data and returns it as a result.</li>
+<li>The second task requires the result from the first task, uses it, and returns a result.</li>
+<li>The third task requires the result from the second task, uses it, and returns a result.</li>
+</ol>
+<p>We will use done callback functions to connect the coroutines in a chain via background tasks.</p>
+<p>The first done callback function will be added to the first coroutine. It will retrieve the result from the first task, create and schedule the second task, and add a done callback to the task.</p>
+<pre><code># done callback function
+def callback1(task):
+    # get the result
+    result = task.result()
+    # schedule the next task
+    task = asyncio.create_task(task2(result))
+    # add the next callback
+    task.add_done_callback(callback2)
+</code></pre>
+<p>The second done callback is much like the first. It will retrieve the result from the second task, create the third task, pass it the result from the second task, and then add a done callback to the newly created and scheduled task.</p>
+<pre><code># done callback function
+def callback2(task):
+    # get the result
+    result = task.result()
+    # schedule the next task
+    task = asyncio.create_task(task3(result))
+    # add the next callback
+    task.add_done_callback(callback3)
+</code></pre>
+<p>Finally, the callback function for the third task is special.</p>
+<p>It accesses a global variable, in this case an <strong>asyncio.Event</strong> and signals that the chain of tasks is done.</p>
+<pre><code># done callback function
+def callback3(task):
+    # declare the global variable
+    global event
+    # signal to the main process that the chain is done
+    event.set()
+</code></pre>
+<p>The main coroutine declares and defines the event used to signal the chain is done.</p>
+<pre><code>...
+# declare a global variable
+global event
+# define the event
+event = asyncio.Event()
+</code></pre>
+<p>It then creates the first task, adds the callback function, and then waits on the event for the chain to be done.</p>
+<pre><code>...
+# create and schedule the first task in the chain
+first_task = asyncio.create_task(task1())
+# add the done callback
+first_task.add_done_callback(callback1)
+# wait for the chain of tasks to be done
+await event.wait()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of chaining coroutines via done callback functions
+import asyncio
+
+# independent task
+async def task1():
+    # report progress
+    print('&gt;task1()')
+    # simulate some work
+    await asyncio.sleep(1)
+    # return a result
+    return 1
+
+# independent task
+async def task2(data):
+    # report progress
+    print(f'&gt;task2() got {data}')
+    # simulate some work
+    await asyncio.sleep(1)
+    # return a result
+    return 2
+
+# independent task
+async def task3(data):
+    # report progress
+    print(f'&gt;task3() got {data}')
+    # simulate some work
+    await asyncio.sleep(1)
+    # return a result
+    return 3
+
+# done callback function
+def callback3(task):
+    # declare the global variable
+    global event
+    # signal to the main process that the chain is done
+    event.set()
+
+# done callback function
+def callback2(task):
+    # get the result
+    result = task.result()
+    # schedule the next task
+    task = asyncio.create_task(task3(result))
+    # add the next callback
+    task.add_done_callback(callback3)
+
+# done callback function
+def callback1(task):
+    # get the result
+    result = task.result()
+    # schedule the next task
+    task = asyncio.create_task(task2(result))
+    # add the next callback
+    task.add_done_callback(callback2)
+
+# main coroutine
+async def main():
+    # declare a global variable
+    global event
+    # define the event
+    event = asyncio.Event()
+    # create and schedule the first task in the chain
+    first_task = asyncio.create_task(task1())
+    # add the done callback
+    first_task.add_done_callback(callback1)
+    # wait for the chain of tasks to be done
+    await event.wait()
+    # report progress
+    print('Main: chain is done')
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and uses it to start the asyncio event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and declares and defines a global variable for the event.</p>
+<p>It then creates the first task in the chain and adds a done callback to it. It then waits for the event to be set.</p>
+<p>The first task runs, reports a message, sleeps, and returns a result. The done callback for the task runs, gets the result, creates the second task, and passes the result as an argument. It then adds a done callback to the second task.</p>
+<p>The second task runs, it receives the data as an argument, reports it, sleeps a moment, and then returns a result. The done callback for the task runs, retrieves the result from the task, creates the third task, and passes the result before finally adding a done callback to the new task.</p>
+<p>The third task runs, receives the result from the second task, reports it, sleeps a moment, then returns a result. The done callback for the task runs, and sets the event.</p>
+<p>The <strong>main()</strong> coroutine sees the event is set, resumes, and reports that the chain is done.</p>
+<p>This example highlights how we can chain coroutines together using done callback functions.</p>
+<pre><code>&gt;task1()
+&gt;task2() got 1
+&gt;task3() got 2
+Main: chain is done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to chain coroutines in asyncio programs.</p>
 </main>
 </body>
 </html>

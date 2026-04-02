@@ -82,6 +82,505 @@ atags = soup.find_all('a')
 </code></pre>
 <p>We can then iterate through all of the found tags and retrieve the contents of the href property on each, e.g. get the links to files from each tag.</p>
 <p>This can be done in a list comprehension, giving us a list of URLs to validate.</p>
+<pre><code>...
+# get all links from a tags
+return [tag.get('href') for tag in atags]
+</code></pre>
+<p>Tying this all together, the <strong>get_urls_from_html()</strong> function below takes the downloaded HTML content and returns a list of URLs to validate.</p>
+<pre><code># decode downloaded html and extract all &lt;a href=""&gt; links
+def get_urls_from_html(content):
+    # decode the provided content as ascii text
+    html = content.decode('utf-8')
+    # parse the document as best we can
+    soup = BeautifulSoup(html, 'html.parser')
+    # find all all of the &lt;a href=""&gt; tags in the document
+    atags = soup.find_all('a')
+    # get all links from a tags
+    return [tag.get('href') for tag in atags]
+</code></pre>
+<p>We will use this function to extract all of the links from the list of top books.</p>
+<p>Next, we can extract just the book identifiers from these links.</p>
+<h3 id="extract-book-identifiers">Extract Book Identifiers</h3>
+<p>We have a list of links extracted from the webpage of the most popular books on Project Gutenberg.</p>
+<p>Reviewing the source code for the page, we can see that generally, books are linked using a URL structure like '<strong>/ebooks/nnn</strong>' where '<strong>nnn</strong>' is the book identifier.</p>
+<p>We can collect all of these book identifiers and download each book in turn using a standard URL structure on the website.</p>
+<p>Given this '<strong>/ebooks/nnn</strong>' structure of links to books, we can define a regular expression and find all links that match this structure.</p>
+<pre><code>...
+# define a url pattern we are looking for
+pattern = re.compile('/ebooks/[0-9]+')
+</code></pre>
+<p>We can then enumerate all links extracted from the webpage and skip all of those that do not match this structure.</p>
+<pre><code>...
+for link in links:
+    # check of the link matches the pattern
+    if not pattern.match(link):
+        continue
+</code></pre>
+<p>For those links that do match, we can extract just the book identifier. This is any integer characters after the last '<strong>/</strong>' in the URL, or simply everything after the eight characters that make up the string '<strong>/ebooks/</strong>'. For example:</p>
+<pre><code>...
+# extract the book id from /ebooks/nnn
+book_id = link[8:]
+</code></pre>
+<p>We don't want to download the same book more than once; that would be a waste of time and effort.</p>
+<p>Therefore, we can store all of the extracted book identifiers in a set that ensures only unique identifiers are stored.</p>
+<p>Tying this all together, the <strong>get_book_identifiers()</strong> function below will take a list of raw URLs extracted from the list of top books webpage and return a set of unique book identifiers.</p>
+<pre><code># return all book unique identifiers from a list of raw links
+def get_book_identifiers(links):
+    # define a url pattern we are looking for
+    pattern = re.compile('/ebooks/[0-9]+')
+    # process the list of links for those that match the pattern
+    books = set()
+    for link in links:
+        # check of the link matches the pattern
+        if not pattern.match(link):
+            continue
+        # extract the book id from /ebooks/nnn
+        book_id = link[8:]
+        # store in the set, only keep unique ids
+        books.add(book_id)
+    return books
+</code></pre>
+<h3 id="download-a-single-book-via-its-identifier">Download a Single Book via Its Identifier</h3>
+<p>If we click a few books on the site, we can quickly see that a common website structure is used.</p>
+<p>Each book has a webpage that uses it's book identifier; for example: '<strong>https://www.gutenberg.org/ebooks/nnn</strong>' where <strong>nnn</strong> is the book id.</p>
+<p>If we try to download the ASCII version of any book, we get a URL that looks like '<strong>https://www.gutenberg.org/files/nnn/nnn-0.txt</strong>', again, where nnn is the book identifier.</p>
+<p>Therefore, we can create a string template using this direct download link and substitute each book identifier we have collected to create a download link for each top book on the website.</p>
+<p>For example:</p>
+<pre><code>...
+# construct the download url
+url = f'https://www.gutenberg.org/files/{book_id}/{book_id}-0.txt'
+</code></pre>
+<p>We can then download this book in ASCII format using our <strong>download_url()</strong> function developed above.</p>
+<pre><code>...
+# download the content
+data = download_url(url)
+</code></pre>
+<p>Finally, we can save the downloaded file locally.</p>
+<p>Given a local directory where we wish to save books (e.g. '<strong>./books/</strong>'), we can first construct a local path for saving the book by joining the save path with the filename, then use this path to save the contents of the book file.</p>
+<pre><code>...
+# create local path
+save_file = join(save_path, f'{book_id}.txt')
+# save book to file
+with open(save_file, 'wb') as file:
+    file.write(data)
+</code></pre>
+<p>Tying this together, the <strong>download_book()</strong> function below takes a book identifier and a local directory save path and will download and save the book and return a message of either success or failure.</p>
+<pre><code># download one book from project gutenberg
+def download_book(book_id, save_path):
+    # construct the download url
+    url = f'https://www.gutenberg.org/files/{book_id}/{book_id}-0.txt'
+    # download the content
+    data = download_url(url)
+    if data is None:
+        return f'Failed to download {url}'
+    # create local path
+    save_file = join(save_path, f'{book_id}.txt')
+    # save book to file
+    with open(save_file, 'wb') as file:
+        file.write(data)
+    return f'Saved {save_file}'
+</code></pre>
+<p>Finally, we can put this all together into a complete example.</p>
+<h3 id="complete-example">Complete Example</h3>
+<p>We now have all of the elements to download all of the top books from Project Gutenberg.</p>
+<p>First, the web page that lists the top books is downloaded, then parsed for links. All unique book identifiers are retrieved from the list of links, then each book is downloaded in turn.</p>
+<p>The <strong>download_all_books()</strong> function below ties these elements together, taking the URL of the list of top books websites and a save path as arguments and reporting progress as each book is downloaded.</p>
+<p>Importantly, the output path directory is created as needed using the <strong>makedirs()</strong> function.</p>
+<pre><code># download all top books from project gutenberg
+def download_all_books(url, save_path):
+    # download the page that lists top books
+    data = download_url(url)
+    print(f'.downloaded {url}')
+    # extract all links from the page
+    links = get_urls_from_html(data)
+    print(f'.found {len(links)} links on the page')
+    # retrieve all unique book ids
+    book_ids = get_book_identifiers(links)
+    print(f'.found {len(book_ids)} unique book ids')
+    # create the save directory if needed
+    makedirs(save_path, exist_ok=True)
+    # download and save each book in turn
+    for book_id in book_ids:
+        # download and save this book
+        result = download_book(book_id, save_path)
+        # report result
+        print(result)
+</code></pre>
+<p>We can then call this function with the URL to the list of top books and specify a '<strong>books</strong>' subdirectory of the current working directory as the location to save the downloaded books.</p>
+<pre><code>...
+# entry point
+URL = 'https://www.gutenberg.org/browse/scores/top'
+DIR = 'books'
+# download top books
+download_all_books(URL, DIR)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# download all the top books from gutenberg.org
+from os.path import basename
+from os.path import join
+from os import makedirs
+from urllib.request import urlopen
+from urllib.parse import urljoin
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+from bs4 import BeautifulSoup
+import re
+
+# download html and return parsed doc or None on error
+def download_url(urlpath):
+    try:
+        # open a connection to the server
+        with urlopen(urlpath, timeout=3) as connection:
+            # read the contents of the html doc
+            return connection.read()
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return None
+
+# decode downloaded html and extract all &lt;a href=""&gt; links
+def get_urls_from_html(content):
+    # decode the provided content as ascii text
+    html = content.decode('utf-8')
+    # parse the document as best we can
+    soup = BeautifulSoup(html, 'html.parser')
+    # find all all of the &lt;a href=""&gt; tags in the document
+    atags = soup.find_all('a')
+    # get all links from a tags
+    return [tag.get('href') for tag in atags]
+
+# return all book unique identifiers from a list of raw links
+def get_book_identifiers(links):
+    # define a url pattern we are looking for
+    pattern = re.compile('/ebooks/[0-9]+')
+    # process the list of links for those that match the pattern
+    books = set()
+    for link in links:
+        # check of the link matches the pattern
+        if not pattern.match(link):
+            continue
+        # extract the book id from /ebooks/nnn
+        book_id = link[8:]
+        # store in the set, only keep unique ids
+        books.add(book_id)
+    return books
+
+# download one book from project gutenberg
+def download_book(book_id, save_path):
+    # construct the download url
+    url = f'https://www.gutenberg.org/files/{book_id}/{book_id}-0.txt'
+    # download the content
+    data = download_url(url)
+    if data is None:
+        return f'Failed to download {url}'
+    # create local path
+    save_file = join(save_path, f'{book_id}.txt')
+    # save book to file
+    with open(save_file, 'wb') as file:
+        file.write(data)
+    return f'Saved {save_file}'
+
+# download all top books from project gutenberg
+def download_all_books(url, save_path):
+    # download the page that lists top books
+    data = download_url(url)
+    print(f'.downloaded {url}')
+    # extract all links from the page
+    links = get_urls_from_html(data)
+    print(f'.found {len(links)} links on the page')
+    # retrieve all unique book ids
+    book_ids = get_book_identifiers(links)
+    print(f'.found {len(book_ids)} unique book ids')
+    # create the save directory if needed
+    makedirs(save_path, exist_ok=True)
+    # download and save each book in turn
+    for book_id in book_ids:
+        # download and save this book
+        result = download_book(book_id, save_path)
+        # report result
+        print(result)
+
+# entry point
+URL = 'https://www.gutenberg.org/browse/scores/top'
+DIR = 'books'
+# download top books
+download_all_books(URL, DIR)
+</code></pre>
+<p>Running the example first downloads the webpage with the list of the most popular books.</p>
+<p>First, the HTML document is parsed and all links are extracted, then all book IDs are extracted from the links.</p>
+<p>Finally, each book was downloaded one-by-one.</p>
+<p>In this case, we can see that 675 links were extracted from the HTML document and a total of 120 unique book identifiers were retrieved.</p>
+<p>It takes a long time to download (or attempt to download) all 120 books. Not all books can be downloaded; many fail, perhaps because the book downloads don't conform to the expected link structure.</p>
+<p>Nevertheless, 100 books are successfully downloaded, in my case, and it takes about 312.6 seconds to complete (just over 5 minutes).</p>
+<p><strong>How many books did you download and how long did it take?</strong><br/>Let me know in the comments below.</p>
+<pre><code>.downloaded https://www.gutenberg.org/browse/scores/top
+.found 675 links on the page
+.found 120 unique book ids
+Failed to download https://www.gutenberg.org/files/768/768-0.txt
+Saved books/1998.txt
+Failed to download https://www.gutenberg.org/files/63256/63256-0.txt
+Failed to download https://www.gutenberg.org/files/1399/1399-0.txt
+Saved books/209.txt
+Saved books/41.txt
+Saved books/2600.txt
+Saved books/3207.txt
+Saved books/4517.txt
+Saved books/203.txt
+Saved books/66743.txt
+Saved books/36.txt
+Saved books/1934.txt
+Saved books/1080.txt
+Saved books/46.txt
+Saved books/408.txt
+Saved books/66749.txt
+...
+</code></pre>
+<p>Next, we will look at the <strong>ThreadPoolExecutor</strong> class that can be used to create a pool of worker threads that will allow us to speed up this download process.</p>
+<h2 id="how-to-create-a-pool-of-worker-threads-with-threadpoolexecutor">How to Create a Pool of Worker Threads with ThreadPoolExecutor</h2>
+<p>We can use the <strong>ThreadPoolExecutor</strong> to speed up the process of downloading multiple books</p>
+<p>The <strong>ThreadPoolExecutor</strong> class is provided as part of the <strong>concurrent.futures</strong> module for easily running concurrent tasks.</p>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of worker threads, which is different from the <strong>ProcessPoolExecutor</strong> that provides a pool of worker processes.</p>
+<p>Generally, <strong>ThreadPoolExecutor</strong> should be used for concurrent IO-bound tasks, like downloading URLs, and the <strong>ProcessPoolExecutor</strong> should be used for concurrent CPU-bound tasks, like calculating.</p>
+<p>Using the <strong>ThreadPoolExecutor</strong> was designed to be easy and straightforward. It is like the "<em>automatic mode</em>" for Python threads.</p>
+<ol><li>Create the thread pool by calling <strong>ThreadPoolExecutor()</strong>.</li><li>Submit tasks and get futures by calling <strong>submit()</strong>.</li><li>Wait and get results as tasks complete by calling <strong>as_completed()</strong>.</li><li>Shut down the thread pool by calling <strong>shutdown()</strong>.</li></ol>
+<h3 id="create-the-thread-pool">Create the Thread Pool</h3>
+<p>First, a <strong>ThreadPoolExecutor</strong> instance must be created. By default, it will create a pool of five times the number of CPUs you have available. This is good for most purposes.</p>
+<pre><code>...
+# create a thread pool with the default number of worker threads
+executor = ThreadPoolExecutor()
+</code></pre>
+<p>You can run tens to hundreds of concurrent IO-bound threads per CPU, although perhaps not thousands or tens of thousands. You can specify the number of threads to create in the pool via the <strong>max_workers</strong> argument; for example:</p>
+<pre><code>...
+# create a thread pool with 10 worker threads
+executor = ThreadPoolExecutor(max_workers=10)
+</code></pre>
+<h3 id="submit-tasks-to-the-tread-pool">Submit Tasks to the Tread Pool</h3>
+<p>Once created, it can send tasks into the pool to be completed using the <strong>submit()</strong> function.</p>
+<p>This function takes the name of the function to call any and all arguments and returns a Future object.</p>
+<p>The <strong>Future</strong> object is a promise to return the results from the task (if any) and provides a way to determine if a specific task has been completed or not.</p>
+<pre><code>...
+# submit a task and get a future object
+future = executor.submit(task, arg1, arg2, ...)
+</code></pre>
+<p>The return from a function executed by the thread pool can be accessed via the <strong>result()</strong> function on the <strong>Future</strong> object. It will wait until the result is available, if needed, or return immediately if the result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from a future
+result = future.result()
+</code></pre>
+<h3 id="get-results-as-tasks-complete">Get Results as Tasks Complete</h3>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available, rather than waiting for tasks to be completed in the order they were submitted.</p>
+<p>The concurrent.futures module provides a <strong>as_completed()</strong> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
+<p>We can call the function and provide it a list of <strong>Future</strong> objects created by calling <strong>submit()</strong> and it will return <strong>Future</strong> objects as they are completed in whatever order.</p>
+<p>For example, we can use a list comprehension to submit the tasks and create the list of <strong>Future</strong> objects:</p>
+<pre><code>...
+# submit all tasks into the thread pool and create a list of futures
+futures = [executor.submit(task, item) for item in items]
+</code></pre>
+<p>Then get results for tasks as they complete in a for loop:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+	# do something with the result...
+</code></pre>
+<h3 id="shut-down-the-thread-pool">Shut Down the Thread Pool</h3>
+<p>Once all tasks are completed, we can close down the thread pool, which will release each thread and any resources it may hold (e.g. the stack space).</p>
+<pre><code>...
+# shutdown the thread pool
+executor.shutdown()
+</code></pre>
+<p>An easier way to use the thread pool is via the context manager (the "<strong>with</strong>" keyword), which ensures it is closed automatically once we are finished with it.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=10) as executor:
+	# submit tasks
+	futures = [executor.submit(task, item) for item in items]
+	# get results as they are available
+	for future in as_completed(futures):
+		# get the result
+		result = future.result()
+		# do something with the result...</code></pre>
+<p>Now that we are familiar with <strong>ThreadPoolExecutor</strong> and how to use it, let's look at how we can adapt our program for downloading books to make use of it.</p>
+<h2 id="download-multiple-books-concurrently">Download Multiple Books Concurrently</h2>
+<p>The program for downloading books can be adapted to use the <strong>ThreadPoolExecutor</strong> with very little change.</p>
+<p>The <strong>download_book()</strong> function can be called separately for each book identifier in a separate thread. We can use the <strong>submit()</strong> function on the <strong>ThreadPoolExecutor</strong> to call the function, then report the results of each download as the downloads complete using the <strong>as_completed()</strong> function.</p>
+<p>This can be achieved with a minor change to the end of the <strong>download_all_books()</strong> function used to drive the download process.</p>
+<p>Firstly, we can create the thread pool with one thread per book to be downloaded.</p>
+<pre><code>...
+# download and save each book in turn
+with ThreadPoolExecutor(len(book_ids)) as exe:
+	# ...
+</code></pre>
+<p>Next, we can call <strong>submit()</strong> for each book identifier and collect the <strong>Future</strong> objects that are returned.</p>
+<pre><code>...
+futures = [exe.submit(download_book, book, save_path) for book in book_ids]
+</code></pre>
+<p>Finally, we can loop over tasks as they complete and report the success or failure message directly.</p>
+<pre><code>...
+# report results as books are downloaded
+for future in as_completed(futures):
+    # report the result messages
+    print(future.result())
+</code></pre>
+<p>And that's all there is to it; the updated version of the <strong>download_all_books()</strong> function that makes use of the <strong>ThreadPoolExecutor</strong> to download books concurrently is listed below.</p>
+<pre><code># download all top books from project gutenberg
+def download_all_books(url, save_path):
+    # download the page that lists top books
+    data = download_url(url)
+    print(f'.downloaded {url}')
+    # extract all links from the page
+    links = get_urls_from_html(data)
+    print(f'.found {len(links)} links on the page')
+    # retrieve all unique book ids
+    book_ids = get_book_identifiers(links)
+    print(f'.found {len(book_ids)} unique book ids')
+    # create the save directory if needed
+    makedirs(save_path, exist_ok=True)
+    # download and save each book in turn
+    with ThreadPoolExecutor(len(book_ids)) as exe:
+        futures = [exe.submit(download_book, book, save_path) for book in book_ids]
+        # report results as books are downloaded
+        for future in as_completed(futures):
+            # report the result messages
+            print(future.result())
+</code></pre>
+<p>Tying this together, the complete example of the concurrent version of the book downloading program is listed below.</p>
+<pre><code># SuperFastPython.com
+# download all the top books from gutenberg.org concurrently
+import re
+from os.path import join
+from os import makedirs
+from urllib.request import urlopen
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+from bs4 import BeautifulSoup
+
+# download html and return parsed doc or None on error
+def download_url(urlpath):
+    try:
+        # open a connection to the server
+        with urlopen(urlpath, timeout=3) as connection:
+            # read the contents of the html doc
+            return connection.read()
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return None
+
+# decode downloaded html and extract all &lt;a href=""&gt; links
+def get_urls_from_html(content):
+    # decode the provided content as ascii text
+    html = content.decode('utf-8')
+    # parse the document as best we can
+    soup = BeautifulSoup(html, 'html.parser')
+    # find all all of the &lt;a href=""&gt; tags in the document
+    atags = soup.find_all('a')
+    # get all links from a tags
+    return [tag.get('href') for tag in atags]
+
+# return all book unique identifiers from a list of raw links
+def get_book_identifiers(links):
+    # define a url pattern we are looking for
+    pattern = re.compile('/ebooks/[0-9]+')
+    # process the list of links for those that match the pattern
+    books = set()
+    for link in links:
+        # check of the link matches the pattern
+        if not pattern.match(link):
+            continue
+        # extract the book id from /ebooks/nnn
+        book_id = link[8:]
+        # store in the set, only keep unique ids
+        books.add(book_id)
+    return books
+
+# download one book from project gutenberg
+def download_book(book_id, save_path):
+    # construct the download url
+    url = f'https://www.gutenberg.org/files/{book_id}/{book_id}-0.txt'
+    # download the content
+    data = download_url(url)
+    if data is None:
+        return f'Failed to download {url}'
+    # create local path
+    save_file = join(save_path, f'{book_id}.txt')
+    # save book to file
+    with open(save_file, 'wb') as file:
+        file.write(data)
+    return f'Saved {save_file}'
+
+# download all top books from project gutenberg
+def download_all_books(url, save_path):
+    # download the page that lists top books
+    data = download_url(url)
+    print(f'.downloaded {url}')
+    # extract all links from the page
+    links = get_urls_from_html(data)
+    print(f'.found {len(links)} links on the page')
+    # retrieve all unique book ids
+    book_ids = get_book_identifiers(links)
+    print(f'.found {len(book_ids)} unique book ids')
+    # create the save directory if needed
+    makedirs(save_path, exist_ok=True)
+    # download and save each book in turn
+    with ThreadPoolExecutor(len(book_ids)) as exe:
+        futures = [exe.submit(download_book, book, save_path) for book in book_ids]
+        # report results as books are downloaded
+        for future in as_completed(futures):
+            # report the result messages
+            print(future.result())
+
+# entry point
+URL = 'https://www.gutenberg.org/browse/scores/top'
+DIR = 'books'
+# download top books
+download_all_books(URL, DIR)
+</code></pre>
+<p>Running the program first collects all book IDs from the list of top books webpage then downloads each, just like before.</p>
+<p>Unlike the previous example, all downloads occur concurrently with one download thread per book identifier.</p>
+<p>The process is significantly faster, completing in about 15.4 seconds on my system, compared to 312.6 seconds for the serial case. That is a speedup of about 20 times.</p>
+<pre><code>.downloaded https://www.gutenberg.org/browse/scores/top
+.found 675 links on the page
+.found 120 unique book ids
+Failed to download https://www.gutenberg.org/files/8800/8800-0.txt
+Failed to download https://www.gutenberg.org/files/43453/43453-0.txt
+Failed to download https://www.gutenberg.org/files/3296/3296-0.txt
+Saved books/58585.txt
+Failed to download https://www.gutenberg.org/files/5739/5739-0.txt
+Failed to download https://www.gutenberg.org/files/32992/32992-0.txt
+Saved books/64317.txt
+Saved books/4517.txt
+Saved books/66746.txt
+Saved books/2814.txt
+Failed to download https://www.gutenberg.org/files/27827/27827-0.txt
+Saved books/1250.txt
+Saved books/1934.txt
+Saved books/32449.txt
+Saved books/902.txt
+Failed to download https://www.gutenberg.org/files/4363/4363-0.txt
+Saved books/16.txt
+Failed to download https://www.gutenberg.org/files/42324/42324-0.txt
+Saved books/41445.txt
+Saved books/41.txt
+Failed to download https://www.gutenberg.org/files/7370/7370-0.txt
+Saved books/3825.txt
+Saved books/113.txt
+Saved books/514.txt
+Saved books/236.txt
+Saved books/730.txt
+Saved books/844.txt
+...
+</code></pre>
+<p>Theoretically, the program should take about as long as the slowest download, e.g. perhaps 5-10 seconds. The fact that it is longer might mean that the server is imposing some rate limiting, that saving files concurrently is a burden on the hard drive, or that the threads are context switching.</p>
+<p>It might be interesting to explore further improvements, such as saving files sequentially in the main thread rather than in each worker thread and whether this would be faster.</p>
+<h2 id="extensions">Extensions</h2>
+<p>This section lists ideas for extending the tutorial.</p>
+<ul><li><strong>Fix Broken Downloads</strong>. Investigate why some books cannot be downloaded and update the program accordingly so all popular books can be downloaded.</li><li><strong>Save Files in the Main Thread</strong>. Update the example to save all files in the main thread rather than worker threads and report any speed difference.</li><li><strong>Tune The Number of Worker Threads</strong>. Test with different numbers of worker threads to see if performance can be improved and in turn whether thread context switching is degrading performance.</li></ul>
+<p>Share your extensions in the comments below, it would be great to see what you come up with.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>In this tutorial, you discovered how to concurrently download books from Project Gutenberg in Python.</p>
+<ul><li>How to download all of the top books from Project Gutenberg sequentially and how slow it can be.</li><li>How to use the <strong>ThreadPoolExecutor</strong> to manage a pool of worker threads.</li><li>How to update the code to download multiple books at the same time and dramatically accelerate the process.</li></ul>
 </main>
 </body>
 </html>

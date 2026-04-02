@@ -68,6 +68,676 @@ with ThreadPool(4) as pool:
 <p>We can then define a function that implements the math function we wish to perform that takes matrices as arguments. The task function can then operate on a portion of the larger matrix and perform the slow element-wise operation, such as adding two parts of the arrays and putting the results in a third array.</p>
 <p>For example, we can use a function like <strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.add.html">numpy.add()</a></strong> for matrix addition, <strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.multiply.html">numpy.multiply()</a></strong> for element-wise multiplication, and so on.</p>
 <p>These element-wise functions take the first matrix, the second matrix, and a target matrix. We can specify the coordinates of the sub-matrix in each.</p>
+<pre><code># add a section of two matrices into a third matrix
+def task(coords, data1, data2, result):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    _ = numpy.add(data1[i1:i2,i3:i4], data2[i1:i2,i3:i4], out=result[i1:i2,i3:i4])
+</code></pre>
+<p>We can then divide our large matrices into sections and issue each as a task to the thread pool to have the element-wise operations performed in parallel.</p>
+<p>This can be challenging to make generic as it depends on the number of threads and the dimensions of the matrix.</p>
+<p>If we have 4 physical CPU cores, then ideally we want to split our matrix into 4 tasks to be completed in parallel. This is probably the most efficient use of resources.</p>
+<p>For a square matrix, we can find the midpoint of each dimension, then enumerate the four quadrants using for-loops, using the indices into the larger matrices directly.</p>
+<p>For example:</p>
+<pre><code>...
+# split each dimension (divisor of matrix dimension)
+split = round(n/2)
+# issue tasks
+for x in range(0, n, split):
+    for y in range(0, n, split):
+        # determine matrix coordinates
+        coords = (x, x+split, y, y+split)
+</code></pre>
+<p>Tasks can then be issued via the <strong>async_apply()</strong> method on the <strong>ThreadPool</strong> that returns an <strong>AsyncResult</strong> object, which we do not need in this case.</p>
+<p>For example:</p>
+<pre><code>...
+# issue task
+_ = pool.apply_async(task, args=(coords, data1, data2, result))</code></pre>
+<p>You can learn more about issuing tasks to the <strong>ThreadPool</strong> via the <strong>apply_async()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-apply_async/">How to Use ThreadPool apply_async() in Python</a></li>
+</ul>
+<p>Now that we know how to execute element-wise matrix mathematical functions in parallel with threads, let's look at some worked examples.</p>
+<h2>Multithreaded Element-Wise Matrix Addition</h2>
+<p>Element-wise matrix addition can be executed in parallel using threads.</p>
+<p>We will first explore how to execute matrix addition using a single thread, then using multiple threads and compare the performance.</p>
+<h3>Single-Threaded Matrix Addition</h3>
+<p>We can create two matrices of numbers and then add them together.</p>
+<p>We will use a modestly sized matrix of 50,000x50,000 to ensure it takes a non-trivial amount of time to perform element-wise operations.</p>
+<p>The <a href="https://numpy.org/doc/stable/reference/generated/numpy.ones.html"><strong>numpy.ones()</strong> function</a> can be used to create two matrices of the given size, initialized with the value 1.0.</p>
+<pre><code>...
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))</code></pre>
+<p>We can then add the matrices together to produce a third matrix with the "+" operator.</p>
+<pre><code>...
+# matrix addition
+result = data1 + data2</code></pre>
+<p>The whole program can then be timed, to give a general idea of how long it takes to execute.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># single threaded matrix addition
+from time import time
+from numpy import ones
+# record start time
+start = time()
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+# matrix addition
+result = data1 + data2
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example creates two matrices and then adds them together.</p>
+<p>The program takes about 27.385 seconds to complete on my system.</p>
+<p>It may run faster or slower on your system, depending on the speed of your hardware.</p>
+<p>The precision of the estimated run time can be improved by running the same program many times and averaging the result. This is left as an exercise as we are interested in directional improvements in performance more than specific benchmark speeds.</p>
+<pre><code>Took 27.385 seconds</code></pre>
+<h3>Single-Threaded Matrix Addition with add()</h3>
+<p>We can also perform addition using the <a href="https://numpy.org/doc/stable/reference/generated/numpy.add.html"><strong>numpy.add()</strong> function</a>.</p>
+<p>This can be achieved by creating a result matrix via the <strong>numpy.empty()</strong> function and then calling <strong>numpy.add()</strong> with the input and output matrices.</p>
+<p>For example:</p>
+<pre><code>...
+result = empty((n, n))
+# matrix addition
+_ = add(data1, data2, out=result)</code></pre>
+<p>This is functionally the same as using the "<strong>+</strong>" operator, but allows us to have the result placed into a predefined target matrix easily, a feature we will need when it comes to multithreading the example.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># single threaded matrix addition with add()
+from time import time
+from numpy import ones
+from numpy import add
+from numpy import empty
+# record start time
+start = time()
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))
+# matrix addition
+_ = add(data1, data2, out=result)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the program takes about the same amount of time as using the "+" operator.</p>
+<p>In this case, it took about 26.973 seconds to complete.</p>
+<pre><code>Took 26.973 seconds</code></pre>
+<p>Next, let's look at a multithreaded version of the program.</p>
+<h3>Multithreaded Matrix Addition</h3>
+<p>We can update the element-wise matrix addition to be completed in parallel using threads.</p>
+<p>We will use a <strong>ThreadPool</strong> and issue tasks to operate on sub-sections of the input and output matrix simultaneously, as described in the strategy outlined above.</p>
+<p>Firstly, we can define a task function that takes a tuple of array indices, the input array, and the target array. It then calls the <strong>numpy.add()</strong> function on the sub-array defined by the provided coordinates and ignores the return value.</p>
+<pre><code># add a section of two matrices into a third matrix
+def task(coords, data1, data2, result):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    _ = add(data1[i1:i2,i3:i4], data2[i1:i2,i3:i4], out=result[i1:i2,i3:i4])
+</code></pre>
+<p>We can ignore the return value because there is a single copy of the result matrix in memory and all of the task functions are operating on this single array in parallel. This is because threads have a shared memory model, unlike processes that must transmit copies of data.</p>
+<p>Next, we can create our input and output arrays as before.</p>
+<pre><code>...
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))</code></pre>
+<p>We can then create a thread pool with one worker per physical CPU core.</p>
+<p>I have 4 physical CPU cores in my system, so I will configure the ThreadPool to use 4 workers. Update the ThreadPool configuration accordingly to match the number of physical CPU cores in your system.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPool(4) as pool:
+	# ...
+</code></pre>
+<p>The square arrays are then divided into quadrants (4 parts) and each is issued to the <strong>task()</strong> function for parallel execution of the <strong>numpy.add()</strong> function.</p>
+<pre><code>...
+# split each dimension (divisor of matrix dimension)
+split = round(n/2)
+# issue tasks
+for x in range(0, n, split):
+    for y in range(0, n, split):
+        # determine matrix coordinates
+        coords = (x, x+split, y, y+split)
+        # issue task
+        _ = pool.apply_async(task, args=(coords, data1, data2, result))
+</code></pre>
+<p>The main thread will then close the pool to signal no further tasks will be issued to the pool, then block and wait for all tasks to be completed.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for tasks to complete
+pool.join()</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of multithreaded matrix addition is listed below.</p>
+<pre><code># multithreaded matrix addition
+from time import time
+from multiprocessing.pool import ThreadPool
+from numpy import ones
+from numpy import add
+from numpy import empty
+
+# add a section of two matrices into a third matrix
+def task(coords, data1, data2, result):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    _ = add(data1[i1:i2,i3:i4], data2[i1:i2,i3:i4], out=result[i1:i2,i3:i4])
+
+# record start time
+start = time()
+# size of square arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))
+# create the thread pool
+with ThreadPool(4) as pool:
+    # split each dimension (divisor of matrix dimension)
+    split = round(n/2)
+    # issue tasks
+    for x in range(0, n, split):
+        for y in range(0, n, split):
+            # determine matrix coordinates
+            coords = (x, x+split, y, y+split)
+            # issue task
+            _ = pool.apply_async(task, args=(coords, data1, data2, result))
+    # close the pool
+    pool.close()
+    # wait for tasks to complete
+    pool.join()
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example is completed in about 19.492 seconds.</p>
+<p>On my system, this is about 7.481 seconds faster than the single-threaded version or a 1.38x speedup.</p>
+<pre><code>Took 19.492 seconds</code></pre>
+<h2>Multithreaded Element-Wise Matrix Subtraction</h2>
+<p>Element-wise matrix subtraction can be executed in parallel using threads.</p>
+<p>We will first explore how to execute matrix subtraction using a single thread, then use multiple threads and compare the performance.</p>
+<h3>Single-Threaded Matrix Subtraction</h3>
+<p>We can create two matrices of numbers and then subtract one from the other.</p>
+<p>We will use a modestly sized matrix of 50,000x50,000 to ensure it takes a non-trivial amount of time to perform element-wise operations.</p>
+<p>The <a href="https://numpy.org/doc/stable/reference/generated/numpy.ones.html"><strong>numpy.ones()</strong> function</a> can be used to create two matrices of the given size, initialized with the value 1.0.</p>
+<pre><code>...
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))</code></pre>
+<p>We can then subtract one array from the other to produce a third matrix with the "-" operator.</p>
+<pre><code>...
+# matrix subtraction
+result = data1 - data2</code></pre>
+<p>The whole program can then be timed, to give a general idea of how long it takes to execute.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># single threaded matrix subtraction
+from time import time
+from numpy import ones
+# record start time
+start = time()
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+# matrix subtraction
+result = data1 - data2
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the example creates two matrices and then subtracts one from the other.</p>
+<p>The program takes about 28.648 seconds to complete on my system.</p>
+<p>It may run faster or slower on your system, depending on the speed of your hardware.</p>
+<pre><code>Took 28.648 seconds</code></pre>
+<h3>Single-Threaded Matrix Subtraction with subtract()</h3>
+<p>We can also perform subtraction using the <a href="https://numpy.org/doc/stable/reference/generated/numpy.subtract.html"><strong>numpy.subtract()</strong> function</a>.</p>
+<p>This can be achieved by creating a result matrix via the numpy.empty() function and then calling <strong>numpy.subtract()</strong> with the input and output matrices.</p>
+<p>For example:</p>
+<pre><code>...
+result = empty((n, n))
+# matrix subtraction
+_ = subtract(data1, data2, out=result)</code></pre>
+<p>This is functionally the same as using the "-" operator but allows us to have the result placed into a predefined target matrix easily, a feature we will need when it comes to multithreading the example.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># single threaded matrix subtraction with subtract()
+from time import time
+from numpy import ones
+from numpy import subtract
+from numpy import empty
+# record start time
+start = time()
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))
+# matrix subtraction
+_ = subtract(data1, data2, out=result)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the program takes about the same amount of time as using the "-" operator.</p>
+<p>In this case, it took about 25.861 seconds to complete.</p>
+<pre><code>Took 25.861 seconds</code></pre>
+<p>Next, let's look at a multithreaded version of the program.</p>
+<h3>Multithreaded Matrix Subtraction</h3>
+<p>We can update the element-wise matrix subtraction to be completed in parallel using threads.</p>
+<p>We will use a <strong>ThreadPool</strong> and issue tasks to operate on sub-sections of the input and output matrix at the same time, as described in the strategy outlined above.</p>
+<p>Firstly, we can define a task function that takes a tuple of array indices, the input array, and the target array. It then calls the <strong>numpy.subtract()</strong> function on the sub-array defined by the provided coordinates and ignores the return value,</p>
+<pre><code># subtract a section of one array from another and place it into a third array
+def task(coords, data1, data2, result):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    _ = subtract(data1[i1:i2,i3:i4], data2[i1:i2,i3:i4], out=result[i1:i2,i3:i4])
+</code></pre>
+<p>We can ignore the return value because there is a single copy of the result matrix in memory and all of the task functions are operating on this single array in parallel. This is because threads have a shared memory model, unlike processes that must transmit copies of data between processes.</p>
+<p>Next, we can create our input and output arrays as before.</p>
+<pre><code>...
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))</code></pre>
+<p>We can then create a thread pool with one worker per physical CPU core.</p>
+<p>I have 4 physical CPU cores in my system, so I will configure the <strong>ThreadPool</strong> to use 4 workers. Update the ThreadPool configuration accordingly to match the number of physical CPU cores in your system.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPool(4) as pool:
+	# ...
+</code></pre>
+<p>The square arrays are then divided into quadrants (4 parts) and each is issued to the task() function for parallel execution of the <strong>numpy.subtract()</strong> function.</p>
+<pre><code>...
+# split each dimension (divisor of matrix dimension)
+split = round(n/2)
+# issue tasks
+for x in range(0, n, split):
+    for y in range(0, n, split):
+        # determine matrix coordinates
+        coords = (x, x+split, y, y+split)
+        # issue task
+        _ = pool.apply_async(task, args=(coords, data1, data2, result))
+</code></pre>
+<p>The main thread will then close the pool to signal no further tasks will be issued to the pool, then block and wait for all tasks to be completed.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for tasks to complete
+pool.join()</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of multithreaded matrix subtraction is listed below.</p>
+<pre><code># multithreaded matrix subtraction
+from time import time
+from multiprocessing.pool import ThreadPool
+from numpy import ones
+from numpy import subtract
+from numpy import empty
+
+# subtract a section of one array from another and place into a third array
+def task(coords, data1, data2, result):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    _ = subtract(data1[i1:i2,i3:i4], data2[i1:i2,i3:i4], out=result[i1:i2,i3:i4])
+
+# record start time
+start = time()
+# size of square arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))
+# create the thread pool
+with ThreadPool(4) as pool:
+    # split each dimension (divisor of matrix dimension)
+    split = round(n/2)
+    # issue tasks
+    for x in range(0, n, split):
+        for y in range(0, n, split):
+            # determine matrix coordinates
+            coords = (x, x+split, y, y+split)
+            # issue task
+            _ = pool.apply_async(task, args=(coords, data1, data2, result))
+    # close the pool
+    pool.close()
+    # wait for tasks to complete
+    pool.join()
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example is completed in about 19.334 seconds.</p>
+<p>On my system, this is about 6.527 seconds faster than the single-threaded version or a 1.34x speedup.</p>
+<pre><code>Took 19.334 seconds</code></pre>
+<h2>Multithreaded Element-Wise Matrix Multiplication (Hadamard product)</h2>
+<p>Element-wise matrix multiplication, also called the <a href="https://en.wikipedia.org/wiki/Hadamard_product_(matrices)">Hadamard product</a>, can be executed in parallel using threads.</p>
+<p>Note, element-wise matrix multiplication is different from "<a href="https://en.wikipedia.org/wiki/Matrix_multiplication">matrix multiplication</a>", also called the "matrix product". The matrix product is implemented in numpy via the "<strong>@</strong>" operator and the <a href="https://numpy.org/doc/stable/reference/generated/numpy.dot.html"><strong>numpy.dot()</strong> function</a> and is already multithreaded via the underlying BLAS library.</p>
+<p>You can learn more about multithreaded matrix multiplication in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multithreading-matrix-multiplication/">Numpy Multithreaded Matrix Multiplication (up to 5x faster)</a></li>
+</ul>
+<p>We will first explore how to execute matrix multiplication using a single thread, then use multiple threads and compare the performance.</p>
+<h3>Single-Threaded Matrix Multiplication</h3>
+<p>We can create two matrices of numbers and then multiply them together, element-wise.</p>
+<p>We will use a modestly sized matrix of 50,000x50,000 to ensure it takes a non-trivial amount of time to perform element-wise operations.</p>
+<p>The <a href="https://numpy.org/doc/stable/reference/generated/numpy.ones.html"><strong>numpy.ones()</strong> function</a> can be used to create two matrices of the given size, initialized with the value 1.0.</p>
+<pre><code>...
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))</code></pre>
+<p>We can then multiply the matrices to produce a third matrix with the "*" operator.</p>
+<pre><code>...
+# matrix multiplication
+result = data1 * data2</code></pre>
+<p>The whole program can then be timed, to give a general idea of how long it takes to execute.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># single threaded element-wise matrix multiplication
+from time import time
+from numpy import ones
+# record start time
+start = time()
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+# matrix multiplication
+result = data1 * data2
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example creates two matrices then multiplies them together.</p>
+<p>The program takes about 28.607 seconds to complete on my system.</p>
+<p>It may run faster or slower on your system, depending on the speed of your hardware.</p>
+<p>The precision of the estimated run time can be improved by running the same program many times and averaging the result. This is left as an exercise as we are interested in directional improvements in performance more than specific benchmark speeds.</p>
+<pre><code>Took 28.607 seconds</code></pre>
+<h3>Single-Threaded Matrix Multiplication with multiply()</h3>
+<p>We can also perform multiplication using the <a href="https://numpy.org/doc/stable/reference/generated/numpy.multiply.html"><strong>numpy.multiply()</strong> function</a>.</p>
+<p>This can be achieved by creating a result matrix via the <strong>numpy.empty()</strong> function and then calling <strong>numpy.multiply()</strong> with the input and output matrices.</p>
+<p>For example:</p>
+<pre><code>...
+result = empty((n, n))
+# matrix multiplication
+_ = multiply(data1, data2, out=result)</code></pre>
+<p>This is functionally the same as using the "<strong>*</strong>" operator, but allows us to have the result placed into a predefined target matrix easily, a feature we will need when it comes to multithreading the example.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># single threaded element-wise matrix multiplication with multiply()
+from time import time
+from numpy import ones
+from numpy import multiply
+from numpy import empty
+# record start time
+start = time()
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))
+# matrix multiplication
+_ = multiply(data1, data2, out=result)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the program takes about the same amount of time as using the "*" operator.</p>
+<p>In this case, it took about 27.399 seconds to complete.</p>
+<pre><code>Took 27.399 seconds</code></pre>
+<p>Next, let's look at a multithreaded version of the program.</p>
+<h3>Multithreaded Matrix Multiplication</h3>
+<p>We can update the element-wise matrix multiplication to be completed in parallel using threads.</p>
+<p>We will use a <strong>ThreadPool</strong> and issue tasks to operate on sub-sections of the input and output matrix at the same time, as described in the strategy outlined above.</p>
+<p>Firstly, we can define a task function that takes a tuple of array indices, the input array, and the target array. It then calls the <strong>numpy.multiply()</strong> function on the sub-array defined by the provided coordinates and ignores the return value,</p>
+<pre><code># multiply a section of one array from another and place it into a third array
+def task(coords, data1, data2, result):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    _ = multiply(data1[i1:i2,i3:i4], data2[i1:i2,i3:i4], out=result[i1:i2,i3:i4])
+</code></pre>
+<p>We can ignore the return value because there is a single copy of the result matrix in memory and all of the task functions are operating on this single array in parallel. This is because threads have a shared memory model, unlike processes that must transmit copies of data between processes.</p>
+<p>Next, we can create our input and output arrays as before.</p>
+<pre><code>...
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))</code></pre>
+<p>We can then create a thread pool with one worker per physical CPU core.</p>
+<p>I have 4 physical CPU cores in my system, so I will configure the ThreadPool to use 4 workers. Update the ThreadPool configuration accordingly to match the number of physical CPU cores in your system.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPool(4) as pool:
+	# ...
+</code></pre>
+<p>The square arrays are then divided into quadrants (4 parts) and each is issued to the <strong>task()</strong> function for parallel execution of the <strong>numpy.multiply()</strong> function.</p>
+<pre><code>...
+# split each dimension (divisor of matrix dimension)
+split = round(n/2)
+# issue tasks
+for x in range(0, n, split):
+    for y in range(0, n, split):
+        # determine matrix coordinates
+        coords = (x, x+split, y, y+split)
+        # issue task
+        _ = pool.apply_async(task, args=(coords, data1, data2, result))
+</code></pre>
+<p>The main thread will then close the pool to signal no further tasks will be issued to the pool, then block and wait for all tasks to be completed.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for tasks to complete
+pool.join()</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of multithreaded matrix multiplication is listed below.</p>
+<pre><code># multithreaded element-wise matrix multiplication
+from time import time
+from multiprocessing.pool import ThreadPool
+from numpy import ones
+from numpy import multiply
+from numpy import empty
+
+# multiply a section of one array from another and place into a third array
+def task(coords, data1, data2, result):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    _ = multiply(data1[i1:i2,i3:i4], data2[i1:i2,i3:i4], out=result[i1:i2,i3:i4])
+
+# record start time
+start = time()
+# size of square arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))
+# create the thread pool
+with ThreadPool(4) as pool:
+    # split each dimension (divisor of matrix dimension)
+    split = round(n/2)
+    # issue tasks
+    for x in range(0, n, split):
+        for y in range(0, n, split):
+            # determine matrix coordinates
+            coords = (x, x+split, y, y+split)
+            # issue task
+            _ = pool.apply_async(task, args=(coords, data1, data2, result))
+    # close the pool
+    pool.close()
+    # wait for tasks to complete
+    pool.join()
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example is completed in about 20.455 seconds.</p>
+<p>On my system, this is about 6.944 seconds faster than the single-threaded version or a 1.34x speedup.</p>
+<pre><code>Took 20.455 seconds</code></pre>
+<h2>Multithreaded Element-Wise Matrix Division</h2>
+<p>Element-wise matrix division can be executed in parallel using threads.</p>
+<p>We will first explore how to execute matrix division using a single thread, then use multiple threads and compare the performance.</p>
+<h3>Single-Threaded Matrix Division</h3>
+<p>We can create two matrices of numbers and then divide one by the other.</p>
+<p>We will use a modestly sized matrix of 50,000x50,000 to ensure it takes a non-trivial amount of time to perform element-wise operations.</p>
+<p>The <a href="https://numpy.org/doc/stable/reference/generated/numpy.ones.html"><strong>numpy.ones()</strong> function</a> can be used to create two matrices of the given size, initialized with the value 1.0.</p>
+<pre><code>...
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))</code></pre>
+<p>We can then divide one array by the other to produce a third matrix with the "/" operator.</p>
+<pre><code>...
+# matrix subtraction
+result = data1 / data2</code></pre>
+<p>The whole program can then be timed, to give a general idea of how long it takes to execute.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># single threaded matrix division
+from time import time
+from numpy import ones
+# record start time
+start = time()
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+# matrix division
+result = data1 / data2
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the example creates two matrices and then divides one by the other.</p>
+<p>The program takes about 27.986 seconds to complete on my system.</p>
+<p>It may run faster or slower on your system, depending on the speed of your hardware.</p>
+<pre><code>Took 27.986 seconds</code></pre>
+<h3>Single-Threaded Matrix Division with divide()</h3>
+<p>We can also perform division using the <a href="https://numpy.org/doc/stable/reference/generated/numpy.divide.html"><strong>numpy.divide()</strong> function</a>.</p>
+<p>This can be achieved by creating a result matrix via the <strong>numpy.empty()</strong> function and then calling <strong>numpy.divide()</strong> with the input and output matrices.</p>
+<p>For example:</p>
+<pre><code>...
+result = empty((n, n))
+# matrix division
+_ = divide(data1, data2, out=result)</code></pre>
+<p>This is functionally the same as using the "/" operator, but allows us to have the result placed into a predefined target matrix easily, a feature we will need when it comes to multithreading the example.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># single threaded matrix division with divide()
+from time import time
+from numpy import ones
+from numpy import divide
+from numpy import empty
+# record start time
+start = time()
+# size of arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))
+# matrix division
+_ = divide(data1, data2, out=result)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the program takes about the same amount of time as using the "/" operator.</p>
+<p>In this case, it took about 27.829 seconds to complete.</p>
+<pre><code>Took 27.829 seconds</code></pre>
+<p>Next, let's look at a multithreaded version of the program.</p>
+<h3>Multithreaded Matrix Division</h3>
+<p>We can update the element-wise matrix division to be completed in parallel using threads.</p>
+<p>We will use a <strong>ThreadPool</strong> and issue tasks to operate on sub-sections of the input and output matrix simultaneously, as described in the strategy outlined above.</p>
+<p>Firstly, we can define a task function that takes a tuple of array indices, the input array, and the target array. It then calls the <strong>numpy.divide()</strong> function on the sub-array defined by the provided coordinates and ignores the return value,</p>
+<pre><code># divide a section of one array by another and place it into a third array
+def task(coords, data1, data2, result):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    _ = divide(data1[i1:i2,i3:i4], data2[i1:i2,i3:i4], out=result[i1:i2,i3:i4])
+</code></pre>
+<p>We can ignore the return value because there is a single copy of the result matrix in memory and all of the task functions are operating on this single array in parallel. This is because threads have a shared memory model, unlike processes that must transmit copies of data between processes.</p>
+<p>Next, we can create our input and output arrays as before.</p>
+<pre><code>...
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))</code></pre>
+<p>We can then create a thread pool with one worker per physical CPU core.</p>
+<p>I have 4 physical CPU cores in my system, so I will configure the ThreadPool to use 4 workers. Update the ThreadPool configuration accordingly to match the number of physical CPU cores in your system.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPool(4) as pool:
+	# ...
+</code></pre>
+<p>The square arrays are then divided into quadrants (4 parts) and each is issued to the <strong>task()</strong> function for parallel execution of the <strong>numpy.subtract()</strong> function.</p>
+<pre><code>...
+# split each dimension (divisor of matrix dimension)
+split = round(n/2)
+# issue tasks
+for x in range(0, n, split):
+    for y in range(0, n, split):
+        # determine matrix coordinates
+        coords = (x, x+split, y, y+split)
+        # issue task
+        _ = pool.apply_async(task, args=(coords, data1, data2, result))
+</code></pre>
+<p>The main thread will then close the pool to signal no further tasks will be issued to the pool, then block and wait for all tasks to be completed.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for tasks to complete
+pool.join()</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of multithreaded matrix division is listed below.</p>
+<pre><code># multithreaded matrix division
+from time import time
+from multiprocessing.pool import ThreadPool
+from numpy import ones
+from numpy import divide
+from numpy import empty
+
+# divide a section of one array by another and place it into a third array
+def task(coords, data1, data2, result):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    _ = divide(data1[i1:i2,i3:i4], data2[i1:i2,i3:i4], out=result[i1:i2,i3:i4])
+
+# record start time
+start = time()
+# size of square arrays
+n = 50000
+# create square matrices
+data1 = ones((n, n))
+data2 = ones((n, n))
+result = empty((n, n))
+# create the thread pool
+with ThreadPool(4) as pool:
+    # split each dimension (divisor of matrix dimension)
+    split = round(n/2)
+    # issue tasks
+    for x in range(0, n, split):
+        for y in range(0, n, split):
+            # determine matrix coordinates
+            coords = (x, x+split, y, y+split)
+            # issue task
+            _ = pool.apply_async(task, args=(coords, data1, data2, result))
+    # close the pool
+    pool.close()
+    # wait for tasks to complete
+    pool.join()
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example is completed in about 20.802 seconds.</p>
+<p>On my system, this is about 7.027 seconds faster than the single-threaded version or a 1.34x speedup.</p>
+<pre><code>Took 20.802 seconds</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to perform multithreaded element-wise matrix math functions with numpy.</p>
 </main>
 </body>
 </html>

@@ -27,6 +27,164 @@
 <p>Here is the direct link:</p>
 <ul><li><a href="https://docs.python.org/3/library/concurrent.futures.html#module-functions">ThreadPoolExecutor Example</a></li></ul>
 <p>Below is a copy of the example in its entirety.</p>
+<pre><code>import concurrent.futures
+import urllib.request
+
+URLS = ['http://www.foxnews.com/',
+        'http://www.cnn.com/',
+        'http://europe.wsj.com/',
+        'http://www.bbc.co.uk/',
+        'http://some-made-up-domain.com/']
+
+# Retrieve a single page and report the URL and contents
+def load_url(url, timeout):
+    with urllib.request.urlopen(url, timeout=timeout) as conn:
+        return conn.read()
+
+# We can use a with statement to ensure threads are cleaned up promptly
+with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    # Start the load operations and mark each future with its URL
+    future_to_url = {executor.submit(load_url, url, 60): url for url in URLS}
+    for future in concurrent.futures.as_completed(future_to_url):
+        url = future_to_url
+        try:
+            data = future.result()
+        except Exception as exc:
+            print('%r generated an exception: %s' % (url, exc))
+        else:
+            print('%r page is %d bytes' % (url, len(data)))
+</code></pre>
+<p>Running the example reports URLs and the number of bytes for each or an error message if the page could not be accessed.</p>
+<pre><code>'http://www.foxnews.com/' page is 282256 bytes
+'http://www.cnn.com/' page is 1122228 bytes
+'http://some-made-up-domain.com/' generated an exception: HTTP Error 400: Bad Request
+'http://europe.wsj.com/' generated an exception: HTTP Error 403: Forbidden
+'http://www.bbc.co.uk/' page is 364082 bytes
+</code></pre>
+<p>It is a short and sweet example of how to use the <meta/><code>ThreadPoolExecutor</code> class for an IO-bound task.</p>
+<p>Nevertheless, if you are new to Python or new to the <meta/><code>ThreadPoolExecutor</code> class, it can be confusing.</p>
+<p>What is happening in this example?</p>
+<h2 id="explanation-of-the-threadpoolexecutor-api-example">Explanation of the ThreadPoolExecutor API Example</h2>
+<p>The <meta/><code>ThreadPoolExecutor</code> API example is divided into three parts.</p>
+<p>The first is the data defined in the URLs constant.</p>
+<p>It lists five URLs, three of which can be accessed and two of which cannot.</p>
+<pre><code>...
+URLS = ['http://www.foxnews.com/',
+        'http://www.cnn.com/',
+        'http://europe.wsj.com/',
+        'http://www.bbc.co.uk/',
+        'http://some-made-up-domain.com/']
+</code></pre>
+<p>The second is the target task function named <code>load_url()</code>.</p>
+<p>This function takes a URL and a timeout and attempts to open an HTTP connection to the remote server and download the contents of the file, which is then returned.</p>
+<p>The connection is managed via the context manager, which will automatically call the <code>close()</code> function on the HTTP connection once the block is exited via an exception or a return statement.</p>
+<p>An exception can be thrown for many reasons, such as if the URL is malformed or if a connection to the server cannot be established.</p>
+<pre><code># Retrieve a single page and report the URL and contents
+def load_url(url, timeout):
+    with urllib.request.urlopen(url, timeout=timeout) as conn:
+        return conn.read()
+</code></pre>
+<p>So far so good.</p>
+<p>The third part of the example is where you may experience confusion.</p>
+<p>First, a thread pool is created with worker threads.</p>
+<p>This is achieved using the context manager for the thread pool, which will automatically call the <code>shutdown()</code> function on the thread pool to release the worker threads once the block is exited.</p>
+<pre><code>...
+# We can use a with statement to ensure threads are cleaned up promptly
+with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+	# ...
+</code></pre>
+<p>The next line is perhaps the most confusing.</p>
+<p>It calls the <code>submit()</code> function on the thread pool to add one task for each URL in the URLs global constant defined previously. Each task calls the <code>load_url()</code> function defined previously and passes two arguments: one URL and a timeout.</p>
+<pre><code>...
+executor.submit(load_url, url, 60)
+</code></pre>
+<p>The <code>submit()</code> function on the <meta/><code>ThreadPoolExecutor</code> returns a <code>Future</code> object that provides a handle on the asynchronous task, such as checking its status and getting the result once the task has completed.</p>
+<p>Each URL is retrieved from the URLs global constant using a dictionary comprehension.</p>
+<p>More specifically, the like creates one dictionary entry for each task using the <meta/><code>Future</code> object as the key in the dictionary and the URL as the value in the dictionary.</p>
+<p>Recall that we have one unique <meta/><code>Future</code> object returned for each call to the <meta/><code>submit()</code> function for each <code>load_url()</code> task.</p>
+<p>The dictionary provides a way to look up data for each asynchronous task via its <meta/><code>Future</code> object, in this case, the URL that was dispatched to the task. We will need to use this mapping in the next part of the example.</p>
+<pre><code>...
+# Start the load operations and mark each future with its URL
+future_to_url = {executor.submit(load_url, url, 60): url for url in URLS}
+</code></pre>
+<p>All of the tasks are submitted, providing a dictionary of <meta/><code>Future</code> objects to URL strings called <code>future_to_url</code>.</p>
+<p>The final part of the example then enumerates <meta/><code>Future</code> objects in the dictionary using a call to the <code>as_completed()</code> module function.</p>
+<pre><code>...
+for future in concurrent.futures.as_completed(future_to_url):
+	# ...
+</code></pre>
+<p>The <meta/><code>as_completed()</code> function takes a collection of <meta/><code>Future</code> objects created by calling <code>submit()</code> on the thread pool and will return the same <meta/><code>Future</code> objects in the order that the tasks associated with each <meta/><code>Future</code> object complete.</p>
+<p>This is different from the order in which the <meta/><code>Future</code> may have been submitted and different to the order in which the <meta/><code>Future</code> objects may exist in the collection.</p>
+<p>Processing <meta/><code>Future</code> objects in the order in which they are completed means that the program can be more responsive to the asynchronously executed tasks, in this case URLs that are being downloaded.</p>
+<p>For each <meta/><code>Future</code> object returned in the iteration, the URL associated with it is retrieved from the <meta/><code>future_to_url</code> dictionary.</p>
+<pre><code>...
+url = future_to_url
+</code></pre>
+<p>This explains why a dictionary of <meta/><code>Future</code> objects to URLs was created, so that data associated with each asynchronous task can be retrieved easily later, in this case, the URL that was downloaded.</p>
+<p>Next, the result is retrieved from the <meta/><code>Future</code> object, which is the return value of the <code>load_url()</code> function defined previously, which is the content of that URL downloaded.</p>
+<p>If the content of the URL is downloaded without incident, the length of the downloaded content is reported.</p>
+<pre><code>...
+print('%r page is %d bytes' % (url, len(data)))
+</code></pre>
+<p>If the <meta/><code>load_url()</code> function raised an exception while downloading the content, e.g. because a connection could not be made to the server, then the exception is caught by the <code>ThreadPoolExecutor</code> and is re-raised automatically when calling the <code>result()</code> on the Future object when retrieving the result.</p>
+<p>This explains why we have a try-except block around the call to get the result from the <meta/><code>Future</code>.</p>
+<p>If an exception is raised, it is caught and a failure message is reported.</p>
+<pre><code>...
+print('%r generated an exception: %s' % (url, exc))
+</code></pre>
+<p>Now that we understand each line in the <meta/><code>ThreadPoolExecutor</code> API example, let's consider how we might rewrite it.</p>
+<h2 id="rewrite-of-the-threadpoolexecutor-api-example">Rewrite of the ThreadPoolExecutor API Example</h2>
+<p>The <meta/><code>ThreadPoolExecutor</code> API example is a good illustration of how to use thread pools in Python.</p>
+<p>This is because of the following reasons:</p>
+<ul><li>It is short.</li><li>The target task function is IO-bound (e.g. downloading URLs).</li><li>It uses the context manager to automatically shut down the thread pool.</li><li>It explicitly specifies the number of worker threads.</li><li>It shows how to handle exceptions raised by target task functions.</li><li>It shows how to use <code>as_completed()</code> that allows programs to be responsive.</li></ul>
+<p>Perhaps the most confusing part of the example is the use of a dictionary comprehension to map <meta/><code>Future</code> objects to URLs.</p>
+<p>We now understand why this was done. Specifically, so that the program can access data associated with each dispatched task.</p>
+<p>If the program did not create this mapping, we would have no way to associate each blob of downloaded content with each URL that was downloaded.</p>
+<p>This raises the question of how else we could solve this problem.</p>
+<p>One idea is to have the <meta/><code>load_url()</code> function return a tuple of both the URL that was downloaded and the data that was downloaded.</p>
+<p>For example, the updated function would look as follows:</p>
+<pre><code># Retrieve a single page and report the URL and contents
+def load_url(url, timeout):
+    with urllib.request.urlopen(url, timeout=timeout) as conn:
+        return (url, conn.read())
+</code></pre>
+<p>Retrieving the tuple from the call to <code>result()</code> function on the Future would look as follows:</p>
+<pre><code>...
+url, data = future.result()
+</code></pre>
+<p>The submission of tasks to the thread pool could then be simplified from a dictionary comprehension to a list comprehension, containing only the <meta/><code>Future</code> objects returned from each call to <code>submit()</code>.</p>
+<pre><code>...
+# Start the load operations and mark each future with its URL
+futures = [executor.submit(load_url, url, 60) for url in URLS]
+</code></pre>
+<p>The downside is that when an exception is raised, we have no way to determine which URL raised the exception.</p>
+<pre><code>...
+print('a url generated an exception: %s' % (exc))
+</code></pre>
+<p>In addition to less functionality, this is perhaps a good starting point because now the <meta/><code>load_url()</code> function is doing two things: downloading and returning a remote file and the URL that was downloaded, which we might expect the caller to already know as it was given to <meta/><code>load_url()</code> as an argument.</p>
+<p>What if we didn't need the program to be responsive to the asynchronous tasks as they were completed?</p>
+<p>If so, we could process the <meta/><code>Future</code> objects in the order that they were submitted. The index of the current <meta/><code>Future</code> object would match the index of URLs in the URLs global constant and we would have everything we need for the successful and exception URL download cases.</p>
+<p>For example, the <meta/><code>Future</code> objects created by calling <meta/><code>submit()</code> can be collected using a list comprehension as we did previously.</p>
+<pre><code>...
+# Start the load operations and mark each future with its URL
+futures = [executor.submit(load_url, url, 60) for url in URLS]
+</code></pre>
+<p>We can then enumerate the list of <meta/><code>Future</code> objects in the order they were submitted and get a list index for each item using the <code>enumerate()</code> function. This allows us to retrieve the URL for the task from the URLs global constant.</p>
+<pre><code>...
+for i, future in enumerate(futures):
+    url = URLS
+    try:
+        data = future.result()
+    except Exception as exc:
+        print('%r generated an exception: %s' % (url, exc))
+    else:
+        print('%r page is %d bytes' % (url, len(data)))
+</code></pre>
+<p>The downside of this approach is that the program is slightly less responsive, forced to report results in the order that tasks were submitted to the thread pool, which in turn was defined by the order or URLs in the URLs global constant.</p>
+<p>Do you have more ideas on how the <code>ThreadPoolExecutor</code> API example could be rewritten?</p>
+<p>Let me know in the comments below. I'd love to see what you come up with.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how the ThreadPoolExecutor API example works.</p>
 </main>
 </body>
 </html>

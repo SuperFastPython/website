@@ -79,6 +79,891 @@ async with server:
 writer.write('Enter your name:\n'.encode())
 await writer.drain()</code></pre>
 <p>Next, the user name can be read and used as a key in a global variable dict that stores a tuple of the client <strong>StreamReader</strong> and <strong>StreamWriter</strong> against the client name.</p>
+<pre><code>...
+# ask the user for their name
+name_bytes = await reader.readline()
+# convert name to string
+name = name_bytes.decode().strip()
+# store the user details
+global ALL_USERS
+ALL_USERS = (reader, writer)</code></pre>
+<p>We can then announce that a client with this name has connected.</p>
+<p>This can be achieved by defining a coroutine that takes a string message and loops over all clients in the <strong>ALL_USERS</strong> dict and shares the message with each in turn.</p>
+<p>The <strong>broadcast_message()</strong> coroutine below implements this.</p>
+<pre><code># send a message to all connected users
+async def broadcast_message(message):
+    # report locally
+    print(f'Broadcast: {message.strip()}')
+    # convert to bytes
+    msg_bytes = message.encode()
+    # enumerate all users and broadcast the message
+    global ALL_USERS
+    for name, (reader, writer) in ALL_USERS.items():
+        # write message to this user
+        writer.write(msg_bytes)
+        # wait for the buffer to empty
+        await writer.drain()
+</code></pre>
+<p>We can use this coroutine to broadcast the connection of the new client.</p>
+<pre><code>...
+# announce the user
+await broadcast_message(f'{name} has connected\n')</code></pre>
+<p>You can learn more about reading and writing non-blocking TCP streams in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-streams/">How to Use Asyncio Streams in Python</a></li>
+</ul>
+<p>Next, we can loop forever, reading messages from the client and broadcasting them to all other clients.</p>
+<pre><code>...
+# read messages from the user
+while True:
+    # read a line of data
+    line_bytes = await reader.readline()
+    # convert to string
+    line = line_bytes.decode().strip()
+    # check for exit
+    if line == 'QUIT':
+        break
+    # broadcast message
+    await broadcast_message(f'{name}: {line}\n')
+</code></pre>
+<p>If the user sends a special message, e.g. "<strong>QUIT</strong>", the loop is broken and the user is choosing to disconnect.</p>
+<p>To disconnect the user, we can close the StreamWriter and broadcast a message to all other clients that the user has disconnected.</p>
+<p>For example:</p>
+<pre><code>...
+# close the user's connection
+writer.close()
+await writer.wait_closed()
+# remove from the dict of all users
+global ALL_USERS
+del ALL_USERS
+# broadcast the user has left
+await broadcast_message(f'{name} has disconnected\n')</code></pre>
+<p>That covers the main functionality of the server, next, let's look at the client.</p>
+<h3>Develop Asyncio Chat Client</h3>
+<p>An asyncio chat client has a number of requirements, they are:</p>
+<ol>
+<li>Open a connection to the server.</li>
+<li>Read and report messages from the server.</li>
+<li>Read and transmit messages from the user.</li>
+<li>Close the connection to the server.</li>
+</ol>
+<p>The first step is to open a connection to the server.</p>
+<p>This can be achieved via the <strong>asyncio.open_connection()</strong> function and specifying the hostname and port number. The function then returns a <strong>StreamReader</strong> and a <strong>StreamWriter</strong> for interacting with the server.</p>
+<pre><code>...
+# open a connection to the server
+reader, writer = await asyncio.open_connection(server_address, server_port)</code></pre>
+<p>Next, we can loop forever and read messages from the server and report them on standard output.</p>
+<pre><code>...
+# read messages from the server and print to user
+while True:
+    # read a message
+    result_bytes = await reader.readline()
+    # decode response
+    response = result_bytes.decode()
+    # report the response
+    print(response.strip())
+</code></pre>
+<p>This can be wrapped in a task and executed for the duration of the report. It ensures that all messages from the server, including broadcasts from other clients, are received and reported on demand.</p>
+<p>Next, we need to read messages from the user and transmit them to the server.</p>
+<p>This may be the user name at the beginning of the session or chat messages during the session.</p>
+<p>We can implement this with a second loop that reads lines of text from standard input (stdin) and transmits them to the server.</p>
+<p>If the user enters a special command, e.g. "<strong>QUIT</strong>", the loop is exited.</p>
+<p>Reading lines of text from stdin is a blocking activity, which should not be executed in the asyncio event loop.</p>
+<p>For example:</p>
+<pre><code>...
+# read from stdin
+message = sys.stdin.readline()</code></pre>
+<p>If executed, it will stop all activity in the program, preventing any messages from being read from the server and printed.</p>
+<p>Instead, we must read from standard input and block in a thread and then read the result in the asyncio event loop when it is available.</p>
+<p>This can be achieved via the <strong>asyncio.to_thread()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# read from stdin
+message = await asyncio.to_thread(sys.stdin.readline)</code></pre>
+<p>You can learn more about executing blocking tasks in a new thread in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-to_thread/">How to Use Asyncio to_thread()</a></li>
+</ul>
+<p>Using this, we can then define the loop that reads messages from the user and transmits them to the server.</p>
+<pre><code>...
+# read messages from the user and transmit to server
+while True:
+    # read from stdin
+    message = await asyncio.to_thread(sys.stdin.readline)
+    # send message to the server
+    msg_bytes = message.encode()
+    writer.write(msg_bytes)
+    await writer.drain()
+    # check for stop
+    if message.strip() == 'QUIT':
+        break
+</code></pre>
+<p>Finally, we can disconnect the client from the server.</p>
+<pre><code>...
+# close the connection
+writer.close()
+await writer.wait_closed()</code></pre>
+<p>Now that we know how to develop a chat client and server, let's look at a worked example.</p>
+<h2>Example Asyncio Chat Server</h2>
+<p>We can explore how to develop an asyncio group chat server.</p>
+<p>This program has 6 main parts, they are:</p>
+<ol>
+<li>A coroutine to broadcast to all users</li>
+<li>A coroutine for managing a new client connection.</li>
+<li>A coroutine for managing a client disconnection.</li>
+<li>A coroutine for managing the client connection overall.</li>
+<li>A coroutine for driving the server.</li>
+<li>The start of the event loop.</li>
+</ol>
+<p>Let's dive in.</p>
+<h3>Broadcast to All Clients</h3>
+<p>Firstly, we can define a coroutine that broadcasts a message to all connected clients.</p>
+<p>We will maintain a global variable <strong>dict</strong> of user name mapped to a tuple of <strong>StreamReader</strong> and <strong>StreamWriter</strong>. Therefore, to broadcast a message to all clients means traversing this dict and writing a message to each client.</p>
+<p>The <strong>broadcast_message()</strong> coroutine below implements this, taking the string message as an argument.</p>
+<pre><code># send a message to all connected users
+async def broadcast_message(message):
+    # report locally
+    print(f'Broadcast: {message.strip()}')
+    # convert to bytes
+    msg_bytes = message.encode()
+    # enumerate all users and broadcast the message
+    global ALL_USERS
+    for _, (_, writer) in ALL_USERS.items():
+        # write message to this user
+        writer.write(msg_bytes)
+        # wait for the buffer to empty
+        await writer.drain()
+</code></pre>
+<p>We could improve this coroutine in a few ways.</p>
+<p>Firstly, we could protect the <strong>ALL_USERS</strong> <strong>dict</strong> from concurrent updates while transmitting messages, in case a user disconnects while we are broadcasting.</p>
+<p>Secondly, we could transmit the messages concurrently rather than sequentially through all clients.</p>
+<p>These are left as an extension.</p>
+<h3>Connect A New Client</h3>
+<p>Next, we need to manage the connection of a new client.</p>
+<p>This involves first transmitting a welcome message and asking the client for their name. The name is then read and used to update the <strong>ALL_USERS</strong> <strong>dict</strong>, storing the connection details for broadcasting later.</p>
+<p>A broadcast message is then reported to all clients that a new client with a given name has arrived and a direct message is then sent to the client mentioning the command to terminate the chat session.</p>
+<p>The <strong>connect_user()</strong> coroutine below implements this.</p>
+<pre><code># connect a user
+async def connect_user(reader, writer):
+    # get name message
+    writer.write('Asycio Chat Server\n'.encode())
+    writer.write('Enter your name:\n'.encode())
+    await writer.drain()
+    # ask the user for their name
+    name_bytes = await reader.readline()
+    # convert name to string
+    name = name_bytes.decode().strip()
+    # store the user details
+    global ALL_USERS
+    ALL_USERS = (reader, writer)
+    # announce the user
+    await broadcast_message(f'{name} has connected\n')
+    # welcome message
+    welcome = f'Welcome {name}. Send QUIT to disconnect.\n'
+    writer.write(welcome.encode())
+    await writer.drain()
+    return name
+</code></pre>
+<h3>Disconnect a Client</h3>
+<p>Next, we can define a coroutine to handle the disconnection of a client.</p>
+<p>This involves closing the <strong>StreamWriter</strong>, and then deleting the user from the <strong>ALL_USERS</strong> dict.</p>
+<p>Finally, a broadcast message can be sent to all remaining clients that the client with the given name has disconnected.</p>
+<p>The <strong>disconnect_user()</strong> coroutine below implements this.</p>
+<pre><code># disconnect a user
+async def disconnect_user(name, writer):
+    # close the user's connection
+    writer.close()
+    await writer.wait_closed()
+    # remove from the dict of all users
+    global ALL_USERS
+    del ALL_USERS
+    # broadcast the user has left
+    await broadcast_message(f'{name} has disconnected\n')
+</code></pre>
+<h3>Manage a Client</h3>
+<p>Next, we need to define a coroutine to manage a single client connection.</p>
+<p>This includes calling the <strong>connect_user()</strong> to formally connect the client, read all messages from the client, and then disconnect the client when they are done.</p>
+<p>The core of this is a loop that reads messages transmitted from the client and broadcasts them to all other clients.</p>
+<p>The <strong>handle_chat_client()</strong> coroutine below implements this.</p>
+<pre><code># handle a chat client
+async def handle_chat_client(reader, writer):
+    print('Client connecting...')
+    # connect the user
+    name = await connect_user(reader, writer)
+    try:
+        # read messages from the user
+        while True:
+            # read a line of data
+            line_bytes = await reader.readline()
+            # convert to string
+            line = line_bytes.decode().strip()
+            # check for exit
+            if line == 'QUIT':
+                break
+            # broadcast message
+            await broadcast_message(f'{name}: {line}\n')
+    finally:
+        # disconnect the user
+        await disconnect_user(name, writer)
+</code></pre>
+<p>A limitation of this implementation is that all reads from the client are blocked until the broadcast to all other clients is done.</p>
+<p>This may limit the scalability and responsiveness of the server to rapid messages from a client,</p>
+<p>We can improve the design by decoupling the broadcasting of messages from the client management. One approach would be to have the client put the broadcast message on a queue and have another coroutine read messages from the queue and transmit them to all clients.</p>
+<p>This is left as an exercise.</p>
+<h3>Drive The Server</h3>
+<p>Next, we can create a coroutine to drive the main server.</p>
+<p>This will define the details of the host, such as its port number, create the server and serve forever until the program is terminated.</p>
+<p>The <strong>main()</strong> coroutine below implements this.</p>
+<pre><code># chat server
+async def main():
+    # define the local host
+    host_address, host_port = '127.0.0.1', 8888
+    # create the server
+    server = await asyncio.start_server(handle_chat_client, host_address, host_port)
+    # run the server
+    async with server:
+        # report message
+        print('Chat Server Running\nWaiting for chat clients...')
+        # accept connections
+        await server.serve_forever()
+</code></pre>
+<h3>Start The Event Loop</h3>
+<p>Finally, we can define the global variable that holds all client connections and start the event loop.</p>
+<pre><code>...
+# dict of all current users
+ALL_USERS = {}
+# start the event loop
+asyncio.run(main())</code></pre>
+<h3>Asyncio Chat Server Complete Example</h3>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a chat server using streams
+import asyncio
+
+# send a message to all connected users
+async def broadcast_message(message):
+    # report locally
+    print(f'Broadcast: {message.strip()}')
+    # convert to bytes
+    msg_bytes = message.encode()
+    # enumerate all users and broadcast the message
+    global ALL_USERS
+    for _, (_, writer) in ALL_USERS.items():
+        # write message to this user
+        writer.write(msg_bytes)
+        # wait for the buffer to empty
+        await writer.drain()
+
+# connect a user
+async def connect_user(reader, writer):
+    # get name message
+    writer.write('Asycio Chat Server\n'.encode())
+    writer.write('Enter your name:\n'.encode())
+    await writer.drain()
+    # ask the user for their name
+    name_bytes = await reader.readline()
+    # convert name to string
+    name = name_bytes.decode().strip()
+    # store the user details
+    global ALL_USERS
+    ALL_USERS = (reader, writer)
+    # announce the user
+    await broadcast_message(f'{name} has connected\n')
+    # welcome message
+    welcome = f'Welcome {name}. Send QUIT to disconnect.\n'
+    writer.write(welcome.encode())
+    await writer.drain()
+    return name
+
+# disconnect a user
+async def disconnect_user(name, writer):
+    # close the user's connection
+    writer.close()
+    await writer.wait_closed()
+    # remove from the dict of all users
+    global ALL_USERS
+    del ALL_USERS
+    # broadcast the user has left
+    await broadcast_message(f'{name} has disconnected\n')
+
+# handle a chat client
+async def handle_chat_client(reader, writer):
+    print('Client connecting...')
+    # connect the user
+    name = await connect_user(reader, writer)
+    try:
+        # read messages from the user
+        while True:
+            # read a line of data
+            line_bytes = await reader.readline()
+            # convert to string
+            line = line_bytes.decode().strip()
+            # check for exit
+            if line == 'QUIT':
+                break
+            # broadcast message
+            await broadcast_message(f'{name}: {line}\n')
+    finally:
+        # disconnect the user
+        await disconnect_user(name, writer)
+
+# chat server
+async def main():
+    # define the local host
+    host_address, host_port = '127.0.0.1', 8888
+    # create the server
+    server = await asyncio.start_server(handle_chat_client, host_address, host_port)
+    # run the server
+    async with server:
+        # report message
+        print('Chat Server Running\nWaiting for chat clients...')
+        # accept connections
+        await server.serve_forever()
+
+# dict of all current users
+ALL_USERS = {}
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's explore an example of a chat client.</p>
+<h2>Example Asyncio Chat Client</h2>
+<p>We can explore how to develop an asyncio group chat client.</p>
+<p>This is simpler than the server we developed in the previous section.</p>
+<p>This program has 3 main parts, they are:</p>
+<ol>
+<li>A coroutine to read messages from the user and transmit to the server.</li>
+<li>A coroutine to read messages from the server and report to the user.</li>
+<li>A main coroutine to drive the connection to the server.</li>
+</ol>
+<p>Let's dive in.</p>
+<h3>Read and Transmit User Messages</h3>
+<p>Firstly, we can develop a coroutine that reads messages from standard input and transmits them to the server.</p>
+<p>Reads from standard input are blocking, therefore we must perform them in a separate thread via the <strong>asyncio.to_thread()</strong> function.</p>
+<p>This coroutine loops until the user enters a message "<strong>QUIT</strong>", which then exits the loop.</p>
+<p>The <strong>write_messages()</strong> coroutine below implements this.</p>
+<pre><code># send message to server
+async def write_messages(writer):
+    # read messages from the user and transmit to server
+    while True:
+        # read from stdin
+        message = await asyncio.to_thread(sys.stdin.readline)
+        # encode the string message to bytes
+        msg_bytes = message.encode()
+        # transmit the message to the server
+        writer.write(msg_bytes)
+        # wait for the buffer to be empty
+        await writer.drain()
+        # check if the user wants to quit the program
+        if message.strip() == 'QUIT':
+            # exit the loop
+            break
+    # report that the program is terminating
+    print('Quitting...')
+</code></pre>
+<h3>Read and Report Server Messages</h3>
+<p>Next, we need to develop a coroutine that will read messages from the server and report them to the user.</p>
+<p>This task operates in a loop, forever reading messages and printing them to standard output.</p>
+<p>The <strong>read_messages()</strong> coroutine below implements this.</p>
+<pre><code># read messages from the server
+async def read_messages(reader):
+    # read messages from the server and print to user
+    while True:
+        # read a message from the server
+        result_bytes = await reader.readline()
+        # decode response from bytes to a string
+        response = result_bytes.decode()
+        # report the response to the user
+        print(response.strip())
+</code></pre>
+<h3>Drive Connection With Server</h3>
+<p>Next, we need to drive the connection with the server.</p>
+<p>This involves first opening a connection to the server on the required host and port number.</p>
+<p>Next, we can create the <strong>read_messages()</strong> coroutine and schedule it as a background task, forever reading and reporting messages from the server.</p>
+<p>We can then create and await the <strong>write_messages()</strong> that will read input from the user and transmit it to the server. This coroutine will return when the user decides to quit.</p>
+<p>The <strong>read_messages()</strong> task can then be canceled and we can then close the connection to the server.</p>
+<p>The <strong>main()</strong> coroutine below implements this.</p>
+<pre><code># echo client
+async def main():
+    # define the server details
+    server_address, server_port = '127.0.0.1', 8888
+    # report progress to the user
+    print(f'Connecting to {server_address}:{server_port}...')
+    # open a connection to the server
+    reader, writer = await asyncio.open_connection(server_address, server_port)
+    # report progress to the user
+    print('Connected.')
+    # read and report messages from the server
+    read_task = asyncio.create_task(read_messages(reader))
+    # write messages to the server
+    await write_messages(writer)
+    # cancel the read messages task
+    read_task.cancel()
+    # report progress to the user
+    print('Disconnecting from server...')
+    # close the stream writer
+    writer.close()
+    # wait for the tcp connection to close
+    await writer.wait_closed()
+    # report progress to the user
+    print('Done.')
+</code></pre>
+<p>Finally, we can start the event loop.</p>
+<pre><code>...
+# run the event loop
+asyncio.run(main())</code></pre>
+<h3>Asyncio Chat Client Complete Example</h3>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a chat client using streams
+import sys
+import asyncio
+
+# send message to server
+async def write_messages(writer):
+    # read messages from the user and transmit to server
+    while True:
+        # read from stdin
+        message = await asyncio.to_thread(sys.stdin.readline)
+        # encode the string message to bytes
+        msg_bytes = message.encode()
+        # transmit the message to the server
+        writer.write(msg_bytes)
+        # wait for the buffer to be empty
+        await writer.drain()
+        # check if the user wants to quit the program
+        if message.strip() == 'QUIT':
+            # exit the loop
+            break
+    # report that the program is terminating
+    print('Quitting...')
+
+# read messages from the server
+async def read_messages(reader):
+    # read messages from the server and print to user
+    while True:
+        # read a message from the server
+        result_bytes = await reader.readline()
+        # decode response from bytes to a string
+        response = result_bytes.decode()
+        # report the response to the user
+        print(response.strip())
+
+# echo client
+async def main():
+    # define the server details
+    server_address, server_port = '127.0.0.1', 8888
+    # report progress to the user
+    print(f'Connecting to {server_address}:{server_port}...')
+    # open a connection to the server
+    reader, writer = await asyncio.open_connection(server_address, server_port)
+    # report progress to the user
+    print('Connected.')
+    # read and report messages from the server
+    read_task = asyncio.create_task(read_messages(reader))
+    # write messages to the server
+    await write_messages(writer)
+    # cancel the read messages task
+    read_task.cancel()
+    # report progress to the user
+    print('Disconnecting from server...')
+    # close the stream writer
+    writer.close()
+    # wait for the tcp connection to close
+    await writer.wait_closed()
+    # report progress to the user
+    print('Done.')
+
+# run the event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's explore how to use our chat server and clients.</p>
+<h2>Example Chat Session</h2>
+<p>Now that we have developed our chat server and client, let's look at how we can use them with an example chat session.</p>
+<p>Each program must be run as a separate program and the client programs require user input.</p>
+<p>I recommend saving each program as a separate file and running them on the command line (terminal or prompt).</p>
+<p>Firstly, we can run the server.</p>
+<p>Save the chat server to a file like <strong>server.py</strong> and then run it on the command line to start the server.</p>
+<p>For example:</p>
+<pre><code>python server.py</code></pre>
+<p>Next, save the chat client program in a file like <strong>client.py</strong> and then run it on the command line to start the client for example:</p>
+<pre><code>python client.py</code></pre>
+<p>The client must then enter their name and can begin chatting.</p>
+<p>For example:</p>
+<pre><code>Connecting to 127.0.0.1:8888...
+Connected.
+Asycio Chat Server
+Enter your name:
+Jason
+Jason has connected
+Welcome Jason. Send QUIT to disconnect.
+Hello there!
+Jason: Hello there!</code></pre>
+<p>On the server, we can see the client connect and each broadcast message being sent.</p>
+<pre><code>Chat Server Running
+Waiting for chat clients...
+Client connecting...
+Broadcast: Jason has connected
+Broadcast: Jason: Hello there!</code></pre>
+<p>Next, open another window and start a second chat client.</p>
+<p>For example:</p>
+<pre><code>python client.py</code></pre>
+<p>Enter a different name and begin chatting.</p>
+<p>For example:</p>
+<pre><code>Connecting to 127.0.0.1:8888...
+Connected.
+Asycio Chat Server
+Enter your name:
+Tom
+Tom has connected
+Welcome Tom. Send QUIT to disconnect.
+Hi there, this is very cool!
+Tom: Hi there, this is very cool!</code></pre>
+<p>Now check the first chat client. You will see that the second client was announced and their chat messages were broadcast.</p>
+<pre><code>...
+Tom has connected
+Tom: Hi there, this is very cool!</code></pre>
+<p>Similarly, the server sees the second client.</p>
+<pre><code>...
+Client connecting...
+Broadcast: Tom has connected
+Broadcast: Tom: Hi there, this is very cool!</code></pre>
+<p>Carry on and test the clients.</p>
+<p>Each client can then terminate their session by sending the message: <strong>QUIT</strong></p>
+<p>For example:</p>
+<pre><code>...
+QUIT
+Quitting...
+Disconnecting from server...
+Done.</code></pre>
+<p>The first client will see the second client disconnect.</p>
+<p>For example:</p>
+<pre><code>...
+Tom has disconnected</code></pre>
+<p>The first client can then disconnect in the same manner.</p>
+<p>For example:</p>
+<pre><code>...
+QUIT
+Quitting...
+Disconnecting from server...
+Done.</code></pre>
+<p>The server will see and report both client disconnections.</p>
+<pre><code>...
+Broadcast: Tom has disconnected
+Broadcast: Jason has disconnected</code></pre>
+<p>Finally, the server process can be forcefully terminated.</p>
+<p>This highlights how we can use our group chat or chat room program by running separate server and client programs.</p>
+<h2>Extension: Concurrent Broadcasts on Server</h2>
+<p>We can explore an update to the server program that broadcasts to all clients concurrently, rather than sequentially.</p>
+<p>This can be achieved by first defining a new coroutine that writes a byte message to a single <strong>StreamWriter</strong>.</p>
+<p>The <strong>write_message()</strong> coroutine below implements this.</p>
+<pre><code># write a message to a stream writer
+async def write_message(writer, msg_bytes):
+    # write message to this user
+    writer.write(msg_bytes)
+    # wait for the buffer to empty
+    await writer.drain()
+</code></pre>
+<p>Next, the broadcast_message coroutine can be updated to call the <strong>write_message()</strong> coroutine concurrently.</p>
+<p>This can be achieved by creating one <strong>asyncio.Task</strong> for each client in the <strong>ALL_USERS</strong> dict, then awaiting all tasks via <strong>asyncio.wait()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create a task for each write to client
+tasks = [asyncio.create_task(write_message(w, msg_bytes)) for _,(_,w) in ALL_USERS.items()]
+# wait for all writes to complete
+_ = await asyncio.wait(tasks)</code></pre>
+<p>The updated version of the broadcast_message coroutine with this change is listed below.</p>
+<pre><code># send a message to all connected users
+async def broadcast_message(message):
+    # report locally
+    print(f'Broadcast: {message.strip()}')
+    # convert to bytes
+    msg_bytes = message.encode()
+    # enumerate all users and broadcast the message
+    global ALL_USERS
+    # create a task for each write to client
+    tasks = [asyncio.create_task(write_message(w, msg_bytes)) for _,(_,w) in ALL_USERS.items()]
+    # wait for all writes to complete
+    _ = await asyncio.wait(tasks)
+</code></pre>
+<p>You can learn more about waiting for concurrent tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait/">How to Use Asyncio wait() in Python</a></li>
+</ul>
+<p>Tying this together, the complete updated server program is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a chat server using streams
+import asyncio
+
+# write a message to a stream writer
+async def write_message(writer, msg_bytes):
+    # write message to this user
+    writer.write(msg_bytes)
+    # wait for the buffer to empty
+    await writer.drain()
+
+# send a message to all connected users
+async def broadcast_message(message):
+    # report locally
+    print(f'Broadcast: {message.strip()}')
+    # convert to bytes
+    msg_bytes = message.encode()
+    # enumerate all users and broadcast the message
+    global ALL_USERS
+    # create a task for each write to client
+    tasks = [asyncio.create_task(write_message(w, msg_bytes)) for _,(_,w) in ALL_USERS.items()]
+    # wait for all writes to complete
+    _ = await asyncio.wait(tasks)
+
+# connect a user
+async def connect_user(reader, writer):
+    # get name message
+    writer.write('Asycio Chat Server\n'.encode())
+    writer.write('Enter your name:\n'.encode())
+    await writer.drain()
+    # ask the user for their name
+    name_bytes = await reader.readline()
+    # convert name to string
+    name = name_bytes.decode().strip()
+    # store the user details
+    global ALL_USERS
+    ALL_USERS = (reader, writer)
+    # announce the user
+    await broadcast_message(f'{name} has connected\n')
+    # welcome message
+    welcome = f'Welcome {name}. Send QUIT to disconnect.\n'
+    writer.write(welcome.encode())
+    await writer.drain()
+    return name
+
+# disconnect a user
+async def disconnect_user(name, writer):
+    # close the user's connection
+    writer.close()
+    await writer.wait_closed()
+    # remove from the dict of all users
+    global ALL_USERS
+    del ALL_USERS
+    # broadcast the user has left
+    await broadcast_message(f'{name} has disconnected\n')
+
+# handle a chat client
+async def handle_chat_client(reader, writer):
+    print('Client connecting...')
+    # connect the user
+    name = await connect_user(reader, writer)
+    try:
+        # read messages from the user
+        while True:
+            # read a line of data
+            line_bytes = await reader.readline()
+            # convert to string
+            line = line_bytes.decode().strip()
+            # check for exit
+            if line == 'QUIT':
+                break
+            # broadcast message
+            await broadcast_message(f'{name}: {line}\n')
+    finally:
+        # disconnect the user
+        await disconnect_user(name, writer)
+
+# chat server
+async def main():
+    # define the local host
+    host_address, host_port = '127.0.0.1', 8888
+    # create the server
+    server = await asyncio.start_server(handle_chat_client, host_address, host_port)
+    # run the server
+    async with server:
+        # report message
+        print('Chat Server Running\nWaiting for chat clients...')
+        # accept connections
+        await server.serve_forever()
+
+# dict of all current users
+ALL_USERS = {}
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<h2>Extension: Broadcast Via Queue in Server</h2>
+<p>We can explore an extension that uses a queue to dispatch broadcast messages from clients in the server that are transmitted at a later time.</p>
+<p>This can make the server more responsive to client messages, especially if there are a large number of clients that may slow down the broadcasting.</p>
+<p>Firstly, we can create an <strong>asyncio.Queue</strong> as a global variable that will be used for broadcast messages.</p>
+<pre><code>...
+# queue for broadcast messages
+queue = asyncio.Queue()</code></pre>
+<p>Next, we can create a new coroutine that loops forever and reads messages from the queue and broadcasts them to all clients.</p>
+<p>The <strong>broadcaster()</strong> coroutine below implements this.</p>
+<pre><code># read messages from the queue and transmit them to all clients
+async def broadcaster():
+    global queue
+    while True:
+        # read a message from the queue
+        message = await queue.get()
+        # report locally
+        print(f'Broadcast: {message.strip()}')
+        # convert to bytes
+        msg_bytes = message.encode()
+        # enumerate all users and broadcast the message
+        global ALL_USERS
+        # create a task for each write to client
+        tasks = [asyncio.create_task(write_message(w, msg_bytes)) for _,(_,w) in ALL_USERS.items()]
+        # wait for all writes to complete
+        _ = await asyncio.wait(tasks)
+</code></pre>
+<p>Next, we can update our old <strong>broadcast_message()</strong> coroutine to simply put messages on the queue.</p>
+<pre><code># send a message to all connected users
+async def broadcast_message(message):
+    global queue
+    # put the message in the queue
+    await queue.put(message)
+</code></pre>
+<p>If you are new to putting and getting on an <strong>asyncio.Queue</strong>, see the tutorial:</p>
+<ul>
+<li><a href="../asyncio-queue/">Asyncio Queue in Python</a></li>
+</ul>
+<p>Finally, we can update the <strong>main()</strong> to start the <strong>broadcaster()</strong> coroutine as a background task.</p>
+<pre><code>...
+# start the broadcaster as a background task
+broadcaster_task = asyncio.create_task(broadcaster())</code></pre>
+<p>The updated <strong>main()</strong> coroutine with this change is listed below.</p>
+<pre><code># chat server
+async def main():
+    # start the broadcaster as a background task
+    broadcaster_task = asyncio.create_task(broadcaster())
+    # define the local host
+    host_address, host_port = '127.0.0.1', 8888
+    # create the server
+    server = await asyncio.start_server(handle_chat_client, host_address, host_port)
+    # run the server
+    async with server:
+        # report message
+        print('Chat Server Running\nWaiting for chat clients...')
+        # accept connections
+        await server.serve_forever()
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a chat server using streams
+import asyncio
+
+# write a message to a stream writer
+async def write_message(writer, msg_bytes):
+    # write message to this user
+    writer.write(msg_bytes)
+    # wait for the buffer to empty
+    await writer.drain()
+
+# read messages from the queue and transmit them to all clients
+async def broadcaster():
+    global queue
+    while True:
+        # read a message from the queue
+        message = await queue.get()
+        # report locally
+        print(f'Broadcast: {message.strip()}')
+        # convert to bytes
+        msg_bytes = message.encode()
+        # enumerate all users and broadcast the message
+        global ALL_USERS
+        # create a task for each write to client
+        tasks = [asyncio.create_task(write_message(w, msg_bytes)) for _,(_,w) in ALL_USERS.items()]
+        # wait for all writes to complete
+        _ = await asyncio.wait(tasks)
+
+# send a message to all connected users
+async def broadcast_message(message):
+    global queue
+    # put the message in the queue
+    await queue.put(message)
+
+# connect a user
+async def connect_user(reader, writer):
+    # get name message
+    writer.write('Asycio Chat Server\n'.encode())
+    writer.write('Enter your name:\n'.encode())
+    await writer.drain()
+    # ask the user for their name
+    name_bytes = await reader.readline()
+    # convert name to string
+    name = name_bytes.decode().strip()
+    # store the user details
+    global ALL_USERS
+    ALL_USERS = (reader, writer)
+    # announce the user
+    await broadcast_message(f'{name} has connected\n')
+    # welcome message
+    welcome = f'Welcome {name}. Send QUIT to disconnect.\n'
+    writer.write(welcome.encode())
+    await writer.drain()
+    return name
+
+# disconnect a user
+async def disconnect_user(name, writer):
+    # close the user's connection
+    writer.close()
+    await writer.wait_closed()
+    # remove from the dict of all users
+    global ALL_USERS
+    del ALL_USERS
+    # broadcast the user has left
+    await broadcast_message(f'{name} has disconnected\n')
+
+# handle a chat client
+async def handle_chat_client(reader, writer):
+    print('Client connecting...')
+    # connect the user
+    name = await connect_user(reader, writer)
+    try:
+        # read messages from the user
+        while True:
+            # read a line of data
+            line_bytes = await reader.readline()
+            # convert to string
+            line = line_bytes.decode().strip()
+            # check for exit
+            if line == 'QUIT':
+                break
+            # broadcast message
+            await broadcast_message(f'{name}: {line}\n')
+    finally:
+        # disconnect the user
+        await disconnect_user(name, writer)
+
+# chat server
+async def main():
+    # start the broadcaster as a background task
+    broadcaster_task = asyncio.create_task(broadcaster())
+    # define the local host
+    host_address, host_port = '127.0.0.1', 8888
+    # create the server
+    server = await asyncio.start_server(handle_chat_client, host_address, host_port)
+    # run the server
+    async with server:
+        # report message
+        print('Chat Server Running\nWaiting for chat clients...')
+        # accept connections
+        await server.serve_forever()
+
+# dict of all current users
+ALL_USERS = {}
+# queue for broadcast messages
+queue = asyncio.Queue()
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<h2>Extensions</h2>
+<p>This section lists some extensions you may wish to explore.</p>
+<ul>
+<li><strong>Use Queue in the Server</strong>. Each client could put messages from clients on a queue. A broadcast coroutine could loop forever and read messages from the queue and broadcast them. This separation of concerns may be more efficient (implemented, see above).</li>
+<li><strong>Server Broadcast Concurrently</strong>. The broadcasts triggered by each client on the server are executed sequentially in a loop, updating the loop so that all broadcasts are performed concurrently (implemented, see above).</li>
+<li><strong>Add Coroutine Safety</strong>. Protect all changes to the ALL_USERS from race conditions via concurrent updates using a mutex lock.</li>
+<li><strong>Add Error Handling</strong>. Check for and handle common errors, such as server already running, unable to connect to server, client failing to connect properly, client disconnected unexpectedly, etc.</li>
+</ul>
+<p>If you explore any of these extensions, share your code and findings in the comments below.<br/>I'd love to see what you come up with.</p>
+<h2>Takeaways</h2>
+<p>You now know how to develop a group chat room using asyncio in Python.</p>
 </main>
 </body>
 </html>

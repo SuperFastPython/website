@@ -44,6 +44,313 @@
 <p>The <strong>asyncio.wait()</strong> function takes a collection of awaitables, typically <strong>Task</strong> objects.</p>
 <p>This could be a <strong>list</strong>, <strong>dict</strong> or <strong>set</strong> of task objects that we have created, such as via calls to the <strong>asyncio.create()</strong> task function in a list comprehension.</p>
 <p>For example:</p>
+<pre><code>...
+# create many tasks
+tasks = [asyncio.create_task(task_coro(i)) for i in range(10)]</code></pre>
+<p>The <strong>asyncio.wait()</strong> will not return until some condition on the collection of tasks is met.</p>
+<p>By default, the condition is that all tasks are completed.</p>
+<p>The <strong>wait()</strong> function returns a tuple of two sets. The first set contains all task objects that meet the condition, and the second contains all other task objects that do not yet meet the condition.</p>
+<p>These sets are referred to as the "<em>done</em>" set and the "<em>pending</em>" set.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to complete
+done, pending = await asyncio.wait(tasks)</code></pre>
+<p>Technically, the <strong>asyncio.wait()</strong> is a coroutine function that returns a coroutine.</p>
+<p>We can then await this coroutine which will return the tuple of sets.</p>
+<p>For example:</p>
+<pre><code>...
+# create the wait coroutine
+wait_coro = asyncio.wait(tasks)
+# await the wait coroutine
+tuple = await wait_coro</code></pre>
+<p>The condition waited for can be specified by the "<strong>return_when</strong>" argument which is set to asyncio.<strong>ALL_COMPLETED</strong> by default.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to complete
+done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)</code></pre>
+<p>We can wait for the first task to be completed by setting <strong>return_when</strong> to <strong>FIRST_COMPLETED</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the first task to be completed
+done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)</code></pre>
+<p>When the first task is complete and returned in the done set, the remaining tasks are not canceled and continue to execute concurrently.</p>
+<p>We can wait for the first task to fail with an exception by setting <strong>return_when</strong> to <strong>FIRST_EXCEPTION</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the first task to fail
+done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)</code></pre>
+<p>In this case, the done set will contain the first task that failed with an exception. If no task fails with an exception, the done set will contain all tasks and <strong>wait()</strong> will return only after all tasks are completed.</p>
+<p>We can specify how long we are willing to wait for the given condition via a "<strong>timeout</strong>" argument in seconds.</p>
+<p>If the timeout expires before the condition is met, the tuple of tasks is returned with whatever subset of tasks do meet the condition at that time, e.g. the subset of tasks that are completed if waiting for all tasks to complete.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to complete with a timeout
+done, pending = await asyncio.wait(tasks, timeout=3)</code></pre>
+<p>If the timeout is reached before the condition is met, an exception is not raised and the remaining tasks are not canceled.</p>
+<p>Now that we know how to use the <strong>asyncio.wait()</strong> function, let's look at some worked examples.</p>
+<h2>Example of Waiting for All Tasks</h2>
+<p>We can explore how to wait for all tasks using <strong>asyncio.wait()</strong>.</p>
+<p>In this example, we will define a simple task coroutine that generates a random value, sleeps for a fraction of a second, then reports a message with the generated value.</p>
+<p>The main coroutine will then create many tasks in a list comprehension with the coroutine and then wait for all tasks to complete.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for all tasks to complete
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = random()
+    # block for a moment
+    await asyncio.sleep(value)
+    # report the value
+    print(f'&gt;task {arg} done with {value}')
+
+# main coroutine
+async def main():
+    # create many tasks
+    tasks = [asyncio.create_task(task_coro(i)) for i in range(10)]
+    # wait for all tasks to complete
+    done,pending = await asyncio.wait(tasks)
+    # report results
+    print('All done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine then creates a list of ten tasks in a list comprehension, each providing a unique integer argument from 0 to 9.</p>
+<p>The <strong>main()</strong> coroutine is then suspended and waits for all tasks to complete.</p>
+<p>The tasks execute. Each generates a random value, sleeps for a moment, then reports its generated value.</p>
+<p>After all tasks have been completed, the <strong>main()</strong> coroutine resumes and reports a final message.</p>
+<p>This example highlights how we can use the <strong>wait()</strong> function to wait for a collection of tasks to be completed.</p>
+<p>This is perhaps the most common usage of the function.</p>
+<p>Note, that the results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>&gt;task 5 done with 0.0591009105682192
+&gt;task 8 done with 0.10453715687017351
+&gt;task 0 done with 0.15462838864295925
+&gt;task 6 done with 0.4103492027393125
+&gt;task 9 done with 0.45567100006991623
+&gt;task 2 done with 0.6984682905809402
+&gt;task 7 done with 0.7785363531316224
+&gt;task 3 done with 0.827386088873161
+&gt;task 4 done with 0.9481344994700972
+&gt;task 1 done with 0.9577302665040541
+All done
+</code></pre>
+<p>Next, let's look at how we might wait for the first task to complete.</p>
+<h2>Example of Waiting for First Task</h2>
+<p>We can explore how to wait for the first task to complete using <strong>asyncio.wait()</strong>.</p>
+<p>In this example, we will reuse the same simple task coroutine that generates a random value, sleeps for a fraction of a second, then reports a message with the generated value.</p>
+<p>The main coroutine will then create many tasks in a list comprehension with the coroutine as before. It will then wait for the first task to complete.</p>
+<p>Once a task is completed, it is retrieved from the set of done tasks and its details are reported.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for the first task to complete
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = random()
+    # block for a moment
+    await asyncio.sleep(value)
+    # report the value
+    print(f'&gt;task {arg} done with {value}')
+
+# main coroutine
+async def main():
+    # create many tasks
+    tasks = [asyncio.create_task(task_coro(i)) for i in range(10)]
+    # wait for the first task to complete
+    done,pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    # report result
+    print('Done')
+    # get the first task to complete
+    first = done.pop()
+    print(first)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine then creates a list of ten tasks in a list comprehension, each providing a unique integer argument from 0 to 9.</p>
+<p>The <strong>main()</strong> coroutine is then suspended and waits for the first task to complete</p>
+<p>The tasks execute. Each generates a random value, sleeps for a moment, then reports its generated value.</p>
+<p>As soon as the first task completes, the <strong>wait()</strong> function returns and the <strong>main()</strong> coroutine resumes.</p>
+<p>The "<em>done</em>" set contains a single task that is finished, whereas the "<em>pending</em>" set contains all other tasks that were provided in the collection to the <strong>wait()</strong> function.</p>
+<p>The single finished task is then retrieved from the "<em>done</em>" set and is reported. The printed status of the task confirms that indeed it is done.</p>
+<p>The other tasks are not canceled and continue to run concurrently. Their execution is cut short because the asyncio program is terminated.</p>
+<p>This example highlights how we can use the <strong>wait()</strong> function to wait for the first task to complete.</p>
+<p>Note, that the results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>&gt;task 9 done with 0.04034360933451242
+Done
+&lt;Task finished name='Task-11' coro=&lt;task_coro() done, defined at ...&gt; result=None&gt;
+</code></pre>
+<p>Next, let's look at how we might wait for the first task to fail with an exception.</p>
+<h2>Example of Waiting for First Failure</h2>
+<p>We can explore how to wait for the first task to fail using <strong>asyncio.wait()</strong>.</p>
+<p>In this example, we will reuse the same simple task coroutine that generates a random value, sleeps for a fraction of a second, then reports a message with the generated value.</p>
+<p>The task coroutine is updated so that conditionally it will fail with an exception if the generated value is below a threshold.</p>
+<p>The main coroutine will then create many tasks. It will then wait for the first task to fail with an exception.</p>
+<p>Once a task has failed, it is retrieved from the set of done tasks and its details are reported.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for the first task to fail
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = random()
+    # block for a moment
+    await asyncio.sleep(value)
+    # report the value
+    print(f'&gt;task {arg} done with {value}')
+    # conditionally fail
+    if value &lt; 0.5:
+        raise Exception(f'Something bad happened in {arg}')
+
+# main coroutine
+async def main():
+    # create many tasks
+    tasks = [asyncio.create_task(task_coro(i)) for i in range(10)]
+    # wait for the first task to fail, or all tasks to complete
+    done,pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+    # report result
+    print('Done')
+    # get the first task to fail
+    first = done.pop()
+    print(first)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine then creates a list of ten tasks in a list comprehension, each providing a unique integer argument from 0 to 9.</p>
+<p>The <strong>main()</strong> coroutine is then suspended and waits for the first task to complete</p>
+<p>The tasks execute. Each generates a random value, sleeps for a moment, then reports its generated value.</p>
+<p>Conditionally, some tasks raise an exception if their generated value is above a threshold value. It is possible that all tasks generate a value below the threshold and none raise an exception, although this situation is extremely unlikely.</p>
+<p>As soon as the first task fails with an exception, the <strong>wait()</strong> function returns and the <strong>main()</strong> coroutine resumes.</p>
+<p>The "<em>done</em>" set contains a single task that failed first, whereas the "<em>pending</em>" set contains all other tasks that were provided in the collection to the <strong>wait()</strong> function.</p>
+<p>The single failed task is then retrieved from the "<em>done</em>" set and is reported. The printed status of the task confirms that it indeed failed with an exception in this case.</p>
+<p>The other tasks are not canceled and continue to run concurrently. Their execution is cut short because the asyncio program is terminated.</p>
+<p>This example highlights how we can use the <strong>wait()</strong> function to wait for the first task to fail.</p>
+<p>Note, that the results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>&gt;task 5 done with 0.13168449673381888
+Done
+&lt;Task finished name='Task-7' coro=&lt;task_coro() done, defined at ...&gt; exception=Exception('Something bad happened in 5')&gt;
+</code></pre>
+<p>Next, let's look at how we might wait for tasks with a timeout.</p>
+<h2>Example of Waiting with a Timeout</h2>
+<p>We can explore how to wait for all tasks to complete with a timeout using <strong>asyncio.wait()</strong>.</p>
+<p>In this example, we will reuse the same simple task coroutine that generates a random value, sleeps for a fraction of a second, then reports a message with the generated value.</p>
+<p>The main coroutine will then create many tasks and wait for all tasks to complete. In this case, a timeout is specified, setting an upper limit on how long the caller is willing to wait.</p>
+<p>Once all tasks are complete, or the timeout expires, the sets of done and pending tasks are returned. The total number of tasks completed within the timeout is then reported.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for all tasks to be completed with a timeout
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 10
+    value = random() * 10
+    # block for a moment
+    await asyncio.sleep(value)
+    # report the value
+    print(f'&gt;task {arg} done with {value}')
+
+# main coroutine
+async def main():
+    # create many tasks
+    tasks = [asyncio.create_task(task_coro(i)) for i in range(10)]
+    # wait for all tasks to complete
+    done,pending = await asyncio.wait(tasks, timeout=5)
+    # report results
+    print(f'Done, {len(done)} tasks completed in time')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine then creates a list of ten tasks in a list comprehension, each providing a unique integer argument from 0 to 9.</p>
+<p>The <strong>main()</strong> coroutine is then suspended and waits for all tasks to complete.</p>
+<p>It specifies a timeout of 5 seconds. This is about half the duration of the longest tasks that could be generated.</p>
+<p>The tasks execute. Each generates a random value between 0 and 10, sleeps for the generated number of seconds, then reports its generated value.</p>
+<p>The timeout expires and the <strong>main()</strong> coroutine resumes. It reports a message indicating the number of tasks that were completed within the timeout, which was 6 in this case.</p>
+<p>This example highlights how we can use the <strong>wait()</strong> function to wait for a collection of tasks to be completed with a timeout.</p>
+<p>Note, that the results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>&gt;task 7 done with 0.16485206249285955
+&gt;task 0 done with 0.73241529734688
+&gt;task 4 done with 1.1137310743743878
+&gt;task 6 done with 2.396915437441108
+&gt;task 5 done with 3.375537014759735
+&gt;task 2 done with 4.821848023696365
+Done, 6 tasks completed in time
+</code></pre>
+<h2>Example of Waiting for Coroutines</h2>
+<p>We can explore waiting for coroutines instead of tasks with <strong>asyncio.wait()</strong>.</p>
+<p>The <strong>wait() </strong>function is used to support coroutines as well as tasks. It was since updated to only support tasks.</p>
+<p>Support for coroutines in the <strong>wait()</strong> function is deprecated at the time of writing and will result in a <strong>DeprecationWarning</strong> in Python 3.10. This support will soon be removed, in Python 3.11.</p>
+<p>The example below creates a list of coroutines and then waits for them all to complete.</p>
+<p>If you are using Python 3.10 or lower, the coroutines are converted into tasks and scheduled for execution.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for all coroutines to complete
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = random()
+    # block for a moment
+    await asyncio.sleep(value)
+    # report the value
+    print(f'&gt;task {arg} done with {value}')
+
+# main coroutine
+async def main():
+    # create many coroutines
+    tasks = [task_coro(i) for i in range(10)]
+    # wait for all tasks to complete
+    done,pending = await asyncio.wait(tasks)
+    # report results
+    print('All done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the program assumes you are using Python 3.10 or lower. If not, please let me know the results you see in the comments below.</p>
+<p>In this case, we can see that a <strong>DeprecationWarning</strong> is reported.</p>
+<p>The example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine then creates a list of ten coroutines (not tasks) in a list comprehension, each providing a unique integer argument from 0 to 9.</p>
+<p>The <strong>main()</strong> coroutine is then suspended and waits for all coroutines to complete. The <strong>wait()</strong> function converts each coroutine into a Task, which is then scheduled for execution and then awaited.</p>
+<p>The tasks execute. Each generates a random value, sleeps for a moment, then reports its generated value.</p>
+<p>After all tasks have been completed, the <strong>main()</strong> coroutine resumes and reports a final message.</p>
+<p>This example highlights how we can use the <strong>wait()</strong> function to wait for a collection of coroutines to complete.</p>
+<p>Note, that the results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>DeprecationWarning: The explicit passing of coroutine objects to asyncio.wait() is deprecated since Python 3.8, and scheduled for removal in Python 3.11.
+  done,pending = await asyncio.wait(tasks)
+&gt;task 3 done with 0.05716637980412176
+&gt;task 2 done with 0.21893288741084582
+&gt;task 9 done with 0.2702814255302467
+&gt;task 4 done with 0.2989980107703637
+&gt;task 6 done with 0.40462737710888264
+&gt;task 8 done with 0.5675796788798889
+&gt;task 5 done with 0.6219456587051952
+&gt;task 1 done with 0.8236981712898166
+&gt;task 7 done with 0.8408137669173977
+&gt;task 0 done with 0.9844164290735692
+All done
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to wait for asyncio tasks to complete in Python.</p>
 </main>
 </body>
 </html>

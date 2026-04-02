@@ -32,6 +32,248 @@
 future = executor.submit(task)</code></pre>
 <p>If you call submit multiple times for different tasks or different arguments to the same task, you can do so in a loop and store all of the <strong>Future</strong> objects in a collection for later use.</p>
 <p>For example, it is common to use a list comprehension.</p>
+<pre><code>...
+# create many tasks and store the future objects in a list
+futures = [executor.submit(work) for _ in range(100)]</code></pre>
+<p>You can call the <strong>wait()</strong> module function and pass it a collection of <strong>Future</strong> objects created with calls to the <strong>submit()</strong> function.</p>
+<p>By default, the will wait automatically for all tasks in the collection of <strong>Future</strong> objects to complete before returning.</p>
+<pre><code>...
+# wait for all tasks to complete before returning
+wait(futures) # blocks</code></pre>
+<p>The "<strong>return_when</strong>" argument to the <strong>wait()</strong> function controls the condition to wait for. By default, it is set to the constant <strong>ALL_COMPLETED</strong> which waits for all tasks related to the provided <strong>Future</strong> objects to complete before returning.</p>
+<pre><code>...
+# wait for all tasks to complete before returning
+wait(futures, return_when=ALL_COMPLETED)</code></pre>
+<p>It can also be set to the value <strong>FIRST_COMPLETED</strong> to return when any task completes, and to <strong>FIRST_EXCEPTION</strong> to return when any task raises an exception or if all tasks are completed without raising an exception.</p>
+<pre><code>...
+# wait until any task is completed
+wait(futures, return_when=FIRST_COMPLETED)</code></pre>
+<p>The <strong>wait()</strong> function returns a tuple of two set objects. The first contains all of the <strong>Future</strong> objects that are done and the second contains all of the <strong>Future</strong> objects that are not done.</p>
+<p>If the "<strong>return_when</strong>" is set to <strong>ALL_COMPLETED</strong>, then the "<em>done</em>" set will contain all <strong>Future</strong> objects. Whereas if "<strong>return_when</strong>" is set to <strong>FIRST_COMPLETED</strong>, then the "<em>done</em>" set will contain the single <strong>Future</strong> object for the task that was completed first.</p>
+<pre><code>...
+# wait for all tasks to complete before returning
+done, not_done = wait(futures)</code></pre>
+<p>We may want to limit how long we are willing to wait for one or all tasks to be done.</p>
+<p>This can be achieved by setting the "<strong>timeout</strong>" argument to a number of seconds. If the time elapses while waiting, the function will return with empty <strong>done</strong> and <strong>not_done</strong> sets.</p>
+<pre><code>...
+# wait a for a fixed time for tasks to be done
+done, not_done = wait(futures, timeout=5)</code></pre>
+<p>Now that we know how to use the <strong>wait()</strong> function, let's look at a concrete example.</p>
+<p>The example below demonstrates how to use the <strong>wait()</strong> function to wait for all tasks to complete.</p>
+<p>Note that we are intentionally ignoring the return from calling <strong>wait()</strong> as we have no need to inspect it in this case.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for all tasks in a collection of tasks to be done
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    # display the result
+    print(name)
+
+# entry point
+if __name__ == '__main__':
+    # start the process pool
+    with ProcessPoolExecutor(10) as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # wait for all tasks to complete
+        wait(futures)
+        print('All tasks are done!')
+</code></pre>
+<p>Running the example, we can see that results are handled by each task as the tasks complete.</p>
+<p>Importantly, we can see that the main process waits until all tasks are completed before carrying on and printing a message.</p>
+<pre><code>3
+9
+0
+8
+4
+6
+2
+1
+5
+7
+All tasks are done!</code></pre>
+<p>Let's take a look at another example.</p>
+<p>The example below demonstrates the pattern of calling <strong>wait() </strong>and waiting for the first task (any task) in the provided collection to be done.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for the first task in a collection of tasks to be done
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from concurrent.futures import FIRST_COMPLETED
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# entry point
+if __name__ == '__main__':
+    # start the process pool
+    with ProcessPoolExecutor(10) as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # wait until any task completes
+        done, not_done = wait(futures, return_when=FIRST_COMPLETED)
+        # get the first task to complete
+        future = done.pop()
+        # get the result from the first task to complete
+        result = future.result()
+        print(result)
+</code></pre>
+<p>Running the example will wait for any of the tasks to complete, then retrieve the result of the first completed task and shutdown the process pool.</p>
+<pre><code>9</code></pre>
+<p>Now that we are familiar with how to use the <strong>wait() </strong>function, let's look at how to use the <strong>as_completed() </strong>function.</p>
+<h2 id="use-as-completed-to-get-results-as-tasks-complete-with-the-processpoolexecutor">Use as_completed() to Get Results As Tasks Complete with the ProcessPoolExecutor</h2>
+<p>Use the <strong>as_completed()</strong> module function to get results for tasks as they complete.</p>
+<p>Recall that we receive a <strong>Future</strong> object for each call to the <strong>submit() </strong>function on the <strong>ProcessPoolExecutor</strong>.</p>
+<pre><code>...
+# submit a task and get a future
+future = executor.submit(task)</code></pre>
+<p>We call the submit function repeatedly and store all of the <strong>Future</strong> objects in a collection. If we are calling the same target function multiple times, then it is common to use a list comprehension to build a collection of <strong>Future</strong> objects.</p>
+<pre><code>...
+# create many tasks and store the future objects in a list
+futures = [executor.submit(work) for _ in range(100)]</code></pre>
+<p>We can call the <strong>as_completed()</strong> function and pass it a collection of <strong>Future</strong> objects in order to wait for tasks to be done.</p>
+<p>The <strong>as_completed()</strong> will return an iterator over the same <strong>Future</strong> objects that were provided, but they will be in the order that the tasks are completed, not the order that they were provided or the order they were submitted to the <strong>ProcessPoolExecutor</strong>.</p>
+<pre><code>...
+# get an iterator for futures in the order they are completed
+iterator = as_completed(futures)</code></pre>
+<p>This iterator can then be used in a for-loop to get the <strong>Future</strong> and in turn the result of the associated task in the order that they are completed.</p>
+<p>This allows the program to be more responsive than if it was to process tasks in the order they were submitted to the process pool or if it was not able to process results until all tasks were completed.</p>
+<pre><code>...
+# process tasks in the order they are completed
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+</code></pre>
+<p>The example below demonstrates the <strong>as_completed()</strong> function, submitting the tasks in order from 0 to 9 and showing results in the order that they were completed.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for tasks using the as_completed function
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import as_completed
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# entry point
+if __name__ == '__main__':
+    # start the process pool
+    with ProcessPoolExecutor(10) as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # process task results as they are available
+        for future in as_completed(futures):
+            # retrieve the result
+            print(future.result())
+</code></pre>
+<p>Running the example we can see that the results are retrieved and printed in the order that the tasks completed, not the order that the tasks were submitted to the process pool.</p>
+<pre><code>6
+9
+0
+1
+3
+8
+4
+7
+2
+5</code></pre>
+<p>We may want to limit how long we are willing to wait for a result.</p>
+<p>This can be achieved by setting the "<strong>timeout</strong>" argument to a number of seconds.</p>
+<pre><code>...
+# set a timeout while waiting for results in completion order
+iterator = as_completed(futures, timeout=5)
+</code></pre>
+<p>If the timeout elapses before a result is received, then a <strong>TimeoutError</strong> is raised that may need to be handled.</p>
+<pre><code>...
+# handle a timeout waiting for a results
+try:
+	# get results in completion order with a timeout
+	iterator = as_completed(futures, timeout=5)
+	# do things...
+except TimeoutError:
+	# handle the timeout
+</code></pre>
+<p>If we only require the result from the first task to complete, we can call <strong>next()</strong> on the iterator directly.</p>
+<pre><code>...
+# get an iterator for futures in the order they are completed
+iterator = as_completed(futures)
+# get the first task to complete
+future = next(iterator)
+</code></pre>
+<p>We can update the previous example to get the first task to complete and report its result.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for the first task using the as_completed function
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import as_completed
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# entry point
+if __name__ == '__main__':
+    # start the process pool
+    with ProcessPoolExecutor(10) as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # get an iterator for tasks in completion order
+        iterator = as_completed(futures)
+        # get the first task to complete
+        future = next(iterator)
+        # retrieve the result
+        print(future.result())
+</code></pre>
+<p>Running the example creates the process pool and submits all tasks as we did before.</p>
+<p>We then get an iterator over the <strong>Future</strong> objects in the order of their completion, then retrieve just the first task to complete and report its result.</p>
+<pre><code>8</code></pre>
+<p>Now that we are familiar with the <strong>wait()</strong> and <strong>as_completed()</strong> module functions, let's take a closer look at when we might use each.</p>
+<h2 id="when-to-use-wait-vs-as-completed-with-the-processpoolexecutor">When to Use wait() vs as_completed() with the ProcessPoolExecutor</h2>
+<p>Let's compare the <strong>wait()</strong> and <strong>as_completed()</strong> functions when using the <strong>ProcessPoolExecutor</strong>.</p>
+<p>Both functions have a lot in common, such as:</p>
+<ul><li>Both help you wait for tasks to be done.</li><li>Both can help you wait for all tasks to be done, or the first task to be done.</li><li>Both require you to have called <strong>submit() </strong>to create <strong>Future</strong> objects.</li><li>Both functions are optional, e.g. you don't have to use them when executing asynchronous tasks.</li></ul>
+<p><strong>The as_completed() function is simpler.</strong></p>
+<p>It is designed specifically for processing tasks in the order of their completion.</p>
+<p><strong>You should use it if:</strong></p>
+<ul><li>You need task results in the order that tasks are completed.</li></ul>
+<p><strong>You should not use it if:</strong></p>
+<ul><li>You need to wait for all tasks to be done.</li><li>You need to wait for any task to be done.</li><li>You need to wait for any task to raise an exception.</li></ul>
+<p>Although you can achieve these outcomes with a call to the <strong>as_completed() </strong>function, it requires more code and is more prone to bugs.</p>
+<p>Additionally, the <strong>as_completed()</strong> function does not let you process tasks in the order that they were submitted to the process pool.</p>
+<p>To do this you can use the <strong>map() </strong>function instead of the <strong>submit()</strong> function to issue tasks to the process pool. Alternately, you can iterate over the collection of <strong>Future</strong> objects in the order you submitted them to the pool, for example:</p>
+<pre><code>...
+# iterate future objects in the order they were submitted
+for future in futures:
+	# get the result
+	result = future.result()
+</code></pre>
+<p><strong>The wait() function offers more flexibility.</strong></p>
+<p>It is designed for you to wait for a specified condition in a collection of tasks, such as any task being done, any task raising an exception or all tasks being done.</p>
+<p><strong>You should use it if:</strong></p>
+<ul><li>You need to wait for all tasks to be done.</li><li>You need to wait for any task to be done.</li><li>You need to wait for any task to raise an exception.</li></ul>
+<p><strong>You should not use it if:</strong></p>
+<ul><li>You need task results in the order that tasks are completed.</li></ul>
+<p>The <strong>wait()</strong> function will not help you wait for all tasks in the process pool, only those tasks for which you have <strong>Future</strong> objects and have passed to the wait function.</p>
+<p>If you need to wait for all tasks in the process pool to complete, you can call the <strong>shutdown()</strong> function on the process pool, which by default will not cancel scheduled tasks and will return once all scheduled and running tasks have completed.</p>
+<p><strong>Now that we have compared and contrasted the wait() and as_completed() functions, which will you use?</strong><br/>Let me know in the comments below.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know when to use <strong>wait() </strong>and <strong>as_completed()</strong> when executing tasks with the <strong>ProcessPoolExecutor</strong>.</p>
 </main>
 </body>
 </html>

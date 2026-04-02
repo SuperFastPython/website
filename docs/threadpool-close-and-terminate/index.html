@@ -255,6 +255,197 @@ print('Main all done.')</code></pre>
 <p>The <strong>terminate()</strong> function will be called to immediately terminate the pool, allowing the main thread to exit.</p>
 <p>Note, the worker threads in the <strong>ThreadPool</strong> are daemon threads, therefore will not prevent the main thread from exiting.</p>
 <p>We can demonstrate this by reporting the daemon status of all threads.</p>
+<pre><code>...
+# report the number of thread that are still active
+active_threads = 
+print(f'Active children: {len(active_threads)}')
+# report the daemon status of the child
+for thread in active_threads:
+    print(thread)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of not closing the thread pool
+from time import sleep
+from multiprocessing.pool import ThreadPool
+import threading
+
+# task executed in a worker thread
+def task():
+    # report a message
+    print(f'Task executing')
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    pool = ThreadPool()
+    # issue tasks to the thread pool
+    result = pool.apply_async(task)
+    # wait a moment
+    sleep(0.5)
+    # report a message
+    print('Main all done.')
+    # report the number of thread that are still active
+    active_threads = 
+    print(f'Active children: {len(active_threads)}')
+    # report the daemon status of the child
+    for thread in active_threads:
+        print(thread)
+</code></pre>
+<p>Running the example first creates the ThreadPool then issues the task to the ThreadPool.</p>
+<p>The <strong>ThreadPool</strong> begins executing the task in a worker thread.</p>
+<p>The main thread blocks for a moment.</p>
+<p>It then reports the number of active threads, which is 12 in this case.</p>
+<p>On my system, there are 8 worker threads, 1 main thread, and 3 helper threads internal to the ThreadPool class.</p>
+<p>Note, the number of active threads will differ depending on your system and the default number of worker threads that were created.</p>
+<p>The daemon status of all worker threads is then reported.</p>
+<p>We can see that all worker threads with the name "<strong>DummyProcess</strong>" are daemon threads, as expected. This means they will not prevent the main thread from exiting. We can also see the three helper threads are also daemon threads, as we would expect, and the main thread is not a daemon thread.</p>
+<p>The main thread exits. The Python garbage collector triggers the <strong>multiprocessing.pool.ThreadPool</strong> object to be deleted and indirectly results in the <strong>terminate()</strong> function on the pool being called.</p>
+<p>This prevents the pool from taking any further tasks, then closes all worker threads.</p>
+<p>The task in the thread pool does not get a chance to finish. The worker threads in the pool are forcefully stopped.</p>
+<pre><code>Task executing
+Main all done.
+Active children: 12
+&lt;_MainThread(MainThread, started 4721761792)&gt;
+&lt;DummyProcess(Thread-1, started daemon 123145500561408)&gt;
+&lt;DummyProcess(Thread-2, started daemon 123145517350912)&gt;
+&lt;DummyProcess(Thread-3, started daemon 123145534140416)&gt;
+&lt;DummyProcess(Thread-4, started daemon 123145550929920)&gt;
+&lt;DummyProcess(Thread-5, started daemon 123145567719424)&gt;
+&lt;DummyProcess(Thread-6, started daemon 123145584508928)&gt;
+&lt;DummyProcess(Thread-7, started daemon 123145601298432)&gt;
+&lt;DummyProcess(Thread-8, started daemon 123145618087936)&gt;
+&lt;Thread(Thread-9, started daemon 123145634877440)&gt;
+&lt;Thread(Thread-10, started daemon 123145651666944)&gt;
+&lt;Thread(Thread-11, started daemon 123145668456448)&gt;
+</code></pre>
+<h2>Automatically Terminating the ThreadPool with the Context Manager</h2>
+<p>We can automatically call terminate on the <strong>ThreadPool</strong> once we are finished with it via the context manager interface.</p>
+<p>This is a preferred way to work with the <strong>ThreadPool</strong>, if the work with the pool can fit within the context managers block.</p>
+<p>We can update the example to create and configure the pool using the context manager interface.</p>
+<pre><code>...
+# create and configure the thread pool
+with ThreadPool() as pool:
+	# ...
+</code></pre>
+<p>We can then issue the task within the pool, and wait for it to complete.</p>
+<pre><code>...
+# issue tasks to the thread pool
+result = pool.apply_async(task)
+# wait a moment
+result.wait()</code></pre>
+<p>It is important that we wait for the task to complete within the context manager block.</p>
+<p>This can be achieved by using blocking calls on the <strong>ThreadPool</strong> or waiting on the result directly as we are in this case.</p>
+<p>If we carried on and the context manager block exited, then the pool would be terminated while the task was still running.</p>
+<p>One we are finished with the <strong>ThreadPool</strong>, we can report a message and check the number of active threads.</p>
+<pre><code>...
+# report a message
+print('Main all done.')
+# wait a moment
+sleep(0.5)
+# report the number of threads that are active
+active_threads = active_count()
+print(f'Active threads: {active_threads}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of automatically terminating the thread pool
+from time import sleep
+from multiprocessing.pool import ThreadPool
+from threading import active_count
+
+# task executed in a worker thread
+def task():
+    # report a message
+    print(f'Task executing')
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        result = pool.apply_async(task)
+        # wait a moment
+        result.wait()
+    # report a message
+    print('Main all done.')
+    # wait a moment
+    sleep(0.5)
+    # report the number of threads that are active
+    active_threads = active_count()
+    print(f'Active threads: {active_threads}')
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPool</strong> then issues the task to the <strong>ThreadPool</strong>.</p>
+<p>The <strong>ThreadPool</strong> begins executing the task in a worker thread.</p>
+<p>The main threads then blocks, waiting for the task to complete.</p>
+<p>Once the task is finished, the main thread unblocks and continues on. It exits the context manager block which triggers the <strong>terminate()</strong> function to be called by the <strong>__exit__()</strong> function of the context manager.</p>
+<p>The worker threads in the <strong>ThreadPool</strong> are then closed.</p>
+<p>The main thread blocks for a moment to allow the worker threads to shutdown completely.</p>
+<p>The main thread then reports the number of active threads, which is one as expected, e.g. the main thread.</p>
+<pre><code>Task executing
+Task done
+Main all done.
+Active threads: 1</code></pre>
+<h2>Error When Issuing Task to Closed ThreadPool</h2>
+<p>We cannot issue new tasks to a <strong>ThreadPool</strong> that has been shutdown.</p>
+<p>That is, if the pool has been shutdown with a call to <strong>close()</strong> or <strong>terminate()</strong> and we try to issue a new task, it results in an error.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>The example above can be updated so that we close the pool, then issue a second task.</p>
+<pre><code>...
+# issue tasks to the thread pool
+result = pool.apply_async(task)
+# close the thread pool
+pool.close()
+# issue another task
+pool.apply_async(task)</code></pre>
+<p>This is expected to result in an error.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of issuing a task to a pool that has already been closed.
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # report a message
+    print(f'Task executing')
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    pool = ThreadPool()
+    # issue tasks to the thread pool
+    result = pool.apply_async(task)
+    # close the thread pool
+    pool.close()
+    # issue another task
+    pool.apply_async(task)
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPool</strong> then issues the task to the <strong>ThreadPool</strong>.</p>
+<p>The <strong>ThreadPool</strong> begins executing the task in a worker thread.</p>
+<p>The main thread then closes the <strong>ThreadPool</strong> while the task is running.</p>
+<p>This prevents the pool from taking any further tasks.</p>
+<p>The main thread then attempts to issue a new task to the pool. This results in an error, as expected, reporting "<em>Pool not running</em>".</p>
+<pre><code>Traceback (most recent call last):
+  ...
+Task executing
+    pool.apply_async(task)
+  ...
+ValueError: Pool not running
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to shutdown the <strong>ThreadPool</strong> in Python.</p>
 </main>
 </body>
 </html>

@@ -117,6 +117,212 @@ queue = manager.Queue()</code></pre>
 <p>The main process creates the shared queue, then creates a Pool with 10 workers and issues 10 tasks to the pool, each providing access to the shared queue.</p>
 <p>The main process then consumes the expected 10 numbers from the shared queue.</p>
 <p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a queue with a pool that results in an error
+from random import random
+from time import sleep
+from multiprocessing import Pool
+from multiprocessing import Queue
+
+# task completed in a worker
+def task(queue):
+    # generate some work
+    data = random() * 5
+    # block to simulate work
+    sleep(data)
+    # put it on the queue
+    queue.put(data)
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the shared queue
+    queue = Queue()
+    # create the pool of workers
+    with Pool(10) as pool:
+        # create a list of arguments, one for each call
+        args = 
+        # execute the tasks in parallel
+        pool.map(task, args)
+    # consume all items
+    for i in range(10):
+        # get item from queue
+        item = queue.get()
+        # report item
+        print(f'&gt; got {item}')
+</code></pre>
+<p>Running the example first creates the shared queue.</p>
+<p>The Pool is then created and all 10 tasks are issued to the pool.</p>
+<p>These fail immediately with a <strong>RuntimeError</strong>.</p>
+<p>The message of the error indicates that a multiprocessing <strong>Queue</strong> should only be shared with child processes using inheritance, specifically by using the fork start method and an inherited global variable.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+RuntimeError: Queue objects should only be shared between processes through inheritance
+</code></pre>
+<p>Next, let;s look at how we can share the queue via an inherited global variable.</p>
+<h2>Example of Sharing a Queue with a Pool As a Global Variable</h2>
+<p>We can explore how to share a queue with child processes using an inherited global variable.</p>
+<p>The example in the previous section can be updated to use the fork start method.</p>
+<p>It is good practice to set the fork start method as the first line of the program if we wish all child processes to be created using this method.</p>
+<pre><code>...
+# set the fork start method
+set_start_method('fork')</code></pre>
+<p>An alternate method would be to set the multiprocessing context for the pool that would set the start method that would only influence workers in the pool.</p>
+<p>You can learn more about setting the multiprocessing context for the pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-context/">Configure the Multiprocessing Pool Context</a></li>
+</ul>
+<p>Next, we can define a global variable for the queue and assign it normally. I think it's good to be explicit about these things.</p>
+<pre><code>...
+# declare the global variable
+global queue
+# define the queue global variable
+queue = Queue()</code></pre>
+<p>The tasks can be issued as before, although without the queue argument, as an error will be raised.</p>
+<p>Instead, the task function is updated to declare the global variable and then use it directly.</p>
+<pre><code># task completed in a worker
+def task():
+    # declare the queue global variable
+    global queue
+    # generate some work
+    data = random() * 5
+    # block to simulate work
+    sleep(data)
+    # put it on the queue
+    queue.put(data)
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<p>Note, the '<strong>fork</strong>' start method is not supported on all platforms, e.g. I don't think this example will run on the Windows platform.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a queue via the fork start method and a global variable
+from random import random
+from time import sleep
+from multiprocessing import Pool
+from multiprocessing import Queue
+from multiprocessing import set_start_method
+
+# task completed in a worker
+def task():
+    # declare the queue global variable
+    global queue
+    # generate some work
+    data = random() * 5
+    # block to simulate work
+    sleep(data)
+    # put it on the queue
+    queue.put(data)
+
+# protect the entry point
+if __name__ == '__main__':
+    # set the fork start method
+    set_start_method('fork')
+    # declare the global variable
+    global queue
+    # define the queue global variable
+    queue = Queue()
+    # create the pool of workers
+    with Pool(10) as pool:
+        # issue tasks
+        results = [pool.apply_async(task) for _ in range(10)]
+        # wait for all the tasks to complete
+        for result in results:
+            result.wait()
+    # consume all items
+    for i in range(10):
+        # get item from queue
+        item = queue.get()
+        # report item
+        print(f'&gt; got {item}')
+</code></pre>
+<p>Running the example first sets the fork start method.</p>
+<p>Next, the queue global variable is declared and defined.</p>
+<p>The pool is started and all tasks are issued. The main process then waits for the tasks to complete.</p>
+<p>Each task runs, declares the queue global variable, generates its number, sleeps, and puts its generated number on the queue.</p>
+<p>The main process resumes after all tasks are completed and consumes the expected 10 generated numbers and reports each in turn.</p>
+<p>This highlights how we can share a multiprocessing queue with tasks executed by child process workers in the multiprocessing pool using the inheritance of a global variable.</p>
+<pre><code>&gt; got 0.12432051503051156
+&gt; got 0.2095435490376535
+&gt; got 0.26406409859466407
+&gt; got 1.337933891251271
+&gt; got 1.4197110269904367
+&gt; got 2.1694064382747005
+&gt; got 2.659180184099527
+&gt; got 4.131037733434911
+&gt; got 4.25445903944172
+&gt; got 4.782490715214807</code></pre>
+<p>Next, we will explore how to share a queue with workers in the pool via a manager.</p>
+<h2>Example of Sharing a Queue with a Pool Via a Manager</h2>
+<p>We can explore how to share a queue with workers in the multiprocessing pool using a <strong>Manager</strong>.</p>
+<p>In this example, we can update the first failing example to create and host the queue in a manager server process and share the queue proxy objects with tasks executed in the multiprocessing pool.</p>
+<p>First, we will set the spawn start method, to ensure that the inheritance of global variables is not possible. This is not required at all, but it is explicitly shown that this option is not available in this example.</p>
+<p>We can then create a manager and use it to create the shared queue.</p>
+<pre><code>...
+# create the manager
+with Manager() as  manager:
+    # create the shared queue
+    queue = manager.Queue()
+</code></pre>
+<p>And that's it. The rest of the example unfolds as before.</p>
+<p>The proxy object for the queue is shared with tasks executed in the multiprocessing pool as an argument and used directly.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a queue via a manager
+from random import random
+from time import sleep
+from multiprocessing import Pool
+from multiprocessing import Manager
+from multiprocessing import set_start_method
+
+# task completed in a worker
+def task(queue):
+    # generate some work
+    data = random() * 5
+    # block to simulate work
+    sleep(data)
+    # put it on the queue
+    queue.put(data)
+
+# protect the entry point
+if __name__ == '__main__':
+    # set the fork start method
+    set_start_method('spawn')
+    # create the manager
+    with Manager() as  manager:
+        # create the shared queue
+        queue = manager.Queue()
+        # create the pool of workers
+        with Pool(10) as pool:
+            # create a list of arguments, one for each call
+            args = 
+            # execute the tasks in parallel
+            pool.map(task, args)
+        # consume all items
+        for i in range(10):
+            # get item from queue
+            item = queue.get()
+            # report item
+            print(f'&gt; got {item}')
+</code></pre>
+<p>Running the example first sets the process start method to '<strong>spawn</strong>', which means each child process is created anew and does not inherit anything from the parent process.</p>
+<p>Next, the manager is created. This starts a server process for hosting Python objects.</p>
+<p>A queue is created via the manager. It is hosted in the Manager's server process and proxy objects are returned that allows parent and child processes alike to interact with it like a normal Python object.</p>
+<p>The pool is started and tasks are executed. The queue proxy objects are provided to the tasks executed in the pool as per normal.</p>
+<p>The tasks execute, sleep, and place their generated number on the queue.</p>
+<p>Once all tasks are complete, the main process consumes all items from the queue and reports their values.</p>
+<p>This highlights how we can share a multiprocessing queue with tasks executed in a multiprocessing pool using a manager and proxy objects.</p>
+<pre><code>&gt; got 0.05443966396912636
+&gt; got 0.8187454080662726
+&gt; got 2.1131564921057504
+&gt; got 2.2639148461313874
+&gt; got 2.287475773829026
+&gt; got 2.4898694172287645
+&gt; got 3.3739494879733503
+&gt; got 3.5294822364629406
+&gt; got 4.359748607285485
+&gt; got 4.366403932616186
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share a multiprocessing queue with tasks executed by child process workers in the multiprocessing pool in python.</p>
 </main>
 </body>
 </html>

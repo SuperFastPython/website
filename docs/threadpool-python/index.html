@@ -2989,6 +2989,146 @@ def progress(results):
 <p>We can explore how to show the progress of tasks issued to the <strong>ThreadPool</strong>.</p>
 <p>In this example, we will define a task that will block for a fraction of a second. We will then issue many of these tasks to the <strong>ThreadPool</strong>. A callback will be called as each task is finished and will print a message to show the progress of tasks as they are completed.</p>
 <p>A complete example to demonstrate this is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of showing progress in the thread pool with separate tasks
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# progress indicator for tasks in the thread pool
+def progress(results):
+    print('.', end='')
+
+# task executed in a worker thread
+def task():
+    # generate a random value
+    value = random()
+    # block for a moment
+    sleep(value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue many tasks asynchronously to the thread pool
+        results = [pool.apply_async(task, callback=progress) for _ in range(20)]
+        # close the pool
+        pool.close()
+        # wait for all issued tasks to complete
+        pool.join()
+    # report all done
+    print('\nDone!')
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPool</strong>.</p>
+<p>Then, 20 tasks are issued to the pool, one at a time.</p>
+<p>The main thread then closes the <strong>ThreadPool</strong> and blocks waiting for all issued tasks to be completed.</p>
+<p>Each task blocks for a fraction of a second and finishes.</p>
+<p>As each task is finished, the callback function is called, printing a dot.</p>
+<p>The dots accumulate on standard output, showing the progress of all issued tasks.</p>
+<p>Once all tasks are finished, the main thread continues on and reports a final message.</p>
+<pre><code>....................
+Done!</code></pre>
+<p>You can learn more about how to show the progress of tasks in the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-show-progress/">ThreadPool Show Progress in Python</a></li>
+</ul>
+<h3>Do We Need to Protect __main__?</h3>
+<p>You do not need to have a <strong>__main__</strong> when using the <strong>ThreadPool</strong>.</p>
+<p>You do need to check for <strong>__main__</strong> when using the <strong>multiprocessing</strong> module and the <strong>Pool</strong> class.</p>
+<p>Nevertheless, it is a good practice to protect the entry point in your programs for consistency.</p>
+<h3>How Do You Get an AsyncResult Object for Tasks Added With map()?</h3>
+<p>You cannot.</p>
+<p>When you call <strong>map()</strong>, <strong>starmap()</strong>, <strong>imap()</strong>, <strong>imap_unordered()</strong>, or <strong>apply()</strong> it does create an <strong>AsyncResult</strong> object for each task.</p>
+<p>You can only get an <strong>AsyncResult</strong> when issuing tasks to the <strong>ThreadPool</strong> using the functions:</p>
+<ul>
+<li>apply_async()</li>
+<li>map_async()</li>
+<li>starmap_async()</li>
+</ul>
+<h2>Common Objections to Using ThreadPool</h2>
+<p>The <strong>ThreadPool</strong> may not be the best solution for all concurrency problems in your program.</p>
+<p>That being said, there may also be some misunderstandings that are preventing you from making the full and best use of the capabilities of the <strong>ThreadPool</strong> in your program.</p>
+<p>In this section, we review some of the common objections seen by developers when considering using the <strong>ThreadPool</strong> in their code</p>
+<p>Let's dive in.</p>
+<h3>What About the Global Interpreter Lock (GIL)?</h3>
+<p>The Global Interpreter Lock, or GIL for short, is a design decision with the reference Python interpreter.</p>
+<p>It refers to the fact that the implementation of the Python interpreter makes use of a master lock that prevents more than one Python instruction from executing at the same time.</p>
+<p>This prevents more than one thread of execution within Python programs, specifically within each Python process, that is each instance of the Python interpreter.</p>
+<p>The implementation of the GIL means that Python threads may be concurrent, but cannot run in parallel. Recall that concurrent means that more than one task can be in progress at the same time; parallel means more than one task actually executing at the same time. Parallel tasks are concurrent, concurrent tasks may or may not execute in parallel.</p>
+<p>It is the reason behind the heuristic that Python threads should only be used for IO-bound tasks, and not CPU-bound tasks, as IO-bound tasks will wait in the operating system kernel for remote resources to respond (not executing Python instructions), allowing other Python threads to run and execute Python instructions.</p>
+<p>Put another way, the GIL does not mean we cannot use threads in Python, only that some use cases for Python threads are viable or appropriate.</p>
+<p>This design decision was made within the reference implementation of the Python interpreter (from Python.org), but may not impact other interpreters (such as PyPy, Iron Python, and Jython) that allow multiple Python instructions to be executed concurrently and in parallel.</p>
+<h3>Are Python Threads "Real Threads"?</h3>
+<p>Yes.</p>
+<p>Python makes use of real system-level threads, also called kernel-level threads, a capability provided by modern operating systems like Windows, Linux, and macOS.</p>
+<p>Python threads are not software-level threads, sometimes called user-level threads or green threads.</p>
+<h3>Aren't Python Threads Buggy?</h3>
+<p>No.</p>
+<p>Python threads are not buggy.</p>
+<p>Python threading is a first-class capability of the Python platform and has been for a very long time.</p>
+<h3>Isn't Python a Bad Choice for Concurrency?</h3>
+<p>Developers love python for many reasons, most commonly because it is easy to use and fast for development.</p>
+<p>Python is commonly used for glue code, and one-off scripts, but more and more for large-scale software systems.</p>
+<p>If you are using Python and then you need concurrency, then you work with what you have. The question is moot.</p>
+<p>If you need concurrency and you have not chosen a language, perhaps another language would be more appropriate, or perhaps not. Consider the full scope of functional and non-functional requirements (or user needs, wants, and desires) for your project and the capabilities of different development platforms.</p>
+<h3>Why Not Use The Multiprocessing Pool Instead?</h3>
+<p>The Pool supports pools of processes, unlike the <strong>ThreadPool</strong> which supports pools of threads.</p>
+<p>Threads and Processes are quite different and choosing one over the other is intentional.</p>
+<p>A Python program is a process that has a main thread. You can create many additional threads in a Python process. You can also fork or spawn many Python processes, each of which will have one thread, and may spawn additional threads.</p>
+<p>More broadly, threads are lightweight and can share memory (data and variables) within a process, whereas processes are heavyweight and require more overhead and impose more limits on sharing memory (data and variables).</p>
+<p>Typically, processes are used for CPU-bound tasks and threads are used for IO-bound tasks, and this is a good heuristic, but this does not have to be the case.</p>
+<p>Perhaps the Multiprocessing Pool is a better fit for your specific problem. Perhaps try it and see.</p>
+<p>You can learn more about the Multiprocessing Pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-python/">Multiprocessing Pool in Python: The Complete Guide</a></li>
+</ul>
+<h3>Why Not Use threading.Thread instead?</h3>
+<p>The <strong>ThreadPool</strong> is like the "auto mode" for Python threading.</p>
+<p>If you have a more sophisticated use case, you may need to use the <strong>threading.Thread</strong> class directly.</p>
+<p>This may be because you require more synchronization between threads with locking mechanisms, and/or more coordination between threads with barriers and semaphores.</p>
+<p>It may be that you have a simpler use case, such as a single task, in which case perhaps a thread pool would be too heavy a solution.</p>
+<p>That being said, if you find yourself using the Thread class with the target keyword for pure functions (functions that don't have side effects), perhaps you would be better suited to using the <strong>ThreadPool</strong>.</p>
+<p>You can learn more about how the <strong>ThreadPool</strong> relates to the <strong>threading.Thread</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-vs-thread/">ThreadPool vs. Thread in Python</a></li>
+</ul>
+<h3>Why Not Use ThreadPoolExecutor Instead?</h3>
+<p>Python provides two pools of thread-based workers via the <strong>multiprocessing.pool.ThreadPool</strong> class and the <strong>concurrent.futures.ThreadPoolExecutor</strong> class.</p>
+<p>The <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> classes are very similar. They are both thread pools of workers.</p>
+<p>The most important similarities are as follows:</p>
+<ol>
+<li>Both use threads.</li>
+<li>Both can run ad hoc tasks.</li>
+<li>Both support asynchronous tasks.</li>
+<li>Both can wait for all tasks.</li>
+<li>Both have process-based equivalents.</li>
+</ol>
+<p>The <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> are also subtly different.</p>
+<p>The differences between these two thread pools is focused on differences in APIs on the classes themselves.</p>
+<p>The main differences are as follows:</p>
+<ol>
+<li>The <strong>ThreadPool</strong> does not provide the ability to cancel tasks, whereas the <strong>ThreadPoolExecutor</strong> does.</li>
+<li>The <strong>ThreadPool</strong> does not provide the ability to work with collections of heterogeneous tasks, whereas the <strong>ThreadPoolExecutor</strong> does.</li>
+<li>The <strong>ThreadPool</strong> provides the ability to forcefully terminate all tasks, whereas the <strong>ThreadPoolExecutor</strong> does not.</li>
+<li>The <strong>ThreadPool</strong> provides a focus on parallel versions of the <strong>map()</strong> function, whereas the <strong>ThreadPoolExecutor</strong> does not.</li>
+<li>The <strong>ThreadPool</strong> does not provide the ability to access an exception raised in a task, whereas the <strong>ThreadPoolExecutor</strong> does.</li>
+</ol>
+<p>You can learn more about the difference between the <strong>ThreadPool</strong> and the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-vs-threadpoolexecutor/">ThreadPool vs ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>Additionally, the <strong>ThreadPool</strong> API documentation recommends using the <strong>ThreadPoolExecutor</strong> instead of the <strong>ThreadPool</strong>.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../should-we-use-the-threadpool-class/">Should We Use the ThreadPool Class in Python</a></li>
+</ul>
+<h3>Why Not Use AsyncIO?</h3>
+<p>AsyncIO can be an alternative to using a <strong>ThreadPool</strong>.</p>
+<p>AsyncIO is designed to support large numbers of socket IO operations, perhaps thousands to tens of thousands, all within a single Thread.</p>
+<p>It requires an alternate programming paradigm, called <a href="https://en.wikipedia.org/wiki/Reactive_programming">reactive programming</a>, which can be challenging for beginners.</p>
+<p>Nevertheless, it may be a better alternative to using a <strong>ThreadPool</strong> for many applications.</p>
+<h2>Conclusions</h2>
+<p>This is a large guide and you have discovered in great detail how the <strong>ThreadPool</strong> works and how to best use it on your project.</p>
 </main>
 </body>
 </html>

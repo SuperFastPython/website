@@ -83,6 +83,232 @@
 <p>We can develop a baseline case before we attempt to parallelize it with Python threads.</p>
 <p>In this example, we will define two lists of 100 matrices and then multiply each pair of matrices. The matrix multiplication operation executed via the <strong>dot()</strong> method on the numpy array is implemented using BLAS and uses a multithreaded algorithm.</p>
 <p>The complete example is listed below.</p>
+<pre><code># example of multithreaded matrix multiplication
+from numpy import ones
+from time import time
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# record the start time
+start = time()
+# prepare lists of matrices
+n = 2000
+data1 = [ones((n,n)) for _ in range(100)]
+data2 = [ones((n,n)) for _ in range(100)]
+# apply math operation to items
+results = [operation(item1, item2) for item1,item2 in zip(data1,data2)]
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first creates two lists of 100 matrices, each with the size 2,000 x 2,000 initialized with one values.</p>
+<p>Each pair of matrices are then multiplied by calling a custom function that in turn calls the <strong>dot() </strong>method. We use a custom function to perform the math operation so it is easy to parallelize in the next section.</p>
+<p>Finally, the overall time taken for the program to execute is reported.</p>
+<p>In this case, it took about 10.705 seconds to execute on my system.</p>
+<p>It may take more or fewer seconds to run, depending on the speed of your system.</p>
+<p>This provides a baseline that we can compare to the parallelized version of the same program.</p>
+<pre><code>Took 10.705 seconds</code></pre>
+<p>Next, let's update the program to parallelize the tasks with threads.</p>
+<h3>ThreadPool and BLAS-level Multithreaded Matrix Multiplication</h3>
+<p>We can update the previous example to parallelize the tasks using Python threads.</p>
+<p>In this case, we can use the <strong>multiprocessing.pool.ThreadPool</strong> class that provides a pool of reusable worker threads. We can then issue the multiplication of each pair of matrices to the pool for execution using the <strong>starmap()</strong> function.</p>
+<p>If you are new to the <strong>ThreadPool</strong> class, you can get started with the guide:</p>
+<ul>
+<li><a href="../threadpool-python/">ThreadPool: The Complete Guide</a></li>
+</ul>
+<p>The complete example with this change is listed below.</p>
+<pre><code># example of multithreaded matrix multiplication with thread pool
+from numpy import ones
+from time import time
+from multiprocessing.pool import ThreadPool
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# record the start time
+start = time()
+# prepare lists of matrices
+n = 2000
+data1 = [ones((n,n)) for _ in range(100)]
+data2 = [ones((n,n)) for _ in range(100)]
+# create thread pool
+with ThreadPool() as pool:
+    # prepare arguments
+    args = [(item1,item2) for item1,item2 in zip(data1,data2)]
+    # issue tasks to thread pool
+    results = pool.starmap(operation, args)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first creates the two lists of matrices, as before.</p>
+<p>The <strong>ThreadPool</strong> is then created and the pairs of matrices are prepared as arguments for each task. The tasks are then issued to the <strong>ThreadPool</strong> via the <strong>starmap()</strong> function and the call blocks until all pairs of matrix multiplication are complete.</p>
+<p>Finally, the overall time for the program to complete is reported.</p>
+<p>In this case, the program took about 17.354 seconds to run on my system.</p>
+<p>This is about 6.649 seconds longer than the single-threaded version.</p>
+<pre><code>Took 17.354 seconds</code></pre>
+<p>The reason that the program took longer to complete is that the worker threads in the <strong>ThreadPool</strong> attempting to execute matrix multiplication as fast as possible are competing with the threads in BLAS attempting to perform each individual matrix multiplication operation as fast as possible.</p>
+<p>I have 4 physical CPU cores in my system, which is 8 logical CPU cores given hyperthreading. If BLAS is using 8 threads for each matrix multiplication by default and the <strong>ThreadPool</strong> has 8 worker threads by default, then this means there are potentially 16 CPU-bound tasks attempting to execute at the same time on 4 CPU cores. This would result in significant overhead as the operating system switches between all threads, attempting to complete them all as fast as possible.</p>
+<p>A better solution would be to limit the overall number of threads running within the program, such as only using BLAS parallelism, only using the <strong>ThreadPool</strong> for parallelism, or finding a middle ground between both BLAS and Python threads that offers overall better performance.</p>
+<p>Note, we can tune the above example to achieve better performance, perhaps even equivalent performance to the BLAS-only example by tuning the "<strong>chunksize</strong>" argument of the <strong>starmap()</strong> function to 25.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to thread pool
+results = pool.starmap(operation, args, chunksize=25)</code></pre>
+<p>Still, this does not result in better overall performance, only near equivalent performance to not using the <strong>ThreadPool</strong> at all.</p>
+<p>You can learn more about adding threads to multithreaded BLAS functions and tuning for performance in the tutorial:</p>
+<ul>
+<li><a href="../numpy-blas-threading/">Speed-Up NumPy With Threads in Python (up to 3.41x faster)</a></li>
+</ul>
+<p>Next, let's look at an example where BLAS threads may offer no benefit.</p>
+<h2>Example of BLAS Threads Offering No Benefit</h2>
+<p>We can explore the case of using a numpy function that calls a multithreaded BLAS function, that offers no benefit.</p>
+<p>In this case, we will explore the multiplication of one vector by another, e.g. a vector dot product via the <strong>dot()</strong> function.</p>
+<p>We can confirm that the dot product of two vectors is not multithreaded by first executing the program with no BLAS threads and then the same operation with BLAS threads enabled.</p>
+<h3>Single-Threaded Vector Multiplication</h3>
+<p>We can establish a baseline by calculating a vector dot product without BLAS threads.</p>
+<p>This can be achieved by configuring the installed BLAS library to not use threads when performing multithreaded BLAS operations.</p>
+<p>For example:</p>
+<pre><code>...
+from os import environ
+environ['OMP_NUM_THREADS'] = '1'</code></pre>
+<p>You can learn more about configuring the number of threads used by BLAS in the tutorial:</p>
+<ul>
+<li><a href="../numpy-number-blas-threads/">Configure the Number of BLAS/LAPACK Threads for NumPy</a></li>
+</ul>
+<p>We can then create two vectors with 1 billion elements and multiply them together and report the overall time the program takes to execute.</p>
+<p>The complete example is listed below.</p>
+<pre><code># example of single threaded vector multiplication
+from os import environ
+environ['OMP_NUM_THREADS'] = '1'
+from time import time
+from numpy import ones
+# record the start time
+start = time()
+# size of arrays
+n = 1000000000
+# create vectors
+data1 = ones(n)
+data2 = ones(n)
+# vector multiplication
+result = data1.dot(data2)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the program first creates the two 1 billion element vectors then multiples them together.</p>
+<p>The overall time taken for the program to execute is then reported.</p>
+<p>In this case, the program took about 5.750 seconds to execute on my system.</p>
+<pre><code>Took 5.750 seconds</code></pre>
+<p>Next, we can execute the same program with BLAS threads enabled.</p>
+<h3>Multithreaded Vector Multiplication</h3>
+<p>We can update the previous example to allow BLAS to use thread for matrix and vector multiplication.</p>
+<p>This can be achieved by removing the explicit configuration of the number of BLAS threads and allowing BLAS to use the default number of threads.</p>
+<p>The complete example with this change is listed below.</p>
+<pre><code># example of multithreaded vector multiplication
+from time import time
+from numpy import ones
+# record the start time
+start = time()
+# size of arrays
+n = 1000000000
+# create vectors
+data1 = ones(n)
+data2 = ones(n)
+# vector multiplication
+result = data1.dot(data2)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the program first creates the two 1 billion element vectors then multiples them together.</p>
+<p>The overall time taken for the program to execute is then reported.</p>
+<p>In this case, the program took about 5.462 seconds to execute on my system.</p>
+<p>The difference is about 0.288 milliseconds, which is probably within the margin of error.</p>
+<pre><code>Took 5.462 seconds</code></pre>
+<p>It is probably fair to say that although the array multiplication function is implemented using a multithreaded algorithm, it does not offer a benefit in this case when multiplying vectors, probably because of the single dimension of the arrays.</p>
+<p>This highlights that we cannot rely on a multithreaded BLAS function to always offer a speedup. Perhaps in some cases, we can explore our own multithreaded design instead.</p>
+<p>Next, let's explore multithreading a numpy function that releases the GIL and does not receive a performance benefit</p>
+<h2>Example of Multithreaded Task Offering No Benefit</h2>
+<p>Most numpy functions release the GIL, allowing Python threads to be used and achieve full parallelism,</p>
+<p>Parallelizing tasks that execute numpy functions with threads do not always offer a lift in performance.</p>
+<p>In this case, we will demonstrate this by filling multiple arrays with a single value in parallel using threads with the <strong>fill()</strong> method.</p>
+<p>The <strong>fill()</strong> method does release the GIL and can be parallelized in some circumstances, such as filling different parts of the same array in parallel.</p>
+<p>You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-parallel-array-fill/">Parallel Numpy Array Fill (up to 3x faster)</a></li>
+</ul>
+<p>We may not get a benefit by filling multiple different arrays in parallel.</p>
+<h3>Single-Threaded NumPy Array Fill</h3>
+<p>Before we explore the parallel case, we can define a single-threaded program that fills many arrays.</p>
+<p>The example below defines 100 matrices that are 5,000 x 5,000 elements in size. Each matrix is then filled with zero values sequentially and the overall time taken to complete the program is reported.</p>
+<p>The complete example is listed below.</p>
+<pre><code># example of single-threaded array filling
+from numpy import ones
+from time import time
+# record the start time
+start = time()
+# prepare data
+n = 5000
+# prepare data
+data = [ones((n,n)) for _ in range(100)]
+# perform operation on each pair of arrays
+[item.fill(0) for item in data]
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the program first creates a list of 100 arrays with the given size.</p>
+<p>The list of arrays is then traversed and each is filled with zero values.</p>
+<p>In this case, the program takes about 7.615 seconds to complete on my system.</p>
+<p>This provides a baseline in performance to compare to the parallel case.</p>
+<pre><code>Took 7.615 seconds</code></pre>
+<p>Next, let's update the example to fill the arrays in parallel using threads.</p>
+<h3>Multithreaded NumPy Array Fill</h3>
+<p>We can update the previous example to fill the arrays in parallel using threads.</p>
+<p>We will create a <strong>ThreadPool</strong> with the default number of worker threads, then execute each <strong>fill()</strong> task to the pool to be executed.</p>
+<p>This requires defining a custom function that takes an array as an argument and calls the <strong>fill()</strong> method on it with the given value.</p>
+<p>All tasks are issued to the pool at once via the <strong>map()</strong> function with the default "<strong>chunksize</strong>" argument.</p>
+<p>The complete example with this change is listed below.</p>
+<pre><code># example of multithreaded array filling
+from numpy import ones
+from time import time
+from multiprocessing.pool import ThreadPool
+
+# function for performing operation on matrices
+def operation(item):
+    # apply array operation
+    item.fill(0)
+
+# record the start time
+start = time()
+# prepare data
+n = 5000
+# prepare data
+data = [ones((n,n)) for _ in range(100)]
+# create thread pool
+with ThreadPool() as pool:
+    # issue tasks to thread pool
+    _ = pool.map(operation, data)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the program first creates a list of 100 arrays with the given size.</p>
+<p>The <strong>ThreadPool</strong> is then created and all tasks are issued to the pool. This call blocks until all tasks are completed.</p>
+<p>Finally, the overall time taken to execute the program is reported.</p>
+<p>In this case, the program takes about 7.810 seconds to complete on my system.</p>
+<p>This is about 0.195 seconds slower (195 milliseconds) than the single-threaded version and is probably within the margin of measurement error.</p>
+<pre><code>Took 7.810 seconds</code></pre>
+<p>This example highlights that even though we are executing a numpy function that releases the GIL in parallel with threads, we do not see the expected speed-up.</p>
+<p>Note, after some experimentation, it seems that tuning the "<strong>chunksize</strong>" argument of the <strong>map()</strong> function does not appear to offer better performance on this problem.</p>
+<h2>Takeaways</h2>
+<p>You now know that parallelizing tasks in numpy programs with threads does not always result in better overall performance.</p>
 </main>
 </body>
 </html>

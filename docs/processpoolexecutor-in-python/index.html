@@ -242,6 +242,2971 @@ result = future.result(timeout=5) # blocks</code></pre>
 </ul>
 <p>You can use both functions with <strong>Future</strong> objects created by one or more process pools; they are not specific to any given process pool in your application. This is helpful if you want to perform waiting operations across multiple process pools that are executing different types of tasks.</p>
 <p>Both functions are useful to use with an idiom of dispatching multiple tasks into the process pool via submit in a list compression; for example:</p>
+<pre><code>...
+# dispatch tasks into the process pool and create a list of futures
+futures = [executor.submit(my_task, my_data) for my_data in my_datalist]</code></pre>
+<p>Here, <strong>my_task</strong> is our custom target task function, "<strong>my_data</strong>" is one element of data passed as an argument to "<strong>my_task</strong>", and "<strong>my_datalist</strong>" is our source of <strong>my_data</strong> objects.</p>
+<p>We can then pass the "<strong>futures</strong>" to <strong>wait()</strong> or <strong>as_completed()</strong>.</p>
+<p>Creating a list of futures in this way is not required, just a common pattern when converting for loops into tasks submitted to a process pool.</p>
+<h4 id="step-3a-wait-for-futures-to-complete">Step 3a. Wait for Futures to Complete</h4>
+<p>The <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.wait"><strong>wait()</strong> function</a> can take one or more futures and will return when a specified action occurs, such as all tasks completing, one task completing, or one task throwing an exception.</p>
+<p>The function will return one set of future objects that match the condition set via the "<strong>return_when</strong>". The second set will contain all of the futures for tasks that did not meet the condition. These are called the "<strong>done</strong>" and the "<strong>not_done</strong>" sets of futures.</p>
+<p>It is useful for waiting on a large batch of work and to stop waiting when we get the first result.</p>
+<p>This can be achieved via the <strong>FIRST_COMPLETED</strong> constant passed to the "<strong>return_when</strong>" argument.</p>
+<pre><code>...
+# wait until we get the first result
+done, not_done = wait(futures, return_when=FIRST_COMPLETED)</code></pre>
+<p>Alternatively, we can wait for all tasks to complete via the <strong>ALL_COMPLETED</strong> constant.</p>
+<p>This can be helpful if you are using <strong>submit()</strong> to dispatch tasks and are looking for an easy way to wait for all work to be completed.</p>
+<pre><code>...
+# wait for all tasks to complete
+done, not_done = wait(futures, return_when=ALL_COMPLETED)</code></pre>
+<p>There is also an option to wait for the first exception via the <strong>FIRST_EXCEPTION</strong> constant.</p>
+<pre><code>...
+# wait for the first exception
+done, not_done = wait(futures, return_when=FIRST_EXCEPTION)</code></pre>
+<h4 id="step-3b-wait-for-futures-as-completed">Step 3b. Wait for Futures as Completed</h4>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available, rather than waiting for all tasks to be completed.</p>
+<p>The <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.as_completed"><strong>as_completed()</strong> function</a> will return <strong>Future</strong> objects for tasks as they are completed in the process pool.</p>
+<p>We can call the function and provide it a list of <meta/><strong>Future</strong> objects created by calling <strong>submit()</strong> and it will return <meta/><strong>Future</strong> objects as they are completed in whatever order.</p>
+<p>It is common to use the <strong>as_completed()</strong> function in a loop over the list of <meta/><strong>Futures</strong> created when calling <strong>submit()</strong>; for example:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result for the next completed task
+	result = future.result() # blocks
+</code></pre>
+<p>Note: this is different from iterating over the results from calling <strong>map()</strong> in two ways.</p>
+<p>Firstly, <strong>map()</strong> returns an iterator over objects, not over <strong>Futures</strong>.</p>
+<p>Secondly, <strong>map()</strong> returns results in the order that the tasks were submitted, not in the order that they are completed.</p>
+<h3 id="step-4-shut-down-the-process-pool">Step 4. Shut Down the Process Pool</h3>
+<p>Once all tasks are completed, we can close down the process pool, which will release each process and any resources it may hold.</p>
+<p>For example, each process is running an instance of the Python interpreter and at least one thread (the main thread) that has its own stack space.</p>
+<pre><code>...
+# shutdown the process pool
+executor.shutdown() # blocks</code></pre>
+<p>The <strong>shutdown()</strong> function will wait for all tasks in the process pool to complete before returning by default.</p>
+<p>This behavior can be changed by setting the "<strong>wait</strong>" argument to False when calling <strong>shutdown()</strong>, in which case the function will return immediately. The resources used by the process pool will not be released until all current and queued tasks are completed.</p>
+<pre><code>...
+# shutdown the process pool
+executor.shutdown(wait=False) # does not blocks</code></pre>
+<p>We can also instruct the pool to cancel all queued tasks to prevent their execution. This can be achieved by setting the "<strong>cancel_futures</strong>" argument to <strong>True</strong>. By default, queued tasks are not cancelled when calling <strong>shutdown()</strong>.</p>
+<pre><code>...
+# cancel all queued tasks
+executor.shutdown(cancel_futures=True) # blocks</code></pre>
+<p>If we forget to close the process pool, the process pool will be closed automatically when we exit the main thread. If we forget to close the pool and there are still tasks executing, the main process will not exit until all tasks in the pool and all queued tasks have executed.</p>
+<h3 id="processpoolexecutor-context-manager">ProcessPoolExecutor Context Manager</h3>
+<p>A preferred way to work with the <strong>ProcessPoolExecutor</strong> class is to use a context manager.</p>
+<p>This matches the preferred way to work with other resources, such as files and sockets.</p>
+<p>Using the <strong>ProcessPoolExecutor</strong> with a context manager involves using the "<strong>with</strong>" keyword to create a block in which you can use the process pool to execute tasks and get results.</p>
+<p>Once the block has completed, the process pool is automatically shut down. Internally, the context manager will call the <strong>shutdown()</strong> function with the default arguments, waiting for all queued and executing tasks to complete before returning and carrying on.</p>
+<p>Below is a code snippet to demonstrate creating a process pool using the context manager.</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor(max_workers=10) as pool:
+	# submit tasks and get results
+	# ...
+	# automatically shutdown the process pool...
+# the pool is shutdown at this point
+</code></pre>
+<p>This is a very handy idiom if you are converting a for loop to be executed asynchronously.</p>
+<p>It is less useful if you want the process pool to operate in the background while you perform other work in the main thread of your program, or if you wish to reuse the process pool multiple times throughout your program.</p>
+<p>Now that we are familiar with how to use the <strong>ProcessoolExecutor</strong>, let's look at some worked examples.</p>
+<h2 id="processpoolexecutor-example">ProcessPoolExecutor Example</h2>
+<p>In this section, we will look at a more complete example of using the <strong>ProcessPoolExecutor</strong>.</p>
+<p>Consider a situation where we might want to check if a word is known to the program or not, e.g. whether it is in a dictionary of known words.</p>
+<p>If the word is known, that is fine, but if not, we might want to take action for the user, perhaps underline it in read like an automatic spell check.</p>
+<p>One approach to implementing this feature would be to load a dictionary of known words and create a hash of each word. We can then hash new words and check if they exist in the set of known hashed words or not.</p>
+<p>This is a good problem to explore with the <strong>ProcessPoolExecutor</strong> as hashing words can be relatively slow, especially for large dictionaries of hundreds of thousands or millions of known words.</p>
+<p>First, let's develop a serial (non-concurrent) version of the program.</p>
+<h3 id="hash-a-dictionary-of-words-serially">Hash a Dictionary of Words Serially</h3>
+<p>The first step is to select a dictionary of words to use.</p>
+<p>On Unix systems, like MacOS and Linux, we have a dictionary already installed, called <a href="https://en.wikipedia.org/wiki/Words_(Unix)">Unix Words</a>.</p>
+<p>It is located in one of the following locations:</p>
+<ul>
+<li>/usr/share/dict/words</li>
+<li>/usr/dict/words</li>
+</ul>
+<p>On my system, it is located in '<strong>/usr/share/dict/words</strong>' and contains 235,886 words calculated using the command:</p>
+<pre><code>cat /usr/share/dict/words | wc -l</code></pre>
+<p>We can use this dictionary of words.</p>
+<p>Alternatively, if we are on Windows or wish to have a larger dictionary, we can download one of many free lists of words online.</p>
+<p>For example, you can download a list of one million English words from here:</p>
+<ul>
+<li><a href="https://raw.githubusercontent.com/A35G/gmCaptcha/master/dictionary/1.1million%20word%20list.txt">One Million English Words (9.9 megabytes)</a></li>
+</ul>
+<p>Download this file and save it to your current working directory with the filename "<strong>1m_words.txt</strong>".</p>
+<p>Looking in the file, we can see that indeed we have a long list of words, one per line.</p>
+<pre><code>aaccf
+aalders
+aaren
+aarika
+aaron
+aartjan
+aasen
+ab
+abacus
+abadines
+abagael
+abagail
+abahri
+abasolo
+abazari
+...</code></pre>
+<p>First, we need to load the list of words into memory.</p>
+<p>This can be achieved by first opening the file, then calling the <a href="https://docs.python.org/3/library/io.html#io.IOBase.readlines"><strong>readlines()</strong> function</a> that will automatically read ASCII lines of text into a list.</p>
+<p>The <strong>load_words()</strong> function below takes a path to the text file and returns a list of words loaded from the file.</p>
+<pre><code># load a file of words
+def load_words(path):
+    # open the file
+    with open(path, encoding='utf-8') as file:
+        # read all data as lines
+        return file.readlines()
+</code></pre>
+<p>Next, we need to hash each word.</p>
+<p>We will intentionally select a slow hash function in this example, specifically the SHA512 algorithm.</p>
+<p>This is available in Python via the <meta/><a href="https://docs.python.org/3/library/hashlib.html"><strong>hashlib.ha512() </strong>function</a>.</p>
+<p>First, we can create an instance of the hashing object by calling the <strong>sha512()</strong> function.</p>
+<pre><code>...
+# create the hash object
+hash_object = sha512()</code></pre>
+<p>Next, we can convert a given word to bytes and then hash it using the hash function.</p>
+<pre><code>...
+# convert the string to bytes
+byte_data = word.encode('utf-8')
+# hash the word
+hash_object.update(byte_data)
+</code></pre>
+<p>Finally, we can get a HEX string representation of the hash for the word by calling the <a href="https://docs.python.org/3/library/hashlib.html#hashlib.hash.hexdigest"><strong>hexdigest()</strong> function</a>.</p>
+<pre><code>...
+# get the hex hash of the word
+h = hash_object.hexdigest()</code></pre>
+<p>Tying this together, the <strong>hash_word()</strong> function below takes a word and returns a HEX hash code of the word.</p>
+<pre><code># hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+</code></pre>
+<p>That's about all there is to it.</p>
+<p>We can define a function that will drive the program, first loading the list of words by calling our <strong>load_words()</strong>, then creating a set of hashes of known words by calling our <strong>hash_word()</strong> for each loaded word.</p>
+<p>The <strong>main()</strong> function below implements this.</p>
+<pre><code># entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # hash all known words
+    known_words = {hash_word(word) for word in words}
+    print(f'Done, with {len(known_words)} hashes')
+</code></pre>
+<p>Tying this all together, the complete example of loading a dictionary of words and creating a set of known word hashes is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of hashing a word list serially
+from hashlib import sha512
+
+# hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+
+# load a file of words
+def load_words(path):
+    # open the file
+    with open(path, encoding='utf-8') as file:
+        # read all data as lines
+        return file.readlines()
+
+# entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # hash all known words
+    known_words = {hash_word(word) for word in words}
+    print(f'Done, with {len(known_words)} hashes')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example first loads the file and reports that a total of 1,049,938 words were loaded.</p>
+<p>The list of words is then hashed and the hashes are stored in a set.</p>
+<p>The program reports that a total of 979,250 hashes were stored, suggesting thousands of duplicates in the dictionary.</p>
+<p>The program takes about 1.4 seconds to run on a modern system.</p>
+<p>How long does the example take to run on your system?<br/>Let me know in the comments below.</p>
+<pre><code>Loaded 1049938 words from 1m_words.txt
+Done, with 979250 hashes
+</code></pre>
+<p>Next, we can update the program to hash the words concurrently.</p>
+<h3 id="hash-a-dictionary-of-words-concurrently-with-map">Hash a Dictionary of Words Concurrently With map()</h3>
+<p>Hashing words is relatively slow, but even so, hashing nearly one million words takes under two seconds.</p>
+<p>Nevertheless, we can accelerate the process by making use of all CPUs in the system and hashing the words concurrently.</p>
+<p>This can be achieved using the <strong>ProcessPoolExecutor</strong>.</p>
+<p>Firstly, we can create the process pool and specify the number of concurrent processes to run. I recommend configuring the pool to match the number of physical CPU cores in your system.</p>
+<p>I have four cores, so the example will use four cores, but update it for the number of cores you have available.</p>
+<pre><code>...
+# create the process pool
+with ProcessPoolExecutor(4) as executor:
+	# ...
+</code></pre>
+<p>Next, we need to submit the tasks to the process pool, that is, the hashing of each word.</p>
+<p>Because the task is simply applying a function for each item in a list, we can use the <strong>map()</strong> function directly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a set of word hashes
+known_words = set(executor.map(hash_word, words))
+</code></pre>
+<p>And that's it.</p>
+<p>For example, the updated version of the <strong>main()</strong> function to hash words concurrently is listed below.</p>
+<pre><code># entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # create the process pool
+    with ProcessPoolExecutor(4) as executor:
+        # create a set of word hashes
+        known_words = set(executor.map(hash_word, words))
+    print(f'Done, with {len(known_words)} hashes')
+</code></pre>
+<p>Well, not so fast.</p>
+<p>This would execute, but it would take a very long time to complete.</p>
+<p>The reason is that we would be adding nearly one million tasks to the pool to be executed by four processes, and each task would need to be pickled and queued internally. Repeating these operations so many times results in an overhead that far surpasses the execution time of the task.</p>
+<p>We must reduce the overhead by reducing the number of internal tasks within the process pool.</p>
+<p>This can be achieved by setting the "<strong>chunksize</strong>" parameter when calling <strong>map()</strong>.</p>
+<p>This controls how many items in the iterable map to one task in the process pool. By default, one item is mapped to one task, meaning we have nearly one million tasks.</p>
+<p>Perhaps a good first approach would be to split the number items by the number of processes available, in this case four. This would create four tasks, e.g. four large chunks of words, each to be processed by one process, likely on one CPU core.</p>
+<p>This can be achieved by calculating the length of the list of words and dividing it by the number of worker processes. The division might not be clean, therefore we can use the <a href="https://docs.python.org/3/library/math.html#math.ceil"><strong>math.ceil()</strong> math</a> function to round the number of items per task up to the nearest integer.</p>
+<pre><code>...
+# select a chunk size
+chunksize = ceil(len(words) / 4)
+</code></pre>
+<p>We can estimate that this would be (1049938 / 4) or about 262484.5 words per task, e.g. just over half a million.</p>
+<p>We can then use this chunksize when calling the <strong>map()</strong> function.</p>
+<pre><code>...
+# create a set of word hashes
+known_words = set(executor.map(hash_word, words, chunksize=chunksize))
+</code></pre>
+<p>Tying this together, the complete example of hashing a dictionary of words concurrently using the <strong>ProcessPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of hashing a word list concurrently
+from math import ceil
+from hashlib import sha512
+from concurrent.futures import ProcessPoolExecutor
+
+# hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+
+# load a file of words
+def load_words(path):
+    # open the file
+    with open(path) as file:
+        # read all data as lines
+        return file.readlines()
+
+# entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # create the process pool
+    with ProcessPoolExecutor(4) as executor:
+        # select a chunk size
+        chunksize = ceil(len(words) / 4)
+        # create a set of word hashes
+        known_words = set(executor.map(hash_word, words, chunksize=chunksize))
+    print(f'Done, with {len(known_words)} hashes')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example loads the words as before, then creates the set of hashed words concurrently by splitting it into four tasks, one for each process in the pool.</p>
+<p>This concurrent version does offer a very minor speedup, taking about 1.2 seconds on my system, offering a small speedup.</p>
+<pre><code>Loaded 1049938 words from 1m_words.txt
+Done, with 979250 hashes
+</code></pre>
+<p>Next, let's see if we can get a further improvement by tuning the chunksize argument.</p>
+<h3 id="testing-chunksize-values-when-hashing-a-dictionary-of-words-with-map">Testing chunksize Values When Hashing a Dictionary of Words With map()</h3>
+<p>Splitting items into tasks for the process pool is more art than science.</p>
+<p>Getting it wrong, like setting it to one when we have a large number of tasks, can result in much worse performance than the serial case. Setting it naively can result in equivalent or slightly better performance than the serial case.</p>
+<p>As such, we can tune the performance of the application by testing different values of the "<strong>chunksize</strong>" argument.</p>
+<p>In the previous section, we saw that a chunksize of 262485 resulted in similar performance to the serial case.</p>
+<p>I recommend testing different chunk sizes in order to discover what works well on your specific system; for example, some numbers you could try include:</p>
+<ul>
+<li>100,000</li>
+<li>50,000</li>
+<li>10,000</li>
+<li>5,000</li>
+<li>1,000</li>
+<li>500</li>
+</ul>
+<p>It is common to perform this type of tuning when working with distributed systems and multi-process systems as the specific cost of serializing and transmitting data between workers depends on the hardware and specific data.</p>
+<p>If the tasks involved were long running or sensitive in some way, you could design a test harness with mock tasks.</p>
+<p>We can define a function to test a given chunksize argument that also calculates how long the task takes to complete, including the fixed cost of setting up the process pool.</p>
+<p>The <strong>test_chunksize()</strong> function below implements this, taking the loaded dictionary of words and chunksize to test, and reports how long it took to execute the task for the given chunksize.</p>
+<pre><code># test a chunksize
+def test_chunksize(words, size):
+    time1 = time()
+    # create the process pool
+    with ProcessPoolExecutor(4) as executor:
+        # create a set of word hashes
+        _ = set(executor.map(hash_word, words, chunksize=size))
+    time2 = time()
+    total = time2 - time1
+    print(f'{size}: {total:.3f} seconds')
+</code></pre>
+<p>We can call this function from our <strong>main()</strong> function with a list of different chunk size values to test; for example:</p>
+<pre><code># entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # test chunk sizes
+    base = ceil(len(words) / 4)
+    sizes = [base, 100000, 50000, 10000, 5000, 1000, 500]
+    for size in sizes:
+        test_chunksize(words, size)
+</code></pre>
+<p>Tying this together, the complete example of testing different chunksize values is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of testing chunksize when hashing a word list concurrently
+from math import ceil
+from time import time
+from hashlib import sha512
+from concurrent.futures import ProcessPoolExecutor
+
+# hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+
+# load a file of words
+def load_words(path):
+    # open the file
+    with open(path, encoding='utf-8') as file:
+        # read all data as lines
+        return file.readlines()
+
+# test a chunksize
+def test_chunksize(words, size):
+    time1 = time()
+    # create the process pool
+    with ProcessPoolExecutor(4) as executor:
+        # create a set of word hashes
+        _ = set(executor.map(hash_word, words, chunksize=size))
+    time2 = time()
+    total = time2 - time1
+    print(f'{size}: {total:.3f} seconds')
+
+# entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # test chunk sizes
+    base = ceil(len(words) / 4)
+    sizes = [base, 100000, 50000, 10000, 5000, 1000, 500]
+    for size in sizes:
+        test_chunksize(words, size)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that a chunksize of about 10,000 or 5,000 would work well, performing the task in about 0.8 seconds as opposed to about 1.4 in the serial case and 1.2 for the naive configuration of chunksize, at least on my system.</p>
+<p>This highlights the importance of tuning the chunksize for your specific task and computer hardware.</p>
+<pre><code>Loaded 1049938 words from 1m_words.txt
+262485: 1.242 seconds
+100000: 1.122 seconds
+50000: 1.157 seconds
+10000: 0.871 seconds
+5000: 0.842 seconds
+1000: 1.036 seconds
+500: 1.112 seconds
+</code></pre>
+<p><strong>What worked well on your system?</strong><br/>Let me know in the comments below.</p>
+<h2 id="processpoolexecutor-usage-patterns">ProcessPoolExecutor Usage Patterns</h2>
+<p>The <strong>ProcessPoolExecutor</strong> provides a lot of flexibility for executing concurrent tasks in Python.</p>
+<p>Nevertheless, there are a handful of <a href="../processpoolexecutor-usage-patterns/">common usage patterns</a> that will fit most program scenarios.</p>
+<p>This section lists the common usage patterns with worked examples that you can copy-and-paste into your own project and adapt as needed.</p>
+<p>The patterns we will look at are as follows:</p>
+<ul>
+<li>Map and Wait Pattern</li>
+<li>Submit and Use as Completed Pattern</li>
+<li>Submit and Use Sequentially Pattern</li>
+<li>Submit and Use Callback Pattern</li>
+<li>Submit and Wait for All Pattern</li>
+<li>Submit and Wait for First Pattern</li>
+</ul>
+<p>We will use a contrived task in each example that will sleep for a random amount of time less than one second. You can easily replace this example task with your own task in each pattern.</p>
+<p>Also, recall that each Python program is a process and has one thread by default called the main thread where we do our work. We will create the process pool in the main thread in each example and may reference actions in the main thread in some of the patterns, as opposed to actions in processes in the process pool.</p>
+<h3 id="map-and-wait-pattern">Map and Wait Pattern</h3>
+<p>Perhaps the most common pattern when using the <strong>ProcessPoolExecutor</strong> is to convert a for loop that executes a function on each item in a collection to use multiprocessing.</p>
+<p>It assumes that the function has no side effects, meaning it does not access any data outside of the function and does not change the data provided to it. It takes data and produces a result.</p>
+<p>These types of for loops can be written explicitly in Python; for example:</p>
+<pre><code>...
+# apply a function to each element in a collection
+for item in mylist:
+	result = task(item)
+</code></pre>
+<p>A better practice is to use the <a href="https://docs.python.org/3/library/functions.html#map">built-in <strong>map()</strong> function</a> that applies the function to each item in the iterable for you.</p>
+<pre><code>...
+# apply the function to each element in the collection
+results = map(task, mylist)</code></pre>
+<p>This does not perform the <strong>task()</strong> function to each item until we iterate the results, so-called lazy evaluation:</p>
+<pre><code>...
+# iterate the results from map
+for result in results:
+	print(result)
+</code></pre>
+<p>Therefore, it is common to see this operation consolidated to the following:</p>
+<pre><code>...
+# iterate the results from map
+for result in map(task, mylist):
+	print(result)
+</code></pre>
+<p>We can perform this same operation using the process pool, except each application of the function to an item in the list is a task that is executed asynchronously. For example:</p>
+<pre><code>...
+# iterate the results from map
+for result in executor.map(task, mylist):
+	print(result)
+</code></pre>
+<p>Although the tasks are executed asynchronously, the results are iterated in the order of the iterable provided to the <a href="../processpoolexecutor-map/"><strong>map()</strong> function</a>, the same as the built-in <strong>map()</strong> function.</p>
+<p>In this way, we can think of the process pool version of <strong>map()</strong> as a concurrent version of the <strong>map()</strong> function and is ideal if you are looking to update your for loop to use processes.</p>
+<p>The example below demonstrates using the map and wait pattern with a task that will sleep a random amount of time less than one second and return the provided value.</p>
+<pre><code># SuperFastPython.com
+# example of the map and wait pattern for the ProcessPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # execute tasks concurrently and process results in order
+        for result in executor.map(task, range(10)):
+            # retrieve the result
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the results are reported in the order that the tasks were created and sent into the process pool.</p>
+<pre><code>0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+</code></pre>
+<p>The <strong>map()</strong> function supports target functions that take more than one argument by providing more than iterable as arguments to the call to <strong>map()</strong>.</p>
+<p>For example, we can define a target function for map that takes two arguments, then provide two iterables of the same length to the call to map.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map on a process pool with two iterables
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value1, value2):
+    # sleep for less than a second
+    sleep(random())
+    return (value1, value2)
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit all tasks
+        for result in executor.map(task, ['1', '2', '3'], ['a', 'b', 'c']):
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example executes the tasks as expected, providing two arguments to map and reporting a result that combines both arguments.</p>
+<pre><code>('1', 'a')
+('2', 'b')
+('3', 'c')
+</code></pre>
+<p>A call to the map function will issue all tasks to the process pool immediately, even if you do not iterate the iterable of results.</p>
+<p>This is unlike the built-in <strong>map()</strong> function that is lazy and does not compute each call until you ask for the result during iteration.</p>
+<p>The example below confirms this by issuing all tasks with a map and not iterating the results.</p>
+<pre><code># SuperFastPython.com
+# example of calling map on the process pool and not iterating the results
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    print(f'Done: {value}')
+    return value
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit all tasks
+        executor.map(task, range(5))
+    print('All done!')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the tasks are sent into the process pool and executed without having to explicitly pass over the iterable of results that was returned.</p>
+<p>The use of the context manager ensured that the process pool did not shut down until all tasks were complete.</p>
+<pre><code>Done: 0
+Done: 2
+Done: 1
+Done: 3
+Done: 4
+All done!
+</code></pre>
+<h3 id="submit-and-use-as-completed">Submit and Use as Completed</h3>
+<p>Perhaps the second most common pattern when using the <strong>ProcessPoolExecutor</strong> is to submit tasks and use the results as they become available.</p>
+<p>This can be achieved using the <strong>submit()</strong> function to push tasks into the process pool that returns <strong>Future</strong> objects, then calling the <a href="../processpoolexecutor-as-completed/">module method <strong>as_completed()</strong></a> on the list of <strong>Future</strong> objects that will return each <strong>Future</strong> object as it's task is completed.</p>
+<p>The example below demonstrates this pattern, submitting the tasks in order from 0 to 9 and showing results in the order that they were completed.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and use as completed pattern for the ProcessPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import as_completed
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # process task results as they are available
+        for future in as_completed(futures):
+            # retrieve the result
+            print(future.result())
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the results are retrieved and printed in the order that the tasks completed, not the order that the tasks were submitted to the process pool.</p>
+<pre><code>9
+6
+7
+0
+3
+8
+1
+4
+5
+2
+</code></pre>
+<h3 id="submit-and-use-sequentially">Submit and Use Sequentially</h3>
+<p>We may require the results from tasks in the order that the tasks were submitted.</p>
+<p>This may be because the tasks have a natural ordering.</p>
+<p>We can implement this pattern by calling <strong>submit()</strong> for each task to get a list of <strong>Future</strong> objects then iterating over the <strong>Future</strong> objects in the order that the tasks were submitted and retrieving the results.</p>
+<p>The main difference from the "<em>as completed</em>" pattern is that we enumerate the list of futures directly, instead of calling the <strong>as_completed()</strong> function.</p>
+<pre><code>...
+# process task results in the order they were submitted
+for future in futures:
+	# retrieve the result
+	print(future.result())
+</code></pre>
+<p>The example below demonstrates this pattern, submitting the tasks in order from 0 to 9 and showing the results in the order that they were submitted.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and use sequentially pattern for the ProcessPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # process task results in the order they were submitted
+        for future in futures:
+            # retrieve the result
+            print(future.result())
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the results are retrieved and printed in the order that the tasks were submitted, not the order that the tasks were completed.</p>
+<pre><code>0
+1
+2
+3
+4
+5
+6
+7
+8
+9</code></pre>
+<h3 id="submit-and-use-callback">Submit and Use Callback</h3>
+<p>We may not want to explicitly process the results once they are available; instead, we want to call a function on the result.</p>
+<p>Instead of doing this manually, such as in the as completed pattern above, we can have the process pool call the function for us with the result automatically.</p>
+<p>This can be achieved by setting a callback on each future object by calling the <a href="../processpoolexecutor-add-callback/"><strong>add_done_callback()</strong> function</a> and passing the name of the function.</p>
+<p>The process pool will then call the callback function as each task completes, passing in <strong>Future</strong> objects for the task.</p>
+<p>The example below demonstrates this pattern, registering a custom callback function to be applied to each task as it is completed.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and use a callback pattern for the ProcessPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# custom callback function called on tasks when they complete
+def custom_callback(future):
+    # retrieve the result
+    print(future.result())
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # register the callback on all tasks
+        for future in futures:
+            future.add_done_callback(custom_callback)
+        # wait for tasks to complete...
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that results are retrieved and printed in the order they are completed, not the order that tasks were completed.</p>
+<pre><code>8
+0
+7
+1
+4
+6
+5
+3
+2
+9
+</code></pre>
+<p>We can register multiple callbacks on each <strong>Future</strong> object; it is not limited to a single callback.</p>
+<p>The callback functions are called in the order in which they were registered on each Future object.</p>
+<p>The following example demonstrates having two callbacks on each <strong>Future</strong>.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and use multiple callbacks for the ProcessPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# custom callback function called on tasks when they complete
+def custom_callback1(future):
+    # retrieve the result
+    print(f'Callback 1: {future.result()}')
+
+# custom callback function called on tasks when they complete
+def custom_callback2(future):
+    # retrieve the result
+    print(f'Callback 2: {future.result()}')
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # register the callbacks on all tasks
+        for future in futures:
+            future.add_done_callback(custom_callback1)
+            future.add_done_callback(custom_callback2)
+        # wait for tasks to complete...
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that results are reported in the order that tasks were completed and that the two callback functions are called for each task in the order that we registered them with each <strong>Future</strong> object.</p>
+<pre><code>Callback 1: 2
+Callback 2: 2
+Callback 1: 3
+Callback 2: 3
+Callback 1: 6
+Callback 2: 6
+Callback 1: 8
+Callback 2: 8
+Callback 1: 7
+Callback 2: 7
+Callback 1: 5
+Callback 2: 5
+Callback 1: 0
+Callback 2: 0
+Callback 1: 1
+Callback 2: 1
+Callback 1: 4
+Callback 2: 4
+Callback 1: 9
+Callback 2: 9
+</code></pre>
+<h3 id="submit-and-wait-for-all">Submit and Wait for All</h3>
+<p>It is common to submit all tasks and then <a href="../processpoolexecutor-wait-tasks/">wait for all tasks in the process pool to complete</a>.</p>
+<p>This pattern may be useful when tasks do not return a result directly, such as if each task stores the result in a resource directly like a file.</p>
+<p>There are two ways that we can wait for tasks to complete: by calling the <strong>wait()</strong> module function or by calling <strong>shutdown()</strong>.</p>
+<p>The most likely case is you want to explicitly wait for a set or subset of tasks in the process pool to complete.</p>
+<p>You can achieve this by passing the list of tasks to the <strong>wait()</strong> function, which by default will wait for all tasks to complete.</p>
+<pre><code>...
+# wait for all tasks to complete
+wait(futures)
+</code></pre>
+<p>We can explicitly specify to wait for all tasks by setting the "<strong>return_when</strong>" argument to the <strong>ALL_COMPLETED</strong> constant; for example:</p>
+<pre><code>...
+# wait for all tasks to complete
+wait(futures, return_when=ALL_COMPLETED)
+</code></pre>
+<p>The example below demonstrates this pattern. Note that we are intentionally ignoring the return from calling <strong>wait()</strong> as we have no need to inspect it in this case.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and wait for all pattern for the ProcessPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    # display the result
+    print(name)
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # wait for all tasks to complete
+        wait(futures)
+    print('All tasks are done!')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that results are handled by each task as the tasks complete. Importantly, we can see that the main process waits until all tasks are completed before carrying on and printing a message.</p>
+<pre><code>3
+9
+0
+8
+4
+6
+2
+1
+5
+7
+All tasks are done!
+</code></pre>
+<p>An alternative approach would be to shut down the process pool and wait for all executing and queued tasks to complete before moving on.</p>
+<p>This might be preferred when we don't have a list of <strong>Future</strong> objects or when we only intend to use the process pool once for a set of tasks.</p>
+<p>We can implement this pattern using the context manager; for example:</p>
+<pre><code># SuperFastPython.com
+# example of the submit and wait for all with shutdown pattern for the process pool
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    # display the result
+    print(name)
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit tasks and collect futures
+        futures = [executor.submit(task, i) for i in range(10)]
+        # wait for all tasks to complete
+    print('All tasks are done!')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the main process does not move on and print the message until all tasks are completed, after the process pool has been automatically shut down by the context manager.</p>
+<pre><code>1
+2
+8
+4
+5
+3
+9
+0
+7
+6
+All tasks are done!
+</code></pre>
+<p>The context manager automatic shutdown pattern might be confusing to developers not used to how process pools work, hence the comment at the end of the context manager block in the previous example.</p>
+<p>We can achieve the same effect without the context manager and an explicit call to shutdown.</p>
+<pre><code>...
+# wait for all tasks to complete and close the pool
+executor.shutdown()
+</code></pre>
+<p>Recall that the <strong>shutdown()</strong> function will wait for all tasks to complete by default and will not cancel any queued tasks, but we can make this explicit by setting the "<strong>wait</strong>" argument to <strong>True</strong> and the "<strong>cancel_futures</strong>" argument to <strong>False</strong>; for example:</p>
+<pre><code>...
+# wait for all tasks to complete and close the pool
+executor.shutdown(wait=True, cancel_futures=False)
+</code></pre>
+<p>The example below demonstrates the pattern of waiting for all tasks in the process pool to complete by calling <strong>shutdown()</strong> before moving on.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and wait for all with shutdown pattern for the process pool
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    # display the result
+    print(name)
+
+# entry point
+def main():
+    # start the process pool
+    executor = ProcessPoolExecutor()
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # wait for all tasks to complete
+    executor.shutdown()
+    print('All tasks are done!')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that all tasks report their result as they complete and that the main thread does not move on until all tasks have completed and the process pool has been shut down.</p>
+<pre><code>3
+5
+2
+6
+8
+9
+7
+1
+4
+0
+All tasks are done!
+</code></pre>
+<h3 id="submit-and-wait-for-first">Submit and Wait for First</h3>
+<p>It is common to issue many tasks and only be <a href="../processpoolexecutor-first-result/">concerned with the first result returned</a>.</p>
+<p>That is, not the result of the first task, but a result from any task that happens to be the first to complete its execution.</p>
+<p>This may be the case if you are trying to access the same resource from multiple locations, like a file or some data.</p>
+<p>This pattern can be achieved using the <strong>wait()</strong> module function and setting the "<strong>return_when</strong>" argument to the <strong>FIRST_COMPLETED</strong> constant.</p>
+<pre><code>...
+# wait until any task completes
+done, not_done = wait(futures, return_when=FIRST_COMPLETED)
+</code></pre>
+<p>We must also manage the process pool manually by constructing it and calling <strong>shutdown()</strong> manually so that we can continue on with the execution of the main process without waiting for all of the other tasks to complete.</p>
+<p>The example below demonstrates this pattern and will stop waiting as soon as the first task is completed.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and wait for first the ProcessPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from concurrent.futures import FIRST_COMPLETED
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# entry point
+def main():
+    # start the process pool
+    executor = ProcessPoolExecutor()
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # wait until any task completes
+    done, not_done = wait(futures, return_when=FIRST_COMPLETED)
+    # get the result from the first task to complete
+    print(done.pop().result())
+    # shutdown without waiting
+    executor.shutdown(wait=False, cancel_futures=True)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example will wait for any of the tasks to complete, then retrieve the result of the first completed task and shut down the process pool.</p>
+<p>Importantly, the tasks will continue to execute in the process pool in the background and the main thread will not close until all tasks have completed.</p>
+<pre><code>2</code></pre>
+<p>Now that we have seen some common usage patterns for the <strong>ProcessPoolExecutor</strong>, let's look at how we might customize the configuration of the process pool.</p>
+<h2 id="how-to-configure-processpoolexecutor">How to Configure ProcessPoolExecutor</h2>
+<p>We can customize the configuration of the process pool when constructing a <strong>ProcessPoolExecutor</strong> instance.</p>
+<p>There are three aspects of the process pool we may wish to customize for our application; they are the number of workers, the names of processes in the pool, and the initialization of each process in the pool.</p>
+<p>Let's take a closer look at each in turn.</p>
+<h3 id="configure-the-number-of-processes">Configure the Number of Processes</h3>
+<p>The <a href="../processpoolexecutor-number-of-workers/">number of processes in the process pool</a> can be configured by the "<strong>max_workers</strong>" argument.</p>
+<p>It takes a positive integer and defaults to the number of CPUs in your system.</p>
+<ul>
+<li>Total Number Worker Processes = (CPUs in Your System)</li>
+</ul>
+<p>For example, if you had 2 physical CPUs in your system and each CPU has hyperthreading (common in modern CPUs), then you would have 2 physical and 4 logical CPUs. Python would see 4 CPUs. The default number of worker processes on your system would then be 4.</p>
+<p>The number of workers must be less than or equal to 61 if Windows is your operating system.</p>
+<p>It is common to have more processes than CPUs (physical or logical) in your system, if the target task function is performing IO operations.</p>
+<p>The reason for this is that IO-bound tasks spend most of their time waiting rather than using the CPU. Examples include reading or writing from hard drives, DVD drives, printers, and network connections, and much more. We will discuss the best application of processes in a later section.</p>
+<p>If you require hundreds or processes for IO-bound tasks, you might want to consider using threads instead and the <strong>ThreadPoolExecutor</strong>. If you require thousands of processes for IO-bound tasks, you might want to consider using the AsyncIO module.</p>
+<p>First, let's check how many processes are created for process pools on your system.</p>
+<p>Looking at the <a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/processes.py">source code for the <strong>ProcessPoolExecutor</strong></a>, we can see that the number of worker processes chosen by default is stored in the <strong>_max_workers</strong> property, which we can access and report after a process pool is created.</p>
+<p>Note: "<strong>_max_workers</strong>" is a protected member and may change in the future.</p>
+<p>The example below reports the number of default processes in a process pool on your system.</p>
+<pre><code># SuperFastPython.com
+# report the default number of worker processes on your system
+from concurrent.futures import ProcessPoolExecutor
+
+# entry point
+def main():
+    # create a process pool with the default number of worker processes
+    pool = ProcessPoolExecutor()
+    # report the number of worker processes chosen by default
+    print(pool._max_workers)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example reports the number of worker processes used by default on your system.</p>
+<p>I have four physical CPU cores, eight logical cores; therefore, the default is 8 processes.</p>
+<pre><code>8</code></pre>
+<p><strong>How many worker processes are allocated by default on your system?</strong><br/>Let me know in the comments below.</p>
+<p>We can specify the number of worker processes directly, and this is a good idea in most applications.</p>
+<p>The example below demonstrates how to configure 60 worker processes.</p>
+<pre><code># SuperFastPython.com
+# configure and report the default number of worker processes
+from concurrent.futures import ProcessPoolExecutor
+
+# entry point
+def main():
+    # create a process pool with a large number of worker processes
+    pool = ProcessPoolExecutor(60)
+    # report the number of worker processes
+    print(pool._max_workers)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example configures the process pool to use 60 processes and confirms that it will create 60 processes.</p>
+<pre><code>60</code></pre>
+<h4 id="how-many-processes-should-you-use">How Many Processes Should You Use?</h4>
+<p>This is a tough question and depends on the specifics of your program.</p>
+<p>Perhaps if you have fewer than 100 IO-bound tasks (or 60 on Windows), then you might want to set the number of worker processes to the number of tasks.</p>
+<p>If you are working with IO-bound tasks, then you might want to cap the number of workers that number of logical CPUs in your system, e.g. the default for the <strong>ProcessPoolExecutor</strong>.</p>
+<p>If your application is intended to be executed multiple times in the future, you can test different numbers of processes and compare overall execution time, then choose a number of processes that gives approximately the best performance. You may want to mock the task in these tests with a random sleep or compute operation.</p>
+<h3 id="configure-multiprocess-context">Configure MultiProcess Context</h3>
+<p>Different operating systems provide different ways to create new processes.</p>
+<p>Some operating systems support multiple ways to create processes.</p>
+<p>Perhaps the two most common ways to create new processes are spawn and fork.</p>
+<ul>
+<li><strong>spawn</strong>: Creates a new instance of the Python interpreter as a process. Available on Windows, Unix, and MacOS.</li>
+<li><strong>fork</strong>: Creates a fork of an existing Python interpreter process. Available on Unix.</li>
+<li><strong>forkserver</strong>: Creates a server Python interpreter process to be used to create all all forked processes for the life of the program. Available on Unix.</li>
+</ul>
+<p>Your Python installation will select the most appropriate method for creating a new process for your operating system. Nevertheless, you can specify how new processes are created and this is called a "<em>process context</em>."</p>
+<p>You can get a new process context for a specific method for creating new processes (e.g. fork or spawn) and pass this context to the <strong>ProcessPoolExecutor</strong>. This will allow all new processes created by the process pool to be created using the provided context and use your preferred method for starting processes.</p>
+<p>Firstly, let's see what process start methods are supported by your operating system and discover the default method that you are using.</p>
+<p>We can call the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.get_all_start_methods"><strong>get_all_start_methods()</strong> function</a> to get a list of all supported methods and the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.get_start_method"><strong>get_start_method()</strong> function</a> to get the currently configured (default) process start method.</p>
+<p>The program below will report the process start methods and default start method on your system.</p>
+<pre><code># SuperFastPython.com
+from multiprocessing import get_all_start_methods
+from multiprocessing import get_start_method
+# list of all process start methods supported on the os
+result = get_all_start_methods()
+print(result)
+# get the default process start method
+result = get_start_method()
+print(result)
+</code></pre>
+<p>Running the example first reports all of the process start methods supported by your system.</p>
+<p>Next, the default process start method is supported.</p>
+<p>In this case, running the program on MacOS, we can see that the operating system supports all three process start methods and the default is the "<strong>spawn</strong>" method.</p>
+<pre><code>['spawn', 'fork', 'forkserver']
+spawn
+</code></pre>
+<p>Next, we can check the default context used to start processes in the process pool.</p>
+<p>The <strong>ProcessPoolExecutor</strong> will use the default context unless it is configured to use a different context.</p>
+<p>We can check the start process context used by the <strong>ProcessPoolExecutor</strong> via the "<strong>_mp_context</strong>" protected property.</p>
+<p>The example below creates a process pool and reports the default context used by the process pool</p>
+<pre><code># SuperFastPython.com
+# example of checking the process start context
+from concurrent.futures import ProcessPoolExecutor
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # report the context used
+        print(executor._mp_context)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example creates a process pool and reports the default start process context used by the pool.</p>
+<p>In this case, we can see that it is the '<strong>spawn</strong>' context, denoted by the "<strong>SpawnContext</strong>" object.</p>
+<pre><code>&lt;multiprocessing.context.SpawnContext object at 0x1034fd4c0&gt;</code></pre>
+<p>Next, we can <a href="../processpoolexecutor-multiprocessing-context/">create a context and pass it to the process pool</a>.</p>
+<p>The <strong>ProcessPoolExecutor</strong> takes an argument named "<strong>mp_context</strong>" that defines the context used for creating processes in the pool.</p>
+<p>By default, it is set to None, in which case the default context is used.</p>
+<p>We can set the context by first calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.get_context"><strong>get_context()</strong> function</a> and specifying the preferred method as a string that matches a string returned from calling the <strong>get_all_start_methods()</strong> function, e.g. '<strong>fork</strong>' or '<strong>spawn</strong>'.</p>
+<p>Perhaps we wanted to force all processes to be created using the '<strong>fork</strong>' method, regardless of the default.</p>
+<p>Note: using '<strong>fork</strong>' will not work on windows. You might want to change it to use '<strong>spawn</strong>' or report the error message you see in the comments below.</p>
+<p>First, we would create a context, then pass this context to the process pool. We can then access and report the context manager used by the process pool; for example.</p>
+<pre><code>...
+# create a start process context
+context = get_context('fork')
+# create a process pool
+with ProcessPoolExecutor(mp_context=context) as executor:
+    # report the context used
+    print(executor._mp_context)
+</code></pre>
+<p>Tying this together, the complete example of setting the context manager for the process pool and then confirming it was changed is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of setting the process start context
+from multiprocessing import get_context
+from concurrent.futures import ProcessPoolExecutor
+
+# entry point
+def main():
+    # create a start process context
+    context = get_context('fork')
+    # create a process pool
+    with ProcessPoolExecutor(mp_context=context) as executor:
+        # report the context used
+        print(executor._mp_context)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example first creates a new start process context, then passes it to the new <strong>ProcessPoolExecutor</strong>.</p>
+<p>After the pool is created, the context manager used by the pool is reported, which in this case is '<strong>fork</strong>' denoted by the '<strong>ForkContext</strong>' object.</p>
+<h3 id="configure-the-process-initializer">Configure the Process Initializer</h3>
+<p>Worker processes can call a function before they start executing tasks.</p>
+<p>This is called an <a href="../processpoolexecutor-initializer/">initializer function</a> and can be specified via the "<strong>initializer</strong>" argument when creating a process pool. If the initializer function takes arguments, they can be passed in via the "<strong>initargs</strong>" argument to the process pool which is a tuple of arguments to pass to the initializer function.</p>
+<p>By default, there is no initializer function.</p>
+<p>We might choose to set an initializer function for worker processes if we would like each process to set up resources specific to the process.</p>
+<p>Examples might include a process-specific log file or a process-specific connection to a remote resource like a server or database. The resource would then be available to all tasks executed by the process, rather than being created and discarded or opened and closed for each task.</p>
+<p>These process-specific resources can then be stored somewhere where the worker process can reference, like a global variable, or in a process-local variable. Care must be taken to correctly close these resources once you are finished with the process pool.</p>
+<p>The example below will create a process pool with two workers and use a custom initialization function. In this case, the function does nothing other than print a message. We then complete ten tasks with the process pool.</p>
+<pre><code># SuperFastPython.com
+# example of a custom worker process initialization function
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# function for initializing the worker processes
+def initializer_worker():
+    # report an initialization message
+    print(f'Initializing worker process.', flush=True)
+
+# a mock task that sleeps for a random amount of time less than one second
+def task(identifier):
+    sleep(random())
+    # get the unique name
+    return identifier
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor(max_workers=2, initializer=initializer_worker) as executor:
+        # execute asks
+        for result in executor.map(task, range(10)):
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the two processes are initialized before running any tasks, then all ten tasks are completed successfully.</p>
+<pre><code>Initializing worker process.
+Initializing worker process.
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+</code></pre>
+<p>Now that we are familiar with how to configure the process pools, let's learn more about how to check and manipulate tasks via <strong>Future</strong> objects.</p>
+<h2 id="how-to-use-future-objects-in-detail">How to Use Future Objects in Detail</h2>
+<p><a href="https://docs.python.org/3/library/concurrent.futures.html#future-objects"><strong>Future</strong> objects</a> are created when we call <strong>submit()</strong> to send tasks into the <strong>ProcessPoolExecutor</strong> to be executed asynchronously.</p>
+<p><strong>Future</strong> objects provide the capability to check the status of a task (e.g. is it running?) and to control the execution of the task (e.g. cancel).</p>
+<p>In this section, we will look at some examples of checking and manipulating <strong>Future</strong> objects created by our process pool.</p>
+<p>Specifically, we will look at the following:</p>
+<ul>
+<li>How to Check the Status of Futures</li>
+<li>How to Get Results From Futures</li>
+<li>How to Cancel Futures</li>
+<li>How to Add a Callback to Futures</li>
+<li>How to Get Exceptions from Futures</li>
+</ul>
+<p>First, let's take a closer look at the <a href="../processpoolexecutor-future-objects/">life-cycle of a <strong>Future</strong></a> object.</p>
+<h3 id="life-cycle-of-a-future-object">Life-Cycle of a Future Object</h3>
+<p>A <strong>Future</strong> object is created when we call <strong>submit()</strong> for a task on a <strong>ProcessPoolExecutor</strong>.</p>
+<p>While the task is executing, the <strong>Future</strong> object has the status "<em>running</em>".</p>
+<p>When the task completes, it has the status "<em>done</em>" and if the target function returns a value, it can be retrieved.</p>
+<p>Before a task is running, it will be inserted into a queue of tasks for a worker process to take and start running. In this "<em>pre-running</em>" state, the task can be cancelled and has the "<em>cancelled</em>" state. A task in the "running" state cannot be cancelled.</p>
+<p>A "<em>cancelled</em>" task is always also in the "done" state.</p>
+<p>While a task is running, it can raise an uncaught exception, causing the execution of the task to stop. The exception will be stored and can be retrieved directly or will be re-raised if the result is attempted to be retrieved.</p>
+<p>The figure below summarizes the life-cycle of a <strong>Future</strong> object.</p>
+<figure><img alt="Overview of the Life-Cycle of a Python Future Object." loading="lazy" src="../pics/Overview-of-the-Life-Cycle-of-a-ThreadPoolExecutor-Future-Objects.png"/><figcaption>Overview of the Life-Cycle of a Python Future Object.
+</figcaption></figure>
+<p>Now that we are familiar with the life-cycle of a <strong>Future</strong> object, let's look at how we might use check and manipulate it.</p>
+<h3 id="how-to-check-the-status-of-futures">How to Check the Status of Futures</h3>
+<p>There are two types of normal status of a <strong>Future</strong> object that we might want to check: running and done.</p>
+<p>Each has its own function that returns a <strong>True</strong> if the <strong>Future</strong> object is in that state or <strong>False</strong> otherwise; for example:</p>
+<ul>
+<li><strong>running()</strong>: Returns <strong>True</strong> if the task is currently running.</li>
+<li><strong>done()</strong>: Returns <strong>True</strong> if the task has completed or was cancelled.</li>
+</ul>
+<p>We can develop simple examples to demonstrate how to check the status of a <strong>Future</strong> object.</p>
+<p>In this example, we can start a task and then check that it's running and not done, wait for it to complete, then check that it is done and not running.</p>
+<pre><code># SuperFastPython.com
+# check the status of a Future object for task executed by a process pool
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work():
+    sleep(0.5)
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # start one process
+        future = executor.submit(work)
+        # confirm that the task is running
+        running = future.running()
+        done = future.done()
+        print(f'Future running={running}, done={done}')
+        # wait for the task to complete
+        wait()
+        # confirm that the task is done
+        running = future.running()
+        done = future.done()
+        print(f'Future running={running}, done={done}')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that immediately after the task is submitted that it is marked as running, and that after the task is completed, we can confirm that it is done.</p>
+<pre><code>Future running=True, done=False
+Future running=False, done=True
+</code></pre>
+<h3 id="how-to-get-results-from-futures">How to Get Results From Futures</h3>
+<p>When a task is completed, we can retrieve the result from the task by calling the <strong>result()</strong> function on the <strong>Future</strong>.</p>
+<p>This returns the result from the return function of the task we executed or <strong>None</strong> if the function did not return a value.</p>
+<p>The function will block until the task completes and a result can be retrieved. If the task has already been completed, it will return a result immediately.</p>
+<p>The example below demonstrates how to retrieve a result from a <strong>Future</strong> object</p>
+<pre><code># SuperFastPython.com
+# get the result from a completed future task
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    return "all done"
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # start one process
+        future = executor.submit(work)
+        # get the result from the task, wait for task to complete
+        result = future.result()
+        print(f'Got Result: {result}')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example submits the task, then attempts to retrieve the result, blocking until the result is available then reports the result that was received.</p>
+<pre><code>Got Result: all done</code></pre>
+<p>We can also set a timeout for how long we wish to wait for a result in seconds.</p>
+<p>If the timeout elapses before we get a result, a <strong>TimeoutError</strong> is raised.</p>
+<p>The example below demonstrates the timeout, showing how to give up waiting before the task has completed.</p>
+<pre><code># SuperFastPython.com
+# set a timeout when getting results from a future
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import TimeoutError
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    return "all done"
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # start one process
+        future = executor.submit(work)
+        # get the result from the task, wait for task to complete
+        try:
+            result = future.result(timeout=0.5)
+            print(f'Got Result: {result}')
+        except TimeoutError:
+            print('Gave up waiting for a result')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example shows that we gave up waiting for a result after half a second.</p>
+<pre><code>Gave up waiting for a result</code></pre>
+<h3 id="how-to-cancel-futures">How to Cancel Futures</h3>
+<p>We can also <a href="../processpoolexecutor-cancel-task/">cancel a task that has not yet started running</a>.</p>
+<p>Recall that when we put tasks into the pool with <strong>submit()</strong> or <strong>map()</strong> that the tasks are added to an internal queue of work from which worker processes can remove the tasks and execute them.</p>
+<p>While a task is on the queue and before it has been started, we can cancel it by calling <strong>cancel()</strong> on the <strong>Future</strong> object associated with the task. The <strong>cancel()</strong> function will return <strong>True</strong> if the task was cancelled, <strong>False</strong> otherwise.</p>
+<p>Let's demonstrate this with a worked example.</p>
+<p>We can create a process pool with one process then start a long running task, then submit a second task, request that it is cancelled, then confirm that it was indeed cancelled.</p>
+<pre><code># SuperFastPython.com
+# example of cancelling a task via it's future
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor(1) as executor:
+        # start a long running task
+        future1 = executor.submit(work, 2)
+        running = future1.running()
+        print(f'First task running={running}')
+        # start a second
+        future2 = executor.submit(work, 0.1)
+        running = future2.running()
+        print(f'Second task running={running}')
+        # cancel the second task
+        was_cancelled = future2.cancel()
+        print(f'Second task was cancelled: {was_cancelled}')
+        # wait for the second task to finish, just in case
+        wait()
+        # confirm it was cancelled
+        running = future2.running()
+        cancelled = future2.cancelled()
+        done = future2.done()
+        print(f'Second task running={running}, cancelled={cancelled}, done={done}')
+        # wait for the long running task to finish
+        wait()
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the first task is started and is running normally.</p>
+<p>The second task is scheduled and is not yet running because the process pool is occupied with the first task. We then cancel the second task and confirm that it is indeed not running; it was cancelled and is done.</p>
+<pre><code>First task running=True
+Second task running=False
+Second task was cancelled: True
+Second task running=False, cancelled=True, done=True
+</code></pre>
+<h4 id="cancel-a-running-future">Cancel a Running Future</h4>
+<p>Next, let's try to cancel a task that has already completed running.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of trying to cancel a running task via its future
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor(1) as executor:
+        # start a long running task
+        future = executor.submit(work, 2)
+        running = future.running()
+        print(f'Task running={running}')
+        # try to cancel the task
+        was_cancelled = future.cancel()
+        print(f'Task was cancelled: {was_cancelled}')
+        # wait for the task to finish
+        wait()
+        # check if it was cancelled
+        running = future.running()
+        cancelled = future.cancelled()
+        done = future.done()
+        print(f'Task running={running}, cancelled={cancelled}, done={done}')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the task was started as per normal.</p>
+<p>We then tried to cancel the task, but this was not successful, as we expected since the task was already running.</p>
+<p>We then wait for the task to complete and then check it's status. We can see that the task is no longer running and was not cancelled, as we expect, and it was marked as done.</p>
+<pre><code>Task running=True
+Task was cancelled: False
+Task running=False, cancelled=False, done=True
+</code></pre>
+<h4 id="cancel-a-done-future">Cancel a Done Future</h4>
+<p>Consider what would happen if we tried to cancel a task that was already done.</p>
+<p>We might expect that canceling a task that is already done has no effect, and this happens to be the case.</p>
+<p>This can be demonstrated with a short example.</p>
+<p>We start and run a task as per normal, then wait for it to complete and report its status. We then attempt to cancel the task.</p>
+<pre><code># SuperFastPython.com
+# example of trying to cancel a done task via its future
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor(1) as executor:
+        # start a long running task
+        future = executor.submit(work, 2)
+        running = future.running()
+        # wait for the task to finish
+        wait()
+        # check the status
+        running = future.running()
+        cancelled = future.cancelled()
+        done = future.done()
+        print(f'Task running={running}, cancelled={cancelled}, done={done}')
+        # try to cancel the task
+        was_cancelled = future.cancel()
+        print(f'Task was cancelled: {was_cancelled}')
+        # check if it was cancelled
+        running = future.running()
+        cancelled = future.cancelled()
+        done = future.done()
+        print(f'Task running={running}, cancelled={cancelled}, done={done}')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example confirms that the task runs and is marked done, as per normal.</p>
+<p>The attempt to cancel the task fails and checking the status after the attempt to cancel, confirms that the task was not impacted by the attempt.</p>
+<pre><code>Task running=False, cancelled=False, done=True
+Task was cancelled: False
+Task running=False, cancelled=False, done=True
+</code></pre>
+<h3 id="how-to-add-a-callback-to-futures">How to Add a Callback to Futures</h3>
+<p>We have already seen above <a href="../processpoolexecutor-add-callback/">how to add a callback to a <strong>Future</strong></a>; nevertheless, let's look at some more examples for completeness, including some edge cases.</p>
+<p>We can register one or more callback functions on a <strong>Future</strong> object by calling the <strong>add_done_callback()</strong> function and specifying the name of the function to call.</p>
+<p>The callbacks functions will be called with the <strong>Future</strong> object as an argument immediately after the completion of the task. If more than one callback function is registered, then they will be called in the order they were registered and any exceptions within each callback function will be caught, logged, and ignored.</p>
+<p>The callback will be called by the worker process that executed the task.</p>
+<p>The example below demonstrates how to add a callback function to a <strong>Future</strong> object.</p>
+<pre><code># SuperFastPython.com
+# add a callback option to a future object
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# callback function to call when a task is completed
+def custom_callback(future):
+    print('Custom callback was called', flush=True)
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    print('Task is done')
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute the task
+        future = executor.submit(work)
+        # add the custom callback
+        future.add_done_callback(custom_callback)
+        # wait for the task to complete
+        wait()
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the task is completed first, then the callback is executed as we expected.</p>
+<pre><code>Task is done
+Custom callback was called
+</code></pre>
+<h4 id="common-error-when-using-future-callbacks">Common Error When Using Future Callbacks</h4>
+<p>A common error is to forget to add the <strong>Future</strong> object as an argument to the custom callback. </p>
+<p>For example:</p>
+<pre><code># callback function to call when a task is completed
+def custom_callback():
+    print('Custom callback was called')
+</code></pre>
+<p>If you register this function and try to run the code, you will get a <strong>TypeError</strong> as follows:</p>
+<pre><code>exception calling callback for &lt;Future at 0x10d8e2730 state=finished returned NoneType&gt;
+Traceback (most recent call last):
+  ...
+    callback(self)
+TypeError: custom_callback() takes 0 positional arguments but 1 was given
+</code></pre>
+<p>The message in the <strong>TypeError</strong> makes it clear how to fix the issue: add a single argument to the function for the <strong>Future</strong> object, even if you don't intend on using it in your callback.</p>
+<h4 id="callbacks-execute-when-cancelling-a-future">Callbacks Execute When Cancelling a Future</h4>
+<p>We can also see the effect of callbacks on <strong>Future</strong> objects for tasks that are cancelled.</p>
+<p>The effect does not appear to be documented in the API, but we might expect for the callback to always be executed, whether the task is run normally or whether it is cancelled. And this happens to be the case.</p>
+<p>The example below demonstrates this.</p>
+<p>First, a process pool is created with a single process. A long running task is issued that occupies the entire pool, then we send in a second task, add a callback to the second task, cancel it, and wait for all tasks to finish.</p>
+<pre><code># SuperFastPython.com
+# example of a callback for a cancelled task via the future object
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# callback function to call when a task is completed
+def custom_callback(future):
+    print('Custom callback was called', flush=True)
+
+# mock task that will sleep for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor(1) as executor:
+        # start a long running task
+        future1 = executor.submit(work, 2)
+        running = future1.running()
+        print(f'First task running={running}')
+        # start a second
+        future2 = executor.submit(work, 0.1)
+        running = future2.running()
+        print(f'Second task running={running}')
+        # add the custom callback
+        future2.add_done_callback(custom_callback)
+        # cancel the second task
+        was_cancelled = future2.cancel()
+        print(f'Second task was cancelled: {was_cancelled}')
+        # explicitly wait for all tasks to complete
+        wait([future1, future2])
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the first task is started as we expect.</p>
+<p>The second task is scheduled but does not get a chance to run before we cancel it.</p>
+<p>The callback is run immediately after we cancel the task, then we report in the main thread that indeed the task was cancelled correctly.</p>
+<pre><code>First task running=True
+Second task running=False
+Custom callback was called
+Second task was cancelled: True
+</code></pre>
+<h3 id="how-to-get-exceptions-from-futures">How to Get Exceptions From Futures</h3>
+<p>A task may raise an exception during execution.</p>
+<p>If we can anticipate the exception, we can wrap parts of our task function in a try-except block and handle the exception within the task.</p>
+<p>If an unexpected exception occurs within our task, the task will stop executing.</p>
+<p>We cannot know based on the task status whether an exception was raised, but we can check for an exception directly.</p>
+<p>We can then access the exception via the <strong>exception()</strong> function. Alternately, the exception will be re-raised when calling the <strong>result() </strong>function when trying to get a result.</p>
+<p>We can demonstrate this with an example.</p>
+<p>The example below will raise a <strong>ValueError</strong> within the task that will not be caught but instead will be caught by the process pool for us to access later.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('This is Fake!')
+    return "never gets here"
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute our task
+        future = executor.submit(work)
+        # wait for the task to complete
+        wait()
+        # check the status of the task after it has completed
+        running = future.running()
+        cancelled = future.cancelled()
+        done = future.done()
+        print(f'Task running={running}, cancelled={cancelled}, done={done}')
+        # get the exception
+        exception = future.exception()
+        print(f'Exception={exception}')
+        # get the result from the task
+        try:
+            result = future.result()
+        except Exception:
+            print('Unable to get the result')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example starts the task normally, which sleeps for one second.</p>
+<p>The task then throws an exception that is caught by the process pool. The process pool stores the exception and the task is completed.</p>
+<p>We can see that after the task is completed, it is marked as not running, not cancelled, and done.</p>
+<p>We then access the exception from the task, which matches the exception we intentionally throw.</p>
+<p>Attempting to access the result via the <strong>result()</strong> function fails and we catch the same exception raised in the task.</p>
+<pre><code>Task running=False, cancelled=False, done=True
+Exception=This is Fake!
+Unable to get the result
+</code></pre>
+<h4 id="callbacks-are-still-called-if-a-task-raises-an-exception">Callbacks Are Still Called if a Task Raises an Exception</h4>
+<p>We might wonder if we register a callback function with a <strong>Future</strong>, whether it will still execute if the task raises an exception.</p>
+<p>As we might expect, the callback is executed even if the task raises an exception.</p>
+<p>We can test this by updating the previous example to register a callback function before the task fails with an exception.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task that has a callback
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# callback function to call when a task is completed
+def custom_callback(future):
+    print('Custom callback was called')
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('This is Fake!')
+    return "never gets here"
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute our task
+        future = executor.submit(work)
+        # add the custom callback
+        future.add_done_callback(custom_callback)
+        # wait for the task to complete
+        wait()
+        # check the status of the task after it has completed
+        running = future.running()
+        cancelled = future.cancelled()
+        done = future.done()
+        print(f'Task running={running}, cancelled={cancelled}, done={done}')
+        # get the exception
+        exception = future.exception()
+        print(f'Exception={exception}')
+        # get the result from the task
+        try:
+            result = future.result()
+        except Exception:
+            print('Unable to get the result')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example starts the task as before, but this time registers a callback function.</p>
+<p>When the task fails with an exception, the callback is called immediately. The main process then reports the status of the failed task and the details of the exception.</p>
+<pre><code>Custom callback was called
+Task running=False, cancelled=False, done=True
+Exception=This is Fake!
+Unable to get the result
+</code></pre>
+<h2 id="when-to-use-the-processpoolexecutor">When to Use the ProcessPoolExecutor</h2>
+<p>The <strong>ProcessPoolExecutor</strong> is powerful and flexible, although is not suited for all situations where you need to run a background task.</p>
+<p>In this section, we will look at some general cases where it is a good fit, and where it isn't, then we'll look at broad classes of tasks and why they are or are not appropriate for the ProcessPoolExecutor.</p>
+<h3 id="use-processpoolexecutors-when">Use ProcessPoolExecutors When...</h3>
+<ul>
+<li>Your tasks can be defined by a pure function that has no state or side effects.</li>
+<li>Your task can fit within a single Python function, likely making it simple and easy to understand.</li>
+<li>You need to perform the same task many times, e.g. homogeneous tasks.</li>
+<li>You need to apply the same function to each object in a collection in a for-loop.</li>
+</ul>
+<p>Process pools work best when applying the same pure function on a set of different data (e.g. homogeneous tasks, heterogeneous data). This makes code easier to read and debug. This is not a rule, just a gentle suggestion.</p>
+<h3 id="use-multiple-processpoolexecutors-when">Use Multiple ProcessPoolExecutors When…</h3>
+<ul>
+<li>You need to perform groups of different types of tasks; one process pool could be used for each task type.</li>
+<li>You need to perform a pipeline of tasks or operations; one process pool can be used for each step.</li>
+</ul>
+<p>Process pools can operate on tasks of different types (e.g. heterogeneous tasks), although it may make the organization of your program and debugging easy if a separate process pool is responsible for each task type. This is not a rule, just a gentle suggestion.</p>
+<h3 id="don-t-use-processpoolexecutors-when">Don't Use ProcessPoolExecutors When...</h3>
+<ul>
+<li>You have a single task; consider using the <strong>Process</strong> class with the "<strong>target</strong>" argument.</li>
+<li>You have long running tasks, such as monitoring or scheduling; consider extending the <strong>Process</strong> class.</li>
+<li>Your task functions require state; consider extending the <strong>Process</strong> class.</li>
+<li>Your tasks require coordination; consider using a <strong>Process</strong> and patterns like a <strong>Barrier</strong> or <strong>Semaphore</strong>.</li>
+<li>Your tasks require synchronization; consider using a <strong>Process</strong> and <strong>Locks</strong>.</li>
+<li>You require a process trigger on an event; consider using the <strong>Process</strong> class.</li>
+</ul>
+<p>The sweet spot for process pools is in dispatching many similar tasks, the results of which may be used later in the program. Tasks that don't fit neatly into this summary are probably not a good fit for process pools. This is not a rule, just a gentle suggestion.</p>
+<p><strong>Do you know any other good or bad cases where using a ProcessPoolExecutor?</strong><br/>Let me know in the comments below.</p>
+<h3 id="use-processes-for-io-bound-tasks">Use Processes for IO-Bound Tasks</h3>
+<p>You can use processes for IO-bound tasks, although threads may be a better fit.</p>
+<p>An IO-bound task is a type of task that involves reading from or writing to a device, file, or socket connection.</p>
+<p>The operations involve input and output (IO) and the speed of these operations is bound by the device, hard drive, or network connection. This is why these tasks are referred to as IO-bound.</p>
+<p>CPUs are really fast. Modern CPUs like a 4GHz can execute 4 billion instructions per second, and you likely have more than one CPU in your system.</p>
+<p>Doing IO is very slow compared to the speed of CPUs.</p>
+<p>Interacting with devices, reading and writing files, and socket connections involves calling instructions in your operating system (the kernel), which will wait for the operation to complete. If this operation is the main focus for your CPU, such as executing in the main thread of your Python program, then your CPU is going to wait many milliseconds or even many seconds doing nothing.</p>
+<p>That is potentially billions of operations that it is prevented from executing.</p>
+<p>We can free-up the CPU from IO-bound operations by performing IO-bound operations on another process of execution. This allows the CPU to start the task and pass it off to the operating system (kernel) to do the waiting, and free it up to execute in another application process.</p>
+<p>There's more to it under the covers, but this is the gist.</p>
+<p>Therefore, the tasks we execute with a <strong>ProcessPoolExecutor</strong> can be tasks that involve IO operations.</p>
+<p>Examples include:</p>
+<ul>
+<li>Reading or writing a file from the hard drive.</li>
+<li>Reading or writing to standard output, input, or error (stdin, stdout, stderr).</li>
+<li>Printing a document.</li>
+<li>Downloading or uploading a file.</li>
+<li>Querying a server.</li>
+<li>Querying a database.</li>
+<li>Taking a photo or recording a video.</li>
+<li>And so much more.</li>
+</ul>
+<h3 id="cpu-bound-tasks">CPU-Bound Tasks</h3>
+<p>You should probably use processes for CPU-bound tasks.</p>
+<p>A CPU-bound task is a type of task that involves performing a computation and does not involve IO.</p>
+<p>The operations only involve data in main memory (RAM) or cache (CPU cache) and performing computations on or with that data. As such, the limit on these operations is the speed of the CPU. This is why we call them CPU-bound tasks.</p>
+<p>Examples include:</p>
+<ul>
+<li>Calculating points in a fractal.</li>
+<li>Estimating Pi</li>
+<li>Factoring primes.</li>
+<li>Parsing HTML, JSON, etc. documents.</li>
+<li>Processing text.</li>
+<li>Running simulations.</li>
+</ul>
+<p>CPUs are very fast and we often have more than one CPU. We would like to perform our tasks and make full use of multiple CPU cores in modern hardware.</p>
+<p>Using processes and process pools via the <strong>ProcessPoolExecutor</strong> class in Python is probably the best path toward achieving this end.</p>
+<h2 id="processpoolexecutor-exception-handling">ProcessPoolExecutor Exception Handling</h2>
+<p>Exception handling is an important consideration when using processes.</p>
+<p>Code will raise an exception when something unexpected happens and the exception should be dealt with by your application explicitly, even if it means logging it and moving on.</p>
+<p>There are three points you may need to consider exception handling when using the <strong>ProcessPoolExecutor</strong>; they are:</p>
+<ul>
+<li>Exception Handling During Process Initialization</li>
+<li>Exception Handling During Task Execution</li>
+<li>Exception Handling During Task Completion Callbacks</li>
+</ul>
+<p>Let's take a closer look at each point in turn.</p>
+<h3 id="exception-handling-during-process-initialization">Exception Handling During Process Initialization</h3>
+<p>You can specify a custom initialization function when configuring your <strong>ProcessPoolExecutor</strong>.</p>
+<p>This can be set via the "<strong>initializer</strong>" argument to specify the function name and "<strong>initargs</strong>" to specify a tuple of arguments to the function.</p>
+<p>Each process started by the process pool will call your initialization function before starting the process.</p>
+<p>If your initialization function throws an exception, it will break your process pool.</p>
+<p>All current tasks and any future tasks executed by the process pool will not run and will raise a <strong>BrokenProcessPool</strong> exception.</p>
+<p>We can demonstrate this with an example of a contrived initializer function that throws an exception.</p>
+<pre><code># SuperFastPython.com
+# example of an exception in a process pool initializer function
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# function for initializing the worker process
+def initializer_worker():
+    # throws an exception
+    raise Exception('Something bad happened!', flush=True)
+
+# a mock task that sleeps for a random amount of time less than one second
+def task(identifier):
+    sleep(random())
+    # get the unique name
+    return identifier
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor(max_workers=2, initializer=initializer_worker) as executor:
+        # execute tasks
+        for result in executor.map(task, range(10)):
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example fails with an exception, as we expected.</p>
+<p>The process pool is created as per normal, but as soon as we try to execute tasks, new worker processes are created, the custom worker process initialization function is called and throws an exception.</p>
+<p>Multiple processes attempted to start, and in turn, multiple processes failed with an Exception. Finally, the process pool itself logged a message that the pool is broken and cannot be used any longer.</p>
+<pre><code>Exception in initializer:
+Traceback (most recent call last):
+  ...
+    raise Exception('Something bad happened!', flush=True)
+TypeError: Exception() takes no keyword arguments
+Exception in initializer:
+Traceback (most recent call last):
+  ...
+    raise Exception('Something bad happened!', flush=True)
+TypeError: Exception() takes no keyword arguments
+Traceback (most recent call last):
+  ...
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
+</code></pre>
+<p>This highlights that if you use a custom initializer function, that you must carefully consider the exceptions that may be raised and perhaps handle them, otherwise risk all tasks that depend on the process pool.</p>
+<h3 id="exception-handling-during-task-execution">Exception Handling During Task Execution</h3>
+<p>An exception may occur while executing your task.</p>
+<p>This will cause the task to stop executing, but will not break the process pool. Instead, the exception will be caught by the process pool and will be available via the <strong>Future</strong> object associated with the task via the <strong>exception()</strong> function.</p>
+<p>Alternately, the exception will be re-raised if you call <strong>result()</strong> in the future in order to get the result. This will impact both calls to <strong>submit()</strong> and <strong>map()</strong> when adding tasks to the process pool.</p>
+<p>It means that you have two options for handling exceptions in tasks; they are:</p>
+<ul>
+<li>1. Handle exceptions within the task function.</li>
+<li>2. Handle exceptions when getting results from tasks.</li>
+</ul>
+<h4 id="handle-exception-within-the-task">Handle Exception Within the Task</h4>
+<p>Handling the exception within the task means that you need some mechanism to let the recipient of the result know that something unexpected happened.</p>
+<p>This could be via the return value from the function, e.g. <strong>None</strong>.</p>
+<p>Alternatively, you can re-raise an exception and have the recipient handle it directly. A third option might be to use some broader state or global state, perhaps passed by reference into the call to the function.</p>
+<p>The example below defines a work task that will raise an exception, but will catch the exception and return a result indicating a failure case.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    try:
+        raise Exception('Something bad happened!')
+    except Exception:
+        return 'Unable to get the result'
+    return "never gets here"
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute our task
+        future = executor.submit(work)
+        # get the result from the task
+        result = future.result()
+        print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example starts the process pool as per normal, issues the task, then blocks, waiting for the result.</p>
+<p>The task raises an exception and the result received is an error message.</p>
+<p>This approach is reasonably clean for the recipient code and would be appropriate for tasks issued by both <strong>submit()</strong> and <strong>map()</strong>. It may require special handling of a custom return value for the failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<h4 id="handle-exception-by-the-recipient-of-the-task-result">Handle Exception by the Recipient of the Task Result</h4>
+<p>An alternative to handling the exception in the task is to leave the responsibility to the recipient of the result.</p>
+<p>This may feel like a more natural solution, as it matches the synchronous version of the same operation, e.g. if we were performing the function call in a for-loop.</p>
+<p>It means that the recipient must be aware of the types of errors that the task may raise and handle them explicitly.</p>
+<p>The example below defines a simple task that raises an <strong>Exception</strong>, which is then handled by the recipient when attempting to get the result from the function call.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened!')
+    return "never gets here"
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute our task
+        future = executor.submit(work)
+        # get the result from the task
+        try:
+            result = future.result()
+        except Exception:
+            print('Unable to get the result')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example creates the process pool and submits the work as per normal. The task fails with an error; the process pool catches the exception, stores it, then re-throws it when we call the <strong>result()</strong> function in the future.</p>
+<p>The recipient of the result accepts the exception and catches it, reporting a failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<p>We can also check for the exception directly via a call to the <strong>exception()</strong> function on the <strong>Future</strong> object. This function blocks until an exception occurs and takes a timeout, just like a call to <strong>result()</strong>.</p>
+<p>If an exception never occurs and the task is cancelled or completes successfully, then <strong>exception()</strong> will return a value of None.</p>
+<p>We can demonstrate the explicit checking for an exceptional case in the task in the example below.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened!')
+    return "never gets here"
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute our task
+        future = executor.submit(work)
+        # get the result from the task
+        exception = future.exception()
+        # handle exceptional case
+        if exception:
+             print(exception)
+        else:
+            result = future.result()
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example creates and submits the work per normal.</p>
+<p>The recipient checks for the exceptional case, which blocks until an exception is raised or the task is completed. An exception is received and is handled by reporting it.</p>
+<pre><code>Something bad happened!</code></pre>
+<p>We cannot check the <strong>exception()</strong> function of the <strong>Future</strong> object for each task, as <strong>map()</strong> does not provide access to <strong>Future</strong> objects.</p>
+<p>Worse still, the approach of handling the exception in the recipient cannot be used when using <strong>map()</strong> to submit tasks, unless you wrap the entire iteration.</p>
+<p>We can demonstrate this by submitting one task with <strong>map()</strong> that happens to raise an <strong>Exception</strong>.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# mock task that will sleep for a moment
+def work(value):
+    sleep(1)
+    raise Exception('Something bad happened!')
+    return f'Never gets here {value}'
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute our task
+        for result in executor.map(work, [1]):
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example submits the single task (a bad use for <strong>map()</strong>) and waits for the first result.</p>
+<p>The task throws an exception and the main thread and process exits, as we expected.</p>
+<pre><code>concurrent.futures.process._RemoteTraceback:
+...
+Exception: Something bad happened!
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+...
+Exception: Something bad happened!
+</code></pre>
+<p>This highlights that if <strong>map()</strong> is used to submit tasks to the process pool, then the tasks should handle their own exceptions or be simple enough that exceptions are not expected.</p>
+<h3 id="exception-handling-during-task-completion-callbacks">Exception Handling During Task Completion Callbacks</h3>
+<p>A final case we must consider for exception handling when using the <strong>ProcessPoolExecutor</strong> is in callback functions.</p>
+<p>When issuing tasks to the process pool with a call to <strong>submit()</strong>, we receive a <strong>Future</strong> object in return on which we can register callback functions to call when the task completes via the <strong>add_done_callback()</strong> function.</p>
+<p>This allows one or more callback functions to be registered that will be executed in the order in which they are registered.</p>
+<p>These callbacks are always called, even if the task is cancelled or fails itself with an exception.</p>
+<p>A callback can fail with an exception and it will not impact other callback functions that have been registered or the task.</p>
+<p>The exception is caught by the process pool, logged as an exception type message and the procedure moves on. In a sense, callbacks are able to fail silently.</p>
+<p>We can demonstrate this with a worked example with multiple callback functions, the first of which will raise an exception.</p>
+<pre><code># SuperFastPython.com
+# add callbacks to a future, one of which throws an exception
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# callback function to call when a task is completed
+def custom_callback1(future):
+    raise Exception('Something bad happened!')
+    # never gets here
+    print('Callback 1 called.', flush=True)
+
+# callback function to call when a task is completed
+def custom_callback2(future):
+    print('Callback 2 called.', flush=True)
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    return 'Task is done'
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute the task
+        future = executor.submit(work)
+        # add the custom callbacks
+        future.add_done_callback(custom_callback1)
+        future.add_done_callback(custom_callback2)
+        # wait for the task to complete and get the result
+        result = future.result()
+        # wait for callbacks to finish
+        sleep(0.1)
+        print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example starts the process pool as per normal and executes the task.</p>
+<p>When the task completes, the first callback is called, which fails with an exception. The exception is logged and reported on the console (the default behavior for logging).</p>
+<p>The process pool is not broken and carries on.</p>
+<p>The second callback is called successfully, and finally the main thread gets the result of the task.</p>
+<pre><code>exception calling callback for &lt;Future at 0x10dc8a9a0 state=finished returned str&gt;
+...
+    raise Exception('Something bad happened!')
+Exception: Something bad happened!
+Callback 2 called.
+Task is done
+</code></pre>
+<p>This highlights that if callbacks are expected to raise an exception, that it must be handled explicitly and checked for if you wish to have the failure impact the task itself.</p>
+<h2 id="how-does-processpoolexecutor-work-internally">How Does ProcessPoolExecutor Work Internally?</h2>
+<p>It is important to pause for a moment and look at how the <strong>ProcessPoolExecutor</strong> works internally.</p>
+<p>The internal workings of the class impact how we use the process pool and the behavior we can expect, specifically around cancelling tasks.</p>
+<p>Without this knowledge, some of the behavior of the process pool may appear confusing or even buggy from the outside.</p>
+<p>You can see the source code for the <strong>ProcessPoolExecutor</strong> and the base class here:</p>
+<ul>
+<li><a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/process.py">cpython/Lib/concurrent/futures/process.py</a></li>
+<li><a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/_base.py">cpython/Lib/concurrent/futures/_base.py</a></li>
+</ul>
+<p>There is a lot we could learn about how the process pool works internally, but we will limit ourselves to the most critical aspects.</p>
+<p>There are two aspects that you need to consider about the internal operation of the <strong>ProcessPoolExecutor</strong> class: how tasks are sent into the pool and how worker processes are created.</p>
+<h3 id="task-are-added-to-internal-queues">Task Are Added to Internal Queues</h3>
+<p>The source code for the <strong>ProcessPoolExecutor</strong> provides a good summary for how the pool works internally.</p>
+<p>There is an ASCII diagram in the source that we can reproduce here that will help:</p>
+<pre><code>|======================= In-process =====================|== Out-of-process ==|
++----------+     +----------+       +--------+     +-----------+    +---------+
+|          |  =&gt; | Work Ids |       |        |     | Call Q    |    | Process |
+|          |     +----------+       |        |     +-----------+    |  Pool   |
+|          |     | ...      |       |        |     | ...       |    +---------+
+|          |     | 6        |    =&gt; |        |  =&gt; | 5, call() | =&gt; |         |
+|          |     | 7        |       |        |     | ...       |    |         |
+| Process  |     | ...      |       | Local  |     +-----------+    | Process |
+|  Pool    |     +----------+       | Worker |                      |  #1..n  |
+| Executor |                        | Thread |                      |         |
+|          |     +----------- +     |        |     +-----------+    |         |
+|          | &lt;=&gt; | Work Items | &lt;=&gt; |        | &lt;=  | Result Q  | &lt;= |         |
+|          |     +------------+     |        |     +-----------+    |         |
+|          |     | 6: call()  |     |        |     | ...       |    |         |
+|          |     |    future  |     |        |     | 4, result |    |         |
+|          |     | ...        |     |        |     | 3, except |    |         |
++----------+     +------------+     +--------+     +-----------+    +---------+
+</code></pre>
+<p>The data flow for submitting new tasks to the pool is as follows.</p>
+<p>First, we call <strong>submit()</strong> on the pool to add a new task. Note that calling <strong>map()</strong> internally will call the <strong>submit()</strong> function.</p>
+<p>This will add a work item to an internal dictionary, specifically an instance of an internal class named <strong>_WorkItem</strong>. Each work item also has a unique identifier that is tracked in an internal <strong>Queue</strong>.</p>
+<p>The process pool has an internal worker thread that is responsible for preparing work for the worker processes. It will wake-up when new work is added to the queue of work ids and will retrieve the new task and submit it to a second queue.</p>
+<p>This second queue contains the tasks to be executed by worker processes. Results of the target task functions are then placed in a result queue to be read by the worker thread and made available to any associated Future objects.</p>
+<p>This decoupling between the queue that the user interacts with and the queue of tasks that the processes interact with is intentional and provides some measure of control and safety.</p>
+<p>The important aspect about these internals from a user perspective is in cancelling tasks via their <strong>Future</strong> objects.</p>
+<p>Tasks in the internal work queue can be canceled. Otherwise tasks cannot be cancelled, such as running tasks. Additionally, tasks in the internal call queue cannot be cancelled, but may not yet be running.</p>
+<p>This means we may query the status of a Future object and see that it is not running and is not done. Then attempt to cancel it, fail to cancel it, and see that the task begins running and is then done.</p>
+<p>This happens because some number of tasks will sit in the call queue waiting to be consumed by the processes.</p>
+<p>Specifically, the call queue will match the number of worker processes, plus one.</p>
+<h3 id="worker-processes-are-created-as-needed">Worker Processes Are Created as Needed</h3>
+<p>Worker processes are not created when the process pool is created.</p>
+<p>Instead, worker processes are created on demand or just-in-time.</p>
+<p>Each time a task is added to the internal queues, the process pool will check if the number of active processes is less than the upper limit of processes supported by the pool. If so, an additional process is created to handle the new work.</p>
+<p>Once a process has completed a task, it will wait on the call queue for new work to arrive. As new work arrives, all processes waiting on the queue will be notified and one will attempt to consume the unit of work and start executing it.</p>
+<p>These two points show how the pool will only ever create new processes until the limit is reached and how processes will be reused, waiting for new tasks without consuming computational resources.</p>
+<p>It also shows that the process pool will not release worker processes after a fixed number of units of work. Perhaps this would be a nice addition to the API in the future.</p>
+<p>Now that we understand how work is injected into the process pool and how the pool manages processes, let's look at some best practices to consider when using the <strong>ProcessPoolExecutor</strong>.</p>
+<h2 id="processpoolexecutor-best-practices">ProcessPoolExecutor Best Practices</h2>
+<p>Now that we know how the <strong>ProcessPoolExecutor</strong> works and how to use it, let's review some best practices to consider when bringing process pools into our Python programs.</p>
+<p>To keep things simple, there are five best practices; they are:</p>
+<ul>
+<li>1. Use the Context Manager</li>
+<li>2. Use <strong>map()</strong> for Asynchronous For-Loops</li>
+<li>3. Use <strong>submit()</strong> With <strong>as_completed()</strong></li>
+<li>4. Use Independent Functions as Tasks</li>
+<li>5. Use for CPU-Bound Tasks (probably)</li>
+</ul>
+<h3 id="use-the-context-manager">Use the Context Manager</h3>
+<p>Use the <a href="../processpoolexecutor-context-manager/">context manager when using process pools</a> and handle all task dispatching to the process pool and processing results within the manager.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool via the context manager
+with ProcessPoolExecutor(10) as executor:
+	# ...
+</code></pre>
+<p>Remember to configure your process pool when creating it in the context manager, specifically by setting the number of processes to use in the pool.</p>
+<p>Using the context manager avoids the situation where you have explicitly instantiated the process pool and forget to shut it down manually by calling <strong>shutdown()</strong>.</p>
+<p>It is also less code and better grouped than managing instantiation and shutdown manually; for example:</p>
+<pre><code>...
+# create a process pool manually
+executor = ProcessPoolExecutor(10)
+# ...
+executor.shutdown()
+</code></pre>
+<p>Don't use the context manager when you need to dispatch tasks and get results over a broader context (e.g. multiple functions) and/or when you have more control over the shutdown of the pool.</p>
+<h3 id="use-map-for-asynchronous-for-loops">Use map() for Asynchronous For-Loops</h3>
+<p>If you have a for-loop that applies a function to each item in a list, then <a href="../processpoolexecutor-map/">use the <strong>map()</strong> function</a> to dispatch the tasks asynchronously.</p>
+<p>For example, you may have a for-loop over a list that calls <strong>myfunc()</strong> for each item:</p>
+<pre><code>...
+# apply a function to each item in an iterable
+for item in mylist:
+	result = myfunc(item)
+	# do something...
+</code></pre>
+<p>Or, you may already be using the built-in <strong>map()</strong> function:</p>
+<pre><code>...
+# apply a function to each item in an iterable
+for result in map(myfinc, mylist):
+	# do something...
+</code></pre>
+<p>Both of these cases can be made asynchronous using the <strong>map()</strong> function on the process pool.</p>
+<pre><code>...
+# apply a function to each item in a iterable asynchronously
+for result in executor.map(myfunc, mylist):
+	# do something...
+</code></pre>
+<p>Probably do not use the <strong>map()</strong> function if your target task function has side effects.</p>
+<p>Do not use the <strong>map()</strong> function if your target task function has no arguments or more than one argument, unless all arguments can come from parallel iterables (i.e. <strong>map()</strong> can take multiple iterables).</p>
+<p>Do not use the <strong>map()</strong> function if you need control over exception handling for each task, or if you would like to get results to tasks in the order that tasks are completed.</p>
+<h3 id="use-submit-with-as-completed">Use submit() With as_completed()</h3>
+<p>If you would like to process results <a href="../processpoolexecutor-as-completed/">in the order that tasks are completed</a> rather than the order that tasks are submitted, then use <strong>submit()</strong> and <strong>as_completed()</strong>.</p>
+<p>The <strong>submit()</strong> function is in the process pool and is used to push tasks into the pool for execution and returns immediately with a <strong>Future</strong> object for the task. The <strong>as_completed()</strong> function is a module method that will take an iterable of <strong>Future</strong> objects, like a list, and will return <strong>Future</strong> objects as the tasks are completed.</p>
+<p>For example:</p>
+<pre><code>...
+# submit all tasks and get future objects
+futures = [executor.submit(myfunc, item) for item in mylist]
+# process results from tasks in order of task completion
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+	# do something...
+</code></pre>
+<p>Do not use the <strong>submit()</strong> and <strong>as_completed()</strong> combination if you need to process the results in the order that the tasks were submitted to the process pool; instead, use <strong>map()</strong> or use <strong>submit()</strong> and iterate the <strong>Future</strong> objects directly.</p>
+<p>Do not use the <strong>submit()</strong> and <strong>as_completed()</strong> combination if you need results from all tasks to continue; instead, you may be better off using the <strong>wait()</strong> module function.</p>
+<p>Do not use the <strong>submit()</strong> and <strong>as_completed()</strong> combination for a simple asynchronous for-loop; instead, you may be better off using <strong>map()</strong>.</p>
+<h3 id="use-independent-functions-as-tasks">Use Independent Functions as Tasks</h3>
+<p>Use the <strong>ProcessPoolExecutor</strong> if your tasks are independent.</p>
+<p>This means that each task is not dependent on other tasks that could execute at the same time. It also may mean tasks that are not dependent on any data other than data provided via function arguments to the task.</p>
+<p>The <strong>ProcessPoolExecutor</strong> is ideal for tasks that do not change any data, e.g. have no side effects, so-called <a href="https://en.wikipedia.org/wiki/Pure_function">pure functions</a>.</p>
+<p>Process pools can be organized into data flows and pipelines for linear dependence between tasks, perhaps with one process pool per task type.</p>
+<p>The process pool is not designed for tasks that require coordination; you should consider using the <strong>Process</strong> class and coordination patterns like the <strong>Barrier</strong> and <strong>Semaphore</strong>.</p>
+<p>Process pools are not designed for tasks that require synchronization, you should consider using the <strong>Process</strong> class and locking patterns like <strong>Lock</strong> and <strong>RLock</strong> via a <strong>Manager</strong>.</p>
+<h3 id="use-for-cpu-bound-tasks-probably">Use for CPU-Bound Tasks (probably)</h3>
+<p>The <strong>ProcessPoolExecutor</strong> can be used for IO-bound tasks and CPU-bound tasks.</p>
+<p>Nevertheless, it is probably best suited for CPU-bound tasks, whereas the <strong>ThreadPoolExecutor</strong> is probably best suited for IO-bound tasks.</p>
+<p>CPU-bound tasks are those tasks that involve direct computation, e.g. executing instructions on data in the CPU. They are bound by the speed of execution of the CPU, hence the name CPU-bound.</p>
+<p>This is unlike IO-bound tasks that must wait on external resources such as reading or writing to or from network connections and files.</p>
+<p>Examples of common CPU-bound tasks that may be well suited to the <strong>ProcessPoolExecutor</strong> include:</p>
+<ul>
+<li><strong>Media manipulation</strong>, e.g. resizing images, clipping audio and video, etc.</li>
+<li><strong>Media encoding or decoding</strong>, e.g. encoding audio and video.</li>
+<li><strong>Mathematical calculation</strong>, e.g. fractals, numerical approximation, estimation, etc.</li>
+<li><strong>Model training</strong>, e.g. machine learning and artificial intelligence.</li>
+<li><strong>Search</strong>, e.g. searching for a keyword in a large number of documents.</li>
+<li><strong>Text processing</strong>, e.g. calculating statistics on a corpus of documents.</li>
+</ul>
+<p>The <strong>ProcessPoolExecutor</strong> can be used for IO bound tasks, but it is probably a less suited fit compared to using threads and the <strong>ThreadPoolExecutor</strong>.</p>
+<p>This is because of two reasons:</p>
+<ul>
+<li>You can have more threads than processes.</li>
+<li>IO-bound tasks are often data intensive.</li>
+</ul>
+<p>The number of processes you can create and manage is often quite limited, such as tens or less than 100.</p>
+<p>Whereas, when you are using threads, you can have hundreds of threads or even thousands of threads within one process. This is helpful for IO operations that many need to access or manage a large number of connections or resources concurrently.</p>
+<p>This can be pushed to tens of thousands of connections or resources or even higher when using AsyncIO.</p>
+<p>IO-bound tasks typically involve reading or writing a lot of data.</p>
+<p>This may be data read or written from or to remote connections, databases, servers, files, external devices, and so on.</p>
+<p>As such, if the data needs to be shared between processes, such as in a pipeline, it may require that the data be serialized (called pickled, the built-in Python serialization process) in order to pass from process to process. This can be slow and very memory intensive, especially for large amounts of data.</p>
+<p>This is not the case when using threads that can share and access the same resource in memory without data serialization.</p>
+<h2 id="common-errors-when-using-processpoolexecutor">Common Errors When Using ProcessPoolExecutor</h2>
+<p>There are a number of common errors when using the <strong>ProcessPoolExecutor</strong>.</p>
+<p>These errors are typically made because of bugs introduced by copy-and-pasting code, or from a slight misunderstanding in how the <strong>ProcessPoolExecutor</strong> works.</p>
+<p>We will take a closer look at some of the more common errors made when using the <strong>ProcessPoolExecutor</strong>, such as:</p>
+<ul>
+<li>Forgetting <strong>__main__</strong></li>
+<li>Using a Function Call in <strong>submit()</strong></li>
+<li>Using a Function Call in <strong>map()</strong></li>
+<li>Incorrect Function Signature for <strong>map()</strong></li>
+<li>Incorrect Function Signature for Future Callbacks</li>
+<li>Arguments or Shared Data that Does Not Pickle</li>
+<li>Not Flushing <strong>print()</strong> Statements</li>
+</ul>
+<p><strong>Do you have an error using the ProcessPoolExecutor?</strong><br/>Let me know in the comments so I can recommend a fix and add the case to this section.</p>
+<h3 id="forgetting-main">Forgetting __main__</h3>
+<p>By far, the biggest error when using the <strong>ProcessPoolExecutor</strong> is forgetting to check for the <strong>__main__</strong> module.</p>
+<p>Recall that when using processes in Python, such as the <strong>Process</strong> class or the <strong>ProcessPoolExecutor</strong>, we must include a check for the top-level environment. This is achieved by checking if the module name <strong>__name__</strong> is equal to the string '<strong>__main__</strong>'.</p>
+<p>This indicates that the code is running at the top-level code environment, rather than being imported by a program or script.</p>
+<p>For example:</p>
+<pre><code># entry point
+if __name__ == '__main__':
+    # ...
+</code></pre>
+<p>You can learn more about <strong>__main__</strong> more generally here:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/__main__.html">__main__ — Top-level code environment</a></li>
+</ul>
+<p>Forgetting the main function will result in an error that can be quite confusing.</p>
+<p>A complete example of using the <strong>ProcessPoolExecutor</strong> without a check for the <strong>__main__</strong> module is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of not having a check for the main top-level environment
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    return value
+
+# start the process pool
+with ProcessPoolExecutor() as executor:
+    # submit all tasks
+    for result in executor.map(task, range(5)):
+        print(result)
+</code></pre>
+<p>Running this example will fail with a <strong>RuntimeError</strong>.</p>
+<pre><code>Traceback (most recent call last):
+...
+RuntimeError:
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+Traceback (most recent call last):
+ ...
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
+...
+UserWarning: resource_tracker: There appear to be 5 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+</code></pre>
+<p>The error message does include information about the need to import an entry point to the program, but also comments on <strong>freeze_support</strong>, which can be confusing for beginners as well as a <strong>BrokenProcessPool</strong>.</p>
+<p>This error can be fixed by protecting the entry point of the program with an if-statement:</p>
+<pre><code>if __name__ == '__main__':
+	# ...
+</code></pre>
+<h3 id="using-a-function-call-in-submit">Using a Function Call in submit()</h3>
+<p>A common error is to call your function when using the <strong>submit()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# submit the task
+future = executor.submit(task())</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling submit with a function call
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task():
+    # sleep for less than a second
+    sleep(random())
+    return 'all done'
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit the task
+        future = executor.submit(task())
+        # get the result
+        result = future.result()
+        print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running this example will fail with an error.</p>
+<pre><code>concurrent.futures.process._RemoteTraceback:
+"""
+Traceback (most recent call last):
+...
+TypeError: 'str' object is not callable
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+...
+TypeError: 'str' object is not callable
+</code></pre>
+<p>You can fix the error by updating the call to <strong>submit()</strong> to take the name of your function and any arguments, instead of calling the function in the call to submit.</p>
+<p>For example:</p>
+<pre><code>...
+# submit the task
+future = executor.submit(task)</code></pre>
+<h3 id="using-a-function-call-in-map">Using a Function Call in map()</h3>
+<p>A common error is to call your function when using the <strong>map()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task(), range(5)):
+    print(result)
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map with a function call
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    return value
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit all tasks
+        for result in executor.map(task(), range(5)):
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example results in a <strong>TypeError</strong>.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+TypeError: task() missing 1 required positional argument: 'value'
+</code></pre>
+<p>This error can be fixed by changing the call to <strong>map()</strong> to pass the name of the target task function instead of a call to the function.</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task, range(5)):
+    print(result)
+</code></pre>
+<h3 id="incorrect-function-signature-for-map">Incorrect Function Signature for map()</h3>
+<p>Another common error when using <strong>map()</strong> is to provide no second argument to function, e.g. the iterable.</p>
+<p>For example:</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task):
+    print(result)
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map without an iterable
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    return value
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit all tasks
+        for result in executor.map(task):
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example does not issue any tasks to the process pool as there was no iterable for the <strong>map()</strong> function to iterate over.</p>
+<p>In this case, no output is displayed.</p>
+<p>The fix involves providing an iterable in the call to <strong>map()</strong> along with your function name.</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task, range(5)):
+    print(result)
+</code></pre>
+<h3 id="incorrect-function-signature-for-future-callbacks">Incorrect Function Signature for Future Callbacks</h3>
+<p>Another common error is to forget to include the <strong>Future</strong> in the signature for the callback function registered with a Future object.</p>
+<p>For example:</p>
+<pre><code>...
+# callback function to call when a task is completed
+def custom_callback():
+    print('Custom callback was called')
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the wrong signature on the callback function
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# callback function to call when a task is completed
+def custom_callback():
+    print('Custom callback was called', flush=True)
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    return 'Task is done'
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute the task
+        future = executor.submit(work)
+        # add the custom callback
+        future.add_done_callback(custom_callback)
+        # get the result
+        result = future.result()
+        print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running this example will result in an error when the callback is called by the thread pool.</p>
+<pre><code>Task is done
+exception calling callback for &lt;Future at 0x10a05f190 state=finished returned str&gt;
+Traceback (most recent call last):
+...
+TypeError: custom_callback() takes 0 positional arguments but 1 was given
+</code></pre>
+<p>Fixing this error involves updating the signature of your callback function to include the future object.</p>
+<pre><code>...
+# callback function to call when a task is completed
+def custom_callback(future):
+    print('Custom callback was called')
+</code></pre>
+<h3 id="arguments-or-shared-data-that-does-not-pickle">Arguments or Shared Data that Does Not Pickle</h3>
+<p>A common error is sharing data between processes that cannot be serialized.</p>
+<p>Python has a built-in object <a href="https://docs.python.org/3/library/pickle.html">serialization process called pickle</a>, where objects are pickled or unpickled when serialized and unserialized.</p>
+<p>When sharing data between processes, the data will be pickled automatically.</p>
+<p>This includes arguments passed to target task functions, data returned from target task functions, and data accessed directly, such as global variables.</p>
+<p>If data shared between processes cannot be automatically pickled, a PicklingError will be raised.</p>
+<p>Most <a href="https://docs.python.org/3/library/pickle.html#what-can-be-pickled-and-unpickled">normal Python objects can be pickled</a>.</p>
+<p>Examples of objects that cannot pickle are those that might have an open connection, such as to a file, database, server, or similar.</p>
+<p>We can demonstrate this with an example below that attempts to pass a file handle as an argument to a target task function.</p>
+<pre><code># SuperFastPython.com
+# example of an argument that does not pickle
+from concurrent.futures import ProcessPoolExecutor
+
+# write to a file
+def work(file):
+    file.write('hi there')
+    return "All done!"
+
+# entry point
+def main():
+    # submit the task
+    with open('tmp.txt', 'w') as file:
+        # start the process pool
+        with ProcessPoolExecutor() as executor:
+            # submit the task
+            future = executor.submit(work, file)
+            # get the result
+            result = future.result()
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that it fails with an error indicating that the argument cannot be pickled for transmission to the worker process.</p>
+<pre><code>concurrent.futures.process._RemoteTraceback:
+...
+TypeError: cannot pickle '_io.TextIOWrapper' object
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  ...
+TypeError: cannot pickle '_io.TextIOWrapper' object
+</code></pre>
+<p>This was a contrived example, where the file could be opened within the target task function or the <strong>ProcessPoolExecutor</strong> could be changed to a <strong>ThreadPoolExecutor</strong>.</p>
+<p>In general, if you experience this error and you are attempting to pass around a connection or open file, perhaps try to open the connection within the task or use threads instead of processes.</p>
+<p>If you experience this type of error with custom data types that are being passed around, you may need to implement code to manually serialize and deserialize your types. I recommend reading the documentation for the <a href="https://docs.python.org/3/library/pickle.html"><strong>pickle</strong> module</a>.</p>
+<h3 id="not-flushing-print-statements">Not Flushing print() Statements</h3>
+<p>A common error is to not flush standard out (stdout) when calling the built-in <strong>print()</strong> statement from target task functions.</p>
+<p>By default, the built-in <a href="https://docs.python.org/3/library/functions.html#print"><strong>print()</strong> statement</a> in Python does not flush output.</p>
+<p>The standard output stream (stout) will flush automatically in the main process, often when the internal buffer is full or a new line is detected. This means you see your print statements reported almost immediately after the print function is called in code.</p>
+<p>There is a problem when calling the <strong>print()</strong> function from spawned or forked processes because standard out (stdout) will buffer output by default.</p>
+<p>This means if you call <strong>print()</strong> from target task functions in the <strong>ProcessPoolExecutor</strong>, you probably will not see the print statements on standard out until the worker processes are closed.</p>
+<p>This will be confusing because it will look like your program is not working correctly, e.g. buggy.</p>
+<p>The example below demonstrates this with a target task function that will call <strong>print()</strong> to report some status.</p>
+<pre><code># SuperFastPython.com
+# example of not flushing output when call print() from tasks in new processes
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a moment
+def task(value):
+    sleep(value)
+    print(f'Done: {value}')
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        executor.map(task, range(5))
+    print('All done!')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example will wait until all tasks in the process pool have completed before printing all messages on standard out.</p>
+<pre><code>Done: 0
+Done: 1
+Done: 2
+Done: 3
+Done: 4
+All done!
+</code></pre>
+<p>This can be fixed by updating all calls to the <strong>print()</strong> statement called from target task functions to flush output after each call.</p>
+<p>This can be achieved by setting the "<strong>flush</strong>" argument to <strong>True</strong>; for example:</p>
+<pre><code>...
+# report progress and flush the stream
+print(f'Done: {value}', flush=True)
+</code></pre>
+<h2 id="common-questions-when-using-the-processpoolexecutor">Common Questions When Using the ProcessPoolExecutor</h2>
+<p>This section answers common questions asked by developers when using the <strong>ProcessPoolExecutor</strong>.</p>
+<p><strong>Do you have a question about the ProcessPoolExecutor?</strong><br/>Ask your question in the comments below and I will do my best to answer it and perhaps add it to this list of questions.</p>
+<h3 id="how-do-you-stop-a-running-task">How Do You Stop a Running Task?</h3>
+<p>A task in the <strong>ProcessPoolExecutor</strong> can be cancelled before it has started running.</p>
+<p>In this case, the task must have been sent into the pool by calling <strong>submit()</strong>, which returns a <strong>Future</strong> object. You can then call the <strong>cancel()</strong> function in the <strong>Future</strong>.</p>
+<p>If the task is already running, it cannot be canceled, stopped, or terminated by the process pool.</p>
+<p>Instead, you must add this functionality to your task.</p>
+<p>One approach might be to use a flag, like a <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Event"><strong>multiprocessing.Event</strong> object</a>, that if set will indicate that all tasks must stop running as soon as they can. You can then update your target task function or functions to check the state of this flag frequently.</p>
+<p>We cannot use an <strong>Event</strong> directly; instead, we must use a <strong>Manager</strong> to create the <strong>Event</strong> instance, then share the instance with each task so that the worker processes can access it correctly. The <strong>Manager</strong> will create a server process to manage the inter-process coordination of shared objects, like an Event.</p>
+<p>This can be achieved by first creating the <strong>Manager</strong>, then creating the event from the manager using the context manager technique so that the <strong>Manager</strong> is correctly closed once we are finished with it.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # create an event to shut down all running tasks
+    event = manager.Event()
+    # ...
+</code></pre>
+<p>We can then pass the event to the target task function and check it frequently.</p>
+<p>It may require that you change the structure of your task.</p>
+<p>For example, if your task reads data from a file or a socket, you may need to change the read operation to be performed in blocks of data in a loop so that each iteration of the loop you can check the status of the flag.</p>
+<p>The example below provides a template you can use for adding an event flag to your target task function to check for a stop condition to shutdown all currently running tasks.</p>
+<p>The example below demonstrates this with a worked example.</p>
+<pre><code># SuperFastPython.com
+# example of stopping running tasks using an event
+from time import sleep
+from multiprocessing import Manager
+from concurrent.futures import ProcessPoolExecutor
+
+# mock target task function
+def work(event):
+    # pretend read data for a long time
+    for _ in range(100):
+        # pretend to read some data
+        sleep(1)
+        # check the status of the flag
+        if event.is_set():
+            # shut down this task now
+            print('Not done, asked to stop', flush=True)
+            return
+    return "All done!"
+
+# entry point
+def main():
+    # create the manager to coordinate shared objects like the event
+    with Manager() as manager:
+        # create an event to shut down all running tasks
+        event = manager.Event()
+        # create a process pool
+        executor = ProcessPoolExecutor()
+        # execute all of our tasks
+        futures = [executor.submit(work, event) for _ in range(50)]
+        # wait a moment
+        print('Tasks are running...')
+        sleep(2)
+        # cancel all scheduled tasks
+        print('Cancelling all scheduled tasks...')
+        for future in futures:
+            future.cancel()
+        # stop all currently running tasks
+        print('Trigger all running tasks to stop...')
+        event.set()
+        # shutdown the process pool and wait for all tasks to complete
+        print('Shutting down, waiting for all tasks...')
+        executor.shutdown()
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example first creates the <strong>Manager</strong> and <strong>Event</strong> followed by the process pool with the default number of worker processes and schedules 50 tasks.</p>
+<p>The <strong>Event</strong> object is passed to each task, where it is checked each iteration to see if it has been set and if so to bail out of the task.</p>
+<p>The first 9 tasks start executing for a few seconds, then we decide to shut everything down.</p>
+<p><strong>Note</strong>: in this case, we have 8 CPUs and 1 extract task is added to the internal call <strong>Queue</strong> and cannot be cancelled. See the section on how the <strong>ProcessPoolExecutor</strong> works internally to see why this is the case.</p>
+<p>First, we cancel all scheduled tasks that are not yet running so that if they make it off the queue into a worker process, they will not start running.</p>
+<p>We then set the event to trigger all running tasks to stop.</p>
+<p>The process pool is then shut down and we wait for all running processes to complete their execution.</p>
+<p>The running processes check the status of the event in their next loop iteration and bail out, printing a message.</p>
+<pre><code>Tasks are running...
+Cancelling all scheduled tasks...
+Trigger all running tasks to stop...
+Shutting down, waiting for all tasks...
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+</code></pre>
+<h3 id="how-do-you-wait-for-all-tasks-to-complete">How Do You Wait for All Tasks to Complete?</h3>
+<p>There are a few ways to wait for all tasks to complete in a <strong>ProcessPoolExecutor</strong>.</p>
+<p>Firstly, if you have a <strong>Future</strong> object for all tasks in the process pool because you called <strong>submit()</strong>, then you can provide the collection of tasks to the <strong>wait()</strong> module function. By default, this function will return when all provided <strong>Future</strong> objects have completed.</p>
+<pre><code>...
+# wait for all tasks to complete
+wait(futures)
+</code></pre>
+<p>Alternatively, you can enumerate the list of <strong>Future</strong> objects and attempt to get the result from each. This iteration will complete when all results are available, meaning that all tasks were completed.</p>
+<pre><code>...
+# wait for all tasks to complete by getting all results
+for future in futures:
+	result = future.result()
+# all tasks are complete
+</code></pre>
+<p>Another approach is to shut down the process pool. We can set "<strong>cancel_futures</strong>" to <strong>True</strong>, which will cancel all scheduled tasks and wait for all currently running tasks to complete.</p>
+<pre><code>...
+# shutdown the pool, cancels scheduled tasks, returns when running tasks complete
+executor.shutdown(wait=True, cancel_futures=True)
+</code></pre>
+<p>You can also shut down the pool and not cancel the scheduled tasks, yet still wait for all tasks to complete. This will ensure all running and scheduled tasks are completed before the function returns. This is the default behavior of the shutdown function, but is a good idea to specify explicitly.</p>
+<pre><code>...
+# shutdown the pool, returns after all scheduled and running tasks complete
+executor.shutdown(wait=True, cancel_futures=False)
+</code></pre>
+<h3 id="how-do-you-dynamically-change-the-number-of-processes">How Do You Dynamically Change the Number of Processes</h3>
+<p>You cannot dynamically increase or decrease the number of processes in a <strong>ProcessPoolExecutor</strong>.</p>
+<p>The number of processes is fixed when the <strong>ProcessPoolExecutor</strong> is configured in the call to the object constructor. For example:</p>
+<pre><code>...
+# configure a process pool
+executor = ProcessPoolExecutor(4)
+</code></pre>
+<h3 id="how-do-you-unit-tasks-and-process-pools">How Do You Unit Tasks and Process Pools?</h3>
+<p>You can unit test your target task functions directly, perhaps mocking any external resources required.</p>
+<p>You can unit test your usage of the process pool with mock tasks that do not interact with external resources.</p>
+<p>Unit testing of tasks and the process pool itself must be considered as part of your design and may require that connection to the IO resource be configurable so that it can be mocked, and that the target task function called by your process pool is configurable so that it can be mocked.</p>
+<h3 id="how-do-you-compare-serial-to-parallel-performance">How Do You Compare Serial to Parallel Performance?</h3>
+<p>You can compare the performance of your program with and without the process pool.</p>
+<p>This can be a useful exercise to confirm that making use of the <strong>ProcessPoolExecutor</strong> in your program has resulted in a speed-up.</p>
+<p>Perhaps the simplest approach is to manually record the start and end time of your code and subtract the end from the start time to report the total execution time. Then record the time with and without the use of the process pool.</p>
+<pre><code># SuperFastPython.com
+# example of recording the execution time of a program
+import time
+
+# record the start time
+start_time = time.time()
+# do work with or without a process pool
+# ....
+time.sleep(3)
+# record the end time
+end_time = time.time()
+# report execution time
+total_time = end_time - start_time
+print(f'Execution time: {total_time:.1f} seconds.')
+</code></pre>
+<p>Using an average program execution time might give a more stable program timing than a one-off run.</p>
+<p>You can record the execution time 3 or more times for your program without the process pool then calculate the average as the sum of times divided by the total runs. Then repeat this exercise to calculate the average time with the process pool.</p>
+<p>This would probably only be appropriate if the running time of your program is minutes rather than hours.</p>
+<p>You can then compare the serial vs. parallel version by calculating the speed up multiple as:</p>
+<ul>
+<li>Speed-Up Multiple = Serial Time / Parallel Time</li>
+</ul>
+<p>For example, if the serial run of a program took 15 minutes (900 seconds) and the parallel version with a <strong>ProcessPoolExecutor</strong> took 5 minutes (300 seconds), then the percentage multiple up would be calculated as:</p>
+<ul>
+<li>Speed-Up Multiple = Serial Time / Parallel Time</li>
+<li>Speed-Up Multiple = 900 / 300</li>
+<li>Speed-Up Multiple = 3</li>
+</ul>
+<p>That is, the parallel version of the program with the <strong>ProcessPoolExecutor</strong> is 3 times faster or 3x faster.</p>
+<p>You can multiply the speed-up multiple by 100 to give a percentage</p>
+<ul>
+<li>Speed-Up Percentage = Speed-Up Multiple * 100</li>
+</ul>
+<p>In this example, the parallel version is 300% faster than the serial version.</p>
+<h3 id="how-do-you-set-chunksize-in-map">How Do You Set chunksize in map()?</h3>
+<p>The <strong>map()</strong> function on the <strong>ProcessPoolExecutor</strong> takes a parameter called "<strong>chunksize</strong>", which defaults to 1.</p>
+<pre><code>...
+# apply a function to each item in an iterable with a chunksize
+for result in executor.map(task, items, chunksize=1)
+	# ...
+</code></pre>
+<p>The "<strong>chunksize</strong>" argument controls the mapping of items in the iterable passed to map to tasks used in the <strong>ProcessPoolExecutor</strong> executor.</p>
+<p>A value of one means that one item is mapped to one task.</p>
+<p>Recall that the data for each task in terms of arguments sent to the target task function and values that are returned must be serialized by pickle. This happens automatically, but incurs some computational and memory cost, adding overhead to each task processed by the process pool.</p>
+<p>When there are a vast number of tasks or tasks are relatively quick to compute, then the chunksize should be tuned to maximize the grouping of items to process pool tasks in order to minimize the overhead per task and in turn reduce the overall compute time.</p>
+<p>This will likely require some tuning of the chunksize that you may be able to perform with real task data, or perhaps a test harness with mock data and task processes.</p>
+<p>Some values to try might include:</p>
+<ul>
+<li><strong>1</strong>: The default mapping of one item per task.</li>
+<li><strong>items / max_workers</strong>: Splits all items into <strong>max_workers</strong> groups, e.g. one batch of items per process.</li>
+</ul>
+<p><strong>Note</strong>: the (items / max_workers) division may need to be rounded as the "<strong>chunksize</strong>" argument must be a positive integer.</p>
+<p>For example:</p>
+<pre><code>...
+# estimate the chunksize
+size = round(len(items) / executor._max_workers)
+# apply a function to each item in an iterable with a chunksize
+for result in executor.map(task, items, chunksize=size)
+	# ...
+</code></pre>
+<p>Compare the performance to see if one configuration is better than another, and if so, use it as a starting point for similar values to evaluate.</p>
+<h3 id="how-do-you-submit-a-follow-up-task">How Do You Submit a Follow-up Task?</h3>
+<p>Some tasks require that a second task be executed that makes use of the result from the first task in some way.</p>
+<p>We might call this the need to execute a follow-up task for each task that is submitted, which might be conditional on the result in some way.</p>
+<p>There are a few ways to submit a follow-up task.</p>
+<p>One approach would be to submit the follow-up task as we are processing the results from the first task.</p>
+<p>For example, we can process the result from each of the first tasks as they complete, then manually call <strong>submit()</strong> for each follow-up task when needed and store the new future object in a second list for later use.</p>
+<p>We can make this example of submitting follow-up tasks concrete with a full example.</p>
+<pre><code># SuperFastPython.com
+# example of submitting follow-up tasks
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import as_completed
+
+# mock test that works for moment
+def task1():
+    value = random()
+    sleep(value)
+    print(f'Task 1: {value}', flush=True)
+    return value
+
+# mock test that works for moment
+def task2(value1):
+    value2 = random()
+    sleep(value2)
+    print(f'Task 2: value1={value1}, value2={value2}', flush=True)
+    return value2
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor(4) as executor:
+        # send in the first tasks
+        futures1 = [executor.submit(task1) for _ in range(10)]
+        # process results in the order they are completed
+        futures2 = list()
+        for future1 in as_completed(futures1):
+            # get the result
+            result = future1.result()
+            # check if we should trigger a follow-up task
+            if result &gt; 0.5:
+                future2 = executor.submit(task2, result)
+                futures2.append(future2)
+        # wait for all follow-up tasks to complete
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example starts a process pool with 5 worker threads and submits 10 tasks.</p>
+<p>We then process the results for the tasks as they are completed. If a result from the first round of tasks requires a follow-up task, we submit the follow-up task and keep track of the <strong>Future</strong> object in a second list.</p>
+<p>These follow-up tasks are submitted as needed, rather than waiting until all first round tasks are completed, which is a nice benefit of using the <strong>as_completed()</strong> function with a list of <strong>Future</strong> objects.</p>
+<p>We can see that in this case, five first round tasks resulted in follow-up tasks.</p>
+<pre><code>Task 1: 0.19133060953809367
+Task 1: 0.19427578824746594
+Task 1: 0.031055062986840576
+Task 1: 0.2477232412540048
+Task 1: 0.20527354481753513
+Task 1: 0.7162388973077713
+Task 1: 0.6377247814525346
+Task 1: 0.9711113247989889
+Task 2: value1=0.7162388973077713, value2=0.1286947111771508
+Task 1: 0.382993492347377
+Task 1: 0.8171633483302672
+Task 2: value1=0.8171633483302672, value2=0.2634272538884753
+Task 2: value1=0.6377247814525346, value2=0.8930378431849559
+Task 2: value1=0.9711113247989889, value2=0.9553733884486519
+</code></pre>
+<p>You might like to use a separate process pool for follow-up tasks, to keep things separate.</p>
+<p>I would not recommend submitting new tasks from within a task.</p>
+<p>This would require access to the process pool either as a global variable or by being passed in and would break the idea of tasks being pure functions that don't have side effects, a good practice when using process pools.</p>
+<p>Additionally, interacting with tasks within tasks, e.g. waiting on the results from <strong>Future</strong> objects, can lead to deadlocks, which will halt the execution of your program.</p>
+<h3 id="how-do-you-show-progress-of-all-tasks">How Do You Show Progress of All Tasks?</h3>
+<p>There are many ways to show progress for tasks that are being executed by the <strong>ProcessPoolExecutor</strong>.</p>
+<p>Perhaps the simplest is to use a callback function that updates a progress indicator. This can be achieved by defining the progress indicator function and registering it with the <strong>Future</strong> object for each task via the <strong>add_done_callback()</strong> function.</p>
+<p>The simplest progress indicator is to print a dot to the screen for each task that completes.</p>
+<p>The example below demonstrates this simple progress indicator.</p>
+<pre><code># SuperFastPython.com
+# example of a simple progress indicator
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+
+# simple progress indicator callback function
+def progress_indicator(future):
+    print('.', end='', flush=True)
+
+# mock test that works for moment
+def task(name):
+    sleep(random())
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor(2) as executor:
+        # send in the tasks
+        futures = [executor.submit(task, i) for i in range(20)]
+        # register the progress indicator callback
+        for future in futures:
+            future.add_done_callback(progress_indicator)
+        # wait for all tasks to complete
+    print('\nDone!')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example starts a process pool with two worker processes and dispatches 20 tasks.</p>
+<p>A progress indicator callback function is registered with each <strong>Future</strong> object that prints one dot as each task is completed, ensuring that the standard output is flushed with each call to <strong>print()</strong> and that no new line is printed.</p>
+<p>This ensures that each we see the dot immediately regardless of the process that prints and that all dots appear on one line.</p>
+<p>Each task will work for a variable amount of time less than one second and a dot is printed once the task is completed.</p>
+<pre><code>....................
+Done!
+</code></pre>
+<p>A more elaborate progress indicator must know the total number of tasks and will use a process-safe counter to update the status of the number of tasks completed out of all tasks to be completed.</p>
+<h3 id="do-we-need-to-protect-main">Do We Need to Protect __main__?</h3>
+<p>Yes.</p>
+<p>When using processes in general, and the <strong>ProcessPoolExecutor</strong> in particular, you need to explicitly protect the entry point with the if-statement:</p>
+<pre><code># entry point
+if __name__ == '__main__':
+	# ...
+</code></pre>
+<h3 id="do-i-need-to-call-freeze-support">Do I Need to Call freeze_support()?</h3>
+<p>Python programs can be converted into a Windows executable.</p>
+<p>In the conversion process, the Python programs are "<strong>frozen</strong>." If these programs attempt to start new processes, it will result in a <strong>RuntimeError</strong>.</p>
+<p>As such, if you intend to "<strong>freeze</strong>" your program (e.g. convert it to be a Windows executable), you must add freeze support.</p>
+<p>This can be achieved by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.freeze_support"><strong>freeze_support()</strong> function</a> as the first line of your program, such the first line after checking for the protected entry point; for example:</p>
+<pre><code># protected entry point
+if __name__ == '__main__':
+    freeze_support()
+    # ...
+</code></pre>
+<h3 id="how-do-you-get-a-future-object-for-tasks-added-with-map">How Do You Get a Future Object for Tasks Added With map()?</h3>
+<p>When you call <strong>map()</strong>, it does create a <strong>Future</strong> object for each task.</p>
+<p>Internally, <strong>submit()</strong> is called for each item in the iterable provided to the call to <strong>map()</strong>.</p>
+<p>Nevertheless, there is no clean way to access the <strong>Future</strong> object for tasks sent into the process pool via <strong>map()</strong>.</p>
+<p>Each task on the <strong>ProcessPoolExecutor</strong> object's internal work queue is an instance of a <strong>_WorkItem</strong> that does have a reference to the Future object for the task. You can access the <strong>ProcessPoolExecutor</strong> object's internal queue, but you have no safe way of enumerating items in the queue without removing them.</p>
+<p>If you need a <strong>Future</strong> object for a task, call <strong>submit()</strong>.</p>
+<h3 id="how-to-check-how-many-tasks-remain-in-the-processpoolexecutor">How to Check How Many Tasks Remain in the ProcessPoolExecutor</h3>
+<p>There are two ways you can estimate the number of tasks that remain in the process pool.</p>
+<ul>
+<li>1. Keep track of how many tasks were submitted and how many have completed.</li>
+<li>2. Query the process pool directly for the number of tasks that remain.</li>
+</ul>
+<p>In the first case, you can keep track of the number of tasks submitted with a counter from the main thread, e.g. if all tasks are submitted from the main thread.</p>
+<p>You could then use a process-safe counter in a Future callback to keep track of the number of tasks that are done. This could be used as a crude progress indicator.</p>
+<p>More simply, you can query into the protected members of the <strong>ProcessPoolExecutor</strong> directly in order to find out how many tasks remain to be processed.</p>
+<p>Perhaps a simple structure to check internal to the process pool is the dictionary that maps work item identifiers to work items, e.g. the tasks that have been submitted but not yet dispatched to processes for execution. This is in the <strong>_pending_work_items</strong> protected property.</p>
+<p>We can report the size of this dictionary directly; for example:</p>
+<pre><code>...
+# report the number of remaining tasks
+print(f'About {len(executor._pending_work_items)} tasks remain')
+</code></pre>
+<p>We could report the number of remaining tasks as each submitted task is completed, e.g. via the <strong>as_completed()</strong> function for a list of <strong>Future</strong> objects; for example:</p>
+<pre><code>...
+# update each time a task finishes
+for _ in as_completed(futures):
+    # report the number of remaining tasks
+    print(f'About {len(executor._pending_work_items)} tasks remain')
+</code></pre>
+<p>Tying this together, the complete example below submits 50 tasks into a process pool with four worker processes and reports the number of tasks that remain as each task finishes.</p>
+<pre><code># SuperFastPython.com
+# example of estimating the number of remaining tasks
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import as_completed
+
+# mock test that works for moment
+def task():
+    value = random()
+    sleep(value)
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor(4) as executor:
+        # submit many tasks
+        futures = [executor.submit(task) for _ in range(50)]
+        print('Waiting for tasks to complete...')
+        # update each time a task finishes
+        for _ in as_completed(futures):
+            # report the number of remaining tasks
+            print(f'About {len(executor._pending_work_items)} tasks remain')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example executes the tasks quickly and provides an updated report on the number of tasks that remain as each task is completed.</p>
+<pre><code>Waiting for tasks to complete...
+About 49 tasks remain
+About 48 tasks remain
+About 47 tasks remain
+About 46 tasks remain
+About 45 tasks remain
+About 44 tasks remain
+About 43 tasks remain
+About 42 tasks remain
+About 41 tasks remain
+About 40 tasks remain
+About 39 tasks remain
+About 38 tasks remain
+About 37 tasks remain
+About 36 tasks remain
+About 35 tasks remain
+About 34 tasks remain
+About 33 tasks remain
+About 32 tasks remain
+About 31 tasks remain
+About 30 tasks remain
+About 29 tasks remain
+About 28 tasks remain
+About 27 tasks remain
+About 26 tasks remain
+About 25 tasks remain
+About 24 tasks remain
+About 23 tasks remain
+About 22 tasks remain
+About 21 tasks remain
+About 20 tasks remain
+About 19 tasks remain
+About 18 tasks remain
+About 17 tasks remain
+About 16 tasks remain
+About 15 tasks remain
+About 14 tasks remain
+About 13 tasks remain
+About 12 tasks remain
+About 11 tasks remain
+About 10 tasks remain
+About 9 tasks remain
+About 8 tasks remain
+About 7 tasks remain
+About 6 tasks remain
+About 5 tasks remain
+About 4 tasks remain
+About 3 tasks remain
+About 2 tasks remain
+About 1 tasks remain
+About 0 tasks remain
+</code></pre>
+<h2 id="common-objections-to-using-processpoolexecutor">Common Objections to Using ProcessPoolExecutor</h2>
+<p>The <strong>ProcessPoolExecutor</strong> may not be the best solution for all concurrency problems in your program.</p>
+<p>That being said, there may also be some misunderstandings that are preventing you from making full and best use of the capabilities of the <strong>ProcessPoolExecutor</strong> in your program.</p>
+<p>In this section, we review some of the common objections seen by developers when considering using the <strong>ProcessPoolExecutor</strong> in their code</p>
+<p>Let's dive in.</p>
+<h3 id="what-about-the-global-interpreter-lock-gil">What About The Global Interpreter Lock (GIL)?</h3>
+<p>The GIL is generally not relevant when using processes such as the <strong>Process</strong> class or the <strong>ProcessPoolExecutor</strong> class.</p>
+<p>The Global Interpreter Lock, or GIL for short, is a design decision with the reference Python interpreter.</p>
+<p>It refers to the fact that the implementation of the Python interpreter makes use of a master lock that prevents more than one Python instruction executing at the same time.</p>
+<p>This prevents more than one thread of execution within Python programs, specifically within each Python process, that is each instance of the Python interpreter.</p>
+<p>The implementation of the GIL means that Python threads may be concurrent, but cannot run in parallel. Recall that concurrent means that more than one task can be in progress at the same time, parallel means more than one task actually executing at the same time. Parallel tasks are concurrent;, concurrent tasks may or may not execute in parallel.</p>
+<p>It is the reason behind the heuristic that Python threads should only be used for IO-bound tasks, and not CPU-bound tasks, as IO-bound tasks will wait in the operating system kernel for remote resources to respond (not executing Python instructions), allowing other Python threads to run and execute Python instructions.</p>
+<p>As such, the GIL is a consideration when using threads in Python such as the threading.Thread class and the <strong>ThreadPoolExecutor</strong>. It is not a consideration when using the <strong>ProcessPoolExecutor</strong> (unless you use additional threads within each task).</p>
+<h3 id="are-python-processes-real-processes">Are Python Processes "Real Processes"?</h3>
+<p>Yes.</p>
+<p>Python makes use of real system-level processes, also called spawning processes or forking processes, a capability provided by modern operating systems like Windows, Linux, and MacOS.</p>
+<h3 id="aren-t-python-processes-buggy">Aren't Python Processes Buggy?</h3>
+<p>No.</p>
+<p>Python processes are not buggy.</p>
+<p>Python processes are a first-class capability of the Python platform and have been for a very long time.</p>
+<h3 id="isn-t-python-a-bad-choice-for-concurrency">Isn't Python a Bad Choice for Concurrency?</h3>
+<p>Developers love python for many reasons, most commonly because it is easy to use and fast for development.</p>
+<p>Python is commonly used for glue code, one-off scripts, but more and more for large scale software systems.</p>
+<p>If you are using Python and then you need concurrency, then you work with what you have. The question is moot.</p>
+<p>If you need concurrency and you have not chosen a language, perhaps another language would be more appropriate, or perhaps not. Consider the full scope of functional and non-functional requirements (or user needs, wants, and desires) for your project and the capabilities of different development platforms.</p>
+<h3 id="why-not-use-the-threadpoolexecutor-instead">Why Not Use The ThreadPoolExecutor Instead?</h3>
+<p>The <strong>ThreadPoolExecutor</strong> supports pools of threads, unlike the <strong>ProcessPoolExecutor</strong> that supports pools of processes, where each process will have one thread.</p>
+<p>Threads and processes are quite different and choosing one over the other must be quite intentional.</p>
+<p>A Python program is a process that has a main thread. You can create many additional threads in a Python process. You can also fork or spawn many Python processes, each of which will have one main thread, and may spawn additional threads.</p>
+<p>More broadly, threads are lightweight and can share memory (data and variables) within a process whereas processes are heavyweight and require more overhead and impose more limits on sharing memory (data and variables).</p>
+<p>Typically in Python, processes are used for CPU-bound tasks and threads are used for IO-bound tasks, and this is a good heuristic, but this does not have to be the case.</p>
+<p><a href="../threadpoolexecutor-in-python/">Perhaps <strong>ThreadPoolExecutor</strong> is a better fit for your specific problem</a>. Perhaps try it and see.</p>
+<h3 id="why-not-use-multiprocessing-process-instead">Why Not Use multiprocessing.Process Instead?</h3>
+<p>The <strong>ProcessPoolExecutor</strong> is like the "<em>auto mode</em>" for Python processes.</p>
+<p>If you have a more sophisticated use case, you may need to use the <strong>multiprocessing.Process</strong> class directly.</p>
+<p>This may be because you require more synchronization between processes with locking mechanisms, shared memory between processes such as a manager, and/or more coordination between processes with barriers and semaphores.</p>
+<p>It may be that you have a simpler use case, such as a single task, in which case perhaps a process pool would be too heavy a solution.</p>
+<p>That being said, if you find yourself using the <strong>Process</strong> class with the "<strong>target</strong>" keyword for pure functions (functions that don't have side effects), perhaps you would be better suited to using the <strong>ProcessPoolExecutor</strong>.</p>
+<p>You can learn more about multiprocessing in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing in Python: The Complete Guide</a></li>
+</ul>
+<h3 id="why-not-use-asyncio">Why Not Use AsyncIO?</h3>
+<p>AsyncIO can be an alternative to using a <strong>ThreadPoolExecutor</strong>, but is probably not a good alternative for the <strong>ProcessPoolExecutor</strong>.</p>
+<p>AsyncIO is designed to support large numbers of IO operations, perhaps thousands to tens of thousands, all within a single Thread.</p>
+<p>It requires an alternate programming paradigm, called <a href="https://en.wikipedia.org/wiki/Reactive_programming">reactive programming</a>, which can be challenging for beginners.</p>
+<p>When using the <strong>ProcessPoolExecutor</strong>, you are typically executing CPU-bound tasks, which are not appropriate when using the AsyncIO module.</p>
+<h2 id="conclusions">Conclusions</h2>
+<p>This is a large guide and you have discovered in great detail how the <strong>ProcessPoolExecutor</strong> works and how to best use it on your project.</p>
 </main>
 </body>
 </html>

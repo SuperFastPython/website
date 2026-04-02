@@ -191,6 +191,121 @@ Main is done.</code></pre>
 <p>We can explore using the Python profiler on an asyncio program that is slow because it repeatedly makes the same function call.</p>
 <p>In this case, we can define a coroutine that performs that same mathematical operation many millions of times, e.g. 100 million calls to <strong>math.sqrt()</strong>.</p>
 <p>Collectively this is a CPU-bound task and will be slow, but performed in a list comprehension, it does not look like it.</p>
+<pre><code># long running task
+async def work():
+    # block the event loop for a long time
+    data = [math.sqrt(i) for i in range(1, 100000000)]
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a program that calls a function repeatedly
+import math
+import asyncio
+
+# long running task
+async def work():
+    # block the event loop for a long time
+    data = [math.sqrt(i) for i in range(1, 100000000)]
+
+# main program
+async def main():
+    # report a message
+    print('Main is running')
+    # create the task
+    task = asyncio.create_task(work())
+    # await our task
+    await task
+    # report a message
+    print('Main is done.')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the program first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a start message then awaits the <strong>work()</strong> coroutine.</p>
+<p>The <strong>work()</strong> coroutine runs and executes the list comprehension, creating a list of 100 million squared integers.</p>
+<p>This takes a while and prevents the asyncio event loop from progressing.</p>
+<p>Ideally, this CPU-bound task would be performed outside of the event loop, such as in a new thread or a new child process that will not be limited by the global interpreter lock.</p>
+<p>Once the list comprehension is complete, <strong>work()</strong> terminates.</p>
+<p>The <strong>main()</strong> coroutine resumes, reports a final message, and terminates.</p>
+<pre><code>Main is running
+Main is done.</code></pre>
+<p>Next, let's profile our program and pretend we don't know the cause of why the program is slow.</p>
+<p>We can start off by running the <strong>cProfile</strong> with default sorting and reviewing the first 20 lines of output.</p>
+<pre><code>python -m cProfile program.py | head -20</code></pre>
+<p>This does not appear helpful in this case.</p>
+<p>It is reporting the internal infrastructure and the first line of our program as having the highest overall cumulative execution time.</p>
+<pre><code>         100033231 function calls (100032516 primitive calls) in 30.865 seconds
+
+   Ordered by: cumulative time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     46/1    0.000    0.000   30.865   30.865 {built-in method builtins.exec}
+        1    0.000    0.000   30.865   30.865 program.py:1(&lt;module&gt;)
+        1    0.000    0.000   30.827   30.827 runners.py:160(run)
+        3    0.000    0.000   30.826   10.275 base_events.py:617(run_until_complete)
+        1    0.000    0.000   30.826   30.826 runners.py:86(run)
+        3    0.000    0.000   30.826   10.275 base_events.py:593(run_forever)
+        8    0.000    0.000   30.826    3.853 base_events.py:1845(_run_once)
+        8    0.000    0.000   30.825    3.853 events.py:78(_run)
+        8    1.076    0.135   30.825    3.853 {method 'run' of '_contextvars.Context' objects}
+        1    0.000    0.000   29.749   29.749 program.py:7(work)
+        1   20.309   20.309   29.749   29.749 program.py:9(&lt;listcomp&gt;)
+ 99999999    9.440    0.000    9.440    0.000 {built-in method math.sqrt}
+        4    0.000    0.000    0.049    0.012 __init__.py:1(&lt;module&gt;)
+</code></pre>
+<p>Next, let's try sorting results by the total execution time of each function.</p>
+<pre><code>python -m cProfile -s tottime program.py | head -20</code></pre>
+<p>Here, we can see that line 9 of our program has the highest overall execution time at 19.547 seconds.</p>
+<p>This is the line that contains the list comprehension, pointing us in the right direction.</p>
+<p>The next function with the largest overall time is <strong>math.sqrt</strong> at 9 seconds.</p>
+<pre><code>         100033231 function calls (100032516 primitive calls) in 30.190 seconds
+
+   Ordered by: internal time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1   19.547   19.547   29.043   29.043 program.py:9(&lt;listcomp&gt;)
+ 99999999    9.496    0.000    9.496    0.000 {built-in method math.sqrt}
+        8    1.107    0.138   30.150    3.769 {method 'run' of '_contextvars.Context' objects}
+       45    0.004    0.000    0.004    0.000 {built-in method marshal.loads}
+       12    0.004    0.000    0.005    0.000 {built-in method _imp.create_dynamic}
+      249    0.002    0.000    0.002    0.000 {built-in method posix.stat}
+  153/152    0.002    0.000    0.006    0.000 {built-in method builtins.__build_class__}
+       17    0.001    0.000    0.003    0.000 enum.py:1657(convert_class)
+       45    0.001    0.000    0.001    0.000 {built-in method io.open_code}
+      129    0.001    0.000    0.005    0.000 &lt;frozen importlib._bootstrap_external&gt;:1604(find_spec)
+       12    0.001    0.000    0.001    0.000 {built-in method _imp.exec_dynamic}
+       28    0.001    0.000    0.001    0.000 {built-in method posix.getcwd}
+       45    0.001    0.000    0.001    0.000 {method 'read' of '_io.BufferedReader' objects}
+</code></pre>
+<p>Let's try another approach.</p>
+<p>In this case, let's sort the results by the total number of times each function is called, e.g. <strong>ncalls</strong>.</p>
+<pre><code>python -m cProfile -s ncalls program.py | head -20</code></pre>
+<p>Now we see some striking results.</p>
+<p>We can see that the math.sqrt function was called nearly 100 million times, 99999999 to be precise.</p>
+<p>This is far and away beyond the calls to any other function and the source of our problem.</p>
+<pre><code>         100033231 function calls (100032516 primitive calls) in 30.185 seconds
+
+   Ordered by: call count
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+ 99999999    9.428    0.000    9.428    0.000 {built-in method math.sqrt}
+2156/2090    0.000    0.000    0.000    0.000 {built-in method builtins.len}
+     1947    0.000    0.000    0.000    0.000 {method 'startswith' of 'str' objects}
+     1626    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+     1382    0.000    0.000    0.000    0.000 {method 'rstrip' of 'str' objects}
+     1166    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}
+     1106    0.000    0.000    0.000    0.000 {built-in method builtins.hasattr}
+     1059    0.000    0.000    0.001    0.000 {built-in method builtins.getattr}
+     1027    0.000    0.000    0.000    0.000 {method 'isupper' of 'str' objects}
+      749    0.000    0.000    0.000    0.000 {method 'join' of 'str' objects}
+      709    0.000    0.000    0.000    0.000 &lt;frozen importlib._bootstrap&gt;:244(_verbose_message)
+      646    0.000    0.000    0.001    0.000 &lt;frozen importlib._bootstrap_external&gt;:126(_path_join)
+      646    0.001    0.000    0.001    0.000 &lt;frozen importlib._bootstrap_external&gt;:128(&lt;listcomp&gt;)
+</code></pre>
+<p>This highlights how we can zero in on the cause of a problem by reviewing the same profile data in different ways, both execution time and number of function calls.</p>
+<h2>Takeaways</h2>
+<p>You now know how to profile asyncio programs in order to discover why they are slow.</p>
 </main>
 </body>
 </html>

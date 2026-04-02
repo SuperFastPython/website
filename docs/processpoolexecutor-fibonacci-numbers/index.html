@@ -225,6 +225,163 @@ f(29) = 514229
 numbers = range(10000)
 </code></pre>
 <p>We can then iterate over the numbers, calculate the Fibonacci number for each then store them in a dictionary that maps the number in the sequence (input) to the Fibonacci number (output).</p>
+<pre><code>...
+# calculate each in turn
+results = {}
+for i in numbers:
+    results = fibonacci(i)
+</code></pre>
+<p>This is Python, so we can do better than this.</p>
+<p>Let's use the map() built-in function to apply the <strong>fibonacci()</strong> function to each value in the iterable to give an iterable of results.</p>
+<pre><code>...
+# calculate fibonacci numbers
+fibs = map(fibonacci, numbers)
+</code></pre>
+<p>We can then create a dictionary directly from the iterable of numbers and the iterable of results by using the <strong>zip()</strong> built-in function.</p>
+<pre><code>...
+# store results
+results = dict(zip(numbers, fibs))
+</code></pre>
+<p>You can do this on one line if you like, but I try to avoid large compound statements.</p>
+<pre><code>...
+# calculate fibonacci numbers
+results = dict(zip(numbers, map(fibonacci, numbers)))
+</code></pre>
+<p>Tying this together, the complete example of calculating the first 10,000 Fibonacci numbers is as follows:</p>
+<pre><code># SuperFastPython.com
+# calculate some large fibonacci numbers
+
+# calculate the nth fibonacci number
+def fibonacci(n):
+    # start the sequence
+    f0, f1 = 0, 1
+    # compute the nth number
+    for _ in range(0, n):
+        f0, f1 = f1, (f1 + f0)
+    return f0
+
+# entry point
+if __name__ == '__main__':
+    # fibonacci numbers to calculate
+    numbers = range(10000)
+    # calculate fibonacci numbers
+    fibs = map(fibonacci, numbers)
+    # store results
+    results = dict(zip(numbers, fibs))
+    print('Done')
+</code></pre>
+<p>Running the example will take a moment.</p>
+<p>On my system it takes about 6.5 seconds.</p>
+<p><strong>How long does it take to run on your system?</strong><br/>Let me know in the comments below.</p>
+<p>Next, let's look at how we can adapt our program for calculating Fibonacci numbers to make use of the <strong>ProcessPoolExecutor</strong>.</p>
+<h2 id="calculate-fibonacci-numbers-concurrently">Calculate Fibonacci Numbers Concurrently</h2>
+<p>We can update the example of calculating Fibonacci numbers to use the ProcessPoolExecutor.</p>
+<p>Given that we are already using the built-in <strong>map()</strong> function, we can update the example to use the <strong>ProcessPoolExecutor</strong> <strong>map() </strong>function directly.</p>
+<p>First, we can create the process pool with the default number of processes that matches the number of logical cores in our system.</p>
+<pre><code>...
+# create the process pool
+with ProcessPoolExecutor() as executor:
+    # ...
+</code></pre>
+<p>We can then update the call to <strong>map() </strong>to use the executor, for example:</p>
+<pre><code>...
+# calculate concurrently
+fibs = executor.map(fibonacci, numbers)
+</code></pre>
+<p>And that's it.</p>
+<p>The complete example of calculating Fibonacci numbers concurrently using multiple CPU cores is listed below.</p>
+<pre><code># SuperFastPython.com
+# calculate some large fibonacci numbers concurrently
+from concurrent.futures import ProcessPoolExecutor
+
+# calculate the nth fibonacci number
+def fibonacci(n):
+    # start the sequence
+    f0, f1 = 0, 1
+    # compute the nth number
+    for _ in range(0, n):
+        f0, f1 = f1, (f1 + f0)
+    return f0
+
+# entry point
+if __name__ == '__main__':
+    # create the process pool
+    with ProcessPoolExecutor() as executor:
+        # fibonacci numbers to calculate
+        numbers = range(10000)
+        # calculate concurrently
+        fibs = executor.map(fibonacci, numbers)
+        # store results
+        results = dict(zip(numbers, fibs))
+    print('Done')
+</code></pre>
+<p>Running the example is dramatically faster compared to the sequential case.</p>
+<p>On my system, it executes in about 2.7 seconds, compared to the 6.5 seconds for the serial version. That is about a 2.4x speedup.</p>
+<p><strong>How much speed-up did you see on your system?</strong><br/>Let me know in the comments below.</p>
+<h2 id="speed-up-calculating-fibonacci-numbers-with-chunksize">Speed-up Calculating Fibonacci Numbers with Chunksize</h2>
+<p>We can further speed-up the concurrent calculation of Fibonacci numbers.</p>
+<p>The <strong>map() </strong>function on the <strong>ProcessPoolExeuctor</strong> takes a "<strong>chunksize</strong>" argument.</p>
+<p>This argument is responsible for mapping tasks submitted to the process pool to internal tasks that are sent to worker processes in the pool for execution.</p>
+<p>If the tasks are short duration and we have a lot of tasks to execute, then configuring the chunksize argument is a good idea. This matches our specific use case, we have a large number of short duration tasks.</p>
+<p>By default the chunksize argument is set to 1, meaning each task submitted to the process pool is mapped to one internal task and sent to a worker process. Each task has some computational and memory overhead as it must be serialized (pickled) and transmitted to a separate process using inter-process communication. Fewer internal tasks means less overhead and a faster overall process.</p>
+<pre><code>...
+# calculate concurrently
+fibs = executor.map(fibonacci, numbers, chunksize=1)
+</code></pre>
+<p>A good starting point for setting the chunksize is to divide the number of tasks by the number of logical CPUs.</p>
+<pre><code>...
+# mapping of external tasks to internal tasks
+size = 10000 / 8
+# calculate concurrently
+fibs = executor.map(fibonacci, numbers, chunksize=size)
+</code></pre>
+<p>This is good if all tasks have about the same execution duration, but that is not the case here as calculating the n=10 Fibonacci number is a lot faster than calculating the f=1000 number.</p>
+<p>As such, it is a good idea to try different chunksize values and see what works best.</p>
+<p>After some experimentation, I found that a value of 50 works well for this problem on my system.</p>
+<pre><code>...
+# mapping of external tasks to internal tasks
+size = 50
+# calculate concurrently
+fibs = executor.map(fibonacci, numbers, chunksize=size)
+</code></pre>
+<p>Experiment with different chunksizes in order to discover what works best on your system. <strong>Let me know in the comments below, I'd love to see what you discover.</strong></p>
+<p>The complete example of calculating Fibonacci numbers concurrently with an optimized chunksize is listed below.</p>
+<pre><code># SuperFastPython.com
+# calculate some large fibonacci numbers concurrently
+from concurrent.futures import ProcessPoolExecutor
+
+# calculate the nth fibonacci number
+def fibonacci(n):
+    # start the sequence
+    f0, f1 = 0, 1
+    # compute the nth number
+    for _ in range(0, n):
+        f0, f1 = f1, (f1 + f0)
+    return f0
+
+# entry point
+if __name__ == '__main__':
+    # create the process pool
+    with ProcessPoolExecutor() as executor:
+        # fibonacci numbers to calculate
+        numbers = range(10000)
+        # mapping of external tasks to internal tasks
+        size = 50
+        # calculate concurrently
+        fibs = executor.map(fibonacci, numbers, chunksize=size)
+        # store results
+        results = dict(zip(numbers, fibs))
+    print('Done')
+</code></pre>
+<p>Running the example calculates the first 10,000 Fibonacci numbers as before, but is faster again than the concurrent version above.</p>
+<p>On my system the example completes in about 1.6 seconds, compared to 2.7 seconds when chunksize=1 in the previous section.</p>
+<p><strong>How much further speed-up did you see on your system?</strong><br/>Let me know in the comments below.</p>
+<h2 id="extensions">Extensions</h2>
+<p>This section lists ideas for extending the tutorial.</p>
+<ul><li><strong>Memorize Calculated Numbers</strong>. Update the example so that the <strong>fibonacci()</strong> function memorizes and reuses previously calculated numbers in the sequence.</li><li><strong>Parallelize Calculation of One Number</strong>. Explore how you might parallelize the calculation of a single number in the sequence using the process pool.</li><li><strong>Tune Chunksize</strong>. Tune the chunksize argument on your system and compare a range of values in order to discover what value is optimal.</li></ul>
+<p>Share your extensions in the comments below, it would be great to see what you come up with.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>In this tutorial you discovered how to calculate Fibonacci concurrently using a pool of worker processes.</p>
 </main>
 </body>
 </html>

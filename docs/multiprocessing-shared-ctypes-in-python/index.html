@@ -163,6 +163,419 @@ for item in array:
 array[0] = 100</code></pre>
 <p>Like the multiprocessing.Value, the <strong>multiprocessing.Array</strong> also provides a mutex lock that can be accessed to protect a critical section that might both read and update data within the array, or update multiple values in the array atomically.</p>
 <p>For example</p>
+<pre><code>...
+# acquire the lock on the array
+with array.get_lock():
+	# iterate over the array
+	for i in range(len(array)):
+		# change values in the array
+		array = i
+</code></pre>
+<h3>Help With Data Types</h3>
+<p>Data types must be specified when using a <strong>multiprocessing.Value</strong> or <strong>multiprocessing.Array</strong>.</p>
+<p>This can be challenging to beginners that are not familiar with c data types, specifically with the string type codes commonly used in C <strong>printf()</strong> statements.</p>
+<p>Internally, when we use a string type code, the multiprocessing.sharedctypes module will convert them to Python types from the ctypes module.</p>
+<p>Reviewing the code, we can see a <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/sharedctypes.py#L25"><strong>typecode_to_type</strong> dictionary</a> that maps type codes to ctype types.</p>
+<p>For example:</p>
+<pre><code>typecode_to_type = {
+    'c': ctypes.c_char,     'u': ctypes.c_wchar,
+    'b': ctypes.c_byte,     'B': ctypes.c_ubyte,
+    'h': ctypes.c_short,    'H': ctypes.c_ushort,
+    'i': ctypes.c_int,      'I': ctypes.c_uint,
+    'l': ctypes.c_long,     'L': ctypes.c_ulong,
+    'q': ctypes.c_longlong, 'Q': ctypes.c_ulonglong,
+    'f': ctypes.c_float,    'd': ctypes.c_double
+    }
+</code></pre>
+<p>The most common data types we are likely to use are:</p>
+<ul>
+<li><strong>signed integer</strong>:
+<ul>
+<li>type code: 'i'</li>
+<li>ctype: ctypes.c_int</li>
+</ul>
+</li>
+<li><strong>single floating point</strong>:
+<ul>
+<li>type code: 'f'</li>
+<li>ctype: ctypes.c_float</li>
+</ul>
+</li>
+<li><strong>char array (string)</strong>:
+<ul>
+<li>type code: 'c'</li>
+<li>ctype: ctypes.c_char</li>
+</ul>
+</li>
+</ul>
+<p>We can also see a list of string type codes and their mapping to c types and Python types defined in the array module API documentation:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/array.html#module-array">array — Efficient arrays of numeric values</a></li>
+</ul>
+<p>Finally, we can see a list of ctypes and their mapping to C types and Python types defined in the ctypes module documentation:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/ctypes.html#fundamental-data-types">Fundamental data types</a></li>
+</ul>
+<p>Now that we know how to use shared ctypes, let's look at some worked examples.</p>
+<h2>Example of a Shared Double Value</h2>
+<p>We can explore how to share a floating point value between processes.</p>
+<p>In this example we will define a <strong>multiprocessing.Value </strong>as a floating point variable and an initial value. The value will be shared with a child process and modified with a random value. The parent process will then access and report the variable, confirming that the change took effect.</p>
+<p>Firstly, we will define a function to run in a child process.</p>
+<p>The function will have the name <strong>task()</strong> and will take the shared ctype as an argument.</p>
+<pre><code>...
+# function to execute in a child process
+def task(variable):
+	# ...
+</code></pre>
+<p>The function will generate a random value between 0 and 1 using the <a href="https://docs.python.org/3/library/random.html#random.random"><strong>random.random()</strong> function</a>.</p>
+<pre><code>...
+# generate a double floating point value
+data = random()</code></pre>
+<p>The function will then store the generated value in the shared variable so that the parent variable can access it.</p>
+<pre><code>...
+# store value
+variable.value = data</code></pre>
+<p>Finally, the function will report the stored value, so we can compare it to the value accessed by the parent process.</p>
+<pre><code>...
+# report progress
+print(f'Wrote: {data}', flush=True)</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function is listed below.</p>
+<pre><code># function to execute in a child process
+def task(variable):
+    # generate a double floating point value
+    data = random()
+    # store value
+    variable.value = data
+    # report progress
+    print(f'Wrote: {data}', flush=True)
+</code></pre>
+<p>Next, in the main process, we will define the shared ctype.</p>
+<p>We will set the data type as 'f' for a single floating point value with an initial value of zero.</p>
+<pre><code>...
+# create shared variable
+variable = Value('f', 0.0)</code></pre>
+<p>We can then create a new <strong>multiprocessing.Process</strong> instance and configure it to execute our <strong>task()</strong> function and pass the shared ctype as an argument.</p>
+<pre><code>...
+# create a child process process
+process = Process(target=task, args=(variable,))</code></pre>
+<p>If you are new to executing a function in a new process, see the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<p>The process can then be started and the main process will block until the child process terminates using the <strong>join()</strong> function.</p>
+<pre><code>...
+# start the process
+process.start()
+# wait for the process to finish
+process.join()</code></pre>
+<p>If you are new to joining a child process, see the tutorial:</p>
+<ul>
+<li><a href="../join-a-process-in-python/">How to Join a Process in Python</a></li>
+</ul>
+<p>Finally, the parent process will access the data set in the shared ctype from the child process.</p>
+<pre><code>...
+# report the value
+print(f'Read: {data}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of value shared memory for a single floating point
+from random import random
+from multiprocessing import Value
+from multiprocessing import Process
+
+# function to execute in a child process
+def task(variable):
+    # generate a single floating point value
+    data = random()
+    # store value
+    variable.value = data
+    # report progress
+    print(f'Wrote: {data}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create shared variable
+    variable = Value('f', 0.0)
+    # create a child process process
+    process = Process(target=task, args=(variable,))
+    # start the process
+    process.start()
+    # wait for the process to finish
+    process.join()
+    # read the value
+    data = variable.value
+    # report the value
+    print(f'Read: {data}')
+</code></pre>
+<p>Running the example first creates the shared <strong>multiprocessing.Value</strong> instance to hold a float.</p>
+<p>The child process is configured and started and the main process blocks until the child process terminates.</p>
+<p>The child process generates a random value. It then stores the generated value in the shared Value instance for the parent process to access and reports the value that was stored.</p>
+<p>The child process terminates and the main process unblocks.</p>
+<p>The parent process then reports the number stored in the shared <strong>Value</strong> instance.</p>
+<p>We can see that the generated value in the child process matches the value accessed by the parent process, showing that indeed that the variable is shared and updated among the two processes.</p>
+<p>Note, your specific results will differ given the use of random numbers.</p>
+<pre><code>Wrote: 0.5508677463070446
+Read: 0.5508677363395691</code></pre>
+<h2>Example of a Shared Integer Value</h2>
+<p>We can explore how to share a signed integer value between processes.</p>
+<p>In this example we will define a <strong>multiprocessing.Value</strong> as a signed integer variable and an initial value. The value will be shared with a child process and modified with a random value. The parent process will then access and report the variable, confirming that the change took effect.</p>
+<p>Firstly, we will define a function to run in a child process.</p>
+<p>The function will take the shared ctype as an argument. It will then generate a new random integer value between 0 and 99 using the <a href="https://docs.python.org/3/library/random.html#random.randint"><strong>random.randint()</strong> function</a>. The value is then stored in the shared ctype and reported so that we can compare it to the value accessed by the parent process later.</p>
+<p>The complete <strong>task()</strong> function is listed below.</p>
+<pre><code># function to execute in a child process
+def task(variable):
+    # generate a signed integer value
+    data = randint(0, 100)
+    # store value
+    variable.value = data
+    # report progress
+    print(f'Wrote: {data}', flush=True)
+</code></pre>
+<p>Next, in the main process we will define a <strong>multiprocessing.Value</strong> with a signed integer type code of 'i' and an initial value of zero.</p>
+<pre><code>...
+# create shared variable
+variable = Value('i', 0)</code></pre>
+<p>We can then define a new process instance to execute our <strong>task()</strong> function and take the shared ctype as an argument. The process is then started and the main process will block until the child process terminates.</p>
+<pre><code>...
+# create a child process process
+process = Process(target=task, args=(variable,))
+# start the process
+process.start()
+# wait for the process to finish
+process.join()</code></pre>
+<p>Finally, the main process accesses the value of the shared ctype and reports it.</p>
+<pre><code>...
+# read the value
+data = variable.value
+# report the value
+print(f'Read: {data}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of value shared memory for an integer
+from random import randint
+from multiprocessing import Value
+from multiprocessing import Process
+
+# function to execute in a child process
+def task(variable):
+    # generate a signed integer value
+    data = randint(0, 100)
+    # store value
+    variable.value = data
+    # report progress
+    print(f'Wrote: {data}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create shared variable
+    variable = Value('i', 0)
+    # create a child process process
+    process = Process(target=task, args=(variable,))
+    # start the process
+    process.start()
+    # wait for the process to finish
+    process.join()
+    # read the value
+    data = variable.value
+    # report the value
+    print(f'Read: {data}')
+</code></pre>
+<p>Running the example first creates the shared <strong>multiprocessing.Value</strong> instance to hold an integer.</p>
+<p>The child process is configured and started and the main process blocks until the child process terminates.</p>
+<p>The child process generates a random integer value. It then stores the generated value in the shared Value instance for the parent process to access and reports the value that was stored.</p>
+<p>The child process terminates and the main process unblocks.</p>
+<p>The parent process then reports the number stored in the shared Value instance.</p>
+<p>We can see that the generated value in the child process matches the value accessed by the parent process, showing that indeed that the variable is shared and updated among the two processes.</p>
+<p>Note, your specific results will differ given the use of random numbers.</p>
+<pre><code>Wrote: 43
+Read: 43</code></pre>
+<h2>Example of a Shared Array</h2>
+<p>We can explore how to use a shared ctype array.</p>
+<p>In this example, we will define an array to hold five signed integer values and to initialize the array with the values 1 to 5. We will then report the initialized values. A child process will then run and change the values in the array, reporting the changes. Finally the parent process will access the array and confirm the changes to the array.</p>
+<p>First, we can define a function to execute in a child process that takes the shared ctype array as an argument.</p>
+<pre><code>...
+# function to execute in a child process
+def task(variable):
+	# ...
+</code></pre>
+<p>The function will iterate over the shared ctype array and assign random integers to each array index.</p>
+<pre><code>...
+# store new values in array
+for i in range(len(variable)):
+    variable = randint(0, 100)
+</code></pre>
+<p>We can then read the array values into a Python list using a list comprehension and report the list of values so that the parent process can confirm the change later.</p>
+<pre><code>...
+# read the items in the array into a list
+data = 
+# report progress
+print(f'Wrote: {data}', flush=True)</code></pre>
+<p>Tying this together, the complete function is listed below.</p>
+<pre><code># function to execute in a child process
+def task(variable):
+    # store new values in array
+    for i in range(len(variable)):
+        variable = randint(0, 100)
+    # read the items in the array into a list
+    data = 
+    # report progress
+    print(f'Wrote: {data}', flush=True)
+</code></pre>
+<p>Next, in the main process, we can define a shared ctype array with an signed integer and a tuple defining the initial values.</p>
+<p>The tuple of initial values also defines the fixed size of the array.</p>
+<pre><code>...
+# create shared array
+variable = Array('i', (1, 2, 3, 4, 5))</code></pre>
+<p>We can then read the array values into a Python list using a list comprehension and then report the initial array values.</p>
+<pre><code>...
+# read the items in the array into a list
+data = 
+print(f'Initialized: {data}')</code></pre>
+<p>A new child process can be configured to run our <strong>task()</strong> function and take the shared ctype array as an argument. The child process is then started and the main process blocks until the new process finishes.</p>
+<pre><code>...
+# create a child process process
+process = Process(target=task, args=(variable,))
+# start the process
+process.start()
+# wait for the process to finish
+process.join()</code></pre>
+<p>Finally, the parent process will access the values of the array and report them.</p>
+<pre><code>...
+# read the items in the array into a list
+data = 
+# report the value
+print(f'Read: {data}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of shared ctypes with an array
+from random import randint
+from multiprocessing import Array
+from multiprocessing import Process
+
+# function to execute in a child process
+def task(variable):
+    # store new values in array
+    for i in range(len(variable)):
+        variable = randint(0, 100)
+    # read the items in the array into a list
+    data = 
+    # report progress
+    print(f'Wrote: {data}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create shared array
+    variable = Array('i', (1, 2, 3, 4, 5))
+    # read the items in the array into a list
+    data = 
+    print(f'Initialized: {data}')
+    # create a child process process
+    process = Process(target=task, args=(variable,))
+    # start the process
+    process.start()
+    # wait for the process to finish
+    process.join()
+    # read the items in the array into a list
+    data = 
+    # report the value
+    print(f'Read: {data}')
+</code></pre>
+<p>Running the example first creates the shared <strong>multiprocessing.Array</strong> instance to hold five signed integers.</p>
+<p>The child process is configured and started and the main process blocks until the child process terminates.</p>
+<p>The child process generates new random integer values for each position in the shared ctype array. It then reports the values that were stored.</p>
+<p>The child process terminates and the main process unblocks.</p>
+<p>The parent process then reports the numbers stored in the shared ctype array.</p>
+<p>We can see the initial values are different from those reported by the child process, showing that we correctly changed the array in the child process. We can then see that the generated values in the child process match the values accessed by the parent process, showing that indeed that the array is shared and updated among the two processes.</p>
+<p>Note, your specific results will differ given the use of random numbers.</p>
+<pre><code>Initialized: [1, 2, 3, 4, 5]
+Wrote: [19, 88, 52, 31, 56]
+Read: [19, 88, 52, 31, 56]</code></pre>
+<h2>Example of a Shared String</h2>
+<p>We can share a string between processes using a shared ctype array of characters.</p>
+<p>In this example we will define a <strong>multiprocessing.Array</strong> to hold characters with an initial string value. The child process will then change the string value and the parent process will access the shared array and confirm the change was propagated and shared among processes.</p>
+<p>Firstly, we can define a function to execute in the child process. The function will take the shared ctype array as an argument, will define a new string value, store it in the array and then report the value that was stored so that we can compare it to the value accessed by the parent process later.</p>
+<p>We do not have to assign each array index of the string manually.</p>
+<p>Recall that a Python string is a list of characters. We can confirm a Python string to bytes using the "b" prefix to the constant string value.</p>
+<p>For example:</p>
+<pre><code>...
+# prepare string data
+data = b'Hello!'</code></pre>
+<p>This can then be assigned directly into the array, specifically the first six positions of the array will be assigned the six characters of the byte string.</p>
+<pre><code>...
+# store value
+variable.value = data</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function is listed below.</p>
+<pre><code># function to execute in a child process
+def task(variable):
+    # prepare string data
+    data = b'Hello!'
+    # store value
+    variable.value = data
+    # report progress
+    print(f'Wrote: {data}', flush=True)
+</code></pre>
+<p>Next, in the main process we can define a shared ctype array to hold a string.</p>
+<p>We will use the 'c' type code to represent characters, and define an initial string value of '<em>Hello World</em>', converted to byte values using the 'b' prefix to the string.</p>
+<pre><code>...
+# create shared variable
+variable = Array('c', b'Hello World')</code></pre>
+<p>This will define a fixed-length char array with 11 elements.</p>
+<p>A new child process can be configured to run our <strong>task()</strong> function and take the shared ctype array as an argument. The child process is then started and the main process blocks until the new process finishes.</p>
+<pre><code>...
+# create a child process process
+process = Process(target=task, args=(variable,))
+# start the process
+process.start()
+# wait for the process to finish
+process.join()</code></pre>
+<p>Finally, the parent process will access and report the string value.</p>
+<pre><code>...
+# read the value
+data = variable.value
+# report the value
+print(f'Read: {data}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of shared ctypes for a string
+from random import randint
+from time import sleep
+from multiprocessing import Array
+from multiprocessing import Process
+
+# function to execute in a child process
+def task(variable):
+    # prepare string data
+    data = b'Hello!'
+    # store value
+    variable.value = data
+    # report progress
+    print(f'Wrote: {data}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create shared variable
+    variable = Array('c', b'Hello World')
+    # create a child process process
+    process = Process(target=task, args=(variable,))
+    # start the process
+    process.start()
+    # wait for the process to finish
+    process.join()
+    # read the value
+    data = variable.value
+    # report the value
+    print(f'Read: {data}')
+</code></pre>
+<p>Running the example first creates the shared <strong>multiprocessing.Array</strong> to hold characters with a fixed length and an initial string value.</p>
+<p>The child process is configured and started and the main process blocks until the child process terminates.</p>
+<p>The child process assigned a new string to the char array. The new string has fewer characters than the initial string. The child process then reports the values that were stored.</p>
+<p>The child process terminates and the main process unblocks.</p>
+<p>The parent process then reports the string stored in the shared ctype array.</p>
+<p>We can then see that the replacement string set by the child process matches the string accessed by the parent process, showing that indeed that the array is shared and updated among the two processes.</p>
+<pre><code>Wrote: b'Hello!'
+Read: b'Hello!'</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share ctypes between processes in Python.</p>
 </main>
 </body>
 </html>

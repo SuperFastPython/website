@@ -60,6 +60,248 @@
 <p>In this example, we will test the case of transmitting a list of one million integers from one process to another.</p>
 <p>This will be achieved using a pool of worker processes and a queue that is created at the beginning of the experiment and reused for each experimental run. A producer task will create the data in one worker process and put it on the shared queue. A consumer task will retrieve the data in another worker process from the shared queue. This will then be repeated many times and timed.</p>
 <p>Firstly, we can define a producer task that takes the shared queue as an argument, creates a large list of integers, and puts on the queue.</p>
+<pre><code># task to generate data and send to the consumer
+def producer_task(queue):
+    # generate data
+    data = 
+    # send the data
+    queue.put(data)
+</code></pre>
+<p>Next, we can define a consumer task that takes the shared queue as an argument and retrieves the shared object.</p>
+<pre><code># task to consume data sent from producer
+def consumer_task(queue):
+    # retrieve the data
+    data = queue.get()
+</code></pre>
+<p>We can define the experimental test task. This function takes the pool of workers, the shared queue, and the number of repeats of the experiment to perform.</p>
+<p>For each repeat it issues the consumer task first, then the producer task, then waits for the consumer task to complete.</p>
+<p>This ordering is important. It ensures the consumer is waiting for work. Then starts the producer and finally waits for the consumer to complete which can only happen once the data has been received.</p>
+<p>We will use the <strong>multiprocessing.Pool</strong> class API which has a thread-equivalent API in the <strong>multiprocessing.pool.ThreadPool</strong> class.</p>
+<pre><code># run a test and time how long it takes
+def test(pool, queue, n_repeats):
+    # repeat many times
+    for i in range(n_repeats):
+        # issue the consumer task
+        consumer = pool.apply_async(consumer_task, args=(queue,))
+        # issue the producer task
+        producer = pool.apply_async(producer_task, args=(queue,))
+        # wait for the consumer to get the data
+        consumer.wait()
+</code></pre>
+<p>So far the code is generic for both threads and processes.</p>
+<p>Next, we can develop the process-specific section that drives the example.</p>
+<p>Firstly, we will set the spawn start method so that the benchmark is consistent and runs on all platforms.</p>
+<pre><code>...
+# set the start method
+set_start_method('spawn')</code></pre>
+<p>Next, we can create a shared pool of workers.</p>
+<p>We will use the <strong>multiprocessing.Pool</strong>, although the <strong>ProcessPoolExecutor</strong> would work just as well.</p>
+<pre><code>...
+# create the pool of workers
+with Pool(2) as pool:
+	# ...
+</code></pre>
+<p>You can learn more about the <strong>multiprocessing.Pool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-python/">Multiprocessing Pool: The Complete Guide</a></li>
+</ul>
+<p>Next, we can create the queue to be shared with all workers.</p>
+<p>We cannot share a queue directly with workers in the pool as this will result in an error.</p>
+<p>Instead, we can host the queue in a server process and share proxy objects with worker-child processes for interacting with the queue.</p>
+<p>This requires creating a manager and then using the manager to create the queue and return a proxy object that can be shared.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # create the shared queue
+    queue = manager.Queue()
+</code></pre>
+<p>You can learn more about multiprocessing queues in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li>
+</ul>
+<p>You can learn more about sharing a queue with child processes via a manager in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager-share-queue/">Multiprocessing Manager Share Queue in Python</a></li>
+</ul>
+<p>Next, we can perform the test.</p>
+<p>This requires that we record the start time, run the test, then record the end time. We can then calculate and report the duration of the test and the duration per test run within the test.</p>
+<p>We will perform the sharing action between child processes 1,000 times.</p>
+<pre><code>...
+# record the start time
+time_start = time()
+# perform the test
+n_repeats = 1000
+test(pool, queue, n_repeats)
+# record the end time
+time_end = time()
+# report the total time
+duration = time_end - time_start
+print(f'Total Time {duration} seconds')
+# report estimated time per task
+per_task = duration / n_repeats
+print(f'About {per_task:.3} seconds per task')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example benchmark data transfer between child processes
+from time import time
+from multiprocessing import Pool
+from multiprocessing import Queue
+from multiprocessing import Manager
+from multiprocessing import set_start_method
+
+# task to generate data and send to the consumer
+def producer_task(queue):
+    # generate data
+    data = 
+    # send the data
+    queue.put(data)
+
+# task to consume data sent from producer
+def consumer_task(queue):
+    # retrieve the data
+    data = queue.get()
+
+# run a test and time how long it takes
+def test(pool, queue, n_repeats):
+    # repeat many times
+    for i in range(n_repeats):
+        # issue the consumer task
+        consumer = pool.apply_async(consumer_task, args=(queue,))
+        # issue the producer task
+        producer = pool.apply_async(producer_task, args=(queue,))
+        # wait for the consumer to get the data
+        consumer.wait()
+
+# entry point
+if __name__ == '__main__':
+    # set the start method
+    set_start_method('spawn')
+    # create the pool of workers
+    with Pool(2) as pool:
+        # create the manager
+        with Manager() as manager:
+            # create the shared queue
+            queue = manager.Queue()
+            # record the start time
+            time_start = time()
+            # perform the test
+            n_repeats = 1000
+            test(pool, queue, n_repeats)
+            # record the end time
+            time_end = time()
+            # report the total time
+            duration = time_end - time_start
+            print(f'Total Time {duration} seconds')
+            # report estimated time per task
+            per_task = duration / n_repeats
+            print(f'About {per_task:.3} seconds per task')
+</code></pre>
+<p>Running the example first sets the spawn start method.</p>
+<p>Next, the process pool is created with two workers.</p>
+<p>The manager server process is created and is used to create the shared queue.</p>
+<p>The experiment is run with 1,000 iterations using workers in the process pool and proxy objects for the shared queue.</p>
+<p>In this case, the transfer between child processes and the experiment took about 161.917 seconds, which is about 2.6 minutes.</p>
+<p>Dividing the total time by the number of iterations of transfers performed found that it took about 162 milliseconds per transfer of the list of 1,000,000 integers. Recall, there are 1,000 milliseconds in one second.</p>
+<p>Ouch, that does feel slow.</p>
+<p>Recall that using the queue does impose a cost with internal objects and locks, as does the process pool.</p>
+<p>Nevertheless, a constant fraction of that 10th of a second involves the serialization, transmission, and deserialization of the Python object.</p>
+<pre><code>Total Time 161.91740798950195 seconds
+About 0.162 seconds per task</code></pre>
+<p>Next, let's look at performing the same experiment using threads.</p>
+<h2>Benchmark Sharing Data Between Threads</h2>
+<p>We can update the example to use threads instead of child processes.</p>
+<p>Firstly, we can use a <strong>multiprocessing.pool.ThreadPool</strong> instead of a <strong>multiprocessing.Pool</strong>. It has the same API and uses threads internally instead of processes.</p>
+<pre><code>...
+# create the pool of workers
+with ThreadPool(2) as pool:
+	# ...
+</code></pre>
+<p>You can learn more about how to use the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-python/">ThreadPool in Python: The Complete Guide</a></li>
+</ul>
+<p>A manager is not needed in this case, instead, we can create the <strong>queue.Queue</strong> and share it directly with new threads.</p>
+<pre><code>...
+# create the shared queue
+queue = Queue()</code></pre>
+<p>You can learn more about thread-safe queues in the tutorial:</p>
+<ul>
+<li><a href="../thread-queue/">Thread-Safe Queue in Python</a></li>
+</ul>
+<p>The rest of the example is the same and does not require modification.</p>
+<p>The complete example with these changes is listed below.</p>
+<pre><code># SuperFastPython.com
+# example benchmark data transfer between threads
+from time import time
+from multiprocessing.pool import ThreadPool
+from queue import Queue
+
+# task to generate data and send to the consumer
+def producer_task(queue):
+    # generate data
+    data = 
+    # send the data
+    queue.put(data)
+
+# task to consume data sent from producer
+def consumer_task(queue):
+    # retrieve the data
+    data = queue.get()
+
+# run a test and time how long it takes
+def test(pool, queue, n_repeats):
+    # repeat many times
+    for i in range(n_repeats):
+        # issue the consumer task
+        consumer = pool.apply_async(consumer_task, args=(queue,))
+        # issue the producer task
+        producer = pool.apply_async(producer_task, args=(queue,))
+        # wait for the consumer to get the data
+        consumer.wait()
+
+# entry point
+if __name__ == '__main__':
+    # create the pool of workers
+    with ThreadPool(2) as pool:
+        # create the shared queue
+        queue = Queue()
+        # record the start time
+        time_start = time()
+        # perform the test
+        n_repeats = 1000
+        test(pool, queue, n_repeats)
+        # record the end time
+        time_end = time()
+        # report the total time
+        duration = time_end - time_start
+        print(f'Total Time {duration:.3} seconds')
+        # report estimated time per task
+        per_task = duration / n_repeats
+        print(f'About {per_task:.3} seconds per task')
+</code></pre>
+<p>Running the example first creates the thread pool and the shared queue.</p>
+<p>The experiment is then run with 1,000 iterations of transferring the 1,000,000 item list between threads in the thread pool.</p>
+<p>The total time and time per iteration is then recorded.</p>
+<p>In this case, we can see that the overall experiment took about 40.6 seconds to complete.</p>
+<p>Dividing this figure by the number of iterations, 1,000, shows that the average transfer took about 40.6 milliseconds.</p>
+<pre><code>Total Time 40.6 seconds
+About 0.0406 seconds per task</code></pre>
+<p>Next, let's compare the speed of data transfers with processes vs threads.</p>
+<h2>Comparison of Data Transfer Speed With Processes vs Threads</h2>
+<p>Transferring data between child processes is slower using processes than threads.</p>
+<p>This is the generally accepted belief that can be justified using simple logic. Data between processes must be serialized and deserialized, whereas threads can share memory directly.</p>
+<p>In this case, we can put actual numbers to the difference between data transfers with threads and processes.</p>
+<p>The results show that using the same architecture of workers and a shared queue that processes took about 161.917 seconds whereas threads took about 40.6 seconds to complete the experiment.</p>
+<p>That is a difference of about 121.317 seconds (about 2 minutes) or 3.99x. This means that threads are nearly 4x faster at transferring data than processes, at least with the specific fixed overhead of using workers and a shared queue introduced in this experiment.</p>
+<p>Looking at the time per transfer, we can see that processes took about 0.162 seconds per transfer, whereas threads took about 0.0406 seconds per transfer.</p>
+<p><strong>That is a difference of 0.121 seconds, or again a 3.99x speed difference.</strong></p>
+<p>Transferring data between processes should be kept to a minimum wherever possible and these results highlight why. It's really slow relative to transmitting data between threads.</p>
+<p>Threads are well suited to those I/O bound tasks that often require transmitting data, e.g. loading and sending to central processing or collecting and storing. Process-based concurrency is better suited to CPU-bound tasks, but more so to those tasks that require little data transmission before or after, ideally acquiring their own data as needed if possible.</p>
+<p>This was not a perfect comparison between threads and processes because of the use of pools of workers and queues, but the architecture of the experiment was consistent between processes and threads and it is a good first attempt.</p>
+<p>If you have ideas on better-designed experiments or improvements over this experiment, please let me know in the comments below. I’m sure we can do better.</p>
+<h2>Takeaways</h2>
+<p>You now know the speed difference for data transmission when using processes vs threads.</p>
 </main>
 </body>
 </html>

@@ -266,6 +266,352 @@ async def task(value):
     logging.info(f'Task {value} is done')
 </code></pre>
 <p>We then update the <strong>main()</strong> to no longer use a <strong>TaskGroup</strong> and instead issue all tasks and keep the returned <strong>asyncio.Task</strong> objects. This can be done in a list comprehension.</p>
+<pre><code>...
+# schedule all tasks
+tasks = [asyncio.create_task(task(i)) for i in range(10)]</code></pre>
+<p>We can then loop over each task and await each in turn.</p>
+<p>If an exception is raised, we can handle and log it directly without disrupting the loop.</p>
+<pre><code>...
+# await each task and handle exceptions
+for t in tasks:
+    try:
+        await t
+    except Exception as e:
+        # log the exception
+        logging.exception(f'Task failed with exception: {e}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging task exceptions in asyncio
+import logging
+import asyncio
+
+# task that does work and logs
+async def task(value):
+    # log a message
+    logging.info(f'Task {value} is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # check if it should fail
+    if value % 2 == 0:
+        raise Exception(f'Task {value} failed')
+    # log a message
+    logging.info(f'Task {value} is done')
+
+# main coroutine
+async def main():
+    # get the root logger
+    log = logging.getLogger()
+    # log all messages, debug and up
+    log.setLevel(logging.DEBUG)
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule all tasks
+    tasks = [asyncio.create_task(task(i)) for i in range(10)]
+    # await each task and handle exceptions
+    for t in tasks:
+        try:
+            await t
+        except Exception as e:
+            # log the exception
+            logging.exception(f'Task failed with exception: {e}')
+    # log a message
+    logging.info(f'Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the program first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and sets the logging level, then logs an initial info message.</p>
+<p>It then schedules all 10 tasks and stores the <strong>Task</strong> objects in a list.</p>
+<p>The <strong>main()</strong> coroutine then iterates over the tasks and awaits the first one.</p>
+<p>The tasks run, first logging a message and then suspending with a sleep.</p>
+<p>The tasks resume and check their argument value. If it is even, an exception is raised, terminating the task, otherwise, an info message is logged.</p>
+<p>The <strong>main()</strong> coroutine resumes. Some tasks finish normally, while others fail with an exception, which is logged directly.</p>
+<p>This highlights how we can log exceptions from awaited tasks that fail.</p>
+<pre><code>INFO:root:Main is starting
+INFO:root:Task 0 is starting
+INFO:root:Task 1 is starting
+INFO:root:Task 2 is starting
+INFO:root:Task 3 is starting
+INFO:root:Task 4 is starting
+INFO:root:Task 5 is starting
+INFO:root:Task 6 is starting
+INFO:root:Task 7 is starting
+INFO:root:Task 8 is starting
+INFO:root:Task 9 is starting
+INFO:root:Task 1 is done
+INFO:root:Task 3 is done
+INFO:root:Task 5 is done
+INFO:root:Task 7 is done
+INFO:root:Task 9 is done
+ERROR:root:Task failed with exception: Task 0 failed
+Traceback (most recent call last):
+  File "...", line 31, in main
+    await t
+  File "...", line 14, in task
+    raise Exception(f'Task {value} failed')
+Exception: Task 0 failed
+ERROR:root:Task failed with exception: Task 2 failed
+Traceback (most recent call last):
+  File "...", line 31, in main
+    await t
+  File "...", line 14, in task
+    raise Exception(f'Task {value} failed')
+Exception: Task 2 failed
+ERROR:root:Task failed with exception: Task 4 failed
+Traceback (most recent call last):
+  File "...", line 31, in main
+    await t
+  File "...", line 14, in task
+    raise Exception(f'Task {value} failed')
+Exception: Task 4 failed
+ERROR:root:Task failed with exception: Task 6 failed
+Traceback (most recent call last):
+  File "...", line 31, in main
+    await t
+  File "...", line 14, in task
+    raise Exception(f'Task {value} failed')
+Exception: Task 6 failed
+ERROR:root:Task failed with exception: Task 8 failed
+Traceback (most recent call last):
+  File "...", line 31, in main
+    await t
+  File "...", line 14, in task
+    raise Exception(f'Task {value} failed')
+Exception: Task 8 failed
+INFO:root:Main is done
+</code></pre>
+<p>Next, we can look at logging canceled tasks that raise a <strong>CancelledError</strong> exception.</p>
+<h2>Example of Logging CancelledError in Asyncio</h2>
+<p>We can explore an example of logging a <strong>CancelledError</strong> exception when a task is canceled.</p>
+<p>In this case, we can update the above example to catch a <strong>CancelledError</strong> exception, log it, and then re-raise it to allow the caller to handle the exception, if it desires (a good practice).</p>
+<pre><code># task that does work and logs
+async def task(value):
+    try:
+        # log a message
+        logging.info(f'Task {value} is starting')
+        # simulate doing work
+        await asyncio.sleep(1)
+        # log a message
+        logging.info(f'Task {value} is done')
+    except asyncio.CancelledError:
+        # log the cancellation
+        logging.debug(f'Task {value} cancelled')
+        # re-raise the exception
+        raise
+</code></pre>
+<p>You can learn more about best practices when canceling tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-cancellation-best-practices/">Asyncio Task Cancellation Best Practices</a></li>
+</ul>
+<p>The <strong>main()</strong> coroutine can then be updated to create 10 tasks using a list comprehension as before, then wait a moment before canceling the first 3 tasks.</p>
+<p>This will cause the tasks to raise a <strong>CancelledError</strong> exception, which will be logged and re-raised, before terminating the task.</p>
+<pre><code>...
+# schedule many tasks
+tasks = [asyncio.create_task(task(i)) for i in range(10)]
+# let them run a moment
+await asyncio.sleep(0.5)
+# cancel some tasks
+tasks[0].cancel()
+tasks[1].cancel()
+tasks[2].cancel()
+# let things finish up
+await asyncio.sleep(0.5)
+</code></pre>
+<p>You can learn more about canceling tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of manually logging CancelledError exceptions
+import logging
+import asyncio
+
+# task that does work and logs
+async def task(value):
+    try:
+        # log a message
+        logging.info(f'Task {value} is starting')
+        # simulate doing work
+        await asyncio.sleep(1)
+        # log a message
+        logging.info(f'Task {value} is done')
+    except asyncio.CancelledError:
+        # log the cancellation
+        logging.debug(f'Task {value} cancelled')
+        # re-raise the exception
+        raise
+
+# main coroutine
+async def main():
+    # get the root logger
+    log = logging.getLogger()
+    # log all messages, debug and up
+    log.setLevel(logging.DEBUG)
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule many tasks
+    tasks = [asyncio.create_task(task(i)) for i in range(10)]
+    # let them run a moment
+    await asyncio.sleep(0.5)
+    # cancel some tasks
+    tasks[0].cancel()
+    tasks[1].cancel()
+    tasks[2].cancel()
+    # let things finish up
+    await asyncio.sleep(0.5)
+    # log a message
+    logging.info(f'Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the program first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and sets the logging level, then logs an initial info message.</p>
+<p>It then schedules all 10 tasks and stores the <strong>Task</strong> objects in a list.</p>
+<p>The <strong>main()</strong> coroutine then sleeps a moment to allow the tasks to run.</p>
+<p>The tasks run, first logging a message and then suspending with a sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and then cancels the first 3 tasks. It then suspends again and allows the tasks to be completed.</p>
+<p>The tasks resume. The first three tasks raise a <strong>CancelledError</strong> exception, which is caught, logged, and re-raised, terminating the tasks.</p>
+<p>The remaining tasks log an info message and terminate normally.</p>
+<p>The <strong>main()</strong> coroutine resumes and logs a final info message.</p>
+<p>This highlights how we can log <strong>CancelledError</strong> exceptions within tasks without disrupting the normal propagation of task cancellation.</p>
+<pre><code>INFO:root:Main is starting
+INFO:root:Task 0 is starting
+INFO:root:Task 1 is starting
+INFO:root:Task 2 is starting
+INFO:root:Task 3 is starting
+INFO:root:Task 4 is starting
+INFO:root:Task 5 is starting
+INFO:root:Task 6 is starting
+INFO:root:Task 7 is starting
+INFO:root:Task 8 is starting
+INFO:root:Task 9 is starting
+DEBUG:root:Task 0 cancelled
+DEBUG:root:Task 1 cancelled
+DEBUG:root:Task 2 cancelled
+INFO:root:Task 3 is done
+INFO:root:Task 4 is done
+INFO:root:Task 5 is done
+INFO:root:Task 6 is done
+INFO:root:Task 7 is done
+INFO:root:Task 8 is done
+INFO:root:Task 9 is done
+INFO:root:Main is done
+</code></pre>
+<p>Next, we will explore how we can automatically log exceptions that are never retrieved in asyncio.</p>
+<h2>Example of Logging Never-Retrieved Exceptions in Asyncio</h2>
+<p>We can explore an example of automatically logging never-retrieved exceptions in asyncio.</p>
+<p>The asyncio event loop will log silent exceptions when it is shut down. These silent exceptions are those exceptions raised by a task, but never retrieved by another task.</p>
+<p>You can learn more about silent or never-retrieved exceptions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-log-all-exceptions/">Log All Silent Exceptions in Asyncio</a></li>
+</ul>
+<p>We can log these exceptions using the logging infrastructure.</p>
+<p>This can be achieved by configuring a log handler function that takes the event loop object and a dict "<strong>context</strong>" as arguments.</p>
+<p>This function can then retrieve the raised exception from the "<strong>context</strong>" dict via the "<strong>exception</strong>" key and log it.</p>
+<p>We should not log exceptions using <strong>logging.exception()</strong> when outside of a try-except structure as it can cause problems. Instead, we should use <strong>logging.error()</strong> or similar.</p>
+<p>We will use <strong>logging.error()</strong> in this case.</p>
+<blockquote>
+<p>logging.ERROR: Due to a more serious problem, the software has not been able to perform some function.</p>
+<cite>-- <a href="https://docs.python.org/3/library/logging.html">logging — Logging facility for Python</a></cite></blockquote>
+<pre><code># define an exception handler
+def exception_handler(loop, context):
+    # get the exception object
+    exp = context['exception']
+    # log exception
+    logging.error(f'Never-retrieved exception: {exp}')
+</code></pre>
+<p>We can then configure the asyncio event loop to call our custom handler for each never-retrieved exception on shutdown.</p>
+<p>This can be achieved by first retrieving the event loop object via the <strong>asyncio.get_running_loop()</strong> function, then calling the <strong>set_exception_handler()</strong> function to set the handler function.</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# set the exception handler
+loop.set_exception_handler(exception_handler)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of automatically logging never-retrieved exceptions
+import logging
+import asyncio
+
+# define an exception handler
+def exception_handler(loop, context):
+    # get the exception object
+    exp = context['exception']
+    # log exception
+    logging.error(f'Never-retrieved exception: {exp}')
+
+# task that does work and logs
+async def task(value):
+    # log a message
+    logging.info(f'Task {value} is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # check if it should fail
+    if value % 2 == 0:
+        raise Exception(f'Task {value} failed')
+    # log a message
+    logging.info(f'Task {value} is done')
+
+# main coroutine
+async def main():
+    # get the root logger
+    log = logging.getLogger()
+    # log all messages, debug and up
+    log.setLevel(logging.DEBUG)
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # set the exception handler
+    loop.set_exception_handler(exception_handler)
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule all tasks
+    tasks = [asyncio.create_task(task(i)) for i in range(10)]
+    # allow tasks to complete
+    await asyncio.sleep(1.2)
+    # log a message
+    logging.info(f'Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the program first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and sets the logging level, configures the event loop exception handler function, and then logs an initial info message.</p>
+<p>It then schedules all 10 tasks and stores the Task objects in a list.</p>
+<p>The <strong>main()</strong> coroutine then suspends for enough time for all tasks to be completed.</p>
+<p>The tasks run, first logging a message and then suspending with a sleep.</p>
+<p>The tasks resume and check their argument value. If it is even, an exception is raised, terminating the task, otherwise, an info message is logged.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports the final info message.</p>
+<p>The event loop then calls our custom exception handler function for each exception that was never retrieved. We can see error log messages for all of the tasks that received an even argument.</p>
+<p>This highlights how we can automatically log never-retrieved exceptions when the event loop is shut down.</p>
+<pre><code>INFO:root:Main is starting
+INFO:root:Task 0 is starting
+INFO:root:Task 1 is starting
+INFO:root:Task 2 is starting
+INFO:root:Task 3 is starting
+INFO:root:Task 4 is starting
+INFO:root:Task 5 is starting
+INFO:root:Task 6 is starting
+INFO:root:Task 7 is starting
+INFO:root:Task 8 is starting
+INFO:root:Task 9 is starting
+INFO:root:Task 1 is done
+INFO:root:Task 3 is done
+INFO:root:Task 5 is done
+INFO:root:Task 7 is done
+INFO:root:Task 9 is done
+INFO:root:Main is done
+ERROR:root:Never-retrieved exception: Task 8 failed
+ERROR:root:Never-retrieved exception: Task 6 failed
+ERROR:root:Never-retrieved exception: Task 4 failed
+ERROR:root:Never-retrieved exception: Task 2 failed
+ERROR:root:Never-retrieved exception: Task 0 failed
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to log exceptions from asyncio.</p>
 </main>
 </body>
 </html>

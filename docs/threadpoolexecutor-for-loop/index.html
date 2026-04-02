@@ -43,6 +43,273 @@ for item in items:
 <p>Alternatively, we might want the results from calling the same function multiple times with different data.</p>
 <p>This is often achieved using a list comprehension.</p>
 <p>For example:</p>
+<pre><code>...
+# get results from applying the same function to different data
+results = [task(item) for item in items]</code></pre>
+<p>Each iteration of the for-loop is performed sequentially. One after the other on one CPU core.</p>
+<p>This is a problem because we may have many CPU cores, such as 2, 4, 8, or even 32.</p>
+<p><strong>How can we convert a for-loop to be concurrent?</strong></p>
+<h2>First Step: Prepare Your Code For Concurrency</h2>
+<p>Before we dive into discovering how to make for-loops concurrently, there is a prerequisite.</p>
+<p>You will need to refactor your code so that each iteration of your loop calls the same target function each iteration with different arguments.</p>
+<p>This means you will need to create a new target function that takes one (or more) arguments with the specific data to operate on each iteration.</p>
+<p>For example, your for-loop may look as follows:</p>
+<pre><code># slow for loop executed sequentially
+for item in items:
+	# do one thing using item
+	# do another thing using item
+	...
+</code></pre>
+<p>You can convert it into a loop that calls a target function each iteration that takes the unique data each iteration as an argument.</p>
+<p>For example:</p>
+<pre><code># task that operates on an item
+def task(item):
+	# do one thing using item
+	# do another thing using item
+
+# slow for loop executed sequentially
+for item in items:
+	task(item)
+</code></pre>
+<p>Generally, the function should be self-contained.</p>
+<p>It should not use any shared resources to avoid possible concurrency failure modes like race conditions.</p>
+<p>It should be a function with no side effects, taking data as arguments and returning any results via return values.</p>
+<p>If this is not the case, you must refactor your code so that this is the case, otherwise, you may have to contend with mutex locks and such which will make everything a whole lot harder.</p>
+<p>Next, let's look at how we can execute for loops concurrently using a <strong>ThreadPoolExecutor</strong>.</p>
+<h2>How To Make For-Loop Concurrent With ThreadPoolExecutor</h2>
+<p>We can make a for-loop concurrent using the <strong>ThreadPoolExecutor</strong> class.</p>
+<p>A thread pool is a programming pattern for automatically managing a pool of worker threads.</p>
+<p>The <strong>ThreadPoolExecutor</strong> class provides a thread pool with helpful functions for executing for loops concurrently.</p>
+<p>An instance of the <strong>ThreadPoolExecutor</strong> class can be created and used to issue IO-bound tasks that will run concurrently. Once we are finished with it, we can close it to release the worker threads.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+tpe = ThreadPoolExecutor()
+# ...
+# close the thread pool
+tpe.close()
+</code></pre>
+<p>We can use the context manager interface if we only need to use the pool for one for-loop. This will ensure the pool is closed for us automatically once we are finished using it, even if a task raises an exception.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# ...
+</code></pre>
+<p>This is the recommended usage of the <strong>ThreadPoolExecutor</strong>.</p>
+<p>You can learn more about how to use the <strong>ThreadPoolExecutor</strong> context manager in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-context-manager/">How to Use the ThreadPoolExecutor Context Manager</a></li>
+</ul>
+<p>The <strong>ThreadPoolExecutor</strong> provides a concurrent version of the built-in <strong>map()</strong> function that will call the same function for each item in a provided iterable, e.g. the same function with different data.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# call the function for each item concurrently
+	tpe.map(task, items)
+</code></pre>
+<p>This will traverse the "<strong>items</strong>" iterable and issue one call to the <strong>task()</strong> function for each item and return once all tasks have been completed.</p>
+<p>If the target function takes multiple arguments, then one iterator can be provided to the <strong>map()</strong> method for each argument.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# call the function for each item concurrently
+	tpe.map(task, items1, items2, items3)
+</code></pre>
+<p>The <strong>map()</strong> function returns an iterable of return values from the target function which can be stored or iterated directly if our target function has a return value.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# call the function for each item concurrently
+	for result in tpe.map(task, items):
+		print(result)</code></pre>
+<p>You can learn more about how to use the <strong>map()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-map/">How to Use map() with the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>Now that we know how to convert our for-loops to be concurrent, let's look at some worked examples that you can use as templates for your own project.</p>
+<h2>Example of Concurrent For-Loop with map()</h2>
+<p>We can explore how to use <strong>map()</strong> to execute for-loops concurrently.</p>
+<p>In this example, we will use a simple task function as a placeholder that you can replace with your own task function to be called for each loop iteration.</p>
+<p>In this case, our task will take one integer argument to the task. It will then generate a random number between 0 and 1, then sleep for a fraction of a second. Finally, it will either return the generated value as a result of the task.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task to execute in another thread
+def task(arg):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # return the generated value
+    return value
+</code></pre>
+<p>Let's dive in.</p>
+<h3>Serial For-Loop with map()</h3>
+<p>Before we dive into concurrent for-loops with <strong>map()</strong>, let's start with a sequential for-loop.</p>
+<p>We can use the built-in <a href="https://docs.python.org/3/library/functions.html#map"><strong>map()</strong> function</a> to call our task function each iteration.</p>
+<p>Each function call will be executed sequentially, one after the other on one CPU core.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a sequential for loop
+from time import sleep
+from random import random
+
+# a task to execute in another thread
+def task(arg):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # return the generated value
+    return value
+
+# entry point for the program
+if __name__ == '__main__':
+    # call the same function with different data sequentially
+    for result in map(task, range(10)):
+        # report the value to show progress
+        print(result)
+</code></pre>
+<p>Running the example calls the same task() function for each value in the iterable from 0 to 9.</p>
+<p>Different random numbers are generated each time the code is run.</p>
+<p>Each call to <strong>task()</strong> happens sequentially, and the entire example takes about 4-5 seconds, depending on the specific numbers generated.</p>
+<pre><code>0.4243133760805442
+0.045707298020461584
+0.5935655464316753
+0.7663974921875926
+0.246644383852908
+0.7426194244409888
+0.5884364546911707
+0.7430522698968164
+0.1931857147844338
+0.3468595028527215
+</code></pre>
+<p>Next, let's look at converting the example to execute concurrently using the <strong>ThreadPoolExecutor</strong>.</p>
+<h3>Concurrent For-Loop with map()</h3>
+<p>We can update the previous example so that each call to the <strong>task()</strong> function is executed concurrently.</p>
+<p>First, we can create the <strong>ThreadPoolExecutor</strong> configured with the default number of worker threads.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as tpe:
+	# ...
+</code></pre>
+<p>Next, we can call the <strong>map()</strong> function as before and iterate the result values, although this time the <strong>map()</strong> function is a method on the <strong>ThreadPoolExecutor</strong> instance.</p>
+<pre><code>...
+# call the same function with different data concurrently
+for result in tpe.map(task, range(10)):
+    # report the value to show progress
+    print(result)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a concurrent for loop
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# task to execute in another thread
+def task(arg):
+    # generate a value between 0 and 1
+    value = random()
+    # block for a fraction of a second to simulate work
+    sleep(value)
+    # return the generated value
+    return value
+
+# entry point for the program
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPoolExecutor() as tpe:
+        # call the same function with different data concurrently
+        for result in tpe.map(task, range(10)):
+            # report the value to show progress
+            print(result)
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPoolExecutor</strong> with the default number of worker threads.</p>
+<p>All ten calls to the <strong>task()</strong> function are issued to the <strong>ThreadPoolExecutor</strong> and it completes them as fast as it is able.</p>
+<p>Once all tasks are completed, an iterable of return values is returned from <strong>map()</strong> and traversed, reporting the values that were generated.</p>
+<p>The loop completes in about 1 second, depending on the specific random numbers generated.</p>
+<pre><code>0.9876407209459578
+0.6759433823870357
+0.8143074378181886
+0.9216241923184098
+0.5894315828217366
+0.6238674603877243
+0.27974960559550655
+0.8604062115277111
+0.6586268213993277
+0.328717597775</code></pre>
+<h2>Common Questions</h2>
+<p>This section lists common questions about making for-loops concurrently using the <strong>ThreadPoolExecutor</strong>.</p>
+<p><strong>Do you have any questions?</strong><br/>Share your question in the comments and I may add it to this section.</p>
+<h3>How To Set The Number of Workers</h3>
+<p>You can set the number of workers via the "<strong>max_workers</strong>" argument to the <strong>ThreadPoolExecutor</strong> class constructor.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool and set the number of worker threads
+executor = ThreadPoolExecutor(max_workers=100)
+# ...
+# shutdown the thread pool
+executor.shutdown()
+</code></pre>
+<p>The <strong>max_workers</strong> argument is the first argument in the constructor and does not need to be specified by name to be set; for example:</p>
+<pre><code>...
+# create a thread pool and set the number of worker threads
+executor = ThreadPoolExecutor(100)</code></pre>
+<p>You can learn more about how to configure the number of thread workers in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-number-of-threads/">Configure Max Workers for the ThreadPoolExecutor</a></li>
+</ul>
+<h3>What Is the Default Number of Threads in the ThreadPoolExecutor?</h3>
+<p>The default number of threads in the <strong>ThreadPoolExecutor</strong> is calculated as follows:</p>
+<ul>
+<li><strong>Total Number Worker Threads = (CPUs in Your System) + 4</strong></li>
+</ul>
+<p>Where the number of CPUs in your system is determined by Python and will take hyperthreading into account.</p>
+<p>For example, if you have two CPU cores each with hyperthreading (which is common), then Python will “see” four CPUs in your system.</p>
+<h3>How Many Thread Workers Should I Use?</h3>
+<p>You can use one thread worker per task to be executed, up to hundreds or thousands of workers if needed.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool with many workers
+executor = ThreadPoolExecutor(1000)</code></pre>
+<p>Experiment and discover the best number of workers for your use case.</p>
+<h3>How Many CPUs or CPU Cores Do I Have?</h3>
+<p>You can check the number of CPUs or CPU cores that are visible to Python via the <strong>cpu_count()</strong> function in the os module.</p>
+<p>For example, the following program will report the number of CPU cores in your system that are visible to Python:</p>
+<pre><code># report the number of CPUs in your system visible to Python
+import os
+print(os.cpu_count())</code></pre>
+<p>You can learn more about checking the number of CPU cores in the tutorial:</p>
+<ul>
+<li><a href="../number-of-cpus-python/">Number of CPUs in Python</a></li>
+</ul>
+<h3>Does the Number of Threads in the ThreadPoolExecutor Match the Number of CPUs or Cores?</h3>
+<p>The number of worker threads in the <strong>ThreadPoolExecutor</strong> is not related to the number of CPUs or CPU cores in your system.</p>
+<p>You can configure the number of threads based on the number of tasks you need to execute, the amount of local system resources you have available (e.g. memory), and the limitations of resources you intend to access within your tasks (e.g. connections to remote servers).</p>
+<h3>What Is the Maximum Number of Worker Threads in the ThreadPoolExecutor?</h3>
+<p>There is no maximum number of worker threads in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Nevertheless, your system will have an upper limit on the number of threads you can create based on how much main memory (RAM) you have available.</p>
+<p>Before you exceed the main memory, you will reach a point of diminishing returns in terms of adding new threads and executing more tasks. This is because your operating system must switch between the threads, called context switching. With too many threads active at once, your program may spend more time context-switching than actually executing tasks.</p>
+<p>A sensible upper limit for many applications is hundreds of threads to perhaps a few thousand threads. More than a few thousand threads on a modern system may result in too much context switching, depending on your system and on the types of tasks that are being executed.</p>
+<h3>What If I Need to Access a Shared Resource?</h3>
+<p>You may need to access a shared resource in the task executed by worker threads.</p>
+<p>Worker threads can share data directly via arguments or global variables.</p>
+<p>If your task functions are just reading data, then it should be fine.</p>
+<p>If your task functions are writing data, then you may need a mutex lock to ensure that only one thread can change the shared resource at a time.</p>
+<p>This is to avoid race conditions.</p>
+<p>You can learn more about how to use a mutex lock with threads in the tutorial:</p>
+<ul>
+<li><a href="../thread-mutex-lock/">Threading Mutex Lock in Python</a></li>
+</ul>
+<h3>What Types of Tasks Can Be Made Concurrent?</h3>
+<p>The <strong>ThreadPoolExecutor</strong> is probably well suited to IO-bound tasks.</p>
+<p>These are tasks that perform blocking IO, such as reading or writing from a file, socket, or device.</p>
+<p>You can also execute tasks that release the global interpreter lock, such as scipy and numpy functions.</p>
+<h2>Takeaways</h2>
+<p>You now know how to convert a for-loop to be concurrent using the <strong>ThreadPoolExecutor</strong>.</p>
 </main>
 </body>
 </html>

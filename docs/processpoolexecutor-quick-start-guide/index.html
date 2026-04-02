@@ -101,6 +101,77 @@ result = future.result(timeout=5) # blocks</code></pre>
 <ul><li><strong>wait()</strong>: Wait on one or more <strong>Future</strong> objects until they are completed.</li><li><strong>as_completed()</strong>: Returns <strong>Future</strong> objects from a collection as they complete their execution.</li></ul>
 <p>You can use both functions with <strong>Future</strong> objects created by one or more process pools, they are not specific to any given process pool in your application. This is helpful if you want to perform waiting operations across multiple process pools that are executing different types of tasks.</p>
 <p>Both functions are useful to use with an idiom of dispatching multiple tasks into the process pool via calling <strong>submit()</strong> in a list comprehension, for example:</p>
+<pre><code>...
+# dispatch tasks into the process pool and create a list of futures
+futures = [executor.submit(work, item) for item in items]</code></pre>
+<p>Here, “<strong>work</strong>” is our custom target task function, "<strong>item</strong>" is one element of data passed as an argument to "<strong>work</strong>", and "<strong>items</strong>" is our source of "<strong>item</strong>" objects.</p>
+<p>We can then pass the <strong>Future</strong> objects to <strong>wait()</strong> or <strong>as_completed()</strong>.</p>
+<p>Creating a list of <strong>Future</strong> objects in this way is not required, just a common pattern when converting for loops into tasks submitted to a process pool.</p>
+<h3 id="step-3a-wait-for-futures-to-complete">Step 3a. Wait for Futures to Complete</h3>
+<p>The <strong>wait()</strong> function can take one or more <meta/><strong>Future</strong> objects and will return when a specified action occurs, such as all tasks completing, one task completing, or one task throwing an exception.</p>
+<p>The function will return one set of <strong>Future</strong> objects that match the condition set via the "<strong>return_when</strong>" argument. The second set will contain all of the <strong><meta/><strong>Future</strong> </strong>objects for tasks that did not meet the condition. These are called the "<strong>done</strong>" and the "<strong>not_done</strong>" sets of futures.</p>
+<p>It is useful for waiting on a large batch of work and to stop waiting when we get the first result.</p>
+<p>This can be achieved via the <strong>FIRST_COMPLETED</strong> constant passed to the "<strong>return_when</strong>" argument.</p>
+<pre><code>...
+# wait until we get the first result
+done, not_done = wait(futures, return_when=FIRST_COMPLETED)</code></pre>
+<p>Alternatively, we can wait for all tasks to complete via the <strong>ALL_COMPLETED</strong> constant.</p>
+<p>This can be helpful if you are using <strong>submit() </strong>to dispatch tasks and are looking for an easy way to wait for all work to be completed.</p>
+<pre><code>...
+# wait for all tasks to complete
+done, not_done = wait(futures, return_when=ALL_COMPLETED)</code></pre>
+<p>There is also an option to wait for the first exception via the <strong>FIRST_EXCEPTION</strong> constant.</p>
+<pre><code>...
+# wait for the first exception
+done, not_done = wait(futures, return_when=FIRST_EXCEPTION)</code></pre>
+<h3 id="step-3b-wait-for-futures-as-completed">Step 3b. Wait for Futures As Completed</h3>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available, rather than waiting for all tasks to be completed.</p>
+<p>The <strong>as_completed()</strong> function will return <strong>Future</strong> objects for tasks as they are completed in the process pool.</p>
+<p>We can call the function and provide it a list of <strong>Future</strong> objects created by calling <strong>submit()</strong> and it will return <strong>Future</strong> objects as they are completed in whatever order.</p>
+<p>It is common to use the <strong>as_completed() </strong>function in a loop over the list of <strong>Future</strong> objects created when calling submit, for example:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result for the next completed task
+	result = future.result() # blocks
+</code></pre>
+<p>Note, this is different to iterating over the results from calling <strong>map() </strong>in two ways.</p>
+<p>Firstly <strong>map()</strong> returns an iterator over objects, not over <strong>Future</strong> objects.</p>
+<p>Secondly, <strong>map()</strong> returns results in the order that the tasks were submitted, not in the order that they are completed.</p>
+<h2 id="step-4-shutdown-the-process-pool">Step 4. Shutdown the Process Pool</h2>
+<p>Once all tasks are completed we can close down the process pool which will release each process and any resources it may hold.</p>
+<p>For example, each process is running an instance of the Python interpreter and at least one thread (the main thread) that has its own stack space.</p>
+<pre><code>...
+# shutdown the process pool
+executor.shutdown() # blocks</code></pre>
+<p>The <strong>shutdown() </strong>function will wait for all tasks in the process pool to complete before returning by default.</p>
+<p>This behavior can be changed by setting the "<strong>wait</strong>" argument to <strong>False</strong> when calling <strong>shutdown()</strong>, in which case the function will return immediately. The resources used by the process pool will not be released until all current and queued tasks are completed.</p>
+<pre><code>...
+# shutdown the process pool
+executor.shutdown(wait=False) # does not block</code></pre>
+<p>We can also instruct the pool to cancel all queued tasks to prevent their execution. This can be achieved by setting the "<strong>cancel_futures</strong>" argument to <strong>True</strong>. By default queued tasks are not cancelled when calling <strong>shutdown()</strong>.</p>
+<pre><code>...
+# cancel all queued tasks
+executor.shutdown(cancel_futures=True) # blocks</code></pre>
+<p>If we forget to close the process pool, the process pool will be closed automatically when we exit the main thread. If we forget to close the pool and there are still tasks executing, the main process will not exit until all tasks in the pool and all queued tasks have executed.</p>
+<h3 id="step-4a-shutdown-automatically-with-the-context-manager">Step 4a. Shutdown Automatically with the Context Manager</h3>
+<p>A preferred way to work with the <strong>ProcessPoolExecutor</strong> class is to use a context manager.</p>
+<p>This matches the preferred way to work with other resources such as files and sockets.</p>
+<p>Using the <strong>ProcessPoolExecutor</strong> with a context manager involves using the "<strong>with</strong>" keyword to create a block in which you can use the process pool to execute tasks and get results.</p>
+<p>Once the block has completed the process pool is automatically shutdown. Internally, the context manager will call the <strong>shutdown()</strong> function with the default arguments, waiting for all queued and executing tasks to complete before returning and carrying on.</p>
+<p>Below is a code snippet to demonstrate creating a process pool using the context manager.</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor(max_workers=10) as executor:
+	# submit tasks and get results
+	# ...
+	# automatically shutdown the process pool...
+# the pool is shutdown at this point
+</code></pre>
+<p>This is a very handy idiom if you are converting a for loop to be executed asynchronously.</p>
+<p>It is less useful if you want the process pool to operate in the background while you perform other work in the main thread of your program, or if you wish to reuse the process pool multiple times throughout your program.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to get started with the <strong>ProcessPoolExecutor</strong> in Python.</p>
 </main>
 </body>
 </html>

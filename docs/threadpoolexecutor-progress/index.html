@@ -83,6 +83,170 @@ def progress_indicator(future):
     print('.', end='', flush=True)
 </code></pre>
 <p>Next, we can create a thread pool with two threads and submit many tasks.</p>
+<pre><code>...
+# start the thread pool
+with ThreadPoolExecutor(2) as executor:
+    # send in the tasks
+    futures = [executor.submit(task, i) for i in range(20)]
+</code></pre>
+<p>We can then register the callback with each task, which will be executed after each task has completed.</p>
+<pre><code>...
+# register the progress indicator callback
+for future in futures:
+    future.add_done_callback(progress_indicator)
+</code></pre>
+<p>That's it.</p>
+<p>Tying this together, the complete example of showing a progress indicator of completed tasks is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a simple progress indicator for tasks
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# simple progress indicator callback function
+def progress_indicator(future):
+    print('.', end='', flush=True)
+
+# mock test that works for moment
+def task(name):
+    sleep(random())
+
+# start the thread pool
+with ThreadPoolExecutor(2) as executor:
+    # send in the tasks
+    futures = [executor.submit(task, i) for i in range(20)]
+    # register the progress indicator callback
+    for future in futures:
+        future.add_done_callback(progress_indicator)
+    # wait for all tasks to complete
+print('\nDone!')
+</code></pre>
+<p>Running the example creates the thread pool and submits twenty tasks for execution.</p>
+<p>The tasks complete one-by-one, reporting the progress of completed tasks with printed dots.</p>
+<p>Once all 20 tasks have completed with all 20 dots printed, we can carry on with our program.</p>
+<pre><code>....................
+Done!
+</code></pre>
+<h2 id="how-to-count-tasks-completed">How to Count Tasks Completed</h2>
+<p>We may want to report the total number of tasks that have completed and/or the total tasks that remain to be executed.</p>
+<p>This requires a counter of the total number of tasks completed so far.</p>
+<p>Multiple threads may try and update or report values from the counter at the same time, which may make the counter inconsistent or report incorrect values.</p>
+<pre><code>...
+# update the counter
+tasks_completed += 1
+# report progress
+print(f'{tasks_completed}/{tasks_total} completed, {tasks_total-tasks_completed} remain.')
+</code></pre>
+<p>Reading and writing the counter must be made thread-safe, e.g. an operation that only one thread can perform at a time.</p>
+<p>This can be achieved using a <code>threading.Lock</code> class, which must be acquired before the counter can be updated or reported.</p>
+<p>Once the lock is held by one thread, any other thread must wait to acquire the lock before it can update the counter. This waiting is performed automatically. As soon as the lock is released, another thread may acquire the lock and update the counter.</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+# update the counter
+tasks_completed += 1
+# report progress
+print(f'{tasks_completed}/{tasks_total} completed, {tasks_total-tasks_completed} remain.')
+# release the lock
+lock.release()
+</code></pre>
+<p>The lock can be acquired using a context manager, ensuring it is released automatically once we are finished with it.</p>
+<pre><code>...
+# obtain the lock
+with lock:
+    # update the counter
+    tasks_completed += 1
+    # report progress
+    print(f'{tasks_completed}/{tasks_total} completed, {tasks_total-tasks_completed} remain.')
+</code></pre>
+<p>We cannot pass objects to the callback function or store data in the <code>Future</code> object for the task, so this approach would require the use of global variables or to occur within a thread that keeps track of tasks as they are completed via the <code>as_completed()</code> function.</p>
+<p>Let's use global variables for the lock, the counter, and the total number of tasks and access them from the callback function called by the <code>ThreadPoolExecutor</code> as each task is completed.</p>
+<p>The updated callback function to report the total complete and total remaining tasks in the thread pool is listed below.</p>
+<pre><code># simple progress indicator callback function
+def progress_indicator(future):
+    global lock, tasks_total, tasks_completed
+    # obtain the lock
+    with lock:
+        # update the counter
+        tasks_completed += 1
+        # report progress
+        print(f'{tasks_completed}/{tasks_total} completed, {tasks_total-tasks_completed} remain.')
+</code></pre>
+<p>We then create the Lock and counters at the beginning of our program</p>
+<pre><code>...
+# create a lock for the counter
+lock = Lock()
+# total tasks we will execute
+tasks_total = 20
+# total completed tasks
+tasks_completed = 0
+</code></pre>
+<p>Tying this together, the complete example of keeping track of the number of complete and remaining tasks is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a simple progress indicator for tasks
+from time import sleep
+from random import random
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# simple progress indicator callback function
+def progress_indicator(future):
+    global lock, tasks_total, tasks_completed
+    # obtain the lock
+    with lock:
+        # update the counter
+        tasks_completed += 1
+        # report progress
+        print(f'{tasks_completed}/{tasks_total} completed, {tasks_total-tasks_completed} remain.')
+
+# mock test that works for moment
+def task(name):
+    sleep(random())
+
+# create a lock for the counter
+lock = Lock()
+# total tasks we will execute
+tasks_total = 20
+# total completed tasks
+tasks_completed = 0
+# start the thread pool
+with ThreadPoolExecutor(2) as executor:
+    # send in the tasks
+    futures = [executor.submit(task, i) for i in range(20)]
+    # register the progress indicator callback
+    for future in futures:
+        future.add_done_callback(progress_indicator)
+    # wait for all tasks to complete
+print('Done!')
+</code></pre>
+<p>Running the example creates the thread pool, submits the tasks, and registers the callback function as before.</p>
+<p>As tasks complete, the updated callback function is used, first updating the counter, reporting the total complete and total remaining tasks in a thread-safe manner, governed by a lock.</p>
+<pre><code>1/20 completed, 19 remain.
+2/20 completed, 18 remain.
+3/20 completed, 17 remain.
+4/20 completed, 16 remain.
+5/20 completed, 15 remain.
+6/20 completed, 14 remain.
+7/20 completed, 13 remain.
+8/20 completed, 12 remain.
+9/20 completed, 11 remain.
+10/20 completed, 10 remain.
+11/20 completed, 9 remain.
+12/20 completed, 8 remain.
+13/20 completed, 7 remain.
+14/20 completed, 6 remain.
+15/20 completed, 5 remain.
+16/20 completed, 4 remain.
+17/20 completed, 3 remain.
+18/20 completed, 2 remain.
+19/20 completed, 1 remain.
+20/20 completed, 0 remain.
+Done!
+</code></pre>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to show progress of tasks in the <code>ThreadPoolExecutor</code>.</p>
 </main>
 </body>
 </html>

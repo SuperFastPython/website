@@ -245,6 +245,2650 @@ result = future.result(timeout=5) # blocks</code></pre>
 </ul>
 <p>You can use both functions with <strong>Future</strong> objects created by one or more thread pools, they are not specific to any given thread pool in your application. This is helpful if you want to perform waiting operations across multiple thread pools that are executing different types of tasks.</p>
 <p>Both functions are useful to use with an idiom of dispatching multiple tasks into the thread pool via submit in a list compression; for example:</p>
+<pre><code>...
+# dispatch tasks into the thread pool and create a list of futures
+futures = [executor.submit(my_task, my_data) for my_data in my_datalist]</code></pre>
+<p>Here, my_task is our custom target task function, "<strong>my_data</strong>" is one element of data passed as an argument to "<strong>my_task</strong>", and "<strong>my_datalist</strong>" is our source of <strong>my_data</strong> objects.</p>
+<p>We can then pass the <strong>Future</strong> objects to <strong>wait()</strong> or <strong>as_completed()</strong>.</p>
+<p>Creating a list of <strong>Future</strong> objects in this way is not required, just a common pattern when converting for loops into tasks submitted to a thread pool.</p>
+<h4>Step 3a. Wait for Futures to Complete</h4>
+<p>The <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.wait"><strong>wait()</strong> function</a> can take one or more <strong>Future</strong> objects and will return when a specified action occurs, such as all tasks completing, one task completing, or one task raising an exception.</p>
+<p>The function will return one set of <strong>Future</strong> objects that match the condition set via the "<strong>return_when</strong>". The second set will contain all of the futures for tasks that did not meet the condition. These are called the "<strong>done</strong>" and the "<strong>not_done</strong>" sets of futures.</p>
+<p>It is useful for waiting on a large batch of work and to stop waiting when we get the first result.</p>
+<p>This can be achieved via the <strong>FIRST_COMPLETED</strong> constant passed to the "<strong>return_when</strong>" argument.</p>
+<pre><code>...
+# wait until we get the first result
+done, not_done = wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)</code></pre>
+<p>Alternatively, we can wait for all tasks to complete via the <strong>ALL_COMPLETED</strong> constant.</p>
+<p>This can be helpful if you are using <strong>submit()</strong> to dispatch tasks and are looking for an easy way to wait for all work to be completed.</p>
+<pre><code>...
+# wait for all tasks to complete
+done, not_done = wait(futures, return_when=concurrent.futures.ALL_COMPLETED)</code></pre>
+<p>There is also an option to wait for the first exception via the <strong>FIRST_EXCEPTION</strong> constant.</p>
+<pre><code>...
+# wait for the first exception
+done, not_done = wait(futures, return_when=concurrent.futures.FIRST_EXCEPTION)</code></pre>
+<h4>Step 3b. Wait for Futures as Completed</h4>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available, rather than waiting for all tasks to be completed.</p>
+<p>The <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.as_completed">as_completed() function</a> will return <strong>Future</strong> objects for tasks as they are completed in the thread pool.</p>
+<p>We can call the function and provide it a list of <strong>Future</strong> objects created by calling <strong>submit()</strong> and it will return <meta/><strong>Future</strong> objects as they are completed in whatever order.</p>
+<p>It is common to use the <strong>as_completed()</strong> function in a loop over the list of <strong>Future</strong> objects created when calling submit; for example:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result for the next completed task
+	result = future.result() # blocks
+</code></pre>
+<p>Note: this is different from iterating over the results from calling <strong>map()</strong> in two ways. Firstly, <strong>map() </strong>returns an iterator over objects, not over <strong>Future</strong> objects. Secondly, <strong>map()</strong> returns results in the order that the tasks were submitted, not in the order that they are completed.</p>
+<h3>Step 4. Shutdown the Thread Pool</h3>
+<p>Once all tasks are completed, we can close down the thread pool, which will release each thread and any resources it may hold (e.g. the thread stack space).</p>
+<pre><code>...
+# shutdown the thread pool
+executor.shutdown() # blocks</code></pre>
+<p>The <strong>shutdown()</strong> function will wait for all tasks in the thread pool to complete before returning by default.</p>
+<p>This behavior can be changed by setting the "<strong>wait</strong>" argument to <strong>False</strong> when calling <strong>shutdown()</strong>, in which case the function will return immediately. The resources used by thread pool will not be released until all current and queued tasks are completed.</p>
+<pre><code>...
+# shutdown the thread pool
+executor.shutdown(wait=False) # does not blocks</code></pre>
+<p>We can also instruct the pool to cancel all queued tasks to prevent their execution. This can be achieved by setting the "<strong>cancel_futures</strong>" argument to <strong>True</strong>. By default queued tasks are not cancelled when calling <strong>shutdown()</strong>.</p>
+<pre><code>...
+# cancel all queued tasks
+executor.shutdown(cancel_futures=True) # blocks</code></pre>
+<p>If we forget to close the thread pool, the thread pool will be closed automatically when we exit the main thread. If we forget to close the pool and there are still tasks executing, the main thread will not exit until all tasks in the pool and all queued tasks have executed.</p>
+<h3>ThreadPoolExecutor Context Manager</h3>
+<p>A preferred way to work with the <strong>ThreadPoolExecutor</strong> class is to use a context manager.</p>
+<p>This matches the preferred way to work with other resources, such as files and sockets.</p>
+<p>Using the <strong>ThreadPoolExecutor</strong> with a context manager involves using the "<strong>with</strong>" keyword to create a block in which you can use the thread pool to execute tasks and get results.</p>
+<p>Once the block has completed, the thread pool is automatically shut down. Internally, the context manager will call the <strong>shutdown() </strong>function with the default arguments, waiting for all queued and executing tasks to complete before returning and carrying on.</p>
+<p>Below is a code snippet to demonstrate creating a thread pool using the context manager.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=10) as pool:
+	# submit tasks and get results
+	# ...
+	# automatically shutdown the thread pool...
+# the pool is shutdown at this point
+</code></pre>
+<p>This is a very handy idiom if you are converting a for loop to be multithreaded.</p>
+<p>It is less useful if you want the thread pool to operate in the background while you perform other work in the main thread of your program, or if you wish to reuse the thread pool multiple times throughout your program.</p>
+<p>Now that we are familiar with how to use the <strong>ThreadPoolExecutor</strong>, let's look at some worked examples.</p>
+<h2>ThreadPoolExecutor Example</h2>
+<p>In this section, we will look at a more complete example of using the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Perhaps the most common use case for the <a href="../threadpoolexecutor-example/"><strong>ThreadPoolExecutor</strong> is to download files</a> from the internet concurrently.</p>
+<p>It's a useful problem because there are many ways we can download files. We will use this problem as the basis to explore the different patterns with the <strong>ThreadPoolExecutor</strong> for downloading files concurrently.</p>
+<p>First, let's develop a serial (non-concurrent) version of the program.</p>
+<h3>Download Files Serially</h3>
+<p>Consider the situation where we might want to have a local copy of some of the Python API documentation on concurrency for later view.</p>
+<p>Perhaps we are taking a flight and won't have internet access and will need to refer to the documentation in HTML format as it appears on the docs.python.org website. It's a contrived scenario; Python is installed with docs and we also have the pydoc command, but go with me here.</p>
+<p>We may want to download local copies of the following ten URLs that cover the extent of the Python concurrency APIs.</p>
+<p>We can define these URLs as a list of strings for processing in our program.</p>
+<pre><code># python concurrency API docs
+URLS = ['https://docs.python.org/3/library/concurrency.html',
+        'https://docs.python.org/3/library/concurrent.html',
+        'https://docs.python.org/3/library/concurrent.futures.html',
+        'https://docs.python.org/3/library/threading.html',
+        'https://docs.python.org/3/library/multiprocessing.html',
+        'https://docs.python.org/3/library/multiprocessing.shared_memory.html',
+        'https://docs.python.org/3/library/subprocess.html',
+        'https://docs.python.org/3/library/queue.html',
+        'https://docs.python.org/3/library/sched.html',
+        'https://docs.python.org/3/library/contextvars.html']
+</code></pre>
+<p>URLs are reasonably easy to download in Python.</p>
+<p>First, we can attempt to open a connection to the server using the <a href="https://docs.python.org/3/library/urllib.request.html">urllib.request.urlopen()</a> function and specify the URL and a reasonable timeout in seconds.</p>
+<p>This will give a connection, which we can then call the <strong>read()</strong> function to read the contents of the file. Using the context manager for the connection will ensure it will be closed automatically, even if an exception is <meta/>raised.</p>
+<p>The <strong>download_url() </strong>function below implements this, taking a URL as a parameter and returning the contents of the file or <strong>None</strong> if the file cannot be downloaded for whatever reason. We will set a lengthy timeout of 3 seconds in case our internet connection is flaky for some reason.</p>
+<pre><code># download a url and return the raw data, or None on error
+def download_url(url):
+    try:
+        # open a connection to the server
+        with urlopen(url, timeout=3) as connection:
+            # read the contents of the html doc
+            return connection.read()
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return None
+</code></pre>
+<p>Once we have the data for a URL, we can save it as a local file.</p>
+<p>First, we need to retrieve the filename of the file specified in the URL. There are a few ways to do this, but the <strong>os.path.basename() </strong>function is a common approach when working with paths. We can then use the <a href="https://docs.python.org/3/library/os.path.html">os.path.join()</a> function to construct an output path for saving the file, using a directory we specify and the filename.</p>
+<p>We can then use the <strong>open()</strong> built-in function to open the file in write-binary mode and save the contents of the file, again using the context manager to ensure the file is closed once we are finished.</p>
+<p>The <strong>save_file()</strong> function below implements this, taking the URL that was downloaded, the contents of the file that was downloaded, and the local output path where we wish to save downloaded files. It returns the output path that was used to save the file, in case we want to report progress to the user.</p>
+<pre><code># save data to a local file
+def save_file(url, data, path):
+    # get the name of the file from the url
+    filename = basename(url)
+    # construct a local path for saving the file
+    outpath = join(path, filename)
+    # save to file
+    with open(outpath, 'wb') as file:
+        file.write(data)
+    return outpath
+</code></pre>
+<p>Next, we can call the <strong>download_url()</strong> function for a given URL in our list then <strong>save_file()</strong> to save each downloaded file.</p>
+<p>The <strong>download_and_save() </strong>function below implements this, reporting progress along the way, and handling the case of URLs that cannot be downloaded.</p>
+<pre><code># download and save a url as a local file
+def download_and_save(url, path):
+    # download the url
+    data = download_url(url)
+    # check for no data
+    if data is None:
+        print(f'&gt;Error downloading {url}')
+        return
+    # save the data to a local file
+    outpath = save_file(url, data, path)
+    # report progress
+    print(f'&gt;Saved {url} to {outpath}')
+</code></pre>
+<p>Finally, we need a function to drive the process.</p>
+<p>First, the local output location where we will be saving files needs to be created, if it does not exist. We can achieve this using the <a href="https://docs.python.org/3/library/os.html">os.makedirs()</a> function.</p>
+<p>We can iterate over a list of URLs and call our <strong>download_and_save()</strong> function for each.</p>
+<p>The <strong>download_docs()</strong> function below implements this.</p>
+<pre><code># download a list of URLs to local files
+def download_docs(urls, path):
+    # create the local directory, if needed
+    makedirs(path, exist_ok=True)
+    # download each url and save as a local file
+    for url in urls:
+        download_and_save(url, path)
+</code></pre>
+<p>And that's it.</p>
+<p>We can then call our <strong>download_docs()</strong> with our list of URLs and an output directory. In this case, we will use a '<strong>docs/</strong>' subdirectory of our current working directory (where the Python script is located) as the output directory.</p>
+<p>Tying this together, the complete example of downloading files serially is listed below.</p>
+<pre><code># SuperFastPython.com
+# download document files and save to local files serially
+from os import makedirs
+from os.path import basename
+from os.path import join
+from urllib.request import urlopen
+
+# download a url and return the raw data, or None on error
+def download_url(url):
+    try:
+        # open a connection to the server
+        with urlopen(url, timeout=3) as connection:
+            # read the contents of the html doc
+            return connection.read()
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return None
+
+# save data to a local file
+def save_file(url, data, path):
+    # get the name of the file from the url
+    filename = basename(url)
+    # construct a local path for saving the file
+    outpath = join(path, filename)
+    # save to file
+    with open(outpath, 'wb') as file:
+        file.write(data)
+    return outpath
+
+# download and save a url as a local file
+def download_and_save(url, path):
+    # download the url
+    data = download_url(url)
+    # check for no data
+    if data is None:
+        print(f'&gt;Error downloading {url}')
+        return
+    # save the data to a local file
+    outpath = save_file(url, data, path)
+    # report progress
+    print(f'&gt;Saved {url} to {outpath}')
+
+# download a list of URLs to local files
+def download_docs(urls, path):
+    # create the local directory, if needed
+    makedirs(path, exist_ok=True)
+    # download each url and save as a local file
+    for url in urls:
+        download_and_save(url, path)
+
+# python concurrency API docs
+URLS = ['https://docs.python.org/3/library/concurrency.html',
+        'https://docs.python.org/3/library/concurrent.html',
+        'https://docs.python.org/3/library/concurrent.futures.html',
+        'https://docs.python.org/3/library/threading.html',
+        'https://docs.python.org/3/library/multiprocessing.html',
+        'https://docs.python.org/3/library/multiprocessing.shared_memory.html',
+        'https://docs.python.org/3/library/subprocess.html',
+        'https://docs.python.org/3/library/queue.html',
+        'https://docs.python.org/3/library/sched.html',
+        'https://docs.python.org/3/library/contextvars.html']
+# local path for saving the files
+PATH = 'docs'
+# download all docs
+download_docs(URLS, PATH)
+</code></pre>
+<p>Running the example iterates over the list of URLs and downloads each in turn.</p>
+<p>Each file is then saved to a local file in the specified directory.</p>
+<p>The process takes about 700 milliseconds to about one second (1,000 milliseconds) on my system.</p>
+<p><strong>Try running it a few times; how long does it take on your system?</strong><br/>Let me know in the comments.</p>
+<pre><code>&gt;Saved https://docs.python.org/3/library/concurrency.html to docs/concurrency.html
+&gt;Saved https://docs.python.org/3/library/concurrent.html to docs/concurrent.html
+&gt;Saved https://docs.python.org/3/library/concurrent.futures.html to docs/concurrent.futures.html
+&gt;Saved https://docs.python.org/3/library/threading.html to docs/threading.html
+&gt;Saved https://docs.python.org/3/library/multiprocessing.html to docs/multiprocessing.html
+&gt;Saved https://docs.python.org/3/library/multiprocessing.shared_memory.html to docs/multiprocessing.shared_memory.html
+&gt;Saved https://docs.python.org/3/library/subprocess.html to docs/subprocess.html
+&gt;Saved https://docs.python.org/3/library/queue.html to docs/queue.html
+&gt;Saved https://docs.python.org/3/library/sched.html to docs/sched.html
+&gt;Saved https://docs.python.org/3/library/contextvars.html to docs/contextvars.html
+</code></pre>
+<p>Next, we can look at making the program concurrent using a thread pool.</p>
+<h3>Download Files Concurrently With submit()</h3>
+<p>Let's look at updating our program to make use of the <strong>ThreadPoolExecutor</strong> to download files concurrently.</p>
+<p>A first thought might be to use <strong>map()</strong> as we just want to make a for-loop concurrent.</p>
+<p>Unfortunately, the <strong>download_and_save()</strong> function that we call each iteration in the loop takes two parameters, only one of which is an iterable.</p>
+<p>An alternate approach is to use submit() to call <strong>download_and_save()</strong> in a separate thread for each URL in the provided list.</p>
+<p>We can do this by first configuring a thread pool with the number of threads equal to the number of URLs in the list. We'll use the context manager for the thread pool so that it will be closed automatically for us when we finish.</p>
+<p>We can then call the <strong>submit()</strong> function for each URL using a list compression. We don't even need the Future objects returned from calling submit, as there is no result we're waiting for.</p>
+<pre><code>...
+# create the thread pool
+n_threads = len(urls)
+with ThreadPoolExecutor(n_threads) as executor:
+    # download each url and save as a local file
+    _ = [executor.submit(download_and_save, url, path) for url in urls]
+</code></pre>
+<p>Once each thread has completed, the context manager will close the thread pool for us and we're done.</p>
+<p>We don't even need to add an explicit call to wait, although we could if we wanted to make the code more readable; for example:</p>
+<pre><code>...
+# create the thread pool
+n_threads = len(urls)
+with ThreadPoolExecutor(n_threads) as executor:
+    # download each url and save as a local file
+    futures = [executor.submit(download_and_save, url, path) for url in urls]
+    # wait for all download tasks to complete
+    _, _ = wait(futures)
+</code></pre>
+<p>But, adding this wait is not needed.</p>
+<p>The updated version of our <strong>download_docs()</strong> function that downloads and saves the files concurrently is listed below.</p>
+<pre><code># download a list of URLs to local files
+def download_docs(urls, path):
+    # create the local directory, if needed
+    makedirs(path, exist_ok=True)
+    # create the thread pool
+    n_threads = len(urls)
+    with ThreadPoolExecutor(n_threads) as executor:
+        # download each url and save as a local file
+        _ = [executor.submit(download_and_save, url, path) for url in urls]
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# download document files and save to local files concurrently
+from os import makedirs
+from os.path import basename
+from os.path import join
+from urllib.request import urlopen
+from concurrent.futures import ThreadPoolExecutor
+
+# download a url and return the raw data, or None on error
+def download_url(url):
+    try:
+        # open a connection to the server
+        with urlopen(url, timeout=3) as connection:
+            # read the contents of the html doc
+            return connection.read()
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return None
+
+# save data to a local file
+def save_file(url, data, path):
+    # get the name of the file from the url
+    filename = basename(url)
+    # construct a local path for saving the file
+    outpath = join(path, filename)
+    # save to file
+    with open(outpath, 'wb') as file:
+        file.write(data)
+    return outpath
+
+# download and save a url as a local file
+def download_and_save(url, path):
+    # download the url
+    data = download_url(url)
+    # check for no data
+    if data is None:
+        print(f'&gt;Error downloading {url}')
+        return
+    # save the data to a local file
+    outpath = save_file(url, data, path)
+    # report progress
+    print(f'&gt;Saved {url} to {outpath}')
+
+# download a list of URLs to local files
+def download_docs(urls, path):
+    # create the local directory, if needed
+    makedirs(path, exist_ok=True)
+    # create the thread pool
+    n_threads = len(urls)
+    with ThreadPoolExecutor(n_threads) as executor:
+        # download each url and save as a local file
+        _ = [executor.submit(download_and_save, url, path) for url in urls]
+
+# python concurrency API docs
+URLS = ['https://docs.python.org/3/library/concurrency.html',
+        'https://docs.python.org/3/library/concurrent.html',
+        'https://docs.python.org/3/library/concurrent.futures.html',
+        'https://docs.python.org/3/library/threading.html',
+        'https://docs.python.org/3/library/multiprocessing.html',
+        'https://docs.python.org/3/library/multiprocessing.shared_memory.html',
+        'https://docs.python.org/3/library/subprocess.html',
+        'https://docs.python.org/3/library/queue.html',
+        'https://docs.python.org/3/library/sched.html',
+        'https://docs.python.org/3/library/contextvars.html']
+# local path for saving the files
+PATH = 'docs'
+# download all docs
+download_docs(URLS, PATH)
+</code></pre>
+<p>Running the example downloads and saves the files as before.</p>
+<p>This time, the operation is complete in a fraction of a second. About 300 milliseconds in my case, which is less than half the time it took to download all files serially in the previous example.</p>
+<p><strong>How long did it take to download all files on your system?</strong></p>
+<pre><code>&gt;Saved https://docs.python.org/3/library/concurrent.html to docs/concurrent.html
+&gt;Saved https://docs.python.org/3/library/multiprocessing.shared_memory.html to docs/multiprocessing.shared_memory.html
+&gt;Saved https://docs.python.org/3/library/concurrency.html to docs/concurrency.html
+&gt;Saved https://docs.python.org/3/library/sched.html to docs/sched.html
+&gt;Saved https://docs.python.org/3/library/contextvars.html to docs/contextvars.html
+&gt;Saved https://docs.python.org/3/library/queue.html to docs/queue.html
+&gt;Saved https://docs.python.org/3/library/concurrent.futures.html to docs/concurrent.futures.html
+&gt;Saved https://docs.python.org/3/library/threading.html to docs/threading.html
+&gt;Saved https://docs.python.org/3/library/subprocess.html to docs/subprocess.html
+&gt;Saved https://docs.python.org/3/library/multiprocessing.html to docs/multiprocessing.html
+</code></pre>
+<p>This is one approach to making the program concurrent, but let's look at some alternatives.</p>
+<h3>Download Files Concurrently With submit() and as_completed()</h3>
+<p>Perhaps we want to report the progress of downloads as they are completed.</p>
+<p>The thread pool allows us to do this by storing the <strong>Future</strong> objects returned from calls to <strong>submit()</strong> and then calling the <strong>as_completed()</strong> on the collection of <strong>Future</strong> objects.</p>
+<p>Also, consider that we are doing two things in the task. The first is a downloading from a remote server, which is an IO-bound operation that we can make concurrently. The second is saving the contents of the file to the local hard drive, which is another IO-bound operation that we cannot make concurrently as most hard drives can only save one file at a time.</p>
+<p>Therefore, perhaps a better design is to only make the file downloading part of the program a concurrent task and the file saving part of the program serial.</p>
+<p>This will require more changes to the program.</p>
+<p>We can call the <strong>download_url()</strong> function for each URL and this can be our concurrent task submitted to the thread pool.</p>
+<p>When we call <strong>result()</strong> on each <strong>Future</strong> object, it will give us the data that was downloaded, but we won't know what URL the data was downloaded from. The <strong>Future</strong> object won't know.</p>
+<p>Therefore, we can update the <strong>download_url()</strong> to return both the data that was downloaded and the URL that was provided as an argument.</p>
+<p>The updated version of the <strong>download_url()</strong> function that returns a tuple of data and the input URL is listed below.</p>
+<pre><code># download a url and return the raw data, or None on error
+def download_url(url):
+    try:
+        # open a connection to the server
+        with urlopen(url, timeout=3) as connection:
+            # read the contents of the html doc
+            return (connection.read(), url)
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return (None, url)
+</code></pre>
+<p>We can then submit a call to this function to each URL to the thread pool to give us a <strong>Future</strong> object.</p>
+<pre><code>...
+# download each url and save as a local file
+futures = [executor.submit(download_url, url) for url in urls]
+</code></pre>
+<p>So far, so good.</p>
+<p>Now, we want to save local files and report progress as the files are downloaded.</p>
+<p>This requires that we cannibalize the <strong>download_and_save()</strong> function and move it back into the <strong>download_docs()</strong> function used to drive the program.</p>
+<p>We can iterate over the futures via the <strong>as_completed()</strong> function that will return <strong>Future</strong> objects in the order that the downloads are completed, not the order that we dispatched them into the thread pool.</p>
+<p>We can then retrieve the data and URL from the <strong>Future</strong> object.</p>
+<pre><code>...
+# process each result as it is available
+for future in as_completed(futures):
+    # get the downloaded url data
+    data, url = future.result()
+</code></pre>
+<p>We can check if the download was unsuccessful and report an error, otherwise save the file and report progress as per normal. A direct copy-paste from the <strong>download_and_save()</strong> function.</p>
+<pre><code>...
+# check for no data
+if data is None:
+    print(f'&gt;Error downloading {url}')
+    continue
+# save the data to a local file
+outpath = save_file(url, data, path)
+# report progress
+print(f'&gt;Saved {url} to {outpath}')
+</code></pre>
+<p>The updated version of our <strong>download_docs()</strong> function that will only download files concurrently then save the files serially as the files are downloaded is listed below.</p>
+<pre><code># download a list of URLs to local files
+def download_docs(urls, path):
+    # create the local directory, if needed
+    makedirs(path, exist_ok=True)
+    # create the thread pool
+    n_threads = len(urls)
+    with ThreadPoolExecutor(n_threads) as executor:
+        # download each url and save as a local file
+        futures = [executor.submit(download_url, url) for url in urls]
+        # process each result as it is available
+        for future in as_completed(futures):
+            # get the downloaded url data
+            data, url = future.result()
+            # check for no data
+            if data is None:
+                print(f'&gt;Error downloading {url}')
+                continue
+            # save the data to a local file
+            outpath = save_file(url, data, path)
+            # report progress
+            print(f'&gt;Saved {url} to {outpath}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# download document files concurrently and save the files locally serially
+from os import makedirs
+from os.path import basename
+from os.path import join
+from urllib.request import urlopen
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# download a url and return the raw data, or None on error
+def download_url(url):
+    try:
+        # open a connection to the server
+        with urlopen(url, timeout=3) as connection:
+            # read the contents of the html doc
+            return (connection.read(), url)
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return (None, url)
+
+# save data to a local file
+def save_file(url, data, path):
+    # get the name of the file from the url
+    filename = basename(url)
+    # construct a local path for saving the file
+    outpath = join(path, filename)
+    # save to file
+    with open(outpath, 'wb') as file:
+        file.write(data)
+    return outpath
+
+# download a list of URLs to local files
+def download_docs(urls, path):
+    # create the local directory, if needed
+    makedirs(path, exist_ok=True)
+    # create the thread pool
+    n_threads = len(urls)
+    with ThreadPoolExecutor(n_threads) as executor:
+        # download each url and save as a local file
+        futures = [executor.submit(download_url, url) for url in urls]
+        # process each result as it is available
+        for future in as_completed(futures):
+            # get the downloaded url data
+            data, url = future.result()
+            # check for no data
+            if data is None:
+                print(f'&gt;Error downloading {url}')
+                continue
+            # save the data to a local file
+            outpath = save_file(url, data, path)
+            # report progress
+            print(f'&gt;Saved {url} to {outpath}')
+
+# python concurrency API docs
+URLS = ['https://docs.python.org/3/library/concurrency.html',
+        'https://docs.python.org/3/library/concurrent.html',
+        'https://docs.python.org/3/library/concurrent.futures.html',
+        'https://docs.python.org/3/library/threading.html',
+        'https://docs.python.org/3/library/multiprocessing.html',
+        'https://docs.python.org/3/library/multiprocessing.shared_memory.html',
+        'https://docs.python.org/3/library/subprocess.html',
+        'https://docs.python.org/3/library/queue.html',
+        'https://docs.python.org/3/library/sched.html',
+        'https://docs.python.org/3/library/contextvars.html']
+# local path for saving the files
+PATH = 'docs'
+# download all docs
+download_docs(URLS, PATH)
+</code></pre>
+<p>Running the program, the files are downloaded and saved as before, perhaps a few milliseconds faster.</p>
+<p>Looking at the output of the program, we can see that the order of saved files is different.</p>
+<p>Smaller files like "<strong>sched.html</strong>" that were dispatched nearly last were downloaded sooner (e.g. less bytes to download) and in turn were saved to local files sooner.</p>
+<p>This confirms that we are indeed processing downloads in their order of task completion and not the order the tasks were submitted.</p>
+<pre><code>&gt;Saved https://docs.python.org/3/library/concurrent.html to docs/concurrent.html
+&gt;Saved https://docs.python.org/3/library/sched.html to docs/sched.html
+&gt;Saved https://docs.python.org/3/library/concurrency.html to docs/concurrency.html
+&gt;Saved https://docs.python.org/3/library/contextvars.html to docs/contextvars.html
+&gt;Saved https://docs.python.org/3/library/queue.html to docs/queue.html
+&gt;Saved https://docs.python.org/3/library/multiprocessing.shared_memory.html to docs/multiprocessing.shared_memory.html
+&gt;Saved https://docs.python.org/3/library/threading.html to docs/threading.html
+&gt;Saved https://docs.python.org/3/library/concurrent.futures.html to docs/concurrent.futures.html
+&gt;Saved https://docs.python.org/3/library/subprocess.html to docs/subprocess.html
+&gt;Saved https://docs.python.org/3/library/multiprocessing.html to docs/multiprocessing.html
+</code></pre>
+<p>Now that we have seen some examples, let's look at some common usage patterns when using the <strong>ThreadPoolExecutor</strong>.</p>
+<h2>ThreadPoolExecutor Usage Patterns</h2>
+<p>The <strong>ThreadPoolExecutor</strong> provides a lot of flexibility for executing concurrent tasks in Python.</p>
+<p>Nevertheless, there are a handful of common usage patterns that will fit most program scenarios.</p>
+<p>This section lists the <a href="../threadpoolexecutor-usage-patterns/">common usage patterns</a> with worked examples that you can copy-and-paste into your own project and adapt as needed.</p>
+<p>The patterns we will look at are as follows:</p>
+<ul>
+<li>Map and Wait Pattern</li>
+<li>Submit and Use as Completed Pattern</li>
+<li>Submit and Use Sequentially Pattern</li>
+<li>Submit and Use Callback Pattern</li>
+<li>Submit and Wait for All Pattern</li>
+<li>Submit and Wait for First Pattern</li>
+</ul>
+<p>We will use a contrived task in each example that will sleep for a random amount of time less than one second. You can easily replace this example task with your own task in each pattern.</p>
+<p>Also, recall that each Python program has one thread by default called the main thread where we do our work. We will create the thread pool in the main thread in each example and may reference actions in the main thread in some of the patterns, as opposed to actions in threads in the thread pool.</p>
+<h3>Map and Wait Pattern</h3>
+<p>Perhaps the most common pattern when using the <strong>ThreadPoolExecutor</strong> is to convert a for loop that executes a function on each item in a collection to use threads.</p>
+<p>It assumes that the function has no side effects, meaning it does not access any data outside of the function and does not change the data provided to it. It takes data and produces a result.</p>
+<p>These types of for loops can be written explicitly in Python; for example:</p>
+<pre><code>...
+# apply a function to each element in a collection
+for item in mylist:
+	result = task(item)
+</code></pre>
+<p>A better practice is to use the built-in <strong>map()</strong> function that applies the function to each item in the iterable for you.</p>
+<pre><code>...
+# apply the function to each element in the collection
+results = map(task, mylist)</code></pre>
+<p>This does not perform the <strong>task()</strong> function to each item until we iterate the results, so-called lazy evaluation:</p>
+<pre><code>...
+# iterate the results from map
+for result in results:
+	print(result)
+</code></pre>
+<p>Therefore, it is common to see this operation consolidated to the following:</p>
+<pre><code>...
+# iterate the results from map
+for result in map(task, mylist):
+	print(result)
+</code></pre>
+<p>We can perform this same operation using the thread pool, except each application of the function to an item in the list is a task that is executed asynchronously. For example:</p>
+<pre><code>...
+# iterate the results from map
+for result in executor.map(task, mylist):
+	print(result)
+</code></pre>
+<p>Although the tasks are executed concurrently, the results are iterated in the order of the iterable provided to the map() function, the same as the built-in <strong>map()</strong> function.</p>
+<p>In this way, we can think of the thread pool version of <strong>map() </strong>as a concurrent version of the <strong>map()</strong> function and is ideal if you are looking to update your for loop to use threads.</p>
+<p>The example below demonstrates using the map and wait pattern with a task that will sleep a random amount of time less than one second and return the provided value.</p>
+<pre><code># SuperFastPython.com
+# example of the map and wait pattern for the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# start the thread pool
+with ThreadPoolExecutor(10) as executor:
+    # execute tasks concurrently and process results in order
+    for result in executor.map(task, range(10)):
+        # retrieve the result
+        print(result)
+</code></pre>
+<p>Running the example, we can see that the results are reported in the order that the tasks were created and sent into the thread pool.</p>
+<pre><code>0
+1
+2
+3
+4
+5
+6
+7
+8
+9</code></pre>
+<p>The <strong>map() </strong>function supports target functions that take more than one argument by providing more than iterable as arguments to the call to <strong>map()</strong>.</p>
+<p>For example, we can define a target function for map that takes two arguments, then provide two iterables of the same length to the call to map.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map with two iterables
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value1, value2):
+    # sleep for less than a second
+    sleep(random())
+    return (value1, value2)
+
+# start the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit all tasks
+    for result in executor.map(task, ['1', '2', '3'], ['a', 'b', 'c']):
+        print(result)
+</code></pre>
+<p>Running the example executes the tasks as expected, providing two arguments to map and reporting a result that combines both arguments.</p>
+<pre><code>('1', 'a')
+('2', 'b')
+('3', 'c')
+</code></pre>
+<p>A call to the map function will issue all tasks to the thread pool immediately, even if you do not iterate the iterable of results.</p>
+<p>This is unlike the built-in <strong>map()</strong> function that is lazy and does not compute each call until you ask for the result during iteration.</p>
+<p>The example below confirms this by issuing all tasks with a map and not iterating the results.</p>
+<pre><code># SuperFastPython.com
+# example of calling map and not iterating the results
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    print(f'Done: {value}')
+    return value
+
+# start the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit all tasks
+    executor.map(task, range(5))
+print('All done!')
+</code></pre>
+<p>Running the example, we can see that the tasks are sent into the thread pool and executed without having to explicitly pass over the iterable of results that was returned.</p>
+<p>The use of the context manager ensured that the thread pool did not shutdown until all tasks were complete.</p>
+<pre><code>Done: 0
+Done: 2
+Done: 1
+Done: 3
+Done: 4
+All done!
+</code></pre>
+<h3>Submit and Use as Completed</h3>
+<p>Perhaps the second most common pattern when using the <strong>ThreadPoolExecutor</strong> is to submit tasks and use the results as they become available.</p>
+<p>This can be achieved using the <strong>submit()</strong> function to push tasks into the thread pool that returns <strong>Future</strong> objects, then calling the module method <strong>as_completed()</strong> on the list of Future objects that will return each <strong>Future</strong> object as it's task is completed.</p>
+<p>The example below demonstrates this pattern, submitting the tasks in order from 0 to 9 and showing results in the order that they were completed.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and use as completed pattern for the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# start the thread pool
+with ThreadPoolExecutor(10) as executor:
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # process task results as they are available
+    for future in as_completed(futures):
+        # retrieve the result
+        print(future.result())
+</code></pre>
+<p>Running the example, we can see that the results are retrieved and printed in the order that the tasks completed, not the order that the tasks were submitted to the thread pool.</p>
+<pre><code>5
+9
+6
+1
+0
+7
+3
+8
+4
+2
+</code></pre>
+<h3>Submit and Use Sequentially</h3>
+<p>We may require the results from tasks in the order that the tasks were submitted.</p>
+<p>This may be because the tasks have a natural ordering.</p>
+<p>We can implement this pattern by calling <strong>submit()</strong> for each task to get a list of <strong>Future</strong> objects, then iterating over the <strong>Future</strong> objects in the order that the tasks were submitted and retrieving the results.</p>
+<p>The main difference from the "<em>as completed</em>" pattern is that we enumerate the list of futures directly, instead of calling the <strong>as_completed()</strong> function.</p>
+<pre><code>...
+# process task results in the order they were submitted
+for future in futures:
+	# retrieve the result
+	print(future.result())
+</code></pre>
+<p>The example below demonstrates this pattern, submitting the tasks in order from 0 to 9 and showing the results in the order that they were submitted.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and use sequentially pattern for the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# start the thread pool
+with ThreadPoolExecutor(10) as executor:
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # process task results in the order they were submitted
+    for future in futures:
+        # retrieve the result
+        print(future.result())
+</code></pre>
+<p>Running the example, we can see that the results are retrieved and printed in the order that the tasks were submitted, not the order that the tasks were completed.</p>
+<pre><code>0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+</code></pre>
+<h3>Submit and Use Callback</h3>
+<p>We may not want to explicitly process the results once they are available; instead, we want to call a function on the result.</p>
+<p>Instead of doing this manually, such as in the as completed pattern above, we can have the thread pool call the function for us with the result automatically.</p>
+<p>This can be achieved by setting a callback on each <strong>Future</strong> object by calling the <strong>add_done_callback()</strong> function and passing the name of the function.</p>
+<p>The <a href="../threadpoolexecutor-add-callback/">thread pool will then call the callback function</a> as each task completes, passing in <strong>Future</strong> objects for the task.</p>
+<p>The example below demonstrates this pattern, registering a custom callback function to be applied to each task as it is completed.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and use a callback pattern for the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# custom callback function called on tasks when they complete
+def custom_callback(fut):
+    # retrieve the result
+    print(fut.result())
+
+# start the thread pool
+with ThreadPoolExecutor(10) as executor:
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # register the callback on all tasks
+    for future in futures:
+        future.add_done_callback(custom_callback)
+    # wait for tasks to complete...
+</code></pre>
+<p>Running the example, we can see that results are retrieved and printed in the order they are completed, not the order that tasks were completed.</p>
+<pre><code>8
+0
+7
+1
+4
+6
+5
+3
+2
+9
+</code></pre>
+<p>We can register multiple callbacks on each <strong>Future</strong> object; it is not limited to a single callback.</p>
+<p>The callback functions are called in the order in which they were registered on each <strong>Future</strong> object.</p>
+<p>The following example demonstrates having two callbacks on each <strong>Future</strong>.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and use multiple callbacks for the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# custom callback function called on tasks when they complete
+def custom_callback1(fut):
+    # retrieve the result
+    print(f'Callback 1: {fut.result()}')
+
+# custom callback function called on tasks when they complete
+def custom_callback2(fut):
+    # retrieve the result
+    print(f'Callback 2: {fut.result()}')
+
+# start the thread pool
+with ThreadPoolExecutor(10) as executor:
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # register the callbacks on all tasks
+    for future in futures:
+        future.add_done_callback(custom_callback1)
+        future.add_done_callback(custom_callback2)
+    # wait for tasks to complete...
+</code></pre>
+<p>Running the example, we can see that results are reported in the order that tasks were completed and that the two callback functions are called for each task in the order that we registered them with each <strong>Future</strong> object.</p>
+<pre><code>Callback 1: 3
+Callback 2: 3
+Callback 1: 9
+Callback 2: 9
+Callback 1: 7
+Callback 2: 7
+Callback 1: 2
+Callback 2: 2
+Callback 1: 0
+Callback 2: 0
+Callback 1: 5
+Callback 2: 5
+Callback 1: 1
+Callback 2: 1
+Callback 1: 8
+Callback 2: 8
+Callback 1: 4
+Callback 2: 4
+Callback 1: 6
+Callback 2: 6
+</code></pre>
+<h3>Submit and Wait for All</h3>
+<p>It is common to submit all tasks and then wait for all tasks in the thread pool to complete.</p>
+<p>This pattern may be useful when tasks do not return a result directly, such as if each task stores the result in a resource directly like a file.</p>
+<p>There are two ways that we can wait for tasks to complete: by calling the <strong>wait()</strong> module function or by calling <strong>shutdown()</strong>.</p>
+<p>The most likely case is you want to explicitly wait for a set or subset of tasks in the thread pool to complete.</p>
+<p>You can achieve this by passing the list of tasks to the <strong>wait()</strong> function, which, by default, will wait for all tasks to complete.</p>
+<pre><code>...
+# wait for all tasks to complete
+wait(futures)
+</code></pre>
+<p>We can explicitly specify to wait for all tasks by setting the "<strong>return_when</strong>" argument to the <strong>ALL_COMPLETED</strong> constant; for example:</p>
+<pre><code>...
+# wait for all tasks to complete
+wait(futures, return_when=ALL_COMPLETED)
+</code></pre>
+<p>The example below demonstrates this pattern. Note that we are intentionally ignoring the return from calling <strong>wait()</strong> as we have no need to inspect it in this case.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and wait for all pattern for the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    # display the result
+    print(name)
+
+# start the thread pool
+with ThreadPoolExecutor(10) as executor:
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # wait for all tasks to complete
+    wait(futures)
+    print('All tasks are done!')
+</code></pre>
+<p>Running the example, we can see that results are handled by each task as the tasks complete. Importantly, we can see that the main thread waits until all tasks are completed before carrying on and printing a message.</p>
+<pre><code>3
+9
+0
+8
+4
+6
+2
+1
+5
+7
+All tasks are done!
+</code></pre>
+<p>An alternative approach would be to shut down the thread pool and wait for all executing and queued tasks to complete before moving on.</p>
+<p>This might be preferred when we don't have a list of <strong>Future</strong> objects or when we only intend to use the thread pool once for a set of tasks.</p>
+<p>We can implement this pattern using the context manager; for example:</p>
+<pre><code># SuperFastPython.com
+# example of the submit and wait for all with shutdown pattern for the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    # display the result
+    print(name)
+
+# start the thread pool
+with ThreadPoolExecutor(10) as executor:
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # wait for all tasks to complete
+print('All tasks are done!')
+</code></pre>
+<p>Running the example, we can see that the main thread does not move on and print the message until all tasks are completed, after the thread pool has been automatically shut down by the context manager.</p>
+<pre><code>1
+2
+8
+4
+5
+3
+9
+0
+7
+6
+All tasks are done!
+</code></pre>
+<p>The context manager automatic shutdown pattern might be confusing to developers not used to how thread pools work, hence the comment at the end of the context manager block in the previous example.</p>
+<p>We can achieve the same effect without the context manager and an explicit call to shutdown.</p>
+<pre><code>...
+# wait for all tasks to complete and close the pool
+executor.shutdown()
+</code></pre>
+<p>Recall that the <strong>shutdown()</strong> function will wait for all tasks to complete by default and will not cancel any queued tasks, but we can make this explicit by setting the "<strong>wait</strong>" argument to <strong>True</strong> and the "<strong>cancel_futures</strong>" argument to <strong>False</strong>; for example:</p>
+<pre><code>...
+# wait for all tasks to complete and close the pool
+executor.shutdown(wait=True, cancel_futures=False)
+</code></pre>
+<p>The example below demonstrates the pattern of waiting for all tasks in the thread pool to complete by calling <strong>shutdown()</strong> before moving on.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and wait for all with shutdown pattern for the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    # display the result
+    print(name)
+
+# start the thread pool
+executor = ThreadPoolExecutor(10)
+# submit tasks and collect futures
+futures = [executor.submit(task, i) for i in range(10)]
+# wait for all tasks to complete
+executor.shutdown()
+print('All tasks are done!')
+</code></pre>
+<p>Running the example, we can see that all tasks report their result as they complete and that the main thread does not move on until all tasks have completed and the thread pool has been shut down.</p>
+<pre><code>3
+5
+2
+6
+8
+9
+7
+1
+4
+0
+All tasks are done!
+</code></pre>
+<h3>Submit and Wait for First</h3>
+<p>It is common to issue many tasks and only be concerned with the first result returned.</p>
+<p>That is, not the result of the first task, but a result from any task that happens to be the first to complete its execution.</p>
+<p>This may be the case if you are trying to access the same resource from multiple locations, like a file or some data.</p>
+<p>This pattern can be achieved using the <strong>wait()</strong> module function and setting the "<strong>return_when</strong>" argument to the <strong>FIRST_COMPLETED</strong> constant.</p>
+<pre><code>...
+# wait until any task completes
+done, not_done = wait(futures, return_when=FIRST_COMPLETED)
+</code></pre>
+<p>We must also manage the thread pool manually by constructing it and calling <strong>shutdown()</strong> manually so that we can continue on with the execution of the main thread without waiting for all of the other tasks to complete.</p>
+<p>The example below demonstrates this pattern and will stop waiting as soon as the first task is completed.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and wait for first the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+from concurrent.futures import FIRST_COMPLETED
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# start the thread pool
+executor = ThreadPoolExecutor(10)
+# submit tasks and collect futures
+futures = [executor.submit(task, i) for i in range(10)]
+# wait until any task completes
+done, not_done = wait(futures, return_when=FIRST_COMPLETED)
+# get the result from the first task to complete
+print(done.pop().result())
+# shutdown without waiting
+executor.shutdown(wait=False, cancel_futures=True)
+</code></pre>
+<p>Running the example will wait for any of the tasks to complete, then retrieve the result of the first completed task and shut down the thread pool.</p>
+<p>Importantly, the tasks will continue to execute in the thread pool in the background and the main thread will not close until all tasks have completed.</p>
+<pre><code>9</code></pre>
+<p>Now that we have seen some common usage patterns for the <strong>ThreadPoolExecutor</strong>, let's look at how we might customize the configuration of the thread pool.</p>
+<h2>How to Configure ThreadPoolExecutor</h2>
+<p>We can customize the configuration of the thread pool when constructing a <strong>ThreadPoolExecutor</strong> instance.</p>
+<p>There are three aspects of the thread pool we may wish to customize for our application; they are the number of worker threads, the names of threads in the pool, and the initialization of each thread in the pool.</p>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Configure the Number of Threads</h3>
+<p>The <a href="../threadpoolexecutor-number-of-threads/">number of threads in the thread pool</a> can be configured by the "<strong>max_workers</strong>" argument.</p>
+<p>It takes a positive integer and defaults to the number of CPUs in your system plus four.</p>
+<ul>
+<li>Total Number Worker Threads = (CPUs in Your System) + 4</li>
+</ul>
+<p>For example, if you had 2 physical CPUs in your system and each CPU has hyperthreading (common in modern CPUs) then you would have 2 physical and 4 logical CPUs. Python would see 4 CPUs. The default number of worker threads on your system would then be (4 + 4) or 8.</p>
+<p>If this number comes out to be more than 32 (e.g. 16 physical cores, 32 logical cores, plus four), the default will clip the upper bound to 32 threads.</p>
+<p>It is common to have more threads than CPUs (physical or logical) in your system.</p>
+<p>The reason for this is because threads are used for IO-bound tasks, not CPU-bound tasks. This means that threads are used for tasks that wait for relatively slow resources to respond, like hard drives, DVD drives, printers, and network connections, and much more. We will discuss the best application of threads in a later section.</p>
+<p>Therefore, it is not uncommon to have tens, hundreds, and even thousands of threads in your application, depending on your specific needs. It is unusual to have more than one or a few thousand threads. If you require this many threads, then alternative solutions may be preferred, such as AsyncIO. We will discuss Threads vs. AsyncIO in a later section.</p>
+<p>First, let's check how many threads are created for thread pools on your system.</p>
+<p>Looking at the <a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/thread.py">source code for the <strong>ThreadPoolExecutor</strong></a>, we can see that the number of worker threads chosen by default is stored in the <strong>_max_workers</strong> property, which we can access and report after a thread pool is created.</p>
+<p>Note: "<strong>_max_workers</strong>" is a protected member and may change in the future.</p>
+<p>The example below reports the number of default threads in a thread pool on your system.</p>
+<pre><code># SuperFastPython.com
+# report the default number of worker threads on your system
+from concurrent.futures import ThreadPoolExecutor
+# create a thread pool with the default number of worker threads
+pool = ThreadPoolExecutor()
+# report the number of worker threads chosen by default
+print(pool._max_workers)
+</code></pre>
+<p>Running the example reports the number of worker threads used by default on your system.</p>
+<p>I have four physical CPU cores and eight logical cores; therefore the default is 8 + 4 or 12 threads.</p>
+<pre><code>12</code></pre>
+<p><strong>How many worker threads are allocated by default on your system?</strong><br/>Let me know in the comments below.</p>
+<p>We can specify the number of worker threads directly, and this is a good idea in most applications.</p>
+<p>The example below demonstrates how to configure 500 worker threads.</p>
+<pre><code># SuperFastPython.com
+# configure and report the default number of worker threads
+from concurrent.futures import ThreadPoolExecutor
+# create a thread pool with a large number of worker threads
+pool = ThreadPoolExecutor(500)
+# report the number of worker threads
+print(pool._max_workers)
+</code></pre>
+<p>Running the example configures the thread pool to use 500 threads and confirms that it will create 500 threads.</p>
+<pre><code>500</code></pre>
+<h3>How Many Threads Should You Use?</h3>
+<p>If you have hundreds of tasks, you should probably set the number of threads to be equal to the number of tasks.</p>
+<p>If you have thousands of tasks, you should probably cap the number of threads at hundreds or 1,000.</p>
+<p>If your application is intended to be executed multiple times in the future, you can test different numbers of threads and compare overall execution time, then choose a number of threads that gives approximately the best performance. You may want to mock the task in these tests with a random sleep operation.</p>
+<h3>Configure Thread Names</h3>
+<p>Each thread in Python has a name.</p>
+<p>The main thread has the name "<strong>MainThread</strong>". You can access the main thread via a call to the <strong>main_thread()</strong> function in the threading module and then access the name member. For example:</p>
+<pre><code># access the name of the main thread
+from threading import main_thread
+# access the main thread
+thread = main_thread()
+# report the thread name
+print(thread.name)
+</code></pre>
+<p>Running the example accesses the main thread and reports its name.</p>
+<pre><code>MainThread</code></pre>
+<p>Names are unique by default.</p>
+<p>This can be helpful when debugging a program with multiple threads. Log messages can report the thread that is performing a specific step or a debugging can be used to trace a thread with a specific name.</p>
+<p>When creating threads in the thread pool, each thread has the name "<strong>ThreadPoolExecutor-%d_%d</strong>" where the first <strong>%d</strong> indicates the thread pool number and the second <strong>%d</strong> indicates the thread number, both in the order that thread pools and threads are created.</p>
+<p>We can see this if we access the threads directly inside the pool after allocating some work so that all threads are created.</p>
+<p>We can enumerate all threads in a Python program (process) via the enumerate() function in the threading module, then report the name for each.</p>
+<p>The example below creates a thread pool with the default number of threads, allocates work to the pool to ensure the threads are created, then reports the names of all threads in the program.</p>
+<pre><code># SuperFastPython.com
+# report the default name of threads in the thread pool
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
+# a mock task that does nothing
+def task(name):
+    pass
+
+# create a thread pool
+executor = ThreadPoolExecutor()
+# execute asks
+executor.map(task, range(10))
+# report all thread names
+for thread in threading.enumerate():
+    print(thread.name)
+# shutdown the thread pool
+executor.shutdown()
+</code></pre>
+<p>Running the example reports the names of all threads in the system, showing first the name of the main thread and the name of four threads in the pool.</p>
+<p>In this case, only 4 threads were created as the tasks were executed so quickly. Recall that worker threads are used after they finish executing their tasks. This ability to reuse workers is a major benefit of using thread pools.</p>
+<pre><code>MainThread
+ThreadPoolExecutor-0_0
+ThreadPoolExecutor-0_1
+ThreadPoolExecutor-0_2
+ThreadPoolExecutor-0_3</code></pre>
+<p>The "<strong>ThreadPoolExecutor-%d</strong>" is a prefix for all threads in the thread pool and we can customize it with a name that may be meaningful in the application for the types of tasks executed by the pool.</p>
+<p>The <a href="../threadpoolexecutor-thread-names/">thread name prefix can be set</a> via the "<strong>thread_name_prefix</strong>" argument when constructing the thread pool.</p>
+<p>The example below sets the prefix to be "<strong>TaskPool</strong>", which is prepended to the name of each thread created in the pool.</p>
+<pre><code># SuperFastPython.com
+# set a custom thread name prefix for all threads in the pool
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
+# a mock task that does nothing
+def task(name):
+    pass
+
+# create a thread pool with a custom name prefix
+executor = ThreadPoolExecutor(thread_name_prefix='TaskPool')
+# execute asks
+executor.map(task, range(10))
+# report all thread names
+for thread in threading.enumerate():
+    print(thread.name)
+# shutdown the thread pool
+executor.shutdown()
+</code></pre>
+<p>Running the example reports the name of the main thread as before, but in this case, the names of threads in the thread pool with the custom thread name prefix.</p>
+<pre><code>MainThread
+TaskPool_0
+TaskPool_1
+TaskPool_2
+TaskPool_3
+</code></pre>
+<h3>Configure the Initializer</h3>
+<p>Worker threads can call a function before they start processing tasks.</p>
+<p>This is called an <a href="../threadpoolexecutor-initializer/">initializer function</a> and can be specified via the "<strong>initializer</strong>" argument when creating a thread pool. If the initializer function takes arguments, they can be passed in via the "initargs" argument to the thread pool, which is a tuple of arguments to pass to the initializer function.</p>
+<p>By default, there is no initializer function.</p>
+<p>We might choose to set an initializer function for worker threads if we would like each thread to set up resources specific to the thread.</p>
+<p>Examples might include a thread-specific log file or a thread-specific connection to a remote resource like a server or database. The resource would then be available to all tasks executed by the thread, rather than being created and discarded or opened and closed for each task.</p>
+<p>These thread-specific resources can then be stored somewhere where the worker thread can reference, like a global variable, or in a thread local variable. Care must be taken to correctly close these resources once you are finished with the thread pool.</p>
+<p>The example below will create a thread pool with two threads and use a custom initialization function. In this case, the function does nothing other than print the worker thread name. We then complete ten tasks with the thread pool.</p>
+<pre><code># SuperFastPython.com
+# example of a custom worker thread initialization function
+from time import sleep
+from random import random
+from threading import current_thread
+from concurrent.futures import ThreadPoolExecutor
+
+# function for initializing the worker thread
+def initializer_worker():
+    # get the unique name for this thread
+    name = current_thread().name
+    # store the unique worker name in a thread local variable
+    print(f'Initializing worker thread {name}')
+
+# a mock task that sleeps for a random amount of time less than one second
+def task(identifier):
+    sleep(random())
+    # get the unique name
+    return identifier
+
+# create a thread pool
+with ThreadPoolExecutor(max_workers=2, initializer=initializer_worker) as executor:
+    # execute asks
+    for result in executor.map(task, range(10)):
+        print(result)
+</code></pre>
+<p>Running the example, we can see that the two threads are initialized before running any tasks, then all ten tasks are completed successfully.</p>
+<pre><code>Initializing worker thread ThreadPoolExecutor-0_0
+Initializing worker thread ThreadPoolExecutor-0_1
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+</code></pre>
+<p>Now that we are familiar with how to configure the thread pools, let's learn more about how to check and manipulate tasks via Future objects.</p>
+<h2>How to Use Future Objects in Detail</h2>
+<p><a href="https://docs.python.org/3/library/concurrent.futures.html#future-objects"><strong>Future</strong> objects</a> are created when we call <strong>submit()</strong> to send tasks into the <strong>ThreadPoolExecutor</strong> to be executed asynchronously.</p>
+<p><strong>Future</strong> objects provide the capability to check the status of a task (e.g. is it running?) and to control the execution of the task (e.g. cancel).</p>
+<p>In this section, we will look at some examples of checking and manipulating <strong>Future</strong> objects created by our thread pool.</p>
+<p>Specifically, we will look at the following:</p>
+<ul>
+<li>How to Check the Status of Futures</li>
+<li>How to Get Results From Futures</li>
+<li>How to Cancel Futures</li>
+<li>How to Add a Callback to Futures</li>
+<li>How to Get Exceptions From Futures</li>
+</ul>
+<p>First, let's take a closer look at the <a href="../threadpoolexecutor-futures/">lifecycle of a future object</a>.</p>
+<h3>Life-Cycle of a Future Object</h3>
+<p>A <strong>Future</strong> object is created when we call <strong>submit()</strong> for a task on a <strong>ThreadPoolExecutor</strong>.</p>
+<p>While the task is executing, the <strong>Future</strong> object has the status "<em>running</em>".</p>
+<p>When the task completes, it has the status "<em>done</em>" and if the target function returns a value, it can be retrieved.</p>
+<p>Before a task is running, it will be inserted into a queue of tasks for a worker thread to take and start running. In this "<em>pre-running</em>" state, the task can be cancelled and has the "<em>cancelled</em>" state. A task in the "<em>running</em>" state cannot be cancelled.</p>
+<p>A "<em>cancelled</em>" task is always also in the "<em>done</em>" state.</p>
+<p>While a task is running, it can raise an uncaught exception, causing the execution of the task to stop. The exception will be stored and can be retrieved directly or will be re-raised if the result is attempted to be retrieved.</p>
+<p>The figure below summarizes the lifecycle of a <strong>Future</strong> object.</p>
+<figure><img alt="Overview of the Life-Cycle of a Python Future Object." loading="lazy" src="../pics/Overview-of-the-Life-Cycle-of-a-ThreadPoolExecutor-Future-Objects.png"/><figcaption>Overview of the Life-Cycle of a Python Future Object.
+</figcaption></figure>
+<p>Now that we are familiar with the lifecycle of a <strong>Future</strong> object, let's look at how we might use check and manipulate it.</p>
+<h3>How to Check the Status of Futures</h3>
+<p>There are two types of normal status of a <strong>Future</strong> object that we might want to check: running and done.</p>
+<p>Each has its own function that returns a <strong>True</strong> if the <strong>Future</strong> object is in that state or <strong>False</strong> otherwise; for example:</p>
+<ul>
+<li><strong>running()</strong>: Returns <strong>True</strong> if the task is currently running.</li>
+<li><strong>done()</strong>: Returns <strong>True</strong> if the task has completed or was cancelled.</li>
+</ul>
+<p>We can develop simple examples to demonstrate how to check the status of a <strong>Future</strong> object.</p>
+<p>In this example, we can start a task and then check that it's running and not done, wait for it to complete, then check that it is done and not running.</p>
+<pre><code># SuperFastPython.com
+# check the status of a Future object for task executed by a thread pool
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work():
+    sleep(0.5)
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # start one thread
+    future = executor.submit(work)
+    # confirm that the task is running
+    running = future.running()
+    done = future.done()
+    print(f'Future running={running}, done={done}')
+    # wait for the task to complete
+    wait()
+    # confirm that the task is done
+    running = future.running()
+    done = future.done()
+    print(f'Future running={running}, done={done}')
+</code></pre>
+<p>Running the example, we can see that immediately after the task is submitted, it is marked as running, and that after the task is completed, we can confirm that it is done.</p>
+<pre><code>Future running=True, done=False
+Future running=False, done=True
+</code></pre>
+<h3>How to Get Results From Futures</h3>
+<p>When a task is completed, we can <a href="../threadpoolexecutor-get-results/">retrieve the result from the task</a> by calling the <strong>result()</strong> function on the <strong>Future</strong>.</p>
+<p>This returns the result from the return function of the task we executed or <strong>None</strong> if the function did not return a value.</p>
+<p>The function will block until the task completes and a result can be retrieved. If the task has already been completed, it will return a result immediately.</p>
+<p>The example below demonstrates how to retrieve a result from a <strong>Future</strong> object.</p>
+<pre><code># SuperFastPython.com
+# get the result from a completed future task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    return "all done"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # start one thread
+    future = executor.submit(work)
+    # get the result from the task, wait for task to complete
+    result = future.result()
+    print(f'Got Result: {result}')
+</code></pre>
+<p>Running the example submits the task then attempts to retrieve the result, blocking until the result is available, then reports the result that was received.</p>
+<pre><code>Got Result: all done</code></pre>
+<p>We can also set a timeout for how long we wish to wait for a result in seconds.</p>
+<p>If the timeout elapses before we get a result, a <strong>TimeoutError</strong> is raised.</p>
+<p>The example below demonstrates the timeout, showing how to give up waiting before the task has completed.</p>
+<pre><code># SuperFastPython.com
+# set a timeout when getting results from a future
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    return "all done"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # start one thread
+    future = executor.submit(work)
+    # get the result from the task, wait for task to complete
+    try:
+        result = future.result(timeout=0.5)
+        print(f'Got Result: {result}')
+    except TimeoutError:
+        print('Gave up waiting for a result')
+</code></pre>
+<p>Running the example shows that we gave up waiting for a result after half a second.</p>
+<pre><code>Gave up waiting for a result</code></pre>
+<h3>How to Cancel Futures</h3>
+<p>We can also <a href="../threadpoolexecutor-cancel-task/">cancel a task</a> that has not yet started running.</p>
+<p>Recall that when we put tasks into the pool with <strong>submit()</strong> or <strong>map() </strong>that the tasks are added to an internal queue of work from which worker threads can remove the tasks and execute them.</p>
+<p>While a task is in the queue and before it has been started, we can cancel it by calling <strong>cancel()</strong> on the <strong>Future</strong> object associated with the task. The <strong>cancel()</strong> function will return <strong>True</strong> if the task was cancelled, <strong>False</strong> otherwise.</p>
+<p>Let's demonstrate this with a worked example.</p>
+<p>We can create a thread pool with one thread, then start a long running task, then submit a second task, request that it is cancelled, then confirm that it was indeed cancelled.</p>
+<pre><code># SuperFastPython.com
+# example of cancelling a task via it's future
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+
+# create a thread pool
+with ThreadPoolExecutor(1) as executor:
+    # start a long running task
+    future1 = executor.submit(work, 2)
+    running = future1.running()
+    print(f'First task running={running}')
+    # start a second
+    future2 = executor.submit(work, 0.1)
+    running = future2.running()
+    print(f'Second task running={running}')
+    # cancel the second task
+    was_cancelled = future2.cancel()
+    print(f'Second task was cancelled: {was_cancelled}')
+    # wait for the second task to finish, just in case
+    wait()
+    # confirm it was cancelled
+    running = future2.running()
+    cancelled = future2.cancelled()
+    done = future2.done()
+    print(f'Second task running={running}, cancelled={cancelled}, done={done}')
+    # wait for the long running task to finish
+    wait()
+</code></pre>
+<p>Running the example, we can see that the first task is started and is running normally.</p>
+<p>The second task is scheduled and is not yet running because the thread pool is occupied with the first task. We then cancel the second task and confirm that it is indeed not running; it was cancelled and is done.</p>
+<pre><code>First task running=True
+Second task running=False
+Second task was cancelled: True
+Second task running=False, cancelled=True, done=True
+</code></pre>
+<h4>Cancel a Running Future</h4>
+<p>Now, let's try to cancel a task that has already completed running.</p>
+<pre><code># SuperFastPython.com
+# example of trying to cancel a running task via its future
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+
+# create a thread pool
+with ThreadPoolExecutor(1) as executor:
+    # start a long running task
+    future = executor.submit(work, 2)
+    running = future.running()
+    print(f'Task running={running}')
+    # try to cancel the task
+    was_cancelled = future.cancel()
+    print(f'Task was cancelled: {was_cancelled}')
+    # wait for the task to finish
+    wait()
+    # check if it was cancelled
+    running = future.running()
+    cancelled = future.cancelled()
+    done = future.done()
+    print(f'Task running={running}, cancelled={cancelled}, done={done}')
+</code></pre>
+<p>Running the example, we can see that the task was started as per normal.</p>
+<p>We then tried to cancel the task, but this was not successful, as we expected, as the task was already running.</p>
+<p>We then wait for the task to complete and then check its status. We can see that the task is no longer running and was not cancelled, as we expect, but is marked as not done.</p>
+<p>This is surprising because the task was completed successfully. This is likely to indicate the situation where the cancel request was received but not acted upon.</p>
+<pre><code>Task running=True
+Task was cancelled: False
+Task running=False, cancelled=False, done=True
+</code></pre>
+<h4>Cancel a Done Future</h4>
+<p>Consider what would happen if we tried to cancel a task that was already done.</p>
+<p>We might expect that canceling a task that is already done has no effect, and this happens to be the case.</p>
+<p>This can be demonstrated with a short example.</p>
+<p>We start and run a task as per normal, then wait for it to complete and report its status. We then attempt to cancel the task.</p>
+<pre><code># SuperFastPython.com
+# example of trying to cancel a done task via its future
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+
+# create a thread pool
+with ThreadPoolExecutor(1) as executor:
+    # start a long running task
+    future = executor.submit(work, 2)
+    running = future.running()
+    # wait for the task to finish
+    wait()
+    # check the status
+    running = future.running()
+    cancelled = future.cancelled()
+    done = future.done()
+    print(f'Task running={running}, cancelled={cancelled}, done={done}')
+    # try to cancel the task
+    was_cancelled = future.cancel()
+    print(f'Task was cancelled: {was_cancelled}')
+    # check if it was cancelled
+    running = future.running()
+    cancelled = future.cancelled()
+    done = future.done()
+    print(f'Task running={running}, cancelled={cancelled}, done={done}')
+</code></pre>
+<p>Running the example confirms that the task runs and is marked done, as per normal.</p>
+<p>The attempt to cancel the task fails and checking the status after the attempt to cancel confirms that the task was not impacted by the attempt.</p>
+<pre><code>Task running=False, cancelled=False, done=True
+Task was cancelled: False
+Task running=False, cancelled=False, done=True
+</code></pre>
+<h3>How to Add a Callback to Futures</h3>
+<p>We have already seen above how to <a href="../threadpoolexecutor-add-callback/">add a callback to a <strong>Future</strong></a>. Nevertheless, let's look at some more examples for completeness including some edge cases.</p>
+<p>We can register one or more callback functions on a <strong>Future</strong> object by calling the <strong>add_done_callback()</strong> function and specifying the name of the function to call.</p>
+<p>The callbacks functions will be called with the <strong>Future</strong> object as an argument immediately after the completion of the task. If more than one callback function is registered, then they will be called in the order they were registered and any exceptions within each callback function will be caught, logged and ignored.</p>
+<p>The callback will be called by the worker thread that executed the task.</p>
+<p>The example below demonstrates how to add a callback function to a <strong>Future</strong> object.</p>
+<pre><code># SuperFastPython.com
+# add a callback option to a future object
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# callback function to call when a task is completed
+def custom_callback(future):
+    print('Custom callback was called')
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    print('Task is done')
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute the task
+    future = executor.submit(work)
+    # add the custom callback
+    future.add_done_callback(custom_callback)
+    # wait for the task to complete
+    wait()
+</code></pre>
+<p>Running the example, we can see that the task is completed first, then the callback is executed as we expected.</p>
+<pre><code>Task is done
+Custom callback was called
+</code></pre>
+<h4>Common Error When Using Future Callbacks</h4>
+<p>A common error is to forget to add the <strong>Future</strong> object as an argument to the custom callback. </p>
+<p>For example:</p>
+<pre><code># callback function to call when a task is completed
+def custom_callback():
+    print('Custom callback was called')
+</code></pre>
+<p>If you register this function and try to run the code, you will get a <strong>TypeError</strong> as follows:</p>
+<pre><code>Task is done
+exception calling callback for &lt;Future at 0x104482b20 state=finished returned NoneType&gt;
+...
+TypeError: custom_callback() takes 0 positional arguments but 1 was given
+</code></pre>
+<p>The message in the <strong>TypeError</strong> makes it clear how to fix the issue: add a single argument to the function for the future object, even if you don't intend on using it in your callback.</p>
+<h4>Callbacks Execute When Cancelling a Future</h4>
+<p>We can also see the effect of callbacks on <strong>Future</strong> objects for tasks that are cancelled.</p>
+<p>The effect does not appear to be documented in the API, but we might expect for the callback to always be executed, whether the task is run normally or whether it is cancelled. And this happens to be the case.</p>
+<p>The example below demonstrates this.</p>
+<p>First, a thread pool is created with a single thread. A long running task is issued that occupies the entire pool, then we send in a second task, add a callback to the second task, cancel it, and wait for all tasks to finish.</p>
+<pre><code># SuperFastPython.com
+# example of a callback for a cancelled task via the future object
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# callback function to call when a task is completed
+def custom_callback(future):
+    print('Custom callback was called')
+
+# mock task that will sleep for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+
+# create a thread pool
+with ThreadPoolExecutor(1) as executor:
+    # start a long running task
+    future1 = executor.submit(work, 2)
+    running = future1.running()
+    print(f'First task running={running}')
+    # start a second
+    future2 = executor.submit(work, 0.1)
+    running = future2.running()
+    print(f'Second task running={running}')
+    # add the custom callback
+    future2.add_done_callback(custom_callback)
+    # cancel the second task
+    was_cancelled = future2.cancel()
+    print(f'Second task was cancelled: {was_cancelled}')
+    # explicitly wait for all tasks to complete
+    wait([future1, future2])
+</code></pre>
+<p>Running the example, we can see that the first task is started as we expect.</p>
+<p>The second task is scheduled but does not get a chance to run before we cancel it. The callback is run immediately after we cancel the task, then we report in the main thread that indeed the task was cancelled correctly.</p>
+<pre><code>First task running=True
+Second task running=False
+Custom callback was called
+Second task was cancelled: True
+</code></pre>
+<h3>How to Get Exceptions From Futures</h3>
+<p>A task may raise an exception during execution.</p>
+<p>If we can anticipate the exception, we can wrap parts of our task function in a try-except block and handle the exception within the task.</p>
+<p>If an unexpected exception occurs within our task, the task will stop executing.</p>
+<p>We cannot know based on the task status whether an exception was <meta/>raised, but we can check for an exception directly.</p>
+<p>We can then access the exception via the <strong>exception()</strong> function. Alternately, the exception will be re-raised when calling the <strong>result()</strong> function when trying to get a result.</p>
+<p>We can demonstrate this with an example.</p>
+<p>The example below will raise a <strong>ValueError</strong> within the task that will not be caught but instead will be caught by the thread pool for us to access later.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('This is Fake!')
+    return "never gets here"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # wait for the task to complete
+    wait()
+    # check the status of the task after it has completed
+    running = future.running()
+    cancelled = future.cancelled()
+    done = future.done()
+    print(f'Task running={running}, cancelled={cancelled}, done={done}')
+    # get the exception
+    exception = future.exception()
+    print(f'Exception={exception}')
+    # get the result from the task
+    try:
+        result = future.result()
+    except Exception:
+        print('Unable to get the result')
+</code></pre>
+<p>Running the example starts the task normally, which sleeps for one second.</p>
+<p>The task then raises an exception that is caught by the thread pool. The thread pool stores the exception and the task is completed.</p>
+<p>We can see that after the task is completed, it is marked as not running, not cancelled, and done.</p>
+<p>We then access the exception from the task, which matches the exception we intentionally raise.</p>
+<p>Attempting to access the result via the result() function fails and we catch the same exception raised in the task.</p>
+<pre><code>Task running=False, cancelled=False, done=True
+Exception=This is Fake!
+Unable to get the result
+</code></pre>
+<h4>Callbacks Are Still Called if a Task Raises an Exception</h4>
+<p>We might wonder if we register a callback function with a <strong>Future</strong> whether it will still execute if the task raises an exception.</p>
+<p>As we might expect, the callback is executed even if the task raises an exception.</p>
+<p>We can test this by updating the previous example to register a callback function before the task fails with an exception.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task that has a callback
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# callback function to call when a task is completed
+def custom_callback(future):
+    print('Custom callback was called')
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('This is Fake!')
+    return "never gets here"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # add the custom callback
+    future.add_done_callback(custom_callback)
+    # wait for the task to complete
+    wait()
+    # check the status of the task after it has completed
+    running = future.running()
+    cancelled = future.cancelled()
+    done = future.done()
+    print(f'Task running={running}, cancelled={cancelled}, done={done}')
+    # get the exception
+    exception = future.exception()
+    print(f'Exception={exception}')
+    # get the result from the task
+    try:
+        result = future.result()
+    except Exception:
+        print('Unable to get the result')
+</code></pre>
+<p>Running the example starts the task as before, but this time registers a callback function.</p>
+<p>When the task fails with an exception, the callback is called immediately. The main thread then reports the status of the failed task and the details of the exception.</p>
+<pre><code>Custom callback was called
+Task running=False, cancelled=False, done=True
+Exception=This is Fake!
+Unable to get the result
+</code></pre>
+<h2>When to Use the ThreadPoolExecutor</h2>
+<p>The <strong>ThreadPoolExecutor</strong> is powerful and flexible, although it is not suited for all situations where you need to run a background task.</p>
+<p>In this section, we will look at some general cases where it is a good fit, and where it isn't, then we'll look at broad classes of tasks and why they are or are not appropriate for the <strong>ThreadPoolExecutor</strong>.</p>
+<h3>Use ThreadPoolExecutor When...</h3>
+<ul>
+<li>Your tasks can be defined by a pure function that has no state or side effects.</li>
+<li>Your task can fit within a single Python function, likely making it simple and easy to understand.</li>
+<li>You need to perform the same task many times, e.g. homogeneous tasks.</li>
+<li>You need to apply the same function to each object in a collection in a for-loop.</li>
+</ul>
+<p>Thread pools work best when applying the same pure function on a set of different data (e.g. homogeneous tasks, heterogeneous data). This makes code easier to read and debug. This is not a rule, just a gentle suggestion.</p>
+<h3>Use Multiple ThreadPoolExecutor When…</h3>
+<ul>
+<li>You need to perform groups of different types of tasks; one thread pool could be used for each task type.</li>
+<li>You need to perform a pipeline of tasks or operations; one thread pool can be used for each step.</li>
+</ul>
+<p>Thread pools can operate on tasks of different types (e.g. heterogeneous tasks), although it may make the organization of your program and debugging easy if a separate thread pool is responsible for each task type. This is not a rule, just a gentle suggestion.</p>
+<h3>Don't Use ThreadPoolExecutor When...</h3>
+<ul>
+<li>You have a single task; consider using the <strong>Thread</strong> class with the target argument.</li>
+<li>You have long-running tasks, such as monitoring or scheduling; consider extending the <strong>Thread</strong> class.</li>
+<li>Your task functions require state; consider extending the <strong>Thread</strong> class.</li>
+<li>Your tasks require coordination; consider using a <strong>Thread</strong> and patterns like a <strong>Barrier</strong> or <strong>Semaphore</strong>.</li>
+<li>Your tasks require synchronization; consider using a <strong>Thread</strong> and <strong>Locks</strong>.</li>
+<li>You require a thread trigger on an event; consider using the <strong>Thread</strong> class.</li>
+</ul>
+<p>The sweet spot for thread pools is in dispatching many similar tasks, the results of which may be used later in the program. Tasks that don't fit neatly into this summary are probably not a good fit for thread pools. This is not a rule, just a gentle suggestion.</p>
+<p><strong>Do you know any other good or bad cases where using a ThreadPoolExecutor?</strong><br/>Let me know in the comments below.</p>
+<h3>Use Threads for IO-Bound Tasks</h3>
+<p>You should use threads for IO-bound tasks.</p>
+<p>An IO-bound task is a type of task that involves reading from or writing to a device, file, or socket connection.</p>
+<p>The operations involve input and output (IO), and the speed of these operations is bound by the device, hard drive, or network connection. This is why these tasks are referred to as IO-bound.</p>
+<p>CPUs are really fast. Modern CPUs, like a 4GHz, can execute 4 billion instructions per second, and you likely have more than one CPU in your system.</p>
+<p>Doing IO is very slow compared to the speed of CPUs.</p>
+<p>Interacting with devices, reading and writing files and socket connections involves calling instructions in your operating system (the kernel), which will wait for the operation to complete. If this operation is the main focus for your CPU, such as executing in the main thread of your Python program, then your CPU is going to wait many milliseconds or even many seconds doing nothing.</p>
+<p>That is potentially billions of operations prevented from executing.</p>
+<p>We can free-up the CPU from IO-bound operations by performing IO-bound operations on another thread of execution. This allows the CPU to start the process and pass it off to the operating system (kernel) to do the waiting, and free it up to execute in another application thread.</p>
+<p>There's more to it under the covers, but this is the gist.</p>
+<p>Therefore, the tasks we execute with a <strong>ThreadPoolExecutor</strong> should be tasks that involve IO operations.</p>
+<p>Examples include:</p>
+<ul>
+<li>Reading or writing a file from the hard drive.</li>
+<li>Reading or writing to standard output, input or error (stdin, stdout, stderr).</li>
+<li>Printing a document.</li>
+<li>Downloading or uploading a file.</li>
+<li>Querying a server.</li>
+<li>Querying a database.</li>
+<li>Taking a photo or recording a video.</li>
+<li>And so much more.</li>
+</ul>
+<p>If your task is not IO-bound, perhaps threads and using a thread pool is not appropriate.</p>
+<h3>Don't Use Threads for CPU-Bound Tasks</h3>
+<p>You should probably not use threads for CPU-bound tasks.</p>
+<p>A CPU-bound task is a type of task that involves performing a computation and does not involve IO.</p>
+<p>The operations only involve data in main memory (RAM) or cache (CPU cache) and performing computations on or with that data. As such, the limit on these operations is the speed of the CPU. This is why we call them CPU-bound tasks.</p>
+<p>Examples include:</p>
+<ul>
+<li>Calculating points in a fractal.</li>
+<li>Estimating Pi</li>
+<li>Factoring primes.</li>
+<li>Parsing HTML, JSON, etc. documents.</li>
+<li>Processing text.</li>
+<li>Running simulations.</li>
+</ul>
+<p>CPUs are very fast, and we often have more than one CPU. We would like to perform our tasks and make full use of multiple CPU cores in modern hardware.</p>
+<p>Using threads and thread pools via the ThreadPoolExecutor class in Python is probably not a path toward achieving this end.</p>
+<p>This is because of a technical reason behind the way that the Python interpreter was implemented. The implementation prevents two Python operations executing at the same time inside the interpreter and it does this with a master lock that only one thread can hold at a time. This is called the global interpreter lock, or GIL.</p>
+<p>The GIL is not evil and is not frustrating; it is a design decision in the python interpreter that we must be aware of and consider in the design of our applications.</p>
+<p>I said that you "<em>probably</em>" should not use threads for CPU-bound tasks.</p>
+<p>You can and are free to do so, but your code will not benefit from concurrency because of the GIL. It will likely perform worse because of the additional overhead of context switching (the CPU jumping from one thread of execution to another) introduced by using threads.</p>
+<p>Additionally, the GIL is a design decision that affects the reference implementation of Python, which you download from Python.org. If you use a different implementation of the Python interpreter (such as PyPy, IronPython, Jython, and perhaps others), then you may not be subject to the GIL and can use threads for CPU bound tasks directly.</p>
+<p>Python provides a <a href="https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing">multiprocessing module</a> for multi-core task execution as well as a sibling of the <strong>ThreadPoolExecutor</strong> that uses processes called the <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ProcessPoolExecutor"><strong>ProcessPoolExecutor</strong></a> that can be used for concurrency of CPU-bound tasks.</p>
+<h2>ThreadPoolExecutor Exception Handling</h2>
+<p><a href="../threadpoolexecutor-exception-handling/">Exception handling</a> is an important consideration when using threads.</p>
+<p>Code will raise an exception when something unexpected happens and the exception should be dealt with by your application explicitly, even if it means logging it and moving on.</p>
+<p>Python threads are well suited for use with IO-bound tasks, and operations within these tasks often raise exceptions, such as if a server cannot be reached, if the network goes down, if a file cannot be found, and so on.</p>
+<p>There are three points you may need to consider exception handling when using the <strong>ThreadPoolExecutor</strong>; they are:</p>
+<ul>
+<li>Exception Handling During Thread Initialization</li>
+<li>Exception Handling During Task Execution</li>
+<li>Exception Handling During Task Completion Callbacks</li>
+</ul>
+<p>Let's take a closer look at each point in turn.</p>
+<h3>Exception Handling During Thread Initialization</h3>
+<p>You can specify a custom initialization function when configuring your <strong>ThreadPoolExecutor</strong>.</p>
+<p>This can be set via the "<strong>initializer</strong>" argument to specify the function name and "<strong>initargs</strong>" to specify a tuple of arguments to the function.</p>
+<p>Each thread started by the thread pool will call your initialization function before starting the thread.</p>
+<p>If your initialization function raises an exception, it will break your thread pool.</p>
+<p>All current tasks and any future tasks executed by the thread pool will not run and will <meta/>raise a <strong>BrokenThreadPool</strong> exception.</p>
+<p>We can demonstrate this with an example of a contrived initializer function that <meta/>raises an exception.</p>
+<pre><code># SuperFastPython.com
+# example of an exception in a thread pool initializer function
+from time import sleep
+from random import random
+from threading import current_thread
+from concurrent.futures import ThreadPoolExecutor
+
+# function for initializing the worker thread
+def initializer_worker():
+    # raise an exception
+    raise Exception('Something bad happened!')
+
+# a mock task that sleeps for a random amount of time less than one second
+def task(identifier):
+    sleep(random())
+    # get the unique name
+    return identifier
+
+# create a thread pool
+with ThreadPoolExecutor(max_workers=2, initializer=initializer_worker) as executor:
+    # execute tasks
+    for result in executor.map(task, range(10)):
+        print(result)
+</code></pre>
+<p>Running the example fails with an exception, as we expected.</p>
+<p>The thread pool is created as per normal, but as soon as we try to execute tasks, new worker threads are created, the custom worker thread initialization function is called, and raises an exception.</p>
+<p>Multiple threads attempted to start, and in turn, multiple threads failed with an Exception. Finally, the thread pool itself logged a message that the pool is broken and cannot be used any longer.</p>
+<pre><code>Exception in initializer:
+Traceback (most recent call last):
+...
+    raise Exception('Something bad happened!')
+Exception: Something bad happened!
+Exception in initializer:
+Traceback (most recent call last):
+...
+    raise Exception('Something bad happened!')
+Exception: Something bad happened!
+Traceback (most recent call last):
+...
+concurrent.futures.thread.BrokenThreadPool: A thread initializer failed, the thread pool is not usable anymore
+</code></pre>
+<p>This highlights that if you use a custom initializer function, you must carefully consider the exceptions that may be <meta/>raised and perhaps handle them, otherwise risk all tasks that depend on the thread pool.</p>
+<h3>Exception Handling During Task Execution</h3>
+<p>An exception may occur while executing your task.</p>
+<p>This will cause the task to stop executing, but will not break the thread pool. Instead, the exception will be caught by the thread pool and will be available via the <strong>Future</strong> object associated with the task via the <strong>exception()</strong> function.</p>
+<p>Alternately, the exception will be re-raised if you call <strong>result()</strong> in the <strong>Future</strong> in order to get the result. This will impact both calls to <strong>submit()</strong> and <strong>map()</strong> when adding tasks to the thread pool.</p>
+<p>It means that you have two options for handling exceptions in tasks; they are:</p>
+<ul>
+<li>1. Handle exceptions within the task function.</li>
+<li>2. Handle exceptions when getting results from tasks.</li>
+</ul>
+<h4>Handle Exception Within the Task</h4>
+<p>Handling the exception within the task means that you need some mechanism to let the recipient of the result know that something unexpected happened.</p>
+<p>This could be via the return value from the function, e.g. <strong>None</strong>.</p>
+<p>Alternatively, you can re-<meta/>raise an exception and have the recipient handle it directly. A third option might be to use some broader state or global state, perhaps passed by reference into the call to the function.</p>
+<p>The example below defines a work task that will <meta/>raise an exception, but will catch the exception and return a result indicating a failure case.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raise within a task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    try:
+        raise Exception('Something bad happened!')
+    except Exception:
+        return 'Unable to get the result'
+    return "never gets here"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # get the result from the task
+    result = future.result()
+    print(result)
+</code></pre>
+<p>Running the example starts the thread pool as per normal, issues the task, then blocks waiting for the result.</p>
+<p>The task raises an exception and the result received is an error message.</p>
+<p>This approach is reasonably clean for the recipient code and would be appropriate for tasks issued by both <strong>submit()</strong> and <strong>map()</strong>. It may require special handling of a custom return value for the failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<h4>Handle Exception by the Recipient of the Task Result</h4>
+<p>An alternative to handling the exception in the task is to leave the responsibility to the recipient of the result.</p>
+<p>This may feel like a more natural solution, as it matches the synchronous version of the same operation, e.g. if we were performing the function call in a for-loop.</p>
+<p>It means that the recipient must be aware of the types of errors that the task may <meta/>raise and handle them explicitly.</p>
+<p>The example below defines a simple task that <meta/>raisees an <strong>Exception</strong>, which is then handled by the recipient when attempting to get the result from the function call.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened!')
+    return "never gets here"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # get the result from the task
+    try:
+        result = future.result()
+    except Exception:
+        print('Unable to get the result')
+</code></pre>
+<p>Running the example creates the thread pool and submits the work as per normal. The task fails with an error, the thread pool catches the exception, stores it, then re-raises it when we call the <strong>result()</strong> function in the <strong>Future</strong>.</p>
+<p>The recipient of the result accepts the exception and catches it, reporting a failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<p>We can also check for the exception directly via a call to the <strong>exception()</strong> function on the <strong>Future</strong> object. This function blocks until an exception occurs and takes a timeout, just like a call to <strong>result()</strong>.</p>
+<p>If an exception never occurs and the task is cancelled or completes successfully, then <strong>exception()</strong> will return a value of <strong>None</strong>.</p>
+<p>We can demonstrate the explicit checking for an exceptional case in the task in the example below.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened!')
+    return "never gets here"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # get the result from the task
+    exception = future.exception()
+    # handle exceptional case
+    if exception:
+         print(exception)
+    else:
+        result = future.result()
+        print(result)
+</code></pre>
+<p>Running the example creates and submits the work per normal.</p>
+<p>The recipient checks for the exceptional case, which blocks until an exception is raised or the task is completed. An exception is received and is handled by reporting it.</p>
+<pre><code>Something bad happened!</code></pre>
+<p>We cannot check the exception() function of the <strong>Future</strong> object for each task, as <strong>map()</strong> does not provide access to <strong>Future</strong> objects.</p>
+<p>Worse still, the approach of handling the exception in the recipient cannot be used when using <strong>map()</strong> to submit tasks, unless you wrap the entire iteration.</p>
+<p>We can demonstrate this by submitting one task with <strong>map()</strong> that happens to raise an Exception.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock task that will sleep for a moment
+def work(value):
+    sleep(1)
+    raise Exception('Something bad happened!')
+    return f'Never gets here {value}'
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    for result in executor.map(work, [1]):
+        print(result)
+</code></pre>
+<p>Running the example submits the single task (a bad use for <strong>map()</strong>) and waits for the first result.</p>
+<p>The task <meta/>raises an exception and the main thread exits, as we expected.</p>
+<pre><code>Traceback (most recent call last):
+...
+    raise Exception('Something bad happened!')
+Exception: Something bad happened!
+</code></pre>
+<p>This highlights that if <strong>map()</strong> is used to submit tasks to the thread pool, then the tasks should handle their own exceptions or be simple enough that exceptions are not expected.</p>
+<h3>Exception Handling in Callbacks</h3>
+<p>A final case we must consider for exception handling when using the <strong>ThreadPoolExecutor</strong> is in callback functions.</p>
+<p>When issuing tasks to the thread pool with a call to <strong>submit()</strong>, we receive a <strong>Future</strong> object in return on which we can register callback functions to call when the task completes via the <strong>add_done_callback()</strong> function.</p>
+<p>This allows one or more callback functions to be registered that will be executed in the order in which they are registered.</p>
+<p>These callbacks are always called, even if the task is cancelled or fails itself with an exception.</p>
+<p>A callback can fail with an exception and it will not impact other callback functions that have been registered or the task.</p>
+<p>The exception is caught by the thread pool, logged as an exception type message, and the procedure moves on. In a sense, callbacks are able to fail silently.</p>
+<p>We can demonstrate this with a worked example with multiple callback functions, the first of which will raise an exception.</p>
+<pre><code># SuperFastPython.com
+# add callbacks to a future, one of which raises an exception
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# callback function to call when a task is completed
+def custom_callback1(future):
+    raise Exception('Something bad happened!')
+    # never gets here
+    print('Callback 1 called.')
+
+# callback function to call when a task is completed
+def custom_callback2(future):
+    print('Callback 2 called.')
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    return 'Task is done'
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute the task
+    future = executor.submit(work)
+    # add the custom callbacks
+    future.add_done_callback(custom_callback1)
+    future.add_done_callback(custom_callback2)
+    # wait for the task to complete and get the result
+    result = future.result()
+    # wait for callbacks to finish
+    sleep(0.1)
+    print(result)
+</code></pre>
+<p>Running the example starts the thread pool as per normal and executes the task.</p>
+<p>When the task completes, the first callback is called, which fails with an exception. The exception is logged and reported on the console (the default behavior for logging).</p>
+<p>The thread pool is not broken and carries on.</p>
+<p>The second callback is called successfully, and finally, the main thread gets the result of the task.</p>
+<pre><code>exception calling callback for &lt;Future at 0x101d76730 state=finished returned str&gt;
+Traceback (most recent call last):
+...
+    raise Exception('Something bad happened!')
+Exception: Something bad happened!
+Callback 2 called.
+Task is done
+</code></pre>
+<p>This highlights that if callbacks are expected to <meta/>raise an exception, that it must be handled explicitly and checked for if you wish to have the failure impact the task itself.</p>
+<h2>How Does ThreadPoolExecutor Work Internally</h2>
+<p>It is important to pause for a moment and look at <a href="../how-does-threadpoolexecutor-work/">how the <strong>ThreadPoolExecutor</strong> works internally</a>.</p>
+<p>The internal workings of the class impact how we use the thread pool and the behavior we can expect, specifically around cancelling tasks.</p>
+<p>Without this knowledge, some of the behavior of the thread pool may appear confusing from the outside.</p>
+<p>You can see the source code for the <strong>ThreadPoolExecutor</strong> and the base class here:</p>
+<ul>
+<li><a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/thread.py">cpython/Lib/concurrent/futures/thread.py</a></li>
+<li><a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/_base.py">cpython/Lib/concurrent/futures/_base.py</a></li>
+</ul>
+<p>There is a lot we could learn about how the thread pool works internally, but we will limit ourselves to the most critical aspects.</p>
+<p>There are two aspects that you need to consider about the internal operation of the ThreadPoolExecutor class: how tasks are sent into the pool and how worker threads are created.</p>
+<h3>Tasks Are Added to an Internal Queue</h3>
+<p>Tasks are sent into the thread pool by adding them to an internal queue.</p>
+<p>Recall that a queue is a data structure where items are added to one end and retrieved from the other in a first-in, first-out (FIFO) manner by default.</p>
+<p>The queue is a <a href="https://docs.python.org/3/library/queue.html#queue.SimpleQueue"><strong>SimpleQueue</strong> object</a>, which is a thread-safe <strong>Queue</strong> implementation. This means we can add work to the pool from any thread and the <strong>Queue</strong> of work will not become corrupt from concurrent <strong>put()</strong> and <strong>get()</strong> operations.</p>
+<p>The use of a task queue explains the distinction between tasks that have been added or scheduled but are not yet running, and that these tasks can be cancelled.</p>
+<p>Recall that the thread pool has a fixed number of worker threads. The number of tasks on the queue may exceed the current number of threads, or the current number of available threads. In which case, tasks may sit in a scheduled state for some time, allowing them to be canceled either directly or en masse when shutting down the pool.</p>
+<p>A task is wrapped in an internal object called a <strong>_WorkItem</strong>. This captures the details such as the function to call, the arguments, the associated <strong>Future</strong> object, and handling of exceptions if they occur during task execution.</p>
+<p>This explains how an exception within a task does not bring down the entire thread pool, but can be checked for and accessed after the task has completed.</p>
+<p>When <strong>_WorkItem</strong> object is retrieved from the queue by a worker thread, it will check if the task has been cancelled before it is executed. If so, it will return immediately and not execute the content of the task.</p>
+<p>This explains internally how cancellation is implemented by the thread pool and why we cannot cancel a running task.</p>
+<h3>Worker Threads Are Created as Needed</h3>
+<p>Worker threads are not created when the thread pool is created.</p>
+<p>Instead, worker threads are created on demand or just-in-time.</p>
+<p>Each time a task is added to the internal queue, the thread pool will check if the number of active threads is less than the upper limit of threads supported by the thread pool. If so, an additional thread is created to handle the new work.</p>
+<p>Once a thread has completed a task, it will wait on the queue for new work to arrive. As new work arrives, all threads waiting on the queue will be notified and one will consume the unit of work and start executing it.</p>
+<p>These two points show how the pool will only ever create new threads until the limit is reached and how threads will be reused, waiting for new tasks without consuming computational resources.</p>
+<p>It also shows that the thread pool will not release threads after a fixed number of units of work. Perhaps this would be a nice addition to the API in the future.</p>
+<p>Now that we understand how work is injected into the thread pool and how the pool manages threads, let's look at some best practices to consider when using the ThreadPoolExecutor.</p>
+<h2>ThreadPoolExecutor Best Practices</h2>
+<p>Now that we know how the <strong>ThreadPoolExecutor</strong> works and how to use it, let's review some <a href="../threadpoolexecutor-best-practices/">best practices to consider</a> when bringing thread pools into our Python programs.</p>
+<p>To keep things simple, there are five best practices; they are:</p>
+<ul>
+<li>1. Use the Context Manager</li>
+<li>2. Use map() for Asynchronous For-Loops</li>
+<li>3. Use submit() with as_completed()</li>
+<li>4. Use Independent Functions as Tasks</li>
+<li>5. Use for IO-Bound Tasks (probably)</li>
+</ul>
+<h3>Use the Context Manager</h3>
+<p>Use the context manager when using thread pools and handle all task dispatching to the thread pool and processing results within the manager.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool via the context manager
+with ThreadPoolExecutor(10) as executor:
+	# ...
+</code></pre>
+<p>Remember to configure your thread pool when creating it in the context manager, specifically by setting the number of threads to use in the pool.</p>
+<p>Using the context manager avoids the situation where you have explicitly instantiated the thread pool and forget to shut it down manually by calling <strong>shutdown()</strong>.</p>
+<p>It is also less code and better grouped than managing instantiation and shutdown manually; for example:</p>
+<pre><code>...
+# create a thread pool manually
+executor = ThreadPoolExecutor(10)
+# ...
+executor.shutdown()
+</code></pre>
+<p>Don't use the context manager when you need to dispatch tasks and get results over a broader context (e.g. multiple functions) and/or when you have more control over the shutdown of the pool.</p>
+<h3>Use map() for Asynchronous For-Loops</h3>
+<p>If you have a for-loop that applies a function to each item in a list, then use the <strong>map()</strong> function to dispatch the tasks asynchronously.</p>
+<p>For example, you may have a for-loop over a list that calls <strong>myfunc()</strong> for each item:</p>
+<pre><code>...
+# apply a function to each item in an iterable
+for item in mylist:
+	result = myfunc(item)
+	# do something...
+</code></pre>
+<p>Or, you may already be using the built-in map function:</p>
+<pre><code>...
+# apply a function to each item in an iterable
+for result in map(myfinc, mylist):
+	# do something...
+</code></pre>
+<p>Both of these cases can be made asynchronous using the <strong>map()</strong> function on the thread pool.</p>
+<pre><code>...
+# apply a function to each item in a iterable asynchronously
+for result in executor.map(myfunc, mylist):
+	# do something...
+</code></pre>
+<p>Do not use the <strong>map()</strong> function if your target task function has side effects.</p>
+<p>Do not use the <strong>map()</strong> function if your target task function has no arguments or more than one argument.</p>
+<p>Do not use the <strong>map()</strong> function if you need control over exception handling for each task, or if you would like to get results to tasks in the order that tasks are completed.</p>
+<h3>Use submit() with as_completed()</h3>
+<p>If you would like to process results in the order that tasks are completed, rather than the order that tasks are submitted, then use <strong>submit()</strong> and <strong>as_completed()</strong>.</p>
+<p>The <strong>submit()</strong> function is on the thread pool and is used to push tasks into the pool for execution and returns immediately with a Future object for the task. The <strong>as_completed()</strong> function is a module method that will take an iterable of <strong>Future</strong> objects, like a list, and will return <strong>Future</strong> objects as the tasks are completed.</p>
+<p>For example:</p>
+<pre><code>...
+# submit all tasks and get future objects
+futures = [executor.submit(myfunc, item) for item in mylist]
+# process results from tasks in order of task completion
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+	# do something...
+</code></pre>
+<p>Do not use the <strong>submit()</strong> and <strong>as_completed()</strong> combination if you need to process the results in the order that the tasks were submitted to the thread pool.</p>
+<p>Do not use the <strong>submit()</strong> and <strong>as_completed()</strong> combination if you need results from all tasks to continue; you may be better off using the <strong>wait()</strong> module function.</p>
+<p>Do not use the <strong>submit()</strong> and <strong>as_completed()</strong> combination for a simple asynchronous for-loop; you may be better off using <strong>map()</strong>.</p>
+<h3>Use Independent Functions as Tasks</h3>
+<p>Use the <strong>ThreadPoolExecutor</strong> if your tasks are independent.</p>
+<p>This means that each task is not dependent on other tasks that could execute at the same time. It also may mean tasks that are not dependent on any data other than data provided via function arguments to the task.</p>
+<p>The <strong>ThreadPoolExecutor</strong> is ideal for tasks that do not change any data, e.g. have no side effects, so-called <a href="https://en.wikipedia.org/wiki/Pure_function">pure functions</a>.</p>
+<p>Thread pools can be organized into data flows and pipelines for linear dependence between tasks, perhaps with one thread pool per task type.</p>
+<p>The thread pool is not designed for tasks that require coordination; you should consider using the <strong>Thread</strong> class and coordination patterns like the <strong>Barrier</strong> and <strong>Semaphore</strong>.</p>
+<p>Thread pools are not designed for tasks that require synchronization; you should consider using the <strong>Thread</strong> class and locking patterns like <strong>Lock</strong> and <strong>RLock</strong>.</p>
+<h3>Use for IO-Bound Tasks (probably)</h3>
+<p>Use <strong>ThreadPoolExecutor</strong> for IO-bound tasks only.</p>
+<p>These are tasks that may involve interacting with an external device such as a peripheral (e.g. a camera or a printer), a storage device (e.g. a storage device or a hard drive), or another computer (e.g. socket communication).</p>
+<p>Threads and thread pools like the <strong>ThreadPoolExecutor</strong> are not probably appropriate for CPU-bound tasks, like computation on data in memory.</p>
+<p>This is because of design decisions within the Python interpreter that makes use of a master lock called the Global Interpreter Lock (GIL) that prevents more than one Python instruction executing at the same time.</p>
+<p>This design decision was made within the reference implementation of the Python interpreter (from Python.org), but may not impact other interpreters (such as PyPy, Iron Python, and Jython).</p>
+<h2>Common Errors When Using ThreadPoolExecutor</h2>
+<p>There are a number of <a href="../threadpoolexecutor-common-errors/">common errors when using the <strong>ThreadPoolExecutor</strong></a>.</p>
+<p>These errors are typically made because of bugs introduced by copy-and-pasting code, or from a slight misunderstanding in how the <strong>ThreadPoolExecutor</strong> works.</p>
+<p>We will take a closer look at some of the more common errors made when using the <strong>ThreadPoolExecutor</strong>.</p>
+<p><strong>Do you have an error using the ThreadPoolExecutor?</strong><br/>Let me know in the comments so I can recommend a fix and add the case to this section.</p>
+<h3>Using a Function Call in submit()</h3>
+<p>A common error is to call your function when using the <strong>submit()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# submit the task
+future = executor.submit(task())
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling submit with a function call
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task():
+    # sleep for less than a second
+    sleep(random())
+    return 'all done'
+
+# start the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit the task
+    future = executor.submit(task())
+    # get the result
+    result = future.result()
+    print(result)
+</code></pre>
+<p>Running this example will fail with an error.</p>
+<pre><code>Traceback (most recent call last):
+...
+    result = self.fn(*self.args, **self.kwargs)
+TypeError: 'str' object is not callable
+</code></pre>
+<p>You can fix the error by updating the call to <strong>submit()</strong> to take the name of your function and any arguments, instead of calling the function in the call to submit.</p>
+<p>For example:</p>
+<pre><code>...
+# submit the task
+future = executor.submit(task)
+</code></pre>
+<h3>Using a Function Call in map()</h3>
+<p>A common error is to call your function when using the <strong>map()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task(), range(5)):
+    print(result)
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map with a function call
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    return value
+
+# start the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit all tasks
+    for result in executor.map(task(), range(5)):
+        print(result)
+</code></pre>
+<p>Running the example results in a <strong>TypeError</strong></p>
+<pre><code>Traceback (most recent call last):
+...
+TypeError: task() missing 1 required positional argument: 'value'
+</code></pre>
+<p>This error can be fixed by changing the call to <strong>map()</strong> to pass the name of the target task function instead of a call to the function.</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task, range(5)):
+    print(result)
+</code></pre>
+<h3>Incorrect Function Signature for map()</h3>
+<p>Another common error when using <strong>map()</strong> is to provide no second argument to function, e.g. the iterable.</p>
+<p>For example:</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task):
+    print(result)
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map without an iterable
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    return value
+
+# start the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit all tasks
+    for result in executor.map(task):
+        print(result)
+</code></pre>
+<p>Running the example does not issue any tasks to the thread pool as there was no iterable for the <strong>map()</strong> function to iterate over.</p>
+<p>In this case, no output is displayed.</p>
+<p>The fix involves providing an iterable in the call to <strong>map()</strong> along with your function name.</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task, range(5)):
+    print(result)
+</code></pre>
+<h3>Incorrect Function Signature for Future Callbacks</h3>
+<p>Another common error is to forget to include the <strong>Future</strong> in the signature for the callback function registered with a <strong>Future</strong> object.</p>
+<p>For example:</p>
+<pre><code>...
+# callback function to call when a task is completed
+def custom_callback():
+    print('Custom callback was called')
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the wrong signature on the callback function
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# callback function to call when a task is completed
+def custom_callback():
+    print('Custom callback was called')
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    return 'Task is done'
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute the task
+    future = executor.submit(work)
+    # add the custom callback
+    future.add_done_callback(custom_callback)
+    # get the result
+    result = future.result()
+    print(result)
+</code></pre>
+<p>Running this example will result in an error when the callback is called by the thread pool.</p>
+<pre><code>Task is done
+exception calling callback for &lt;Future at 0x10a05f190 state=finished returned str&gt;
+Traceback (most recent call last):
+...
+TypeError: custom_callback() takes 0 positional arguments but 1 was given
+</code></pre>
+<p>Fixing this error involves updating the signature of your callback function to include the <strong>Future</strong> object.</p>
+<pre><code>...
+# callback function to call when a task is completed
+def custom_callback(future):
+    print('Custom callback was called')
+</code></pre>
+<h2>Common Questions When Using the ThreadPoolExecutor</h2>
+<p>This section answers common questions asked by developers when using the <strong>ThreadPoolExecutor</strong>.</p>
+<p><strong>Do you have a question about the ThreadPoolExecutor?</strong><br/>Ask your question in the comments below and I will do my best to answer it and perhaps add it to this list of questions.</p>
+<h3>How Do You Stop a Running Task?</h3>
+<p>A task in the <strong>ThreadPoolExecutor</strong> can be cancelled before it has started running.</p>
+<p>In this case, the task must have been sent into the pool by calling <strong>submit()</strong>, which returns a <strong>Future</strong> object. You can then call the <strong>cancel()</strong> function in the future.</p>
+<p>If the task is already running it cannot be canceled, stopped, or terminated by the thread pool.</p>
+<p>Instead, you must add this functionality to your task.</p>
+<p>One approach might be to use a thread-safe flag, like an <strong>threading.Event</strong> that, if set, will indicate that <a href="../threadpoolexecutor-stop-tasks/">all tasks must stop running as soon as they can</a>. You can then update your target task function or functions to check the state of this flag frequently.</p>
+<p>It may require that you change the structure of your task.</p>
+<p>For example, if your task reads data from a file or a socket, you may need to change the read operation to be performed in blocks of data in a loop so that each iteration of the loop you can check the status of the flag.</p>
+<p>The example below provides a template you can use for adding an event flag to your target task function to check for a stop condition to shut down all currently running tasks.</p>
+<p>The example below demonstrates this with a worked example.</p>
+<pre><code># SuperFastPython.com
+# example of stopping running tasks using an event
+from time import sleep
+from threading import Event
+from concurrent.futures import ThreadPoolExecutor
+
+# mock target task function
+def work(event):
+    # pretend read data for a long time
+    for _ in range(100):
+        # pretend to read some data
+        sleep(1)
+        # check the status of the flag
+        if event.is_set():
+            # shut down this task now
+            print("Not done, asked to stop")
+            return
+    return "All done!"
+
+# create an event to shut down all running tasks
+event = Event()
+# create a thread pool
+executor = ThreadPoolExecutor(5)
+# execute all of our tasks
+futures = [executor.submit(work, event) for _ in range(50)]
+# wait a moment
+print('Tasks are running...')
+sleep(2)
+# cancel all scheduled tasks
+print('Cancelling all scheduled tasks...')
+for future in futures:
+    future.cancel()
+# stop all currently running tasks
+print('Trigger all running tasks to stop...')
+event.set()
+# shutdown the thread pool and wait for all tasks to complete
+print('Shutting down...')
+executor.shutdown()
+</code></pre>
+<p>Running the example first creates a thread pool with 5 worker threads and schedules 50 tasks.</p>
+<p>An event object is created and passed to each task where it is checked each iteration to see if it has been set and if so to bail out of the task.</p>
+<p>The first 5 tasks start executing for a few seconds, then we decide to shut everything down.</p>
+<p>First, we cancel all scheduled tasks that are not yet running so that if they make it off the queue into a worker thread, they will not start running.</p>
+<p>We then mark set the event to trigger all running tasks to stop.</p>
+<p>The thread pool is then shut down and we wait for all running threads to complete their execution.</p>
+<p>The five running threads check the status of the event in their next loop iteration and bail out, printing a message.</p>
+<pre><code>Tasks are running...
+Cancelling all scheduled tasks...
+Trigger all running tasks to stop...
+Shutting down...
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+Not done, asked to stop
+</code></pre>
+<h3>How Do You Wait for All Tasks to Complete?</h3>
+<p>There are a few ways to <a href="../threadpoolexecutor-wait-all-tasks/">wait for all tasks to complete in a <strong>ThreadPoolExecutor</strong></a>.</p>
+<p>Firstly, if you have a <strong>Future</strong> object for all tasks in the thread pool because you called <strong>submit()</strong>, then you can provide the collection of tasks to the <strong>wait()</strong> module function. By default, this function will return when all provided <strong>Future</strong> objects have completed.</p>
+<pre><code>...
+# wait for all tasks to complete
+wait(futures)
+</code></pre>
+<p>Alternatively, you can enumerate the list of <strong>Future</strong> objects and attempt to get the result from each. This iteration will complete when all results are available meaning that all tasks were completed.</p>
+<pre><code>...
+# wait for all tasks to complete by getting all results
+for future in futures:
+	result = future.result()
+# all tasks are complete
+</code></pre>
+<p>Another approach is to shut down the thread pool. We can set "<strong>cancel_futures</strong>" to <strong>True</strong>, which will cancel all scheduled tasks and wait for all currently running tasks to complete.</p>
+<pre><code>...
+# shutdown the pool, cancels scheduled tasks, returns when running tasks complete
+executor.shutdown(wait=True, cancel_futures=True)
+</code></pre>
+<p>You can also shut down the pool and not cancel the scheduled tasks, yet still wait for all tasks to complete. This will ensure all running and scheduled tasks are completed before the function returns. This is the default behavior of the <strong>shutdown()</strong> function, but is a good idea to specify explicitly.</p>
+<pre><code>...
+# shutdown the pool, returns after all scheduled and running tasks complete
+executor.shutdown(wait=True, cancel_futures=False)
+</code></pre>
+<h3>How Do You Dynamically Change the Number of Threads?</h3>
+<p>You cannot dynamically increase or decrease the number of threads in a <strong>ThreadPoolExecutor</strong>.</p>
+<p>The number of threads is fixed when the <strong>ThreadPoolExecutor</strong> is configured in the call to the object constructor. For example:</p>
+<pre><code>...
+# configure a thread pool
+executor = ThreadPoolExecutor(20)
+</code></pre>
+<h3>How Do You Log From a Task?</h3>
+<p>Your target task functions are executed by worker threads in the thread pool and you may be concerned whether logging from those task functions is thread safe.</p>
+<p>That is, will the log become corrupt if two threads attempt at the same time. The answer is no, the log will not become corrupt.</p>
+<p>The Python logging functionality is thread-safe by default.</p>
+<p>For example, see this quote from the logging module API documentation:</p>
+<blockquote>
+<p>The logging module is intended to be thread-safe without any special work needing to be done by its clients. It achieves this though using threading locks; there is one lock to serialize access to the module’s shared data, and each handler also creates a lock to serialize access to its underlying I/O.</p>
+<cite>-- <a href="https://docs.python.org/3/library/logging.html#thread-safety">Logging facility for Python, Thread Safety</a>.</cite></blockquote>
+<p>Therefore, you can <a href="../threadpoolexecutor-logging/">log from your target task functions directly</a>.</p>
+<h3>How Do You Unit Tasks and Thread Pools?</h3>
+<p>You can unit test your target task functions directly, perhaps mocking any external resources required.</p>
+<p>You can unit test your usage of the thread pool with mock tasks that do not interact with external resources.</p>
+<p>Unit testing of tasks and the thread pool itself must be considered as part of your design and may require that connection to the IO resource be configurable so that it can be mocked, and that the target task function called by your thread pool is configurable so that it can be mocked.</p>
+<h3>How Do You Compare Serial to Parallel Performance?</h3>
+<p>You can compare the performance of your program with and without the thread pool.</p>
+<p>This can be a useful exercise to confirm that making use of the <strong>ThreadPoolExecutor</strong> in your program has resulted in a speed-up.</p>
+<p>Perhaps the simplest approach is to manually record the start and end time of your code and subtract the end from the start time to report the total execution time. Then record the time with and without the use of the thread pool.</p>
+<pre><code># SuperFastPython.com
+# example of recording the execution time of a program
+import time
+
+# record the start time
+start_time = time.time()
+# do work with or without a thread pool
+# ....
+time.sleep(3)
+# record the end time
+end_time = time.time()
+# report execution time
+total_time = end_time - start_time
+print(f'Execution time: {total_time:.1f} seconds.')
+</code></pre>
+<p>Using an average program execution time might give a more stable program timing than a one-off run.</p>
+<p>You can record the execution time 3 or more times for your program without the thread pool then calculate the average as the sum of times divided by the total runs. Then repeat this exercise to calculate the average time with the thread pool.</p>
+<p>This would probably only be appropriate if the running time of your program is minutes rather than hours.</p>
+<p>You can then compare the serial vs. parallel version by calculating the speed up multiple as:</p>
+<ul>
+<li>Speed-Up Multiple = Serial Time / Parallel Time</li>
+</ul>
+<p>For example, if the serial run of a program took 15 minutes (900 seconds) and the parallel version with a <strong>ThreadPoolExecutor</strong> took 5 minutes (300 seconds), then the percentage multiple up would be calculated as:</p>
+<ul>
+<li>Speed-Up Multiple = Serial Time / Parallel Time</li>
+<li>Speed-Up Multiple = 900 / 300</li>
+<li>Speed-Up Multiple = 3</li>
+</ul>
+<p>That is, the parallel version of the program with the <strong>ThreadPoolExecutor</strong> is 3 times faster or 3x faster.</p>
+<p>You can multiply the speed-up multiple by 100 to give a percentage</p>
+<ul>
+<li>Speed-Up Percentage = Speed-Up Multiple * 100</li>
+</ul>
+<p>In this example, the parallel version is 300% faster than the serial version.</p>
+<h3>How Do You Set chunksize in map()?</h3>
+<p>The <strong>map()</strong> function on the <strong>ThreadPoolExecutor</strong> takes a parameter called "<strong>chunksize</strong>" which defaults to 1.</p>
+<p>The chunksize parameter is not used by the <strong>ThreadPoolExecutor</strong>; it is only used by the <strong>ProcessPoolExecutor</strong>, therefore you can safely ignore it.</p>
+<p>Setting this parameter does nothing when using the <strong>ThreadPoolExecutor</strong>.</p>
+<h3>How Do You Submit a Follow-up Task?</h3>
+<p>Some tasks require that a second task be executed that makes use of the result from the first task in some way.</p>
+<p>We might call this the need to <a href="../threadpoolexecutor-followup-task/">execute a follow-up task</a> for each task that is submitted, which might be conditional on the result in some way.</p>
+<p>There are a few ways to submit a follow-up task.</p>
+<p>One approach would be to submit the follow-up task as we are processing the results from the first task.</p>
+<p>For example, we can process the result from each of the first tasks as they complete, then manually call submit() for each follow-up task when needed and store the new future object in a second list for later use.</p>
+<p>We can make this example of submitting follow-up tasks concrete with a full example.</p>
+<pre><code># SuperFastPython.com
+# example of submitting follow-up tasks
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# mock test that works for moment
+def task1():
+    value = random()
+    sleep(value)
+    print(f'Task 1: {value}')
+    return value
+
+# mock test that works for moment
+def task2(value1):
+    value2 = random()
+    sleep(value2)
+    print(f'Task 2: value1={value1}, value2={value2}')
+    return value2
+
+# start the thread pool
+with ThreadPoolExecutor(5) as executor:
+    # send in the first tasks
+    futures1 = [executor.submit(task1) for _ in range(10)]
+    # process results in the order they are completed
+    futures2 = list()
+    for future1 in as_completed(futures1):
+        # get the result
+        result = future1.result()
+        # check if we should trigger a follow-up task
+        if result &gt; 0.5:
+            future2 = executor.submit(task2, result)
+            futures2.append(future2)
+    # wait for all follow-up tasks to complete
+</code></pre>
+<p>Running the example starts a thread pool with 5 worker threads and submits 10 tasks.</p>
+<p>We then process the results for the tasks as they are completed. If a result from the first round of tasks requires a follow-up task, we submit the follow-up task and keep track of the <strong>Future</strong> object in a second list.</p>
+<p>These follow-up tasks are submitted as needed, rather than waiting until all first round tasks are completed, which is a nice benefit of using the <strong>as_completed()</strong> function with a list of Future objects.</p>
+<p>We can see that in this case, five first round tasks resulted in follow-up tasks.</p>
+<pre><code>Task 1: 0.021868594663798424
+Task 1: 0.07220684891621587
+Task 1: 0.1889059597524675
+Task 1: 0.4044025009726221
+Task 1: 0.5377728619737125
+Task 1: 0.5627604576510364
+Task 1: 0.19590409149609522
+Task 1: 0.8350495785309672
+Task 2: value1=0.8350495785309672, value2=0.21472292885893007
+Task 2: value1=0.5377728619737125, value2=0.6180101068687799
+Task 1: 0.9916368220002719
+Task 1: 0.6688307514083958
+Task 2: value1=0.6688307514083958, value2=0.2691774622597396
+Task 2: value1=0.5627604576510364, value2=0.859736361909423
+Task 2: value1=0.9916368220002719, value2=0.642060404763057
+</code></pre>
+<p>You might like to use a separate thread pool for follow-up tasks, to keep things separate.</p>
+<p>I would not recommend submitting new tasks from within a task.</p>
+<p>This would require access to the thread pool either as a global variable or by being passed in and would break the idea of tasks being pure functions that don't have side effects, a good practice when using thread pools.</p>
+<h3>How Do You Store Local State for Each Thread?</h3>
+<p>You can use thread local variables for worker threads in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>A common pattern would be to use a custom initializer function for each worker thread to set up a thread local variable specific to each worker thread.</p>
+<p>This thread local variables can then be used by each thread within each task, requiring that the task be aware of the thread local mechanism.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>First, we can define a custom initializer function that takes a thread local context and sets up a custom variable named "key" with a unique value between 0.0 and 1.0 for each worker thread.</p>
+<pre><code># function for initializing the worker thread
+def initializer_worker(local):
+    # generate a unique value for the worker thread
+    local.key = random()
+    # store the unique worker key in a thread local variable
+    print(f'Initializing worker thread {local.key}')
+</code></pre>
+<p>We can then define our target task function to take the same thread local context and to access the thread local variable for the worker thread and make use of it.</p>
+<pre><code># a mock task that sleeps for a random amount of time less than one second
+def task(local):
+    # access the unique key for the worker thread
+    mykey = local.key
+    # make use of it
+    sleep(mykey)
+    return f'Worker using {mykey}'
+</code></pre>
+<p>We can then configure our new <strong>ThreadPoolExecutor</strong> instance to use the initializer with the required local argument.</p>
+<pre><code>...
+# get the local context
+local = threading.local()
+# create a thread pool
+executor = ThreadPoolExecutor(max_workers=2, initializer=initializer_worker, initargs=(local,))
+</code></pre>
+<p>Then dispatch tasks into the thread pool with the same thread local context.</p>
+<pre><code>...
+# dispatch asks
+futures = [executor.submit(task, local) for _ in range(10)]
+</code></pre>
+<p>Tying this together, the complete example of using a <strong>ThreadPoolExecutor</strong> with thread local storage is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread local storage for worker threads
+from time import sleep
+from random import random
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# function for initializing the worker thread
+def initializer_worker(local):
+    # generate a unique value for the worker thread
+    local.key = random()
+    # store the unique worker key in a thread local variable
+    print(f'Initializing worker thread {local.key}')
+
+# a mock task that sleeps for a random amount of time less than one second
+def task(local):
+    # access the unique key for the worker thread
+    mykey = local.key
+    # make use of it
+    sleep(mykey)
+    return f'Worker using {mykey}'
+
+# get the local context
+local = threading.local()
+# create a thread pool
+executor = ThreadPoolExecutor(max_workers=2, initializer=initializer_worker, initargs=(local,))
+# dispatch asks
+futures = [executor.submit(task, local) for _ in range(10)]
+# wait for all threads to complete
+for future in futures:
+    result = future.result()
+    print(result)
+# shutdown the thread pool
+executor.shutdown()
+print('done')
+</code></pre>
+<p>Running the example first configures the thread pool to use our custom initializer function, which sets up a thread local variable for each worker thread with a unique value, in this case two threads each with a value between 0 and 1.</p>
+<p>Each worker thread then works on tasks in the queue, all ten of them, each using the specific value of the thread local variable setup for the thread in the initialization function.</p>
+<pre><code>Initializing worker thread 0.9360961457279074
+Initializing worker thread 0.9075641843481475
+Worker using 0.9360961457279074
+Worker using 0.9075641843481475
+Worker using 0.9075641843481475
+Worker using 0.9360961457279074
+Worker using 0.9075641843481475
+Worker using 0.9360961457279074
+Worker using 0.9075641843481475
+Worker using 0.9360961457279074
+Worker using 0.9075641843481475
+Worker using 0.9360961457279074
+done
+</code></pre>
+<h3>How Do You Show Progress of All Tasks?</h3>
+<p>There are many ways to <a href="../threadpoolexecutor-progress/">show progress for tasks</a> that are being executed by the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Perhaps the simplest is to use a callback function that updates a progress indicator. This can be achieved by defining the progress indicator function and registering it with the Future object for each task via the <strong>add_done_callback()</strong> function.</p>
+<p>The simplest progress indicator is to print a dot to the screen for each task that completes.</p>
+<p>The example below demonstrates this simple progress indicator.</p>
+<pre><code># SuperFastPython.com
+# example of a simple progress indicator
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# simple progress indicator callback function
+def progress_indicator(future):
+    print('.', end='', flush=True)
+
+# mock test that works for moment
+def task(name):
+    sleep(random())
+
+# start the thread pool
+with ThreadPoolExecutor(2) as executor:
+    # send in the tasks
+    futures = [executor.submit(task, i) for i in range(20)]
+    # register the progress indicator callback
+    for future in futures:
+        future.add_done_callback(progress_indicator)
+    # wait for all tasks to complete
+print('\nDone!')
+</code></pre>
+<p>Running the example starts a thread pool with two worker threads and dispatches 20 tasks.</p>
+<p>A progress indicator callback function is registered with each <strong>Future</strong> object that prints one dot as each task is completed, ensuring that the standard output is flushed with each call to <strong>print() </strong>and that no new line is printed.</p>
+<p>This ensures that each we see the dot immediately regardless of the thread that prints and that all dots appear on one line.</p>
+<p>Each task will work for a variable amount of time less than one second and a dot is printed once the task is completed.</p>
+<pre><code>....................
+Done!
+</code></pre>
+<p>A more elaborate progress indicator must know the total number of tasks and will use a thread safe counter to update the status of the number of tasks completed out of all tasks to be completed.</p>
+<h3>Do We Need to Have a Check for __main__?</h3>
+<p>You do not need to have a check for <strong>__main__</strong> when using the <strong>ThreadPoolExecutor</strong>.</p>
+<p>You do need a check for <strong>__main__</strong> when using the <strong>Process</strong> version of the pool, called a <strong>ProcessPoolExecutor</strong>. This may be the source of confusion.</p>
+<h3>How Do You Get a Future Object for Tasks Added With map()?</h3>
+<p>When you call <strong>map()</strong>, it does create a <strong>Future</strong> object for each task.</p>
+<p>Internally, <strong>submit()</strong> is called for each item in the iterable provided to the call to <strong>map()</strong>.</p>
+<p>Nevertheless, there is no clean way to access the <strong>Future</strong> object for tasks sent into the thread pool via <strong>map()</strong>.</p>
+<p>Each task on the <strong>ThreadPoolExecutor</strong> object's internal work queue is an instance of a <strong>_WorkItem</strong> that does have a reference to the <strong>Future</strong> object for the task. You can access the <strong>ThreadPoolExecutor</strong> object's internal queue, but you have no safe way of enumerating items in the queue without removing them.</p>
+<p>If you need a <strong>Future</strong> object for a task, call <strong>submit()</strong>.</p>
+<h3>Can I Call shutdown() From Within the Context Manager?</h3>
+<p>You can call <strong>shutdown()</strong> within the <a href="../threadpoolexecutor-context-manager/">context manager</a>, but there are not many use cases.</p>
+<p>It does not cause an error that I can see.</p>
+<p>You may want to call <strong>shutdown() </strong>explicitly if you wish to cancel all scheduled tasks and you don't have access to the <strong>Future</strong> objects, and you wish to do other clean-up before waiting for all running tasks to stop.</p>
+<p>It would be strange if you found yourself in this situation.</p>
+<p>Nevertheless, here is an example of calling <strong>shutdown()</strong> from within the context manager.</p>
+<pre><code># SuperFastPython.com
+# example of shutting down within a context manager
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock test that works for moment
+def task(name):
+    sleep(2)
+    print(f'Done: {name}')
+
+# start the thread pool
+with ThreadPoolExecutor(1) as executor:
+    # send some tasks into the thread pool
+    print('Sending in tasks...')
+    futures = [executor.submit(task, i) for i in range(10)]
+    # explicitly shutdown within the context manager
+    print('Shutting down...')
+    executor.shutdown(wait=False, cancel_futures=True)
+    # shutdown called again here when context manager exited
+    print('Waiting...')
+print('Doing other things...')
+</code></pre>
+<p>Running the example starts a thread pool with one worker thread and then sends in ten tasks to execute.</p>
+<p>We then explicitly call shutdown on the thread pool and cancel all scheduled tasks without waiting.</p>
+<p>We then exit the context manager and wait for all tasks to complete. This second shutdown works as expected, waiting for the one running task to complete before returning.</p>
+<pre><code>Sending in tasks...
+Shutting down...
+Waiting...
+Done: 0
+Doing other things...
+</code></pre>
+<h2>Common Objections to Using ThreadPoolExecutor</h2>
+<p>The <strong>ThreadPoolExecutor</strong> may not be the best solution for all multithreading problems in your program.</p>
+<p>That being said, there may also be some misunderstandings that are preventing you from making full and best use of the capabilities of the <strong>ThreadPoolExecutor</strong> in your program.</p>
+<p>In this section, we review some of the common objections seen by developers when considering using the <strong>ThreadPoolExecutor</strong> in their code.</p>
+<h3>What About the Global Interpreter Lock (GIL)?</h3>
+<p>The Global Interpreter Lock, or GIL for short, is a design decision with the reference Python interpreter.</p>
+<p>It refers to the fact that the implementation of the Python interpreter makes use of a master lock that prevents more than one Python instruction executing at the same time.</p>
+<p>This prevents more than one thread of execution within Python programs, specifically within each Python process, that is each instance of the Python interpreter.</p>
+<p>The implementation of the GIL means that Python threads may be concurrent, but cannot run in parallel. Recall that concurrent means that more than one task can be in progress at the same time; parallel means more than one task actually executing at the same time. Parallel tasks are concurrent, concurrent tasks may or may not execute in parallel.</p>
+<p>It is the reason behind the heuristic that Python threads should only be used for IO-bound tasks, and not CPU-bound tasks, as IO-bound tasks will wait in the operating system kernel for remote resources to respond (not executing Python instructions), allowing other Python threads to run and execute Python instructions.</p>
+<p>Put another way, the GIL does not mean we cannot use threads in Python, only that some use cases for Python threads are viable or appropriate.</p>
+<p>This design decision was made within the reference implementation of the Python interpreter (from Python.org), but may not impact other interpreters (such as PyPy, Iron Python, and Jython) that allow multiple Python instructions to be executed concurrently and in parallel.</p>
+<p>You can learn more about this topic here:</p>
+<ul>
+<li><a href="../threadpoolexecutor-vs-gil/">ThreadPoolExecutor vs. the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<h3>Are Python Threads "Real Threads"?</h3>
+<p>Yes.</p>
+<p>Python makes use of real system-level threads, also called kernel-level threads, a capability provided by modern operating systems like Windows, Linux, and MacOS.</p>
+<p>Python threads are not software-level threads, sometimes called user-level threads or <a href="https://en.wikipedia.org/wiki/Green_threads">green threads</a>.</p>
+<h3>Aren't Python Threads Buggy?</h3>
+<p>No.</p>
+<p>Python threads are not buggy.</p>
+<p>Python threading is a first class capability of the Python platform and has been for a very long time.</p>
+<h3>Isn't Python a Bad Choice for Concurrency?</h3>
+<p>Developers love python for many reasons, most commonly because it is easy to use and fast for development.</p>
+<p>Python is commonly used for glue code, one-off scripts, but more and more for large-scale software systems.</p>
+<p>If you are using Python and then you need concurrency, then you work with what you have. The question is moot.</p>
+<p>If you need concurrency and you have not chosen a language, perhaps another language would be more appropriate, or perhaps not. Consider the full scope of functional and non-functional requirements (or user needs, wants, and desires) for your project and the capabilities of different development platforms.</p>
+<h3>Why Not Always Use ProcessPoolExecutor Instead?</h3>
+<p>The <strong>ProcessPoolExecutor</strong> supports pools of processes, unlike the <strong>ThreadPoolExecutor</strong> that supports pools of threads.</p>
+<p>Threads and Processes are quite different and choosing one over the other is intentional.</p>
+<p>A Python program is a process that has a main thread. You can create many additional threads in a Python process. You can also fork or spawn many Python processes, each of which will have one thread, and may spawn additional threads.</p>
+<p>More broadly, threads are lightweight and can share memory (data and variables) within a process, whereas processes are heavyweight and require more overhead and impose more limits on sharing memory (data and variables).</p>
+<p>Typically, processes are used for CPU-bound tasks and threads are used for IO-bound tasks, and this is a good heuristic, but this does not have to be the case.</p>
+<p>Perhaps <strong>ProcessPoolExecutor</strong> is a better fit for your specific problem. Perhaps try it and see.</p>
+<p>You can learn more about this topic here:</p>
+<ul>
+<li><a href="../threadpoolexecutor-vs-processpoolexecutor/">ThreadPoolExecutor vs. ProcessPoolExecutor in Python</a></li>
+</ul>
+<h3>Why Not Use threading.Thread instead?</h3>
+<p>The <strong>ThreadPoolExecutor</strong> is like the "<em>auto mode</em>" for Python threading.</p>
+<p>If you have a more sophisticated use case, you may need to use the <strong>threading.Thread</strong> class directly.</p>
+<p>This may be because you require more synchronization between threads with locking mechanisms, and/or more coordination between threads with barriers and semaphores.</p>
+<p>It may be that you have a simpler use case, such as a single task, in which case perhaps a thread pool would be too heavy a solution.</p>
+<p>That being said, if you find yourself using the <strong>Thread</strong> class with the target keyword for pure functions (functions that don't have side effects), perhaps you would be better suited to using the <strong>ThreadPoolExecutor</strong>.</p>
+<p>You can learn more about this topic here:</p>
+<ul>
+<li><a href="../threadpoolexecutor-vs-threads/">ThreadPoolExecutor vs. Thread in Python</a></li>
+</ul>
+<h3>Why Not Use AsyncIO?</h3>
+<p>AsyncIO can be an alternative to using a <strong>ThreadPoolExecutor</strong>.</p>
+<p>AsyncIO is designed to support large numbers of IO operations, perhaps thousands to tens of thousands, all within a single Thread.</p>
+<p>It requires an alternate programming paradigm, called <a href="https://en.wikipedia.org/wiki/Reactive_programming">reactive programming</a>, which can be challenging for beginners.</p>
+<p>Nevertheless, it may be a better alternative to using a thread pool for many applications.</p>
+<p>You can learn more about this topic here:</p>
+<ul>
+<li><a href="../threadpoolexecutor-vs-asyncio/">ThreadPoolExecutor vs. AsyncIO in Python</a></li>
+</ul>
+<h2>Conclusions</h2>
+<p>This is a large guide, and you have discovered in great detail how the <strong>ThreadPoolExecutor</strong> works and how to best use it on your project.</p>
 </main>
 </body>
 </html>

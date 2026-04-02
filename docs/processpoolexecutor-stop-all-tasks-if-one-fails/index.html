@@ -126,6 +126,106 @@ def work(event, name):
 </code></pre>
 <p>So far so good.</p>
 <p>Next, we can start a process pool with ten worker processes and submit ten tasks to the process pool with names from 0 to 9.</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor(10) as executor:
+    # execute many tasks
+    futures = [executor.submit(work, event, i) for i in range(10)]
+</code></pre>
+<p>We can then wait for all tasks to complete or for any of the tasks to fail by raising an exception.</p>
+<pre><code>...
+# wait for all tasks to complete, or one task to fail
+print('Waiting for tasks to complete, or fail...')
+done, not_done = wait(futures, return_when=FIRST_EXCEPTION)
+</code></pre>
+<p>When we finish waiting, we can check if all tasks completed are not yet done and if so, whether an exception occurred.</p>
+<p>If an exception did occur in the first (and only) done <strong>Future</strong>, then we can cancel any scheduled tasks and trigger the event which will cause all running tasks to stop executing.</p>
+<pre><code>...
+# check if not all tasks are done
+if len(done) &gt; 0 and len(done) != len(futures):
+    # check if an exception was raised
+    future = done.pop()
+    if future.exception() != None:
+        print(f'One task failed with: {future.exception()}, shutting down')
+        # cancel any scheduled tasks
+        for future in futures:
+            future.cancel()
+        # stop all running tasks
+        event.set()
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this all together, the complete example of stopping all tasks if one task fails in the <strong>ProcessPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of stopping all running tasks when one task fails
+from time import sleep
+from multiprocessing import Manager
+from multiprocessing import Event
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from concurrent.futures import FIRST_EXCEPTION
+
+# target task function
+def work(event, name):
+    # pretend read data for a long time
+    for _ in range(10):
+        # pretend to read some data
+        sleep(1)
+        # check if this task should fail
+        if name == 0:
+            print(f'Task has failed, name={name}', flush=True)
+            raise Exception('Something bad happened')
+        # check if the task should stop
+        if event.is_set():
+            print(f'Stopping, name={name}', flush=True)
+            return
+
+# entry point
+if __name__ == '__main__':
+    # create a manager for sharing events
+    with Manager() as manager:
+        # create an event used to stop running tasks
+        event = manager.Event()
+        # create a process pool
+        with ProcessPoolExecutor(10) as executor:
+            # execute many tasks
+            futures = [executor.submit(work, event, i) for i in range(10)]
+            # wait for all tasks to complete, or one task to fail
+            print('Waiting for tasks to complete, or fail...')
+            done, not_done = wait(futures, return_when=FIRST_EXCEPTION)
+            # check if not all tasks are done
+            if len(done) &gt; 0 and len(done) != len(futures):
+                # check if an exception was raised
+                future = done.pop()
+                if future.exception() != None:
+                    print(f'One task failed with: {future.exception()}, shutting down')
+                    # cancel any scheduled tasks
+                    for future in futures:
+                        future.cancel()
+                    # stop all running tasks
+                    event.set()
+    print('All done.')
+</code></pre>
+<p>Running the example first starts the process pool with ten worker processes then submits ten tasks into the pool and collects the <strong>Future</strong> objects.</p>
+<p>We then wait for all tasks to complete or for one task to fail during execution.</p>
+<p>A failure occurs in one task.</p>
+<p>The failure triggers the <strong>wait()</strong> function to stop waiting. The results are interpreted and it is determined that one task raised an exception, therefore any scheduled tasks are cancelled and all running tasks are stopped.</p>
+<p>Each task detects the request to stop via the event and stops its execution.</p>
+<pre><code>Waiting for tasks to complete, or fail...
+Task has failed, name=0
+One task failed with: Something bad happened, shutting down
+Stopping, name=9
+Stopping, name=2
+Stopping, name=8
+Stopping, name=5
+Stopping, name=7
+Stopping, name=6
+Stopping, name=3
+Stopping, name=4
+Stopping, name=1
+All done.
+</code></pre>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to stop all tasks if one asynchronous task fails in the <strong>ProcessPoolExecutor</strong>.</p>
 </main>
 </body>
 </html>

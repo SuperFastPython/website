@@ -363,7 +363,7 @@ with multiprocessing.Pool() as pool:
 <p>Alternatively, if we are on windows or wish to have a larger dictionary, we can download one of many free lists of words online.</p>
 <p>For example, you can download a list of one million English words from here:</p>
 <ul>
-<li><a href="../zips/1m_words.txt.zip">One Million English Words (1m_words.txt.zip)</a></li>
+<li><a href="https://raw.githubusercontent.com/SuperFastPython/DataSets/main/bin/1m_words.txt.zip">One Million English Words (1m_words.txt.zip)</a></li>
 </ul>
 <p>Download this file and unzip the archive to your current working directory with the filename "<strong>1m_words.txt</strong>".</p>
 <p>Looking in the file, we can see that indeed we have a long list of words, one per line.</p>
@@ -3037,6 +3037,310 @@ def progress(results):
 <p>We can explore how to show progress of tasks issued to the process pool.</p>
 <p>In this example, we will define a task that will block for a fraction of a second. We will then issue many of these tasks to the process pool. A callback will be called as each task finished and will print a message to show the progress of tasks as they are completed.</p>
 <p>A complete example to demonstrate this is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of showing progress in the process pool with separate tasks
+from time import sleep
+from random import random
+from multiprocessing.pool import Pool
+
+# progress indicator for tasks in the process pool
+def progress(results):
+    print('.', end='', flush=True)
+
+# task executed in a worker process
+def task():
+    # generate a random value
+    value = random()
+    # block for a moment
+    sleep(value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue many tasks asynchronously to the process pool
+        results = [pool.apply_async(task, callback=progress) for _ in range(20)]
+        # close the pool
+        pool.close()
+        # wait for all issued tasks to complete
+        pool.join()
+    # report all done
+    print('\nDone!')
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>Then, 20 tasks are issued to the pool, one at a time.</p>
+<p>The main process then closes the process pool and blocks waiting for all issued tasks to complete.</p>
+<p>Each task blocks for a fraction of a second and finishes.</p>
+<p>As each task is finished, the callback function is called, printing a dot.</p>
+<p>The dots accumulate on standard output, showing the progress of all issued tasks.</p>
+<p>Once all tasks are finished, the main process continues on and reports a final message.</p>
+<pre><code>....................
+Done!
+</code></pre>
+<p>You can learn more about how to show progress of tasks in the process pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-show-progress/">Multiprocessing Pool Show Progress in Python</a></li>
+</ul>
+<h3>Do We Need to Protect __main__?</h3>
+<p>Yes, generally it is a good practice.</p>
+<p>It is common to get a <strong>RuntimeError</strong> when starting a new <strong>Process</strong> in Python.</p>
+<p>The content of the error often looks as follows:</p>
+<pre><code>    An attempt has been made to start a new process before the
+    current process has finished its bootstrapping phase.
+
+    This probably means that you are not using fork to start your
+    child processes and you have forgotten to use the proper idiom
+    in the main module:
+
+        if __name__ == '__main__':
+            freeze_support()
+            ...
+
+    The "freeze_support()" line can be omitted if the program
+    is not going to be frozen to produce an executable.
+</code></pre>
+<p>This will happen on Windows and MacOS where the default start method is ‘<strong>spawn</strong>‘. It may also happen when you configure your program to use the ‘<strong>spawn</strong>‘ start method on other platforms.</p>
+<p>You will get this <strong>RuntimeError</strong> when using the multiprocessing.Pool and do not protect the entry point when using the 'spawn' start method.</p>
+<p>The fix involves checking if the code is running in the top-level environment and only then, attempt to start a new process.</p>
+<p>This is a best practice.</p>
+<p>The idiom for this fix, as stated in the message of the <strong>RuntimeError</strong>, is to use an if-statement and check if the name of the module is equal to the string ‘<strong>__main__</strong>‘.</p>
+<p>For example:</p>
+<pre><code>...
+# check for top-level environment
+if __name__ == '__main__':
+    # ...
+</code></pre>
+<p>This is called “<em>protecting the entry point</em>” of the program.</p>
+<p>Recall, that <strong>__name__</strong> is a variable that refers to the name of the module executing the current code.</p>
+<p>Also, recall that ‘<strong>__main__</strong>‘ is the name of the top-level environment used to execute a Python program.</p>
+<p>Using an if-statement to check if the module is the top-level environment and only starting child processes within that block will resolve the <strong>RuntimeError</strong>.</p>
+<p>It means that if the Python file is imported, then the code protected by the if-statement will not run. It will only run when the Python file is run directly, e.g. is the top-level environment.</p>
+<p>The if-statement idiom is required, even if the entry point of the program calls a function that itself starts a child process.</p>
+<p>You can learn more about protecting the entry point when using multiprocessing in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-spawn-runtimeerror/">Add if __name__ == ‘__main__’ When Spawning a Child Process</a></li>
+</ul>
+<h3>Do I Need to Call freeze_support()?</h3>
+<p>Python programs can be converted into a Windows executable.</p>
+<p>In the conversion process, the Python programs are “<em>frozen</em>.” If these programs attempt to start new processes, it will result in a RuntimeError.</p>
+<p>As such, if you intend to “<em>freeze</em>” your program (e.g. convert it to be a Windows executable), you must add freeze support.</p>
+<p>This can be achieved by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.freeze_support"><strong>freeze_support()</strong> function</a> as the first line of your program, such the first line after checking for the protected entry point; for example:</p>
+<pre><code># protected entry point
+if __name__ == '__main__':
+    freeze_support()
+    # ...
+</code></pre>
+<p>You can learn more about adding freeze support in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-freeze-support-in-python/">Multiprocessing Freeze Support in Python</a></li>
+</ul>
+<h3>How Do You Get an AsyncResult Object for Tasks Added With map()?</h3>
+<p>You cannot.</p>
+<p>When you call <strong>map()</strong>, <strong>starmap()</strong>, <strong>imap()</strong>, <strong>imap_unordered()</strong>, or <strong>apply()</strong> it does create an <strong>AsyncResult</strong> object for each task.</p>
+<p>You can only get a <strong>AsyncResult</strong> when issuing tasks to the process pool using the functions:</p>
+<ul>
+<li><strong>apply_async()</strong></li>
+<li><strong>map_async()</strong></li>
+<li><strong>starmap_async()</strong></li>
+</ul>
+<h3>How Do You Issue Tasks From Within Tasks?</h3>
+<p>The <strong>multiprocessing.pool.Pool</strong> cannot be shared with child processes directly.</p>
+<p>This is because the process pool cannot be serialized.</p>
+<p>Specifically, it cannot be pickled, Python’s native serialization method, and will result in a <strong>NotImplementedError</strong>:</p>
+<pre><code>pool objects cannot be passed between processes or pickled</code></pre>
+<p>When we share an object with another process, like a child process, the object must be pickled in the current process, transmitted to the other process, then unpickled.</p>
+<p>Because the process pool cannot be pickled, it cannot be shared with another process.</p>
+<p>Sharing a process pool may mean a few things.</p>
+<p>For example:</p>
+<ul>
+<li>Putting a process pool on a multiprocessing queue or a pipe.</li>
+<li>Passing a process pool as an argument in a function executed by another process.</li>
+<li>Returning a process pool from one process to another.</li>
+</ul>
+<p>This has consequences in your development of programs that use process-based concurrency.</p>
+<p>Such as:</p>
+<ul>
+<li>You cannot share the process pool with a child process.</li>
+<li>A child process cannot share its process pool with a parent process.</li>
+<li>You cannot share a process pool with child workers in the process pool itself.</li>
+</ul>
+<p>We can share a process pool indirectly.</p>
+<p>This can be achieved by creating a process pool using a manager. This will return a proxy object for the process pool that can be shared among processes directly.</p>
+<p>A <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Manager">multiprocessing.Manager</a></strong> provides a way to create a centralized version of a Python object hosted on a server process.</p>
+<p>Once created, it returns proxy objects that allow other processes to interact with the centralized objects automatically behind the scenes.</p>
+<p>The multiprocessing.Manager provides the full multiprocessing API, allowing concurrency primitives to be shared among processes, including the process pool.</p>
+<p>As such, using a <strong>multiprocessing.Manager</strong> is a useful way to centralize a synchronization primitive like a multiprocessing.pool.Pool shared among multiple processes, such as worker processes in the pool itself.</p>
+<p>We can first create a <strong>multiprocessing.Manager</strong> using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>We can then create a shared <strong>multiprocessing.pool.Pool</strong> object using the manager.</p>
+<p>This will return a proxy object for the <strong>multiprocessing.pool.Pool</strong> object in the manager process that we can share among child worker processes directly or indirectly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared object via the manager
+pool = manager.Pool()</code></pre>
+<p>The proxy for the <strong>multiprocessing.pool.Pool</strong> can then be passed to a child worker initialization function or to a task function as an argument to be executed by worker processes.</p>
+<p>We can explore how we can share a process pool with child processes using a manager.</p>
+<p>In this example, we will define a custom task function that takes a process pool as an argument and reports its details. We will then issue the task from the main process asynchronously and pass the process pool as an argument. In the main process, we will create a process pool using a multiprocessing.Manager. This will create a centralized version of the process pool running in a server process and return proxy objects for the process pool that we can share among child processes.</p>
+<p>The example below demonstrates this.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a process pool among processes
+from multiprocessing import Manager
+
+# error callback function
+def handler(error):
+    print(error, flush=True)
+
+# task executed in a worker process
+def task(pool):
+    # report a message
+    print(f'Pool Details: {pool}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a manager
+    with Manager() as manager:
+        # create and configure the process pool
+        with manager.Pool() as pool:
+            # issue a task to the process pool
+            pool.apply_async(task, args=(pool,), error_callback=handler)
+            # close the pool
+            pool.close()
+            # wait for all issued tasks to complete
+            pool.join()
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>It then issues the task asynchronously. The main process then closes the process pool and waits for all issued tasks to complete.</p>
+<p>The task executes normally and reports the details of the process pool.</p>
+<p>In this case, the pool is accessed via the proxy object without problem and the details of the pool are reported. It is closed and was created with 8 child worker processes.</p>
+<p>Note, the specific default configuration of the process pool on your system may differ.</p>
+<p>The task completes and the main process carries on, first terminating the process pool, then terminating the manager.</p>
+<p>This highlights how we can share a process pool with child worker processes indirectly using a manager.</p>
+<pre><code>Pool Details: &lt;multiprocessing.pool.Pool state=CLOSE pool_size=8&gt;</code></pre>
+<h3>How Do You Use Synchronization Primitives (Lock, Semaphore, etc.) in Workers?</h3>
+<p>Synchronization primitives cannot be shared directly with workers in the process pool.</p>
+<p>This is because the synchronization primitives cannot be serialized, e.g. pickled, which is a requirement when passing data to child worker processes.</p>
+<p>Recall, synchronization primitives include mutex locks like <strong>Lock</strong> and <strong>RLock</strong>, as well as <strong>Semaphore</strong>, <strong>Barrier</strong>, <strong>Event</strong>, and <strong>Condition</strong>.</p>
+<p>Instead, we must use a workaround when using synchronization primitives in the process pool.</p>
+<p>The same workarounds will work with all of the synchronization primitives, but we can demonstrate it with the <strong>multiprocessing.Lock</strong>.</p>
+<p>There are perhaps three ways we can share a <strong>multiprocessing.Lock</strong> instance with worker processes indirectly, they are:</p>
+<ul>
+<li>By passing it as an argument when initializing the worker processes.</li>
+<li>By passing it as an argument to tasks executed by the pool.</li>
+<li>By using the ‘<strong>fork</strong>‘ start method, storing it in a global variable, then having child processes inherit the variable.</li>
+</ul>
+<p>The third method, using the ‘<strong>fork</strong>‘ start method will work, and provides an easy way to share a lock with child worker processes.</p>
+<p>The problem is, the ‘<strong>fork</strong>‘ start method is not available on all platforms, e.g. it cannot be used on Windows.</p>
+<p>Alternately, if we naively pass a <strong>multiprocessing.Lock</strong> as an argument when initializing the process pool or in a task executed by the process pool, it will fail with an error, such as:</p>
+<pre><code>Lock objects should only be shared between processes through inheritance</code></pre>
+<p>Instead, we must use a <strong>multiprocessing.Manager</strong>.</p>
+<p>A <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Manager">multiprocessing.Manager</a></strong> creates a process and is responsible for managing a centralized version of an object. It then provides proxy objects that can be used in other processes that keep up-to-date with the single centralized object.</p>
+<p>As such, using a <strong>multiprocessing.Manager</strong> is a useful way to centralize a synchronization primitive like a <strong>multiprocessing.Lock</strong> shared among multiple worker processes.</p>
+<p>We can first create a <strong>multiprocessing.Manager</strong> using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>We can then create a shared <strong>multiprocessing.Lock</strong> object using the manager.</p>
+<p>This will return a proxy object for the <strong>multiprocessing.Lock</strong> object in the manager process that we can share among child worker processes directly or indirectly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared object via the manager
+lock = manager.Lock()</code></pre>
+<p>The proxy for the <strong>multiprocessing.Lock</strong> can then be passed to a child worker initialization function or to a task function executed by worker processes.</p>
+<p>This is the preferred approach and will work on all platforms with all synchronization primitives.</p>
+<p>You can learn more about how to use synchronization primitives in child worker processes in the tutorials:</p>
+<ul>
+<li><a href="../multiprocessing-pool-mutex-lock/">Use a Lock in the Multiprocessing Pool</a></li>
+<li><a href="../multiprocessing-pool-semaphore/">Use a Semaphore in the Multiprocessing Pool</a></li>
+<li><a href="../multiprocessing-pool-event/">Use an Event in the Multiprocessing Pool</a></li>
+<li><a href="../multiprocessing-pool-condition-variable/">Use a Condition Variable in the Multiprocessing Pool</a></li>
+<li><a href="../multiprocessing-pool-barrier/">Use a Barrier in the Process Pool</a></li>
+</ul>
+<h2>Common Objections to Using Multiprocessing Pool</h2>
+<p>The <strong>multiprocessing.Pool</strong> may not be the best solution for all concurrency problems in your program.</p>
+<p>That being said, there may also be some misunderstandings that are preventing you from making full and best use of the capabilities of the multiprocessing Pool in your program.</p>
+<p>In this section, we review some of the common objections seen by developers when considering using the multiprocessing Pool in their code</p>
+<p>Let's dive in.</p>
+<h3>What About The Global Interpreter Lock (GIL)?</h3>
+<p>The GIL is generally not relevant when using processes such as the Process class or the <strong>multiprocessing.Pool</strong> class.</p>
+<p>The Global Interpreter Lock, or GIL for short, is a design decision with the reference Python interpreter.</p>
+<p>It refers to the fact that the implementation of the Python interpreter makes use of a master lock that prevents more than one Python instruction executing at the same time.</p>
+<p>This prevents more than one thread of execution within Python programs, specifically within each Python process, that is each instance of the Python interpreter.</p>
+<p>The implementation of the GIL means that Python threads may be concurrent, but cannot run in parallel. Recall that concurrent means that more than one task can be in progress at the same time, parallel means more than one task actually executing at the same time. Parallel tasks are concurrent;, concurrent tasks may or may not execute in parallel.</p>
+<p>It is the reason behind the heuristic that Python threads should only be used for IO-bound tasks, and not CPU-bound tasks, as IO-bound tasks will wait in the operating system kernel for remote resources to respond (not executing Python instructions), allowing other Python threads to run and execute Python instructions.</p>
+<p>As such, the GIL is a consideration when using threads in Python such as the <strong>threading.Thread</strong> class and the <strong>multiprocessing.pool.ThreadPool</strong>. It is not a consideration when using the multiprocessing Pool (unless you use additional threads within each task).</p>
+<p>You can learn more about the Pool vs the GIL in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-gil/">Multiprocessing Pool and the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<h3>Are Python Processes "Real Processes"?</h3>
+<p>Yes.</p>
+<p>Python makes use of real system-level processes, also called spawning processes or forking processes, a capability provided by modern operating systems like Windows, Linux, and MacOS.</p>
+<h3>Aren't Python Processes Buggy?</h3>
+<p>No.</p>
+<p>Python processes are not buggy.</p>
+<p>Python processes are a first-class capability of the Python platform and have been for a very long time.</p>
+<h3>Isn't Python a Bad Choice for Concurrency?</h3>
+<p>Developers love python for many reasons, most commonly because it is easy to use and fast for development.</p>
+<p>Python is commonly used for glue code, one-off scripts, but more and more for large scale software systems.</p>
+<p>If you are using Python and then you need concurrency, then you work with what you have. The question is moot.</p>
+<p>If you need concurrency and you have not chosen a language, perhaps another language would be more appropriate, or perhaps not. Consider the full scope of functional and non-functional requirements (or user needs, wants, and desires) for your project and the capabilities of different development platforms.</p>
+<h3>Why Not Use The ThreadPool Instead?</h3>
+<p>The <strong>multiprocessing.pool.ThreadPool</strong> supports pools of threads, unlike the multiprocessing.Pool that supports pools of processes, where each process will have one thread.</p>
+<p>Threads and processes are quite different and choosing one over the other must be quite intentional.</p>
+<p>A Python program is a process that has a main thread. You can create many additional threads in a Python process. You can also fork or spawn many Python processes, each of which will have one main thread, and may spawn additional threads.</p>
+<p>More broadly, threads are lightweight and can share memory (data and variables) within a process whereas processes are heavyweight and require more overhead and impose more limits on sharing memory (data and variables).</p>
+<p>Typically in Python, processes are used for CPU-bound tasks and threads are used for IO-bound tasks, and this is a good heuristic, but this does not have to be the case.</p>
+<p>Perhaps multiprocessing.pool.ThreadPool is a better fit for your specific problem. Perhaps try it and see.</p>
+<h3>Why Not Use multiprocessing.Process Instead?</h3>
+<p>The <strong>multiprocessing.Pool</strong> is like the "<em>automatic mode</em>" for Python processes.</p>
+<p>If you have a more sophisticated use case, you may need to use the <strong>multiprocessing.Process</strong> class directly.</p>
+<p>This may be because you require more synchronization between processes with locking mechanisms, shared memory between processes such as a manager, and/or more coordination between processes with barriers and semaphores.</p>
+<p>It may be that you have a simpler use case, such as a single task, in which case perhaps a process pool would be too heavy a solution.</p>
+<p>That being said, if you find yourself using the <strong>Process</strong> class with the "<strong>target</strong>" keyword for pure functions (functions that don't have side effects), perhaps you would be better suited to using the <strong>multiprocessing.Pool</strong>.</p>
+<p>You can learn more about the difference between the multiprocessing <strong>Pool</strong> and <strong>Process</strong> in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-vs-process/">Multiprocessing Pool vs Process in Python</a></li>
+</ul>
+<h3>Why Not Use ProcessPoolExecutor Instead?</h3>
+<p>Python provides two pools of process-based workers via the <strong>multiprocessing.pool.Pool</strong> class and the <strong>concurrent.futures.ProcessPoolExecutor</strong> class.</p>
+<p>The <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong> classes are very similar. They are both process pools of child worker processes.</p>
+<p>The most important similarities are as follows:</p>
+<ul>
+<li>Both use processes.</li>
+<li>Both can run ad hoc tasks.</li>
+<li>Both support asynchronous tasks.</li>
+<li>Both can wait for all tasks.</li>
+<li>Both have thread-based equivalents.</li>
+</ul>
+<p>The <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong> are also subtly different.</p>
+<p>Them main differences are as follows:</p>
+<p>The differences between these two process pools is focused on differences in APIs on the classes themselves.</p>
+<ul>
+<li>The <strong>multiprocessing.Pool</strong> does not provide the ability to cancel tasks, whereas the <strong>ProcessPoolExecutor</strong> does.</li>
+<li>The <strong>multiprocessing.Pool</strong> does not provide the ability to work with collections of heterogeneous tasks, whereas the <strong>ProcessPoolExecutor</strong> does.</li>
+<li>The <strong>multiprocessing.Pool</strong> provides the ability to forcefully terminate all tasks, whereas the <strong>ProcessPoolExecutor</strong> does not.</li>
+<li>The <strong>multiprocessing.Pool</strong> provides a focus on parallel versions of the <strong>map() </strong>function, whereas the <strong>ProcessPoolExecutor</strong> does not.</li>
+<li>The <strong>multiprocessing.Pool</strong> does not provide the ability to access an exception raised in a task, whereas the <strong>ProcessPoolExecutor</strong> does.</li>
+</ul>
+<p>You can learn more about the difference between the multiprocessing <strong>Pool</strong> and the <strong>ProcessPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-vs-processpoolexecutor/">Multiprocessing Pool vs ProcessPoolExecutor in Python</a></li>
+</ul>
+<h3>Why Not Use AsyncIO?</h3>
+<p>AsyncIO can be an alternative to using a <strong>multiprocessing.pool.ThreadPool</strong> or <strong>ThreadPoolExecutor</strong>, but is probably not a good alternative for the <strong>multiprocessing.Pool</strong>.</p>
+<p>AsyncIO is designed to support large numbers of IO operations, perhaps thousands to tens of thousands, all within a single Thread.</p>
+<p>It requires an alternate programming paradigm, called reactive programming, which can be challenging for beginners.</p>
+<p>When using the <strong>multiprocessing.Pool</strong>, you are typically executing CPU-bound tasks, which are not appropriate when using the AsyncIO module.</p>
+<h2>Conclusions</h2>
+<p>This is a large guide and you have discovered in great detail how the <strong>multiprocessing.Pool</strong> works and how to best use it on your project.</p>
 </main>
 </body>
 </html>

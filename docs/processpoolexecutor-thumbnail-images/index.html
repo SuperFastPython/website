@@ -42,7 +42,7 @@
 <p>Copy the <code>gatto</code> folder to your local working directory where you will be writing Python scripts.</p>
 <figure><img alt="" loading="lazy" src="../pics/Screenshot-of-the-Unzipped-Image-Dataset.png"/></figure>
 <p>You can download all photos in just the <meta/><code>gatto</code> directory directly from a mirror here:</p>
-<ul><li><a href="../zips/cat_photos.zip">Cat Photos (cat_photos.zip)</a></li></ul>
+<ul><li><a href="https://github.com/SuperFastPython/DataSets/releases/download/v1_0/cat_photos.zip">Cat Photos (cat_photos.zip)</a></li></ul>
 <h3 id="iterate-files-in-directory-and-create-paths">Iterate Files in Directory and Create Paths</h3>
 <p>First, we need to enumerate all images files in the directory.</p>
 <p>This can be achieved using the <code>listdir()</code> function from the <code>os</code> module. This will return the name of each file in the directory.</p>
@@ -265,6 +265,166 @@ for result in pool.map(task, items):
 <p>The <code>concurrent.futures</code> module provides an <code>as_completed()</code> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
 <p>We can call the function and provide it a list of <meta/><code>Future</code> objects created by calling <code>submit()</code> and it will return <meta/><code>Future</code> objects as they are completed in whatever order.</p>
 <p>For example, we can use a list comprehension to submit the tasks and create the list of <meta/><code>Future</code> objects:</p>
+<pre><code>...
+# submit all tasks into the process pool and create a list of futures
+futures = [pool.submit(task, item) for item in items]
+</code></pre>
+<p>Then get results for tasks as they complete in a for loop:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+	# do something with the result...
+</code></pre>
+<h3 id="shut-down-the-process-pool">Shut Down the Process Pool</h3>
+<p>Once all tasks are completed, we can close down the process pool, which will release each process and any resources it may hold (e.g. the main thread).</p>
+<pre><code>...
+# shutdown the process pool
+pool.shutdown()
+</code></pre>
+<p>An easier way to use the process pool is via the context manager (the <code>with</code> keyword), which ensures it is closed automatically once we are finished with it.</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor(4) as pool:
+	# submit tasks
+	futures = [pool.submit(task, item) for item in items]
+	# get results as they are available
+	for future in as_completed(futures):
+		# get the result
+		result = future.result()
+		# do something with the result...</code></pre>
+<p>Now that we are familiar with the <code>ProcessPoolExecutor</code> and how to use it, let's look at how we can adapt our program for creating thumbnail images to make use of it.</p>
+<h2 id="create-multiple-thumbnails-concurrently">Create Multiple Thumbnails Concurrently</h2>
+<p>The program for creating thumbnail images can be adapted to use the <meta/><code>ProcessPoolExecutor</code> with just a few changes.</p>
+<p>One approach to adapting the program would be to call the <code>submit()</code> function for each photo filename that needs to be loaded and resized.</p>
+<p>To make this clean, we can define a new function that encompasses the discrete task that we wish to make parallel. It would take the photo directory, the thumbnail directory, and a single photo filename, then it would create the required file paths and resize the image.</p>
+<p>This is essentially the body of the iteration in the <code>main()</code> function over the list of files in the photos directory.</p>
+<p>The <code>task()</code> function below implements this, taking the directory paths and filename and returning the path of the thumbnail that was created so that we can report it to show progress.</p>
+<pre><code># perform the task of creating a thumbnail of an image
+def task(image_path, save_path, filename):
+    # construct the input path
+    inpath = join(image_path, filename)
+    # construct the output path
+    outpath = get_output_path(save_path, filename, 'png')
+    # create the thumbnail
+    save_thumbnail(inpath, outpath)
+    # return the file that was saved so we can report progress
+    return outpath
+</code></pre>
+<p>Next, we can create the process pool and submit the <meta/><code>task()</code> function calls.</p>
+<p>First, the pool is created with the default number of workers.</p>
+<pre><code>...
+# create the process pool
+with ProcessPoolExecutor() as exe:
+	# ...
+</code></pre>
+<p>We can then iterate over all files in the photos directory and call <code>submit()</code> for each with a call to the <meta/><code>task()</code> function.</p>
+<p>We will do this in a list comprehension so that we end up with a list of <code>Future</code> objects, one for each task.</p>
+<p>There are about 1,670 files in the directory, so this will submit the same number of tasks into the pool to be executed by workers.</p>
+<pre><code>...
+# submit tasks
+futures = [exe.submit(task, image_path, save_path, f) for f in listdir(image_path)]
+</code></pre>
+<p>That's all we need to complete the task.</p>
+<p>Nevertheless, it is nice to show progress.</p>
+<p>We could have the <meta/><code>task()</code> function report progress, but it would be a bit of a mess as each process would be stepping over each other on stdout.</p>
+<p>Instead, we can have the main thread in the primary process report progress as files are saved by iterating <code>Future</code> objects as they are done via the <code>as_completed()</code> function.</p>
+<p>For example:</p>
+<pre><code>...
+# report progress
+for future in as_completed(futures):
+    # get the output path that was saved
+    outpath = future.result()
+    # report progress
+    print(f'.saved {outpath}')
+</code></pre>
+<p>Tying this together, the complete example of creating thumbnails concurrently of all photos in a directory is listed below.</p>
+<pre><code># SuperFastPython.com
+# create thumbnails of all images in a directory concurrently
+from os import listdir
+from os import makedirs
+from os.path import splitext
+from os.path import join
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import as_completed
+from PIL import Image
+
+# load an image and save a thumbnail version
+def save_thumbnail(inpath, outpath):
+    # load the image
+    with Image.open(inpath) as image:
+        # create a thumbnail image
+        image.thumbnail((128,128))
+        # save the thumbnail image in PNG format
+        image.save(outpath, 'PNG')
+
+# return the output path for a thumbnail image
+def get_output_path(save_path, filename, extension):
+    # separate the filename into name and extension
+    name, _ = splitext(filename)
+    # construct a new filename
+    out_filename = f'{name}_thumbnail.{extension}'
+    # construct the output path
+    outpath = join(save_path, out_filename)
+    return outpath
+
+# perform the task of creating a thumbnail of an image
+def task(image_path, save_path, filename):
+    # construct the input path
+    inpath = join(image_path, filename)
+    # construct the output path
+    outpath = get_output_path(save_path, filename, 'png')
+    # create the thumbnail
+    save_thumbnail(inpath, outpath)
+    # return the file that was saved so we can report progress
+    return outpath
+
+# entry point
+def main():
+    # location for loading images
+    image_path = 'gatto'
+    # location for saving image thumbnails
+    save_path = 'tmp'
+    # create the output directory
+    makedirs(save_path, exist_ok=True)
+    # create the process pool
+    with ProcessPoolExecutor() as exe:
+        # submit tasks
+        futures = [exe.submit(task, image_path, save_path, f) for f in listdir(image_path)]
+        # report progress
+        for future in as_completed(futures):
+            # get the output path that was saved
+            outpath = future.result()
+            # report progress
+            print(f'.saved {outpath}')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example performs the same task as before.</p>
+<p>Although, in this case, it is at least three times faster.</p>
+<p>On my system, it takes approximately 2.9 seconds to complete, compared to 10.3 seconds for the serial version. That is about a 3.55x speedup.</p>
+<p><strong>How fast was it on your system?</strong><br/>Let me know in the comments below.</p>
+<pre><code>.saved tmp/1716_thumbnail.png
+.saved tmp/1346_thumbnail.png
+.saved tmp/ea35b70e2bf3033ed1584d05fb1d4e9fe777ead218ac104497f5c978a7eebdbb_640_thumbnail.png
+.saved tmp/373_thumbnail.png
+.saved tmp/1653_thumbnail.png
+.saved tmp/47_thumbnail.png
+.saved tmp/ea36b40d2df2003ed1584d05fb1d4e9fe777ead218ac104497f5c978a7e8b7bc_640_thumbnail.png
+.saved tmp/e831b40a2cf2023ed1584d05fb1d4e9fe777ead218ac104497f5c978a7eebdbb_640_thumbnail.png
+.saved tmp/ea37b90c20f0033ed1584d05fb1d4e9fe777ead218ac104497f5c978a7eebdbb_640_thumbnail.png
+.saved tmp/774_thumbnail.png
+...
+</code></pre>
+<h2 id="extensions">Extensions</h2>
+<p>This section lists ideas for extending the tutorial.</p>
+<ul><li><strong>Force square thumbnails:</strong> Update the example so that all thumbnails are square, ignoring the aspect ratio of the original photos.</li><li><strong>Only resize image in parallel:</strong> Update the example to only resize images in parallel and perform file IO for loading and saving in the main thread, then compare performance.</li><li><strong>Use map() and set chunksize: </strong>Update the example to submit tasks using <code>map()</code> and tune the <code>chunksize</code> argument to get the best performance.</li></ul>
+<p>Share your extensions in the comments below; it would be great to see what you come up with.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>In this tutorial, you discovered how you can create and save thumbnail images of thousands of photos concurrently using a process pool.</p>
+<ul><li>How to create thumbnail images one by one in Python and how slow it can be.</li><li>How to use the ProcessPoolExecutor to manage a pool of worker processes.</li><li>How to use the ProcessPoolExecutor to create thumbnail images concurrently.</li></ul>
 </main>
 </body>
 </html>

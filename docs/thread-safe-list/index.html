@@ -118,6 +118,259 @@ def append(self, value):
         self._list.append(value)
 </code></pre>
 <p>The methods for the pop, get, and length operations are listed below.</p>
+<pre><code># remove and return the last value from the list
+def pop(self):
+    # acquire the lock
+    with self._lock:
+        # pop a value from the list
+        return self._list.pop()
+
+# read a value from the list at an index
+def get(self, index):
+    # acquire the lock
+    with self._lock:
+        # read a value at the index
+        return self._list
+
+# return the number of items in the list
+def length(self):
+    # acquire the lock
+    with self._lock:
+        return len(self._list)
+</code></pre>
+<p>Not a lot of surprises there.</p>
+<p>The lock ensures only one thread can perform an operation on the list at a time.</p>
+<p>For example, no thread can add, remove or even check the value at an index while another thread is checking the size of the list.</p>
+<p>The full listing of the thread-safe list class is listed below.</p>
+<pre><code># custom class wrapping a list in order to make it thread safe
+class ThreadSafeList():
+    # constructor
+    def __init__(self):
+        # initialize the list
+        self._list = list()
+        # initialize the lock
+        self._lock = Lock()
+
+    # add a value to the list
+    def append(self, value):
+        # acquire the lock
+        with self._lock:
+            # append the value
+            self._list.append(value)
+
+    # remove and return the last value from the list
+    def pop(self):
+        # acquire the lock
+        with self._lock:
+            # pop a value from the list
+            return self._list.pop()
+
+    # read a value from the list at an index
+    def get(self, index):
+        # acquire the lock
+        with self._lock:
+            # read a value at the index
+            return self._list
+
+    # return the number of items in the list
+    def length(self):
+        # acquire the lock
+        with self._lock:
+            return len(self._list)
+</code></pre>
+<p>As an extension, try adding some additional operations you'd like to use on your list like <strong>sort()</strong> and <strong>extend()</strong>.</p>
+<p>Also try to add some operations that involve composite operations on the list, like <strong>index()</strong> or <strong>reverse()</strong>.</p>
+<p>Next, let's demonstrate the thread-safety of the list in a worked example.</p>
+<h2>Example of a Thread-Safe List</h2>
+<p>We can develop an example of using thread-safe lists from multiple threads.</p>
+<p>In this example, we will create ten threads and have each thread attempt to add 100,000 items to the list concurrently. The expected result will be a list with 1,000,000 items.</p>
+<p>Again, this can be achieved with a default Python list using the current (v3.10) version of the reference Python interpreter, but it may or may not be future proof to changes in the interpreter. Therefore, we will use our thread-safe list class developed in the previous section.</p>
+<p>First, we can define a function to be executed by each worker thread.</p>
+<p>The function will take an instance of the <strong>ThreadSafeList</strong>, then loop 100,000 times, adding a value to the list each iteration.</p>
+<p>The <strong>add_items()</strong> function below implements this.</p>
+<pre><code># add items to the list
+def add_items(safe_list):
+    for i in range(100000):
+        safe_list.append(i)
+</code></pre>
+<p>Next, in the main thread, we can define an instance of our thread-safe list.</p>
+<pre><code>...
+# create the thread safe list
+safe_list = ThreadSafeList()
+</code></pre>
+<p>We can then create and configure ten threads, each of which will call our <strong>add_items()</strong> function and be passed the same <strong>ThreadSafeList</strong> as an argument.</p>
+<p>This can be done in a list comprehension, to give a list of threads we can use later.</p>
+<pre><code>...
+# configure threads to add to the list
+threads = [Thread(target=add_items, args=(safe_list,)) for i in range(10)]</code></pre>
+<p>The list of threads can then be iterated and started.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+    thread.start()
+</code></pre>
+<p>The main thread can then wait for all new threads to terminate, by iterating the list of threads and joining each in turn. This will block the main thread until all tasks are completed.</p>
+<pre><code>...
+# wait for all threads to terminate
+print('Main waiting for threads...')
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Finally, we can report the length of the new list, which we expect to be 1,000,000 items.</p>
+<pre><code>...
+# report the number of items in the list
+print(f'List size: {safe_list.length()}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a thread-safe list
+from threading import Thread
+from threading import Lock
+
+# custom class wrapping a list in order to make it thread safe
+class ThreadSafeList():
+    # constructor
+    def __init__(self):
+        # initialize the list
+        self._list = list()
+        # initialize the lock
+        self._lock = Lock()
+
+    # add a value to the list
+    def append(self, value):
+        # acquire the lock
+        with self._lock:
+            # append the value
+            self._list.append(value)
+
+    # remove and return the last value from the list
+    def pop(self):
+        # acquire the lock
+        with self._lock:
+            # pop a value from the list
+            return self._list.pop()
+
+    # read a value from the list at an index
+    def get(self, index):
+        # acquire the lock
+        with self._lock:
+            # read a value at the index
+            return self._list
+
+    # return the number of items in the list
+    def length(self):
+        # acquire the lock
+        with self._lock:
+            return len(self._list)
+
+# add items to the list
+def add_items(safe_list):
+    for i in range(100000):
+        safe_list.append(i)
+
+# create the thread safe list
+safe_list = ThreadSafeList()
+# configure threads to add to the list
+threads = [Thread(target=add_items, args=(safe_list,)) for i in range(10)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for all threads to terminate
+print('Main waiting for threads...')
+for thread in threads:
+    thread.join()
+# report the number of items in the list
+print(f'List size: {safe_list.length()}')
+</code></pre>
+<p>Running the example first creates an instance of our thread-safe list, that internally defines a new list instance and a lock to protect the list.</p>
+<p>We then configure and start ten threads, each that aggressively attempts to add 100,000 items to the list.</p>
+<p>Each call to append() on the thread-safe list is protected by a lock, ensuring that only one thread can add one item to the list at a time.</p>
+<p>A helpful improvement to the <strong>ThreadSafeList</strong> class might be to add a function so that a thread can get the lock once and add many items to the list in batch.</p>
+<p>The main thread blocks until all ten of the new threads terminate.</p>
+<p>Finally, all threads finish adding their items, the main thread unblocks and reports the length of the list.</p>
+<p>In this case, we can see that it contains the expected 1,000,000 items. This will be the case every time the code is run, regardless of future changes to the reference interpreter or the specific interpreter on which the code is executed.</p>
+<pre><code>Main waiting for threads...
+List size: 1000000</code></pre>
+<p>Next, let's look at an alternate approach to developing a thread-safe list.</p>
+<h2>Alternate to a Thread-Safe List</h2>
+<p>Developing a new thread-safe list class has risks.</p>
+<p>The more code you write, the more likely you are to introduce bugs, especially code that involves concurrency.</p>
+<p>An alternative to developing a thread-safe list is to use a queue data structure.</p>
+<p>Python provides thread-safe queue data structures in the <a href="https://docs.python.org/3/library/queue.html"><strong>queue</strong> module</a>, such as the <strong>queue.Queue</strong> and <strong>queue.SimpleQueue</strong> classes.</p>
+<p>These classes, such as the <strong>queue.Queue</strong> class are designed specifically to be thread-safe in a concurrent programming environment.</p>
+<p>For example, we can create a new instance of the <strong>queue.Queue</strong> class.</p>
+<pre><code>...
+# create a thread-safe queue
+queue = queue.Queue()</code></pre>
+<p>We can add items to the queue in a thread-safe manner using the <strong>put()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# add an item to the queue in a thread-safe manner
+queue.put(item)</code></pre>
+<p>We can remove items from the queue in a thread-safe manner using the <strong>get()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# get the next item from the queue in a thread-safe manner
+item = queue.get()</code></pre>
+<p>These queue classes are designed to be fast, abstracting away how the structure is kept thread-safe while doing so in the fastest and most appropriate way for the current version of Python.</p>
+<p>We can see this if we <a href="https://github.com/python/cpython/blob/3.10/Lib/queue.py">review the source code for the <strong>queue</strong> module</a> and classes.</p>
+<p>As such, some operations are performed directly, relying on the atomic nature of the List class.</p>
+<p>For example, putting an item with <strong>put()</strong> does not use an internal mutex lock.</p>
+<p>Other operations that involve a composite of operations on the list are protected by a mutex lock internally such as checking the size of the queue via the <strong>qsize()</strong> function and checking if the queue is full via <strong>full()</strong> or empty via <strong>empty().</strong></p>
+<p>Additionally, the queue provides a number of wait/notify capabilities via internal <strong>threading.Condition</strong> objects, allowing threads to wait on getting items from the queue until there are new items or to wait on putting items in the queue until it is not full. These conditions also share the same mutex.</p>
+<p>Operations that first acquire a condition that makes use of the same mutex lock internally are also protected. An example is getting items from the queue via <strong>get()</strong>.</p>
+<p><strong>I would recommend using a queue class instead of developing a thread-safe list class, if it provides all or most of the functionality you require in your application.</strong></p>
+<h2>Example of Using a Thread-Safe Queue</h2>
+<p>We can update our thread-safe list example to use a <strong>queue.Queue</strong> instead of our <strong>ThreadSafeList</strong> class.</p>
+<p>First, we must update our <strong>add_items()</strong> function to call <strong>put() </strong>to add items on the queue.</p>
+<p>The updated version of the function is listed below.</p>
+<pre><code># add items to the list
+def add_items(safe_list):
+    for i in range(100000):
+        safe_list.put(i)
+</code></pre>
+<p>We can then define our safe_list variable to be an instance of <strong>queue.Queue</strong>.</p>
+<pre><code>...
+# create the thread safe list (queue)
+safe_list = Queue()</code></pre>
+<p>Finally, when checking the size of the structure at the end of the program we can call the <strong>qsize()</strong> function on the queue.</p>
+<pre><code>...
+# report the number of items in the list
+print(f'List size: {safe_list.qsize()}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a thread-safe list via a queue
+from threading import Thread
+from queue import Queue
+
+# add items to the list
+def add_items(safe_list):
+    for i in range(100000):
+        safe_list.put(i)
+
+# create the thread safe list (queue)
+safe_list = Queue()
+# configure threads to add to the list
+threads = [Thread(target=add_items, args=(safe_list,)) for i in range(10)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for all threads to terminate
+print('Main waiting for threads...')
+for thread in threads:
+    thread.join()
+# report the number of items in the list
+print(f'List size: {safe_list.qsize()}')
+</code></pre>
+<p>Running the example first creates an instance of the queue.</p>
+<p>The ten threads are then configured and started. Each thread adds 100,000 items to the queue concurrently as fast as they can.</p>
+<p>The main thread blocks until the worker threads terminate.</p>
+<p>Finally, the main thread unblocks and reports the size of the queue.</p>
+<p>In this case, the size is reported as 1,000,000 items, as expected.</p>
+<p>Further, you will notice that this example is significantly faster to execute as the <strong>queue.Queue</strong> does not block when adding items - which is the majority of the work performed by the threads in this example.</p>
+<pre><code>'Main waiting for threads...
+List size: 1000000</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a thread-safe list in Python.</p>
 </main>
 </body>
 </html>

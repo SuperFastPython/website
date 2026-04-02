@@ -58,6 +58,429 @@ thread = threading.Thread(target=task1, args=(queue_in, queue_out))</code></pre>
 <ul><li><a href="../run-function-in-new-thread/">How to Run a Function in a New Thread in Python</a></li></ul>
 <p>Multiple threads can be created and configured to execute the same task, such as in a list comprehension.</p>
 <p>For example:</p>
+<pre><code>...
+# create many threads for one task
+threads = [threading.Thread(target=task1, args=(queue_in, queue_out)) for i in range(10)]</code></pre>
+<p>Once created and configured, the new thread can be started by calling the <strong>start()</strong> function which will begin executing the new thread and return immediately to the current thread.</p>
+<p>For example:</p>
+<pre><code>...
+# start the new thread
+thread.start()</code></pre>
+<p>The calling thread may then wait for the new thread to finish by calling the <strong>join()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the new thread to finish
+thread.join()</code></pre>
+<p>You can learn more about waiting for threads to terminate in the tutorial:</p>
+<ul><li><a href="../join-a-thread-in-python/">How to Join a Thread in Python</a></li></ul>
+<h3>Connect Tasks With Queues</h3>
+<p>Threads may share data or items of work using queues.</p>
+<p>A queue is a data structure that allows items to be added to the end via calls to <strong>put()</strong> and retrieved from the start by calls to <strong>get()</strong>.</p>
+<p>Python provides thread-safe queues via the queue module, such as the <strong>queue.Queue</strong> class.</p>
+<p>Thread-safe means that multiple threads may get and put items on the queue concurrently without a race condition or corruption of the queue's internal data structure.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new queue
+queue = Queue()</code></pre>
+<p>Importantly, if the queue is empty, the call to <strong>get()</strong> by a consumer will block until a unit of work becomes available.</p>
+<p>The size of the queue may be limited via the "<strong>maxsize</strong>" argument, which can help to limit the number of tasks kept in memory at any one time. As such, if the queue is full, then calls to <strong>put()</strong> by producer threads will block until space on the queue becomes available.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new queue with a size limit
+queue = Queue(maxsize=100)</code></pre>
+<p>Each task in the pipeline may have one queue used as the source of items of work to process and another queue as the destination of processed work items.</p>
+<p>Tasks may then be connected together using the queues such that each task consumes items from the input queue connected to the previous task and produces items to the output queue that sends work to the next task.</p>
+<p>Each task may loop forever consuming, processing and producing tasks.</p>
+<p>For example:</p>
+<pre><code># task in a pipeline
+def task(queue_in, queue_out):
+	# loop forever
+	while True:
+		# consume an item
+		item = queue_in.get()
+		# process item
+		processed_item = ...
+		# produce an item
+		queue_out.put(processed_item)</code></pre>
+<h3>Stop with Sentinel Values</h3>
+<p>The pipeline may be stopped once there are no further items to process.</p>
+<p>This may be determined by the first step in the process that only produces work items. Once it has determined that no further work items may be produced, it may signal to subsequent steps in the pipeline that no more work items are to be expected.</p>
+<p>This signal may be a special value put on the queue that connects the tasks. This is called a <a href="https://en.wikipedia.org/wiki/Sentinel_value">sentinel value</a>.</p>
+<p>Once consumed by the subsequent task, the task loop may be exited allowing the thread executing the function to terminate.</p>
+<p>The value <strong>None</strong> may be used as a sentinel value. Once read, the task may re-add the value so that other task threads see the value, it may also pass on the value to the next task so that it too may shutdown.</p>
+<p>For example:</p>
+<pre><code>...
+# check for stop
+if item is None:
+	# re-add the message for other threads on this task
+	queue_in.put(item)
+    # pass on message to the next step
+    queue_out.put(item)
+    break
+</code></pre>
+<p>Now that we know how to develop a pipeline using threads and queues, let's look at a worked example.</p>
+<h2>Example of a Thread Pipeline</h2>
+<p>We can explore a thread pipeline with a worked example.</p>
+<p>In this example, we will have three tasks.</p>
+<p>The first task will be responsible for generating a fixed number of random values between 0 and 1 via <strong>random.random()</strong> and block for this fraction of a second to simulate computational effort. It will create a list, add the task number and the generated number and pass it on to the next task.</p>
+<p>The next task will read the item, generate another random value, block, and append it to the list, then pass the result on. Finally, the third task will retrieve values and report them. Each will be a list with an integer task number, and two randomly generated values.</p>
+<ul><li><strong>Task 1</strong>: Generate a random value, block, output list with task number and random value.</li><li><strong>Task 2</strong>: Generate a random value, block, output list with a new number appended.</li><li><strong>Task 3</strong>: Read lists and report their contents.</li></ul>
+<p>We will use one thread for each task.</p>
+<p>Task 1 and Task 2 will be connected by one queue. Task 1 will put items on this queue. Task 2 will be connected to Task 1 with a queue and will consume values. Task 2 will also be connected to task 3 with a different queue on which it will put values. Finally, Task 3 will be connected to task 2 with a queue from which it will get values.</p>
+<ul><li><strong>Queue 1</strong>: Connects Task 1 and Task 2.</li><li><strong>Queue 2</strong>: Connects Task 2 and Task 3.</li></ul>
+<p>Using <strong>print()</strong> statements with many queues can get messy, because the <strong>print()</strong> statement is not thread-safe.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul><li><a href="../thread-safe-print-in-python/">Thread-Safe Print in Python</a></li></ul>
+<p>The logging module is thread-safe and can be used to report messages from multiple threads without race conditions.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul><li><a href="../thread-safe-logging-in-python/">Thread-Safe Logging in Python</a></li></ul>
+<p>As such, we will use the logging module and report all messages from each thread to the command prompt (standard out) using information messages.</p>
+<h3>Task 1 Function</h3>
+<p>The first task will generate a random value, block and combine the value with the task id in a list and put it on the output queue.</p>
+<p>This task will not consume items from a previous task, it will only produce values. Therefore it only needs one queue as an argument to the task function which will be shared with Task 2.</p>
+<pre><code># first task in the pipeline
+def task1(queue_out):
+    logging.info(f'Started')
+    # ...
+</code></pre>
+<p>The task will loop for a fixed number of iterations, generating items and putting them on the output queue.</p>
+<p>In this case, we will limit it to just ten items.</p>
+<pre><code>...
+# add items
+for i in range(10):
+	# ...
+</code></pre>
+<p>Each iteration, the task will generate a random value between 0 and 1 via <strong>random.random()</strong>, block for this many seconds via <strong>time.sleep()</strong>, add the value to a list and then put the list in the output queue.</p>
+<pre><code>...
+# generate a value
+value = random()
+# block to simulate work
+sleep(value)
+# create item
+item = [i, value]
+# add to the queue
+queue_out.put(item)
+# report progress
+logging.info(f'Generated {item}')
+</code></pre>
+<p>Once there are no further items to generate, the task will put a sentinel value to signal to the rest of the pipeline that no further work items are to be expected, e.g. to shutdown.</p>
+<pre><code>...
+# add signal that we are done
+queue_out.put(None)
+logging.info(f'Done')</code></pre>
+<p>Tying this together, the <strong>task1()</strong> function implements this.</p>
+<pre><code># first task in the pipeline
+def task1(queue_out):
+    logging.info(f'Started')
+    # add items
+    for i in range(10):
+        # generate a value
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # create item
+        item = [i, value]
+        # add to the queue
+        queue_out.put(item)
+        # report progress
+        logging.info(f'Generated {item}')
+    # add signal that we are done
+    queue_out.put(None)
+    logging.info(f'Done')
+</code></pre>
+<h3>Task 2 Function</h3>
+<p>The second task will consume list items from Task 1, generate a new random value, block, then create a new list from the consumed list and add the generated value which is put on the output queue and sent to Task 3.</p>
+<p>This means that task requires both an input queue connected to Task 1 and an output queue connected to Task 3 as arguments to the task function.</p>
+<pre><code># second task in the pipeline
+def task2(queue_in, queue_out):
+    logging.info(f'Started')
+    # ...
+</code></pre>
+<p>The task will loop forever.</p>
+<pre><code># process values
+while True:
+	# ...
+</code></pre>
+<p>Each iteration, a value from the input queue is consumed. If the input queue is empty, the call will block until an item is added.</p>
+<pre><code>...
+# retrieve from queue
+item = queue_in.get()</code></pre>
+<p>If the item is a sentinel value, the sentinel message is first passed on to Task 3 then the task loop is exited. This will cause the function to return and terminate the thread.</p>
+<pre><code>...
+# check for stop
+if item is None:
+    # pass on message
+    queue_out.put(item)
+    break
+</code></pre>
+<p>Otherwise, a list was received from the previous task.</p>
+<p>This task will then generate a new random number between 0 and 1 using <strong>random.random()</strong>, block for a fraction of a second via <strong>time.sleep()</strong>, then create a new list from the consumed list and add on the new random value. This list is then put on the output queue for Task 3 to deal with.</p>
+<pre><code>...
+# generate a value
+value = random()
+# block to simulate work
+sleep(value)
+# add to item
+new_item = item + 
+# pass it on
+queue_out.put(new_item)
+# report progress
+logging.info(f'Got {item} generated {new_item}')
+</code></pre>
+<p>Tying this together, the <strong>task2()</strong> function below implements this.</p>
+<pre><code># second task in the pipeline
+def task2(queue_in, queue_out):
+    logging.info(f'Started')
+    # process values
+    while True:
+        # retrieve from queue
+        item = queue_in.get()
+        # check for stop
+        if item is None:
+            # pass on message
+            queue_out.put(item)
+            break
+        # generate a value
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # add to item
+        new_item = item + 
+        # pass it on
+        queue_out.put(new_item)
+        # report progress
+        logging.info(f'Got {item} generated {new_item}')
+    logging.info(f'Done')
+</code></pre>
+<h3>Task 3 Function</h3>
+<p>The third task will read items from Task 2 and report them. Not a lot to this task.</p>
+<p>This means that the task will need an input queue that is connected from Task 2, and will not require an output queue as it does not produce any items.</p>
+<pre><code>...
+# third task in the pipeline
+def task3(queue_in):
+    logging.info(f'Started')
+    # ...
+</code></pre>
+<p>Like Task 2, Task 3 will loop forever until the task loop is explicitly exited.</p>
+<pre><code># process values
+while True:
+	# ...
+</code></pre>
+<p>Each iteration, an item is retrieved from the input queue. This call will block until an item becomes available.</p>
+<pre><code>...
+# retrieve from queue
+item = queue_in.get()</code></pre>
+<p>If the item is a sentinel value, the task loop is exited, causing the task function to return and terminate the new thread.</p>
+<p>Because this is the final task in the pipeline, the sentinel value does not need to be passed on.</p>
+<pre><code>...
+# check for stop
+if item is None:
+    break
+</code></pre>
+<p>Otherwise, the consumed item is reported directly.</p>
+<pre><code>...
+logging.info(f'Got {item}')</code></pre>
+<p>Tying this together, the <strong>task3()</strong> function below implements this.</p>
+<pre><code># third task in the pipeline
+def task3(queue_in):
+    logging.info(f'Started')
+    # process values
+    while True:
+        # retrieve from queue
+        item = queue_in.get()
+        # check for stop
+        if item is None:
+            break
+        logging.info(f'Got {item}')
+    logging.info(f'Done')
+</code></pre>
+<h3>Create Queues and Threads</h3>
+<p>Finally, we can configure the logging infrastructure and create all of the queues and threads.</p>
+<p>Firstly, we can create a new <strong>logging.StreamHandler</strong> configured to output all messages to standard out (also called the console, terminal or command prompt).</p>
+<p>We will use a custom formatted for log messages that shows the name of the thread along with the message. Later will give meaningful names to our threads so that these log messages are readable.</p>
+<pre><code>...
+# configure the log handler
+handler = logging.StreamHandler(stream=sys.stdout)
+handler.setLevel(logging.INFO)
+handler.setFormatter(logging.Formatter('[%(levelname)s] [%(threadName)s] %(message)s'))</code></pre>
+<p>We can then register our new log handler and configure the logging infrastructure to log all messages at INFO level or higher.</p>
+<pre><code>...
+# add the log handler
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)</code></pre>
+<p>Next, we can create the queue that will connect Task 1 and Task 2.</p>
+<pre><code>...
+# create queue between first two tasks
+queue1_2 = Queue()</code></pre>
+<p>We can then create a thread for Task 1 and configure it to execute the <strong>task1()</strong> function and take the connecting queue as an argument. We will give this thread the name "<strong>Task1</strong>".</p>
+<pre><code>...
+# create thread for first task
+thread1 = Thread(target=task1, args=(queue1_2,), name='Task1')
+thread1.start()</code></pre>
+<p>Next, we can create the queue that will connect Task 2 and Task 3.</p>
+<pre><code>...
+# create queue between second and third tasks
+queue2_3 = Queue()</code></pre>
+<p>We can then create the new thread for Task 2, configured to execute our <strong>task2()</strong> function and take the input and output queues as arguments. The thread is given the meaningful name of '<strong>Task2</strong>'.</p>
+<pre><code>...
+# create thread for second task
+thread2 = Thread(target=task2, args=(queue1_2,queue2_3), name='Task2')
+thread2.start()</code></pre>
+<p>We can then create the third new thread to execute our <strong>task3()</strong> function. It takes the second queue as an input queue and is given the meaningful name '<strong>Task3</strong>'.</p>
+<pre><code>...
+# create thread for third task
+thread3 = Thread(target=task3, args=(queue2_3,), name='Task3')
+thread3.start()</code></pre>
+<p>The main thread then blocks until all three task threads terminate.</p>
+<pre><code>...
+# wait for all threads to finish
+thread1.join()
+thread2.join()
+thread3.join()</code></pre>
+<h3>Complete Example</h3>
+<p>Tying this together, the complete example of a multithreaded pipeline is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a pipeline with threads and queues
+from random import random
+from time import sleep
+from threading import Thread
+from queue import Queue
+import logging
+import sys
+
+# first task in the pipeline
+def task1(queue_out):
+    logging.info(f'Started')
+    # add items
+    for i in range(10):
+        # generate a value
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # create item
+        item = [i, value]
+        # add to the queue
+        queue_out.put(item)
+        # report progress
+        logging.info(f'Generated {item}')
+    # add signal that we are done
+    queue_out.put(None)
+    logging.info(f'Done')
+
+# second task in the pipeline
+def task2(queue_in, queue_out):
+    logging.info(f'Started')
+    # process values
+    while True:
+        # retrieve from queue
+        item = queue_in.get()
+        # check for stop
+        if item is None:
+            # pass on message
+            queue_out.put(item)
+            break
+        # generate a value
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # add to item
+        new_item = item + 
+        # pass it on
+        queue_out.put(new_item)
+        # report progress
+        logging.info(f'Got {item} generated {new_item}')
+    logging.info(f'Done')
+
+# third task in the pipeline
+def task3(queue_in):
+    logging.info(f'Started')
+    # process values
+    while True:
+        # retrieve from queue
+        item = queue_in.get()
+        # check for stop
+        if item is None:
+            break
+        logging.info(f'Got {item}')
+    logging.info(f'Done')
+
+# configure the log handler
+handler = logging.StreamHandler(stream=sys.stdout)
+handler.setLevel(logging.INFO)
+handler.setFormatter(logging.Formatter('[%(levelname)s] [%(threadName)s] %(message)s'))
+# add the log handler
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+# create queue between first two tasks
+queue1_2 = Queue()
+# create thread for first task
+thread1 = Thread(target=task1, args=(queue1_2,), name='Task1')
+thread1.start()
+# create queue between second and third tasks
+queue2_3 = Queue()
+# create thread for second task
+thread2 = Thread(target=task2, args=(queue1_2,queue2_3), name='Task2')
+thread2.start()
+# create thread for third task
+thread3 = Thread(target=task3, args=(queue2_3,), name='Task3')
+thread3.start()
+# wait for all threads to finish
+thread1.join()
+thread2.join()
+thread3.join()
+</code></pre>
+<p>Running the example first configures the logging infrastructure.</p>
+<p>Next, the queues and new threads are created, configured and started. The main thread then blocks until the new threads terminate.</p>
+<p>Task 1 generates random numbers and blocks for random intervals before adding items to its output queue. Tasks 2 and 3 block, waiting for items to appear on their input queues.</p>
+<p>Once an item arrives for Task 2 via its input queue, it is consumed, a new random number is generated, the thread blocks for a random interval and then pushes an item out on its output queue.</p>
+<p>Items arrive at the third task via its input queue and the items are reported.</p>
+<p>Items flow through the pipeline.</p>
+<p>Once Task 1 has generated all ten items, it exits its task loop and sends a sentinel value then its thread terminates. The sentinel signal is read by Task 2, which passes it on to Task 3 then exits its task loop and terminates.</p>
+<p>Finally, Task 3 receives the sentinel signal, exits its task loop and its thread terminates.</p>
+<p>The main thread notices that each task thread has terminated then exits, closing the Python process.</p>
+<p>A sample output of the program is provided below. Note, your specific output will differ given the use of random numbers.</p>
+<p>We can see that each message is stamped with the task thread that generated it. We can clearly see items pass through the pipeline, for example "[0, 0.5116626851136895]" generated in Task 1, updated to "[0, 0.5116626851136895, 0.5696002102034979]" in Task 2 then reported in Task 3.</p>
+<p>This highlights how to construct a simple thread pipeline from scratch in Python using threads and queues.</p>
+<pre><code>[INFO] [Task1] Started
+[INFO] [Task2] Started
+[INFO] [Task3] Started
+[INFO] [Task1] Generated [0, 0.5116626851136895]
+[INFO] [Task1] Generated [1, 0.5523684174445173]
+[INFO] [Task2] Got [0, 0.5116626851136895] generated [0, 0.5116626851136895, 0.5696002102034979]
+[INFO] [Task3] Got [0, 0.5116626851136895, 0.5696002102034979]
+[INFO] [Task2] Got [1, 0.5523684174445173] generated [1, 0.5523684174445173, 0.28842284262569606]
+[INFO] [Task3] Got [1, 0.5523684174445173, 0.28842284262569606]
+[INFO] [Task1] Generated [2, 0.41714627059159837]
+[INFO] [Task2] Got [2, 0.41714627059159837] generated [2, 0.41714627059159837, 0.1564381452294611]
+[INFO] [Task3] Got [2, 0.41714627059159837, 0.1564381452294611]
+[INFO] [Task1] Generated [3, 0.9144089531830464]
+[INFO] [Task2] Got [3, 0.9144089531830464] generated [3, 0.9144089531830464, 0.14746762562123983]
+[INFO] [Task3] Got [3, 0.9144089531830464, 0.14746762562123983]
+[INFO] [Task1] Generated [4, 0.8717635792924607]
+[INFO] [Task2] Got [4, 0.8717635792924607] generated [4, 0.8717635792924607, 0.527362769034913]
+[INFO] [Task3] Got [4, 0.8717635792924607, 0.527362769034913]
+[INFO] [Task1] Generated [5, 0.8741510481937913]
+[INFO] [Task2] Got [5, 0.8741510481937913] generated [5, 0.8741510481937913, 0.07298378345376944]
+[INFO] [Task3] Got [5, 0.8741510481937913, 0.07298378345376944]
+[INFO] [Task1] Generated [6, 0.586299430129957]
+[INFO] [Task2] Got [6, 0.586299430129957] generated [6, 0.586299430129957, 0.13169401113038903]
+[INFO] [Task3] Got [6, 0.586299430129957, 0.13169401113038903]
+[INFO] [Task1] Generated [7, 0.2246208900956096]
+[INFO] [Task1] Generated [8, 0.3993720593556219]
+[INFO] [Task2] Got [7, 0.2246208900956096] generated [7, 0.2246208900956096, 0.7043715599303149]
+[INFO] [Task3] Got [7, 0.2246208900956096, 0.7043715599303149]
+[INFO] [Task1] Generated [9, 0.7687134926632286]
+[INFO] [Task1] Done
+[INFO] [Task2] Got [8, 0.3993720593556219] generated [8, 0.3993720593556219, 0.7352103423297296]
+[INFO] [Task3] Got [8, 0.3993720593556219, 0.7352103423297296]
+[INFO] [Task2] Got [9, 0.7687134926632286] generated [9, 0.7687134926632286, 0.7462437765726843]
+[INFO] [Task2] Done
+[INFO] [Task3] Got [9, 0.7687134926632286, 0.7462437765726843]
+[INFO] [Task3] Done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to develop a threading pipeline in Python.</p>
 </main>
 </body>
 </html>

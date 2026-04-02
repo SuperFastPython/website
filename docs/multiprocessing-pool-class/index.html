@@ -174,6 +174,90 @@ for result in pool.map(task, items):
 </code></pre>
 <p>Unlike the built-in <strong>map()</strong> function, the pool version of <strong>map()</strong> only supports one iterable instead of multiple iterable, and all items are iterated and submitted as tasks instead of being lazily evaluated.</p>
 <p>The <strong>starmap()</strong> function can be used for a version of <strong>map()</strong> that supports an arbitrary number of iterables.</p>
+<blockquote><p>Like map() except that the elements of the iterable are expected to be iterables that are unpacked as arguments. Hence an iterable of [(1,2), (3, 4)] results in [func(1,2), func(3,4)].</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# execute tasks in the process pool and process results
+for result in pool.starmap(task, args):
+	# ...
+</code></pre>
+<p>The <strong>imap()</strong> function provides a version of the <strong>map()</strong> function on the process pool that performs a lazy evaluation. That is, it does not dispatch tasks to the process pool until just-in-time, such as when requesting the next result on the returned iterator.</p>
+<p>For example:</p>
+<pre><code>...
+# execute tasks in the process pool and process results
+for result in pool.imap(task, items):
+	# ...
+</code></pre>
+<p>Each approach for issuing tasks to the process pool has both a blocking (synchronous) and a non-blocking (asynchronous) version.</p>
+<p>Recall that a blocking function call will not return until the function has finished, whereas a non-blocking function call will return immediately and provide a callback mechanism for getting the result of the function call.</p>
+<p>The functions for issuing tasks to the process pool listed above, <strong>apply()</strong>, <strong>map()</strong>, <strong>imap()</strong>, and <strong>starmap()</strong> are all blocking function calls.</p>
+<p>The non-blocking or asynchronous versions of these functions have a <strong>_async</strong> suffix, for example:</p>
+<ul><li>apply, via <strong>pool.apply_async()</strong></li><li>map, via <strong>pool.map_async()</strong></li><li>imap, via <strong>pool.imap_unordered()</strong></li><li>starmap, via <strong>pool.starmap_async()</strong></li></ul>
+<p>The <strong>imap_unordered()</strong> function will return results out of under, e.g. in the order the tasks complete, unlike the <strong>imap()</strong> function.</p>
+<p>The <strong>apply_async()</strong> function allows callback and error handling functions to be specified and called automatically once the issued task is complete.</p>
+<p>The <strong>map_async()</strong> and <strong>starmap_async()</strong> versions of the functions for issuing tasks return an instance of the <strong>AsyncResult</strong> class for each task that provides a mechanism for getting the results of the submitted tasks once they are completed.</p>
+<p>Next, let's take a closer look at the <strong>AsyncResult</strong> class.</p>
+<h2>What is the AsyncResult Class</h2>
+<p>The <strong>multiprocessing.pool.AsyncResult</strong> represents a result from a task issued asynchronously to the process pool.</p>
+<p>It provides a mechanism to check the status, wait for, and get the result for a task executed asynchronously in the process pool.</p>
+<p>An instance of the <strong>multiprocessing.pool.AsyncResult</strong> class is returned for each task submitted by both the <strong>map_async()</strong> and <strong>starmap_async() </strong>functions.</p>
+<p>For example, a call to <strong>map_async()</strong> for a function <strong>task()</strong> with an iterable of ten items, will return a list of ten instances of the <strong>multiprocessing.pool.AsyncResult</strong> class.</p>
+<p>For example:</p>
+<pre><code>...
+# submit tasks to the pool in a non-blocking manner
+async_result = pool.map_async(task, items)</code></pre>
+<p>For a single task represented via a <strong>multiprocessing.pool.AsyncResult</strong>, we can check if the task is completed via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.ready"><strong>ready()</strong> function</a> which returns <strong>True</strong> if the task is completed (successfully or with an error) or False otherwise.</p>
+<p>For example:</p>
+<pre><code>...
+# check if a task is done
+if async_result.ready():
+	# ...
+</code></pre>
+<p>A task may be completed successfully or may raise an <strong>Error</strong> or <strong>Exception</strong>. We can check if a task completed successfully via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.successful"><strong>successful()</strong> function</a>. If the task is still running, it raises a <strong>ValueError</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# check if a task was completed successfully
+if async_result.successful():
+	# ...
+</code></pre>
+<p>We can wait for a task to complete via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.wait"><strong>wait()</strong> function</a>.</p>
+<p>If called with no argument, the function call will block until the task finishes. A "<strong>timeout</strong>" can be provided so that the function will after a fixed number of seconds if the task has not completed.</p>
+<p>For example:</p>
+<pre><code>...
+# wait 10 seconds for the task to complete
+async_result.wait(timeout=10)</code></pre>
+<p>Finally, we can get the result from the task via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.get"><strong>get()</strong> function</a>.</p>
+<p>If the task is finished, then <strong>get()</strong> will return immediately. If the task is still running, a call to get() will not return until the task finishes and returns the result.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result of a task
+result = async_result.get()</code></pre>
+<p>If an exception was raised while the task was being executed, it is re-raised by the get() function in the parent process.</p>
+<p>Finally, a "<strong>timeout</strong>" argument can be specified when getting the result. It will return when the task is finished or after the fixed number of seconds have elapsed after which a time <strong>multiprocessing.TimeoutError</strong> is raised.</p>
+<p>Next, let's look at how we might close down the process pool.</p>
+<h2>How to Close the Process Pool</h2>
+<p>The process pool can be closed once we have no further tasks to issue.</p>
+<p>We can call the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.close"><strong>close()</strong> function</a> to close down the process pool once all the currently issued tasks have completed.</p>
+<blockquote><p>Prevents any more tasks from being submitted to the pool. Once all the tasks have been completed the worker processes will exit.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The <strong>close()</strong> function will return immediately and the pool will not take any further tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# close the process pool
+pool.close()</code></pre>
+<p>Alternately, we may want to forcefully terminate all child worker processes, regardless of whether they are executing tasks or not.</p>
+<p>This can be achieved via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.terminate"><strong>terminate()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# forcefully close all worker processes
+pool.terminate()</code></pre>
+<p>We may want to then wait for all tasks in the pool to finish.</p>
+<p>This can be achieved by calling the <strong>join()</strong> function on the pool.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all issued tasks to complete
+pool.join()</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to create and use a process pool in Python.</p>
 </main>
 </body>
 </html>

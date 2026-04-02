@@ -119,6 +119,110 @@ for thread in threading.enumerate():
 <p>We can create a process pool and then submit some tasks, to ensure that the worker processes are created and that the internal worker threads are created.</p>
 <p>If we report all threads in the main process after submitting some tasks, we would expect to see three threads, the main thread and two internal helper threads.</p>
 <p>Tying this together, the complete example of inspecting the <strong>ProcessPoolExecutor</strong> internal helper threads is listed below.</p>
+<pre><code># SuperFastPython.com
+# report helper threads created by the process pool
+import threading
+from concurrent.futures import ProcessPoolExecutor
+
+# target task function
+def work(value):
+    pass
+
+# entry point
+if __name__ == '__main__':
+    # create a process pool
+    with ProcessPoolExecutor(4) as executor:
+    # submit some tasks so that helper threads are created
+        _ = [executor.submit(work, i) for i in range(4)]
+        # report all thread names
+        for thread in threading.enumerate():
+            print(thread.name)
+</code></pre>
+<p>Running the example, we can see that three threads were reported in the main process as we expected.</p>
+<p>The first is the main thread, created for every Python process.</p>
+<p>The second is an internal helper thread for the <strong>ProcessPoolExecutor</strong>. Looking in the <a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/process.py">source code for the ProcessPoolExecutor class</a>, this thread is created by an <strong>_ExecutorManagerThread</strong> instance and is responsible for managing the communication between the main process and the worker processes, e.g. getting results.</p>
+<p>The second is another internal helper thread for the <strong>ProcessPoolExecutor</strong>. Looking in the <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/queues.py">source code for the multiprocessing.SimpleQueue and multiprocessing.Queue</a>, we can see that the queue used to receive results from the worker processes has its own internal helper thread.</p>
+<pre><code>MainThread
+Thread-1
+QueueFeederThread
+</code></pre>
+<h2 id="processpoolexecutor-helper-thread-runs-callbacks">ProcessPoolExecutor Helper Thread Runs Callbacks</h2>
+<p>One question we might consider is what process and thread runs callbacks.</p>
+<p>This is important to know if we need to access a resource shared between processes and threads from within the callback function. It will determine any locks and cross-process data sharing mechanisms that may be needed.</p>
+<p>When we submit tasks to the process pool via the <strong>submit()</strong> function we receive a <strong>Future</strong> object in return.</p>
+<p>The <strong>Future</strong> object can be used to check the status of the task, get the result and to add a callback function to call once the task is done. This can be achieved by calling the <strong>add_done_callback()</strong> function in the future and specifying the callback function to call.</p>
+<p>The callback function must take a single argument which is the <strong>Future</strong> object for the task that is done.</p>
+<p>We can define a callback function that reports the pid, parent pid and thread name to learn about the process and thread that is executing the callback.</p>
+<pre><code># callback function to call when a task is completed
+def custom_callback(future):
+    print(f'Callback pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+</code></pre>
+<p>We can define a target task function that reports the same details, for example:</p>
+<pre><code># target task function
+def work():
+    sleep(0.1)
+    # report the worker process details
+    print(f'Worker pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+</code></pre>
+<p>In our main process, we can first report the details of the process.</p>
+<pre><code>...
+# report the main process details
+print(f'Main pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+</code></pre>
+<p>Then, we can create the thread pool, submit a single task in order to get a <strong>Future</strong> object, then register the callback function.</p>
+<pre><code>...
+# report the main process details
+print(f'Main pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+# create a process pool
+with ProcessPoolExecutor(2) as executor:
+    # submit a task
+   future = executor.submit(work)
+   # add a callback function
+   future.add_done_callback(custom_callback)
+</code></pre>
+<p>Tying this together, the complete example of checking the process and thread details of the process that executes callbacks for the <strong>ProcessPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# check the process and thread used to execute future callbacks
+from time import sleep
+from os import getpid
+from os import getppid
+from threading import current_thread
+from concurrent.futures import ProcessPoolExecutor
+
+# callback function to call when a task is completed
+def custom_callback(future):
+    print(f'Callback pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+
+# target task function
+def work():
+    sleep(0.1)
+    # report the worker process details
+    print(f'Worker pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+
+# entry point
+if __name__ == '__main__':
+    # report the main process details
+    print(f'Main pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+    # create a process pool
+    with ProcessPoolExecutor(2) as executor:
+        # submit a task
+       future = executor.submit(work)
+       # add a callback function
+       future.add_done_callback(custom_callback)
+</code></pre>
+<p>Running the example we can first see the main process has the pid of 48004 and the main thread as we expected.</p>
+<p>We can then see that the worker process has a different pid of 48006 and a parent pid that matches the main process. This too is as we expected.</p>
+<p>Finally, the details of the process that executed the callback function are reported.</p>
+<p>In this case, we can see that the main process executed the callback using the "<strong>Thread-1</strong>" internal helper thread.</p>
+<p>Note, your specific pids will differ because the numbers are allocated by your operating system at the time that the program is executed.</p>
+<pre><code>Main pid=48004, ppid=472 thread=MainThread
+Worker pid=48006, ppid=48004 thread=MainThread
+Callback pid=48004, ppid=472 thread=Thread-1
+</code></pre>
+<p>This means that the callback function can share data (e.g. shared memory) with the main process and does not need to worry about protecting data from simultaneous calls to the callback function.</p>
+<p>Put another way, the callback function is atomic for any data or variables used only by the callback or the main thread, such as a counter.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to check the process ids and thread names in the <strong>ProcessPoolExecutor</strong></p>
 </main>
 </body>
 </html>

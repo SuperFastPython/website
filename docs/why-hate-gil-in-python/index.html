@@ -38,6 +38,93 @@
 <blockquote>
 <p>Python sucks so hard!! Slow Interpreter, Broken Multithreading. It really sucks. Overrated language.</p>
 <cite><a href="https://devrant.com/rants/2335423/python-sucks-so-hard-slow-interpreter-broken-multithreading-it-really-sucks-over">JaaavaScript, devRant</a>.</cite></blockquote>
+<blockquote>
+<p>Parallelism is very bad on CPython and PyPy; threads are subject to the Global Interpreter Lock (GIL), and one must use multiprocessing (which comes with its own bag of oddities) to get real parallelism.</p>
+<cite>-- <a href="https://web.archive.org/web/20170126065444/http://darkf.github.io/posts/problems-i-have-with-python.html">darkf, blog </a></cite></blockquote>
+<blockquote>
+<p>Almost all modern languages support true multi-threading, but python cannot</p>
+<cite>-- <a href="https://www.hackerfactor.com/blog/index.php?/archives/825-8-Reasons-Python-Sucks.html">yywww, blog comment</a>.</cite></blockquote>
+<blockquote>
+<p>You forgot the biggest elephant in the room: parallel execution. From problems with their language: "threads" (which dont' execute in parallel), to the problems with the workarounds, Dask, and multiprocessing and pickle, it's practically impossible to do parallel execution in python.</p>
+<cite>-- <a href="https://www.hackerfactor.com/blog/index.php?/archives/825-8-Reasons-Python-Sucks.html">oafwiejfaoiwj, blog comment</a>.</cite></blockquote>
+<blockquote>
+<p>Also multithreading still second-class citizen. Oh well.</p>
+<cite>-- <a href="https://www.hackerfactor.com/blog/index.php?/archives/825-8-Reasons-Python-Sucks.html">Thomas, blog comment</a>.</cite></blockquote>
+<blockquote>
+<p>[...] I'd like to be able to parallelize the different sections, but multiprocessing is a mess (only pickable data can be used, no shared state), threading doesn't give me any benefit due to the GIL, and PyPy hasn't worked the last three times I tried. Also, improvements can stack. If I get threading working, I can still move more things to the C extension to improve performance, or migrate finally to PyPy (if they manage to remove the GIL).</p>
+<cite>-- <a href="https://news.ycombinator.com/item?id=28690560">gjulianm, hacker news comment</a>.</cite></blockquote>
+<blockquote>
+<p>I've been bitten by the GIL multiple times since switching to a company writing mostly python. Not that I write that much multithreaded code, but the GIL influences everything so lots of patterns in other languages no longer work.</p>
+<cite>-- <a href="https://news.ycombinator.com/item?id=28690560">matsemann, hacker news comment</a>.</cite></blockquote>
+<p><strong>So what is the GIL exactly?</strong></p>
+<h2>What is the Global Interpreter Lock (GIL)</h2>
+<p>The internals of the Python interpreter are not thread-safe.</p>
+<p>This means that there can be race conditions between multiple threads within a single Python process, potentially resulting in unexpected behavior and corrupt data.</p>
+<p>As such, the Python interpreter makes use of a <a href="https://en.wikipedia.org/wiki/Global_interpreter_lock">Global Interpreter Lock</a>, or GIL for short, to make instructions executed by the Python interpreter (called Python bytecodes) thread-safe.</p>
+<p>The GIL is a programming pattern in the reference Python interpreter called CPython, although similar locks exist in other interpreted languages, such as Ruby. It is a lock in the sense that it uses a synchronization primitive called a mutual exclusion or mutex lock to ensure that only one thread of execution can execute instructions at a time within a Python process.</p>
+<blockquote>
+<p>In CPython, the global interpreter lock, or GIL, is a mutex that protects access to Python objects, preventing multiple threads from executing Python bytecodes at once. The GIL prevents race conditions and ensures thread safety.</p>
+<cite>-- <a href="https://wiki.python.org/moin/GlobalInterpreterLock">Global Interpreter Lock, Python Wiki</a>.</cite></blockquote>
+<p>The effect of the GIL is that whenever a thread within a Python program wants to run, it must acquire the lock before executing. This is not a problem for most Python programs that have a single thread of execution, called the main thread.</p>
+<p>It can become a problem in multi-threaded Python programs, such as programs that make use of the <a href="../threading-in-python/"><strong>threading.Thread</strong> class</a>, the <a href="../threadpool-python/"><strong>multiprocessing.pool.ThreadPool</strong> class</a>, or the <a href="../threadpoolexecutor-in-python/"><strong>concurrent.futures.ThreadPoolExecutor</strong> class</a>.</p>
+<p>The lock is explicitly released and re-acquired periodically by each Python thread, specifically after approximately every 100 bytecode instructions executed within the interpreter. This allows other threads within the Python process to run, if present.</p>
+<p>The lock is also released in some circumstances, allowing other threads to run.</p>
+<p>An important example is when a thread performs an I/O operation, such as reading or writing from an external resource like a file, socket, or device.</p>
+<blockquote>
+<p>Luckily, many potentially blocking or long-running operations, such as I/O, image processing, and NumPy number crunching, happen outside the GIL. Therefore it is only in multithreaded programs that spend a lot of time inside the GIL, interpreting CPython bytecode, that the GIL becomes a bottleneck.</p>
+<cite>-- <a href="https://wiki.python.org/moin/GlobalInterpreterLock">Global Interpreter Lock, Python Wiki</a>.</cite></blockquote>
+<p>The lock is also explicitly released by some third-party Python libraries when performing computationally expensive operations in C-code, such as <a href="https://scipy-cookbook.readthedocs.io/items/ParallelProgramming.html">many array operations in NumPy</a>.</p>
+<blockquote>
+<p>In CPython, due to the Global Interpreter Lock, only one thread can execute Python code at once (even though certain performance-oriented libraries might overcome this limitation).</p>
+<cite>-- <a href="https://docs.python.org/3/library/threading.html">threading — Thread-based parallelism</a></cite></blockquote>
+<p>The GIL is a simple and effective solution to thread safety in the Python interpreter, but it has the major downside that full multithreading is not supported by Python.</p>
+<p>An alternative solution might be to explicitly make the interpreter thread-safe by protecting each critical section. <a href="https://docs.python.org/3/faq/library.html#can-t-we-get-rid-of-the-global-interpreter-lock">This has been tried a number of times</a> and typically results in worse performance of single-threaded Python programs by up to 30%.</p>
+<blockquote>
+<p>Unfortunately, both experiments exhibited a sharp drop in single-thread performance (at least 30% slower), due to the amount of fine-grained locking necessary to compensate for the removal of the GIL.</p>
+<cite>-- <a href="https://wiki.python.org/moin/GlobalInterpreterLock">Python Global Interpreter Lock, Python Wiki</a>.</cite></blockquote>
+<p>Now that we know what the Python GIL is, let's take a closer look at why Python developers hate it.</p>
+<h2>Why Developers Hate the GIL</h2>
+<p>Many Python developers hate the GIL, or at least, complain a lot about it.</p>
+<p>I'll use "<strong>hate</strong>" here, but it may be more of a "<strong>frustration</strong>" or "<strong>general dislike</strong>".</p>
+<p>We know that the GIL ensures thread safety of the Python interpreter, specifically the CPython reference interpreter shared for free on Python.org.</p>
+<p>The crux of the issue is that the capability of threads in Python is crippled or limited.</p>
+<p>Threads are objects created and managed by the underlying operating system. They can be used in other programming languages, like C++, C#, and Java without any imposed limitations, but not so in Python.</p>
+<p>Specifically, in other programming languages without a GIL, threads may be used within a process in order to achieve full parallelism. That is, for CPU-bound or IO-bound tasks.</p>
+<p>This is not so in Python, with the caveats mentioned above (e.g. some C-based extensions will release the lock).</p>
+<p>The hate comes from knowing a capability is possible but unavailable in the language.</p>
+<p>The hate comes from being forced to use a "<em>workaround</em>" to achieve the desired effect of parallel execution.</p>
+<p>There is nuance related to the GIL, as we have seen, but many newer developers may just repeat the "GIL hate" sentiment without digging deeper, leading to refrains like:</p>
+<ul>
+<li>Python threads are broken.</li>
+<li>Python threads are buggy.</li>
+<li>Python does not support concurrency</li>
+</ul>
+<p>A quick google search finds people making these exact comments, for example:</p>
+<blockquote>
+<p>Tricky bits? Thanks to GIL, it's just broken and doesn't work.</p>
+<cite>-- <a href="https://news.ycombinator.com/item?id=26166232">tasubotadas, hacker news comment</a>.</cite></blockquote>
+<p>And still worse:</p>
+<ul>
+<li>If you need concurrency, use a different language.</li>
+</ul>
+<p>At this point, I think we are off the rails.</p>
+<blockquote>
+<p>If you really care about speed and would like to parallelize CPU-bound code, you'll probably do better using another language like C/C++ (or Java, Go, D etc.) for this particular task</p>
+<cite>-- <strong>sleepysysadmin, hacker news comment</strong>.</cite></blockquote>
+<blockquote>
+<p>Well many developers end up using different languages for this reason.</p>
+<cite>-- <a href="https://news.ycombinator.com/item?id=28690560">jillesvangurp, hacker news comment</a>.</cite></blockquote>
+<blockquote>
+<p>... If you have somehow arranged to bang your head on that one specific thing that Python doesn't do, and you cannot figure out how to not bang your head on the GIL, then for goodness' sake use Go or Erlang or something that DOES do the one thing you can't live without.</p>
+<cite>-- <a href="https://news.ycombinator.com/item?id=31348097">carapace, hacker news comment</a>.</cite></blockquote>
+<p>Switching programming language mid-project is probably not an option for any serious project.</p>
+<p>Starting with a requirement for full parallelism via threads may allow an alternate language to be chosen at the beginning project. However, that's an awfully specific requirement.</p>
+<p>I caution newer Python developers to not throw the Python baby out with the bathwater.</p>
+<p>Python threads are limited because of the <a href="https://en.wikipedia.org/wiki/Global_interpreter_lock">GIL</a>, but we work with the tool not against it. All languages have limitations and make trade-offs.</p>
+<p>Other extremely popular languages have made the same trade-off, like Ruby.</p>
+<p>True parallel is available in Python, directly via multiprocessing, and less directly via c-extensions and alternate interpreters.</p>
+<h2>Takeaways</h2>
+<p>You know why many Python developers hate the Global Interpreter Lock.</p>
 </main>
 </body>
 </html>

@@ -98,6 +98,67 @@ local = threading.local()
 executor = ThreadPoolExecutor(max_workers=2, initializer=initializer_worker, initargs=(local,))
 </code></pre>
 <p>We can then dispatch ten tasks into the thread pool with the same thread local context.</p>
+<pre><code>...
+# dispatch tasks
+futures = [executor.submit(task, local) for _ in range(10)]
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of using a <code>ThreadPoolExecutor</code> that makes use of thread local data is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread local storage for worker threads
+from time import sleep
+from random import random
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# function for initializing the worker thread
+def initializer_worker(local):
+    # generate a unique value for the worker thread
+    local.key = random()
+    # store the unique worker key in a thread local variable
+    print(f'Initializing worker thread {local.key}')
+
+# a mock task that sleeps for a random amount of time less than one second
+def task(local):
+    # access the unique key for the worker thread
+    mykey = local.key
+    # make use of it
+    sleep(mykey)
+    return f'Worker using {mykey}'
+
+# get the local context
+local = threading.local()
+# create a thread pool
+executor = ThreadPoolExecutor(max_workers=2, initializer=initializer_worker, initargs=(local,))
+# dispatch asks
+futures = [executor.submit(task, local) for _ in range(10)]
+# wait for all threads to complete
+for future in futures:
+    result = future.result()
+    print(result)
+# shutdown the thread pool
+executor.shutdown()
+print('done')
+</code></pre>
+<p>Running the example first configures the thread pool to use our custom initializer function, which sets up a thread local data for each worker thread with a unique value, in this case two threads each with a value between 0 and 1.</p>
+<p>Each worker thread then works on tasks in the queue, all ten of them, each using the specific value of the thread local variable setup for the thread in the initialization function.</p>
+<pre><code>Initializing worker thread 0.9360961457279074
+Initializing worker thread 0.9075641843481475
+Worker using 0.9360961457279074
+Worker using 0.9075641843481475
+Worker using 0.9075641843481475
+Worker using 0.9360961457279074
+Worker using 0.9075641843481475
+Worker using 0.9360961457279074
+Worker using 0.9075641843481475
+Worker using 0.9360961457279074
+Worker using 0.9075641843481475
+Worker using 0.9360961457279074
+done
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use thread local data with the <strong>ThreadPoolExecutor</strong> in Python.</p>
 </main>
 </body>
 </html>

@@ -55,6 +55,106 @@ def operation(value):
 </code></pre>
 <p>Next, let's perform this operation many times, such as one million (1,000,000) times, and report a message when we are done. That is, we will square the numbers from zero to 999,999.</p>
 <p>We can use a list comprehension, which is a pythonic for-loop.</p>
+<pre><code>...
+# perform a math operation many times
+values = [operation(i) for i in range(1000000)]
+print('done')
+</code></pre>
+<p>This could just as easily be written as a for loop directly; for example:</p>
+<pre><code>...
+# perform a math operation many times
+values = list()
+for i in range(1000000):
+    values.append(operation(i))
+print('done')
+</code></pre>
+<p>Or using the <strong>map()</strong> function, which too might be more pythonic; for example:</p>
+<pre><code>...
+# perform a math operation many times
+values = list(map(operation, range(1000000)))
+print('done')
+</code></pre>
+<p>We'll stick with the list comprehension. The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of performing a simple math task many times in a for loop
+
+# perform some math operation
+def operation(value):
+    return value**2
+
+# perform a math operation many times
+values = [operation(i) for i in range(1000000)]
+print('done')
+</code></pre>
+<p>The code runs fast, completing in about 335 milliseconds on my system.</p>
+<p><strong>How long does it take to run on your system?</strong><br/>Let me know in the comments below.</p>
+<p>Next, let's make the task concurrent using the <strong>ThreadPoolExecutor</strong>.</p>
+<h3>CPU-Bound Tasks in ThreadPoolExecutor</h3>
+<p>We can update the code from the previous example to use the <strong>ThreadPoolExecutor</strong>.</p>
+<p>This would be an anti-pattern as described previously, therefore, we would expect this example to run slower than the for loop version because of the overhead of context switching.</p>
+<p>First, we can create a thread pool with some number of threads, in this case 4. We can then use the <strong>map()</strong> function on the <strong>ThreadPoolExecutor</strong> to submit the tasks into the thread pool. Each task will be to square a number, with numbers from 0 to 999,999 sent into the pool for execution.</p>
+<pre><code>...
+# perform a math operation many times
+with ThreadPoolExecutor(4) as executor:
+    results = executor.map(operation, range(1000000))
+</code></pre>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of performing a simple math task concurrently
+from concurrent.futures import ThreadPoolExecutor
+
+# perform some math operation
+def operation(value):
+    return value**2
+
+# perform a math operation many times
+with ThreadPoolExecutor(4) as executor:
+    results = executor.map(operation, range(1000000))
+print('done')
+</code></pre>
+<p>Running the example squares all of the numbers as before, but it is dramatically slower.</p>
+<p>On my system, it takes about 22.9 seconds to complete compared to the 0.335 seconds taken with the for loop.</p>
+<p>That is nearly two orders of magnitude slower, or more precisely 68.3x slower.</p>
+<p><strong>Ouch!</strong></p>
+<p>Again, the reason for the slow down is because the task is a CPU-bound task and the <strong>ThreadPoolExecutor</strong> uses threads that are subjected to the GIL, meaning only one thread can execute at a time and the operating system will context switch between them, adding a large amount of overhead to the overall task.</p>
+<h2>Common Questions</h2>
+<p>This section answers some commonly asked questions about this example.</p>
+<h3>What If We Use More Threads in the ThreadPoolExecutor?</h3>
+<p>Using more threads will not improve the performance for the same reason that using 4 threads does not speed up the execution of the tasks.</p>
+<p>The GIL ensures only one thread executes instructions at a time and the operating system will context switch between the tasks, adding significant overhead to the overall task.</p>
+<h3>What If We Use One Thread in the ThreadPoolExecutor?</h3>
+<p>The <strong>ThreadPoolExecutor</strong> will still be slower than the for loop even if the thread pool had one thread.</p>
+<p>The reason is because of all of the additional overhead in the thread pool for packaging up each task using internal classes and additional function calls as the task bounces around inside the thread pool for execution.</p>
+<p>This is the reason why even using a <strong>ProcessPoolExecutor</strong> for such a simple task would likely not provide a speed up, at least for this example.</p>
+<h3>Will the Worker Threads in the ThreadPoolExecutor Run on Different Cores?</h3>
+<p>Probably not.</p>
+<p>The operating system determines what code will run on each CPU core in your system.</p>
+<p>Because only one thread can execute at a time in this example, it is very likely that a single CPU core would be used.</p>
+<h3>Will Using a ProcessPoolExecutor Speed-Up This Example?</h3>
+<p>Probably Not.</p>
+<p>The operation is very simple and we are only performing it one million times.</p>
+<p>If we push these tasks into a <strong>ProcessPoolExecutor</strong> using <strong>map()</strong>, we will first have to tune the chunksize argument that defines the mapping of tasks we submit to internal tasks serialized and transmitted to the worker processes in the pool.</p>
+<p>Then executing the tasks in the process pool will add overhead, firstly for the additional wrapping of the tasks using internal objects and the additional function calls that need to be made, and secondly for the inter-process communication needed to share the tasks and their results between processes.</p>
+<p>Using a <strong>ProcessPoolExecutor</strong> for the above example would be lucky to achieve comparable performance to the for loop, highlighting that even CPU-bound tasks can run slower when using the correct concurrency tools.</p>
+<p>For example, the listing below shows how we can adapt the example to use the <strong>ProcessPoolExecutor</strong>.</p>
+<pre><code># SuperFastPython.com
+# example of performing a simple math task concurrently
+from concurrent.futures import ProcessPoolExecutor
+
+# perform some math operation
+def operation(value):
+    return value**2
+
+if __name__ == '__main__':
+    # perform a math operation many times
+    with ProcessPoolExecutor(4) as executor:
+        results = executor.map(operation, range(1000000), chunksize=10000)
+    print('done')
+</code></pre>
+<p>Running the example shows performance slightly worse than the for loop, completing in about 381 milliseconds on my system, compared to about 335 with the for loop.</p>
+<p>The story changes and we start to see a shortening of the running time when using the <strong>ProcessPoolExecutor</strong> if we change the tasks from one million to ten million.</p>
+<h2>Takeaways</h2>
+<p>You now know how <strong>ThreadPoolExecutor</strong> can make your programs slower and how to avoid it.</p>
 </main>
 </body>
 </html>

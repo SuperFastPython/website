@@ -214,6 +214,110 @@ result = future.result()
 <p>The concurrent.futures module provides an <strong>as_completed()</strong> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
 <p>We can call the function and provide it a list of future objects created by calling <strong>submit()</strong> and it will return future objects as they are completed in whatever order.</p>
 <p>For example, we can use a list comprehension to submit the tasks and create the list of future objects:</p>
+<pre><code>...
+# submit all tasks into the thread pool and create a list of futures
+futures = [executor.submit(task, item) for item in items]
+</code></pre>
+<p>Then get results for tasks as they complete in a for loop:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+	# do something with the result...
+</code></pre>
+<h3>4. Shutdown the Thread Pool</h3>
+<p>Once all tasks are completed, we can close down the thread pool which will release each thread and any resources it may hold (e.g. the stack space).</p>
+<pre><code>...
+# shutdown the thread pool
+executor.shutdown()
+</code></pre>
+<p>An easier way to use the thread pool is via the context manager (the "<strong>with</strong>" keyword), which ensures it is closed automatically once we are finished with it.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=10) as executor:
+	# submit tasks
+	futures = [executor.submit(task, item) for item in items]
+	# get results as they are available
+	for future in as_completed(futures):
+		# get the result
+		result = future.result()
+		# do something with the result...</code></pre>
+<p>Now that we are familiar with <strong>ThreadPoolExecutor</strong> and how to use it, let's look at how we can adapt our program for port scanning to make use of it.</p>
+<h2>Scan Ports Concurrently</h2>
+<p>The program for port scanning a server can be adapted to use the <strong>ThreadPoolExecutor</strong> with very little change.</p>
+<p>The <strong>test_port_number()</strong> function was already called separately for each port. This can be performed in a separate thread so each port is tested concurrently.</p>
+<p>We want to report port numbers in numerical order. This can be achieved by submitting the tasks to the thread pool using the <strong>map()</strong> function then iterating the True/False results returned for each port number.</p>
+<p>Firstly, we can create the thread pool with one thread per port to be tested.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(len(ports)) as executor:
+	# ...
+</code></pre>
+<p>Next, we can call <strong>map()</strong> and apply the <strong>test_port_number()</strong> function to the host and each port number. To achieve, this we must create a parallel iterable for the host name that can be passed to the <strong>test_port_number()</strong> along with the port number</p>
+<pre><code>...
+# dispatch all tasks
+results = executor.map(test_port_number, *len(ports), ports)
+</code></pre>
+<p>We can then iterate the results along with the port numbers at the same time.</p>
+<p>This can be achieved using the <strong>zip()</strong> function and passing it the iterable of port numbers and results, and it will yield one of each per iteration.</p>
+<pre><code>...
+# report results in order
+for port,is_open in zip(ports,results):
+    if is_open:
+        print(f'&gt; {host}:{port} open')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# scan a range of port numbers on a host concurrently
+from socket import AF_INET
+from socket import SOCK_STREAM
+from socket import socket
+from concurrent.futures import ThreadPoolExecutor
+
+# returns True if a connection can be made, False otherwise
+def test_port_number(host, port):
+    # create and configure the socket
+    with socket(AF_INET, SOCK_STREAM) as sock:
+        # set a timeout of a few seconds
+        sock.settimeout(3)
+        # connecting may fail
+        try:
+            # attempt to connect
+            sock.connect((host, port))
+            # a successful connection was made
+            return True
+        except:
+            # ignore the failure
+            return False
+
+# scan port numbers on a host
+def port_scan(host, ports):
+    print(f'Scanning {host}...')
+    # create the thread pool
+    with ThreadPoolExecutor(len(ports)) as executor:
+        # dispatch all tasks
+        results = executor.map(test_port_number, *len(ports), ports)
+        # report results in order
+        for port,is_open in zip(ports,results):
+            if is_open:
+                print(f'&gt; {host}:{port} open')
+
+# define host and port numbers to scan
+HOST = 'python.org'
+PORTS = range(1024)
+# test the ports
+port_scan(HOST, PORTS)
+</code></pre>
+<p>Running the program attempts to open a socket connection for all ports in the range 0 and 1023 and reports ports 80 and 443 open as before.</p>
+<p>In this case, the program is dramatically faster.</p>
+<p>On my system, it completed in about 3.1 seconds, compared to the 235.8 seconds for the serial case, which is about 76 times faster.</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 open
+&gt; python.org:443 open</code></pre>
+<h2>Takeaways</h2>
+<p>In this tutorial, you discovered how to develop a multithreaded port scanner in Python.</p>
+<ul><li>How to open a socket connection to each port sequentially and how slow it can be.</li><li>How to use the <strong>ThreadPoolExecutor</strong> to manage a pool of worker threads.</li><li>How to update the code to connect to multiple ports at the same time and dramatically accelerate the process.</li></ul>
 </main>
 </body>
 </html>

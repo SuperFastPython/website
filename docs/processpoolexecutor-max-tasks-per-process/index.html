@@ -111,6 +111,293 @@ with ProcessPoolExecutor(max_workers=1, max_tasks_per_child=2) as ppe:
 </ul>
 <p>We will then issue two tasks to the pool, wait for them to complete, then issue two more.</p>
 <p>In this case, we will issue tasks using the <strong>submit()</strong> method in a list comprehension and wait on the list of <strong>Future</strong> objects using the <strong>wait()</strong> method.</p>
+<pre><code>...
+# issue tasks to the pool
+futures = [ppe.submit(task, i) for i in range(2)]
+_ = wait(futures)
+futures = [ppe.submit(task, i) for i in range(2)]
+_ = wait(futures)</code></pre>
+<p>And that's it.</p>
+<p>We expect that the first two tasks will be executed by one child process. This process will then be terminated and a second different child process will execute the second two tasks.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of limiting the number of tasks per process in the processpoolexecutor
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from multiprocessing import current_process
+from multiprocessing import set_start_method
+from time import sleep
+
+# task executed in the process pool
+def task(task_id):
+    # get the current process
+    worker = current_process()
+    # report details about the current process
+    print(f'Task {task_id}, worker name={worker.name}, pid={worker.pid}', flush=True)
+    # block for a moment
+    sleep(0.5)
+
+# protect the entry point
+if __name__ == '__main__':
+    # force the start method to spawn
+    set_start_method('spawn')
+    # create the process pool
+    with ProcessPoolExecutor(max_workers=1, max_tasks_per_child=2) as ppe:
+        # issue tasks to the pool
+        futures = [ppe.submit(task, i) for i in range(2)]
+        _ = wait(futures)
+        futures = [ppe.submit(task, i) for i in range(2)]
+        _ = wait(futures)
+</code></pre>
+<p>Running the example first sets the start method to spawn.</p>
+<p>Next, a process pool is created with one worker process that is limited to a maximum of two tasks before being terminated and replaced.</p>
+<p>We then issue two tasks to the pool and wait for them to complete. In this case, we can see that indeed the first two tasks are executed by the same process as we expect, a process with name=SpawnProcess-1, pid=23258.</p>
+<p>Two additional tasks are issued to the process pool and as expected are executed by a second different child process, in this case, name=SpawnProcess-2, pid=23260.</p>
+<p>This highlights that we can limit the maximum number of tasks executed by each worker process in the <strong>ProcessPoolExecutor</strong> via the <strong>max_tasks_per_child</strong> argument.</p>
+<pre><code>Task 0, worker name=SpawnProcess-1, pid=23258
+Task 1, worker name=SpawnProcess-1, pid=23258
+Task 0, worker name=SpawnProcess-2, pid=23260
+Task 1, worker name=SpawnProcess-2, pid=23260</code></pre>
+<h2>Example of Maximum Tasks Per Child Process with Fork Start Method</h2>
+<p>We can limit the maximum number of tasks per child worker process when using the fork start method.</p>
+<p>The <strong>ProcessPoolExecutor</strong> will use the '<strong>spawn</strong>' start method internally and automatically when the <strong>max_tasks_per_child</strong> is set, meaning that we are able to use this feature when our system is configured to use the 'fork' start method elsewhere in our program.</p>
+<p>We can explore this with some worked examples.</p>
+<p>Note, these examples only work on systems that support the 'fork' start method, e.g. they may not run on Windows.</p>
+<h3>Force Fork Start Method and Limit Max Tasks Per Child</h3>
+<p>We can update the above example to use the '<strong>fork</strong>' start method for the main process (and child processes) and then set the <strong>max_tasks_per_child</strong>.</p>
+<p>Firstly, we can update the <strong>task()</strong> start method to report the start method used in the worker process.</p>
+<p>We expect this to be '<strong>spawn</strong>', regardless of what was set in the main process.</p>
+<pre><code># task executed in the process pool
+def task(task_id):
+    # get the start method
+    method = get_start_method()
+    # get the current process
+    worker = current_process()
+    # report details about the current process
+    print(f'Task {task_id}, method={method}, name={worker.name}, pid={worker.pid}', flush=True)
+    # block for a moment
+    sleep(0.5)
+</code></pre>
+<p>Next, we can update the main process to explicitly set the fork start method.</p>
+<pre><code>...
+# force the start method to spawn
+set_start_method('fork')</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of limiting tasks per process with fork start method
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from multiprocessing import current_process
+from multiprocessing import set_start_method
+from multiprocessing import get_start_method
+from time import sleep
+
+# task executed in the process pool
+def task(task_id):
+    # get the start method
+    method = get_start_method()
+    # get the current process
+    worker = current_process()
+    # report details about the current process
+    print(f'Task {task_id}, method={method}, name={worker.name}, pid={worker.pid}', flush=True)
+    # block for a moment
+    sleep(0.5)
+
+# protect the entry point
+if __name__ == '__main__':
+    # force the start method to spawn
+    set_start_method('fork')
+    # create the process pool
+    with ProcessPoolExecutor(max_workers=1, max_tasks_per_child=2) as ppe:
+        # issue tasks to the pool
+        futures = [ppe.submit(task, i) for i in range(2)]
+        _ = wait(futures)
+        futures = [ppe.submit(task, i) for i in range(2)]
+        _ = wait(futures)
+</code></pre>
+<p>Running the example first sets the fork start method. This is applied to the main process and all child processes.</p>
+<p>Next, the <strong>ProcessPoolExecutor</strong> is created and configured with one worker and 2 tasks per worker.</p>
+<p>Two tasks are issued and the main process blocks until they are complete.</p>
+<p>We can see that the first two tasks are executed by one process that was created using the 'spawn' start method, as signaled by the start method it uses and the name of the process (if it was forked, it would have "Fork" in the default name).</p>
+<p>Two more tasks are issued and waited and are executed by a second worker process with a different name and pid, also created using the spawn start method instead of the fork start method.</p>
+<p>This highlights that the <strong>max_tasks_per_child</strong> argument can be used to limit the maximum tasks per child worker process even when the fork start method is the default in the program. This is because the <strong>ProcessPoolExecutor</strong> will automatically use the 'spawn' start method internally instead when the <strong>max_tasks_per_child</strong> argument is set.</p>
+<pre><code>Task 0, method=spawn, name=SpawnProcess-1, pid=23313
+Task 1, method=spawn, name=SpawnProcess-1, pid=23313
+Task 0, method=spawn, name=SpawnProcess-2, pid=23315
+Task 1, method=spawn, name=SpawnProcess-2, pid=23315</code></pre>
+<h3>Force Fork Start Method via Context and Limit Max Tasks Per Child</h3>
+<p>We can go one step further and explicitly force the <strong>ProcessPoolExecutor</strong> to use the 'fork' start method via the multiprocessing context.</p>
+<p>This can be achieved by creating a fork multiprocessing context via the <strong>multiprocessing.get_context()</strong>.</p>
+<pre><code>...
+# get the multiprocessing context
+context = get_context('fork')</code></pre>
+<p>Then pass this context to the <strong>ProcessPoolExecutor</strong> via the <strong>mp_context</strong> argument.</p>
+<pre><code>...
+# create the process pool
+with ProcessPoolExecutor(max_workers=1, mp_context=context, max_tasks_per_child=2) as ppe:
+	# ...
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of limiting tasks per process with fork start method via context
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from multiprocessing import current_process
+from multiprocessing import set_start_method
+from multiprocessing import get_start_method
+from multiprocessing import get_context
+from time import sleep
+
+# task executed in the process pool
+def task(task_id):
+    # get the start method
+    method = get_start_method()
+    # get the current process
+    worker = current_process()
+    # report details about the current process
+    print(f'Task {task_id}, method={method}, name={worker.name}, pid={worker.pid}', flush=True)
+    # block for a moment
+    sleep(0.5)
+
+# protect the entry point
+if __name__ == '__main__':
+    # force the start method to spawn
+    set_start_method('fork')
+    # get the multiprocessing context
+    context = get_context('fork')
+    # create the process pool
+    with ProcessPoolExecutor(max_workers=1, mp_context=context, max_tasks_per_child=2) as ppe:
+        # issue tasks to the pool
+        futures = [ppe.submit(task, i) for i in range(2)]
+        _ = wait(futures)
+        futures = [ppe.submit(task, i) for i in range(2)]
+        _ = wait(futures)
+</code></pre>
+<p>Running the example first sets the default start method to fork.</p>
+<p>A multiprocessing context with the fork start method is then created.</p>
+<p>Next, the <strong>ProcessPoolExecutor</strong> is created with one worker process, a maximum of two tasks per child process and the fork multiprocessing context.</p>
+<p>This fails with a ValueError exception and a message that the fork start method is not compatible with the <strong>max_tasks_per_child</strong> argument.</p>
+<ul>
+<li><strong>max_tasks_per_child is incompatible with the 'fork' multiprocessing start method; supply a different mp_context.</strong></li>
+</ul>
+<p>This highlights that we cannot explicitly force a fork start method when using the <strong>ProcessPoolExecutor</strong> when the <strong>max_tasks_per_child</strong> is set.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+    raise ValueError("max_tasks_per_child is incompatible with"
+ValueError: max_tasks_per_child is incompatible with the 'fork' multiprocessing start method; supply a different mp_context.
+</code></pre>
+<h2>Unexpected Behavior With Maximum Tasks Per Child Process (BUG?)</h2>
+<p>What happens if we issue many tasks to the <strong>ProcessPoolExecutor</strong>, more tasks than a single process is able to execute given the maximum limit set?</p>
+<p>We can explore this situation.</p>
+<p>Consider the case where we have a process pool with one worker process that is limited to a maximum of 2 tasks before being replaced. If we issue 4 tasks to the pool at once, we would expect that the first two tasks would be executed by one child worker process and the next two tasks would be executed by a second child worker process.</p>
+<p>We do not see this in practice. Instead, it seems that the tasks are never executed by the replacement worker process and the main process hangs, waiting for the tasks to complete.</p>
+<p><strong>Is my expectation wrong somehow?</strong><br/><strong>I think this is a bug. I am using Python 3.11.4.</strong></p>
+<p>The example below implements this case where each task is issued separately via the <strong>submit()</strong> method.</p>
+<pre><code># SuperFastPython.com
+# example of issuing more tasks than the maximum limit per child process
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from multiprocessing import current_process
+from multiprocessing import set_start_method
+from time import sleep
+
+# task executed in the process pool
+def task(task_id):
+    # get the current process
+    worker = current_process()
+    # report details about the current process
+    print(f'Task {task_id}, worker name={worker.name}, pid={worker.pid}', flush=True)
+    # block for a moment
+    sleep(0.5)
+
+# protect the entry point
+if __name__ == '__main__':
+    # force the start method to spawn
+    set_start_method('spawn')
+    # create the process pool
+    with ProcessPoolExecutor(max_workers=1, max_tasks_per_child=2) as ppe:
+        # issue tasks to the pool
+        futures = [ppe.submit(task, i) for i in range(4)]
+        _ = wait(futures)
+</code></pre>
+<p>Running the program first sets the spawn start method.</p>
+<p>The <strong>ProcessPoolExecutor</strong> is created with one worker and a max of two tasks per child.</p>
+<p>All four tasks are issued to the pool using the <strong>submit()</strong> method.</p>
+<p>The main process then blocks, waiting for all 4 tasks to complete.</p>
+<p>The first two tasks execute sequentially using the first worker process, as we would expect.</p>
+<p>Then the program hangs, waiting forever.</p>
+<p><strong>Do you see the same result?</strong></p>
+<pre><code>Task 0, worker name=SpawnProcess-1, pid=23377
+Task 1, worker name=SpawnProcess-1, pid=23377</code></pre>
+<p>We can see the same issue if we issue all tasks at once using the <strong>map()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# create the process pool
+with ProcessPoolExecutor(max_workers=1, max_tasks_per_child=2) as ppe:
+    # issue tasks to the pool
+    for value in ppe.map(task, range(4)):
+        pass
+</code></pre>
+<p>If we update the first example to add a <a href="../thread-busy-waiting-in-python/">busy loop</a> instead of waiting explicitly, we can report on the internals of the <strong>ProcessPoolExecutor</strong>, such as the set of child worker processes.</p>
+<pre><code>...
+# busy loop checking on internal processes in the pool
+while True:
+    # report the set of worker processes
+    print(ppe._processes)
+    # block for a moment
+    sleep(1)
+</code></pre>
+<p>The complete example with this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of issuing more tasks than the maximum limit per child process
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import wait
+from multiprocessing import current_process
+from multiprocessing import set_start_method
+from time import sleep
+
+# task executed in the process pool
+def task(task_id):
+    # get the current process
+    worker = current_process()
+    # report details about the current process
+    print(f'Task {task_id}, worker name={worker.name}, pid={worker.pid}', flush=True)
+    # block for a moment
+    sleep(0.5)
+
+# protect the entry point
+if __name__ == '__main__':
+    # force the start method to spawn
+    set_start_method('spawn')
+    # create the process pool
+    with ProcessPoolExecutor(max_workers=1, max_tasks_per_child=2) as ppe:
+        # issue tasks to the pool
+        futures = [ppe.submit(task, i) for i in range(4)]
+        # busy loop checking on internal processes in the pool
+        while True:
+            # report the set of worker processes
+            print(ppe._processes)
+            # block for a moment
+            sleep(1)
+</code></pre>
+<p>Running the example results in the same problem above.</p>
+<p>In this case, we can see that the set of worker processes has one process in it initially as we expect.</p>
+<p>The two tasks are executed and the process is terminated.</p>
+<p>Then the set of processes is empty, suggesting that the worker process is not replaced.</p>
+<pre><code>{23417: &lt;SpawnProcess name='SpawnProcess-1' pid=23417 parent=23415 started&gt;}
+Task 0, worker name=SpawnProcess-1, pid=23417
+Task 1, worker name=SpawnProcess-1, pid=23417
+{23417: &lt;SpawnProcess name='SpawnProcess-1' pid=23417 parent=23415 started&gt;}
+{}
+{}
+{}
+{}
+{}
+...
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to limit the maximum tasks per child worker process in the <strong>ProcessPoolExecutor</strong>.</p>
 </main>
 </body>
 </html>

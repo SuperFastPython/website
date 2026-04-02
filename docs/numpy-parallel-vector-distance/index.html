@@ -95,6 +95,140 @@ n_cols = 10000
 data1 = ones((n_rows,n_cols))
 data2 = zeros((n_rows,n_cols))</code></pre>
 <p>We can then calculate the Euclidean distance between each pair of vectors. This can be achieved in a list comprehension to give a list of 100,000 distance calculations.</p>
+<pre><code>...
+# calculate distances for each row
+distances = [euclidean(data1[i,:], data2[i,:]) for i in range(len(data1))]</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example of calculating pairwise vector distances
+from time import time
+from numpy import ones
+from numpy import zeros
+from scipy.spatial.distance import euclidean
+# size of data
+n_rows = 100000
+n_cols = 10000
+# prepare data
+data1 = ones((n_rows,n_cols))
+data2 = zeros((n_rows,n_cols))
+# record start time
+start = time()
+# calculate distances for each row
+distances = [euclidean(data1[i,:], data2[i,:]) for i in range(len(data1))]
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example calculates the Euclidean distance between all pairs of vectors and collects the distances in a list.</p>
+<p>The time taken to complete this example on my system was about 4.306 seconds. This provides a point of reference for comparing parallel versions of the same calculations.</p>
+<p>Note, the example may take a longer or shorter duration, depending on the speed of your hardware.</p>
+<pre><code>Took 4.306 seconds</code></pre>
+<p>Next, let's look at how we can perform the same vector distance calculations in parallel.</p>
+<h2>Example of Multithreaded Pairwise Vector Distances (faster)</h2>
+<p>We can update the previous example to calculate vector distances in parallel.</p>
+<p>There are many ways we could do this. In this case, we will use a <strong>ThreadPool</strong> of worker threads and issue each distance calculation between a pair of vectors as one task. All pairs of vectors will be issued to the pool as tasks to complete in parallel as fast as the workers are able.</p>
+<p>This means there will be 100,000 tasks issued to the pool. These will be grouped together using a default chunksize and the distance results will be returned in the same order in which the tasks were issued to the pool.</p>
+<pre><code>...
+# create thread pool
+with ThreadPool(4) as pool:
+    # prepare args
+    args = [(a,b) for a,b in zip(data1,data2)]
+    # calculate distances on chunks of vectors
+    distances = pool.starmap(euclidean, args)
+</code></pre>
+<p>The default <strong>chunksize</strong> is a factor of the number of tasks and the number of workers, which in this case is calculated as follows:</p>
+<pre><code>chunksize, extra = divmod(len(iterable), len(self._pool) * 4)
+chunksize, extra = divmod(100,000, 4 * 4)
+chunksize, extra = divmod(100,000, 8)
+chunksize, extra = 6250, 0</code></pre>
+<p>You can learn more about the calculation of the default chunksize in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map-chunksize/">How to Configure ThreadPool map() Chunksize</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example of multithreaded pairwise vector distances
+from time import time
+from numpy import ones
+from numpy import zeros
+from scipy.spatial.distance import euclidean
+from multiprocessing.pool import ThreadPool
+# size of data
+n_rows = 100000
+n_cols = 10000
+# prepare data
+data1 = ones((n_rows,n_cols))
+data2 = zeros((n_rows,n_cols))
+# record start time
+start = time()
+# create thread pool
+with ThreadPool(4) as pool:
+    # prepare args
+    args = [(a,b) for a,b in zip(data1,data2)]
+    # calculate distances on chunks of vectors
+    distances = pool.starmap(euclidean, args)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first splits the pairs of vectors into groups, then issues all tasks to the thread pool.</p>
+<p>The thread pool executes all distance calculations as fast as possible, in groups of about 6,000 vectors.</p>
+<p>In this case, the example took about 2.593 seconds.</p>
+<p>This is about 1.713 seconds faster than the single-threaded version or a speed-up of about 1.66x.</p>
+<pre><code>Took 2.593 seconds</code></pre>
+<h2>Example of Multithreaded Pairwise Vector Distances With Chunksize</h2>
+<p>Maybe we can get a speed-up with a customized chunksize.</p>
+<p>For example, in my system, I have 4 physical CPU cores and we are using 4 worker threads. Perhaps we can divide the list of vectors into 4 chunks and issue each chunk in parallel, we will get a speed up.</p>
+<p>This can be achieved by parameterizing the number of workers.</p>
+<p>Update the number of workers based on the number of physical CPU cores in your system.</p>
+<pre><code>...
+n_workers = 4</code></pre>
+<p>We can then use this variable to configure the number of worker threads.</p>
+<pre><code>...
+# create thread pool
+with ThreadPool(n_workers) as pool:
+	 # ...
+</code></pre>
+<p>We can also use the variable in calculating the chunkisze, calculated as the number of vectors divided by the number of workers.</p>
+<pre><code>...
+# calculate distances on chunks of vectors
+distances = pool.starmap(euclidean, args, chunksize=round(n_rows/n_workers))</code></pre>
+<p>This is calculated as follows:</p>
+<pre><code>chunksize = round(n_rows/n_workers)
+chunksize = round(100,000/4)
+chunksize = round(25,000)
+chunksize = 25,000</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example of multithreaded pairwise vector distances
+from time import time
+from numpy import ones
+from numpy import zeros
+from scipy.spatial.distance import euclidean
+from multiprocessing.pool import ThreadPool
+# size of data
+n_rows = 100000
+n_cols = 10000
+n_workers = 4
+# prepare data
+data1 = ones((n_rows,n_cols))
+data2 = zeros((n_rows,n_cols))
+# record start time
+start = time()
+# create thread pool
+with ThreadPool(n_workers) as pool:
+    # prepare args
+    args = [(a,b) for a,b in zip(data1,data2)]
+    # calculate distances on chunks of vectors
+    distances = pool.starmap(euclidean, args, chunksize=round(n_rows/n_workers))
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example creates the data, starts the ThreadPool then issues 4 chunks of pair-wise vectors for distance calculations.</p>
+<p>In this case, the example took about 2.653 seconds.</p>
+<p>This is roughly equivalent to the default chunksize, offering no meaningful benefit. Nevertheless, it is still about 1.653 seconds faster than the single-threaded version offering a speedup of about 1.62x.</p>
+<p>Maybe you can do better with a different manually specified configuration of the chunksize.</p>
+<pre><code>Took 2.653 seconds</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to calculate vector distances between numpy arrays in parallel using threads.</p>
 </main>
 </body>
 </html>

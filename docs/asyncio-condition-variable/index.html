@@ -195,6 +195,123 @@ Got data: [33]</code></pre>
 <p>In this example, we will start a suite of tasks that will wait on the condition to be notified before performing their processing and reporting a result.</p>
 <p>The main coroutine will block for a moment and then notify all waiting coroutines that they can begin processing.</p>
 <p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of wait/notify all with an asyncio condition
+from random import random
+import asyncio
+
+# task coroutine
+async def task(condition, number):
+    # report a message
+    print(f'Task {number} waiting...')
+    # acquire the condition
+    async with condition:
+        # wait to be notified
+        await condition.wait()
+    # generate a random number between 0 and 1
+    value = random()
+    # block for a moment
+    await asyncio.sleep(value)
+    # report a result
+    print(f'Task {number} got {value}')
+
+# main coroutine
+async def main():
+    # create a condition
+    condition = asyncio.Condition()
+    # create and start many tasks
+    tasks = [asyncio.create_task(task(condition, i)) for i in range(5)]
+    # allow the tasks to run
+    await asyncio.sleep(1)
+    # acquire the condition
+    async with condition:
+        # notify all waiting tasks
+        condition.notify_all()
+    # wait for all tasks to complete
+    _ = await asyncio.wait(tasks)
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine which is used as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the shared condition.</p>
+<p>It then creates and schedules five tasks, each providing the shared condition and a unique integer from 0 to 4 as arguments.</p>
+<p>The <strong>main()</strong> coroutine then suspends, allowing the tasks to run.</p>
+<p>The tasks run one by one. The tasks first report their message, then acquire the condition. Once acquired they wait to be notified.</p>
+<p>The <strong>main()</strong> coroutine resumes. It acquires the condition and then notifies all coroutines waiting on the condition. It then releases the condition and waits for the issued tasks to terminate.</p>
+<p>The tasks resume, one at a time. Each task first generates a random number, and blocks for a fraction of a second. Once resumed it reports a message and terminates.</p>
+<p>This highlights how we may have many coroutines waiting to be notified and have them all notified.</p>
+<pre><code>Task 0 waiting...
+Task 1 waiting...
+Task 2 waiting...
+Task 3 waiting...
+Task 4 waiting...
+Task 4 got 0.11036200324308998
+Task 3 got 0.25497519885869324
+Task 1 got 0.36215401216779797
+Task 0 got 0.4277021597975379
+Task 2 got 0.7073867691766996</code></pre>
+<p>Next, let's look at how we might wait for a specific result on the condition.</p>
+<h2>Example of wait_for() With an Asyncio Condition</h2>
+<p>We can explore how to use the <strong>wait_for()</strong> function on the condition.</p>
+<p>The <strong>wait_for()</strong> method takes a callable, such as a function with no arguments or a lambda expression. The coroutine calling the <strong>wait_for()</strong> method will block until notified and the callable passed in as an argument returns a <strong>True</strong> value.</p>
+<p>This might mean that the coroutine is notified many times by different coroutines, but will only unblock and continue execution once the condition in the callable is met.</p>
+<p>In this example, will create a suite of tasks, each of which will calculate a value and add it to a shared list and notify the waiting coroutine.</p>
+<p>The main coroutine will wait on the condition and will use a lambda expression in the <strong>wait_for()</strong> function to not continue on until a work list populated by the worker coroutines is fully populated.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of wait for with a condition
+from random import random
+import asyncio
+
+# task coroutine
+async def task(condition, work_list):
+    # acquire the condition
+    async with condition:
+        # generate a random value between 0 and 1
+        value = random()
+        # block for a moment
+        await asyncio.sleep(value)
+        # add work to the list
+        work_list.append(value)
+        print(f'Task added {value}')
+        # notify the waiting coroutine
+        condition.notify()
+
+# main coroutine
+async def main():
+    # create a condition
+    condition = asyncio.Condition()
+    # define work list
+    work_list = list()
+    # create and start many tasks
+    _ = [asyncio.create_task(task(condition, work_list)) for _ in range(5)]
+    # acquire the condition
+    async with condition:
+        # wait to be notified
+        await condition.wait_for(lambda : len(work_list)==5)
+        # report final message
+        print(f'Done, got: {work_list}')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine which is used as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and first creates the shared condition variable and work list.</p>
+<p>The <strong>main()</strong> coroutine then creates and schedules five tasks, passing the condition and work list.</p>
+<p>The <strong>main()</strong> coroutine then acquires the condition and waits to be notified and for the lambda expression to be true, which in this case requires that the work list has a length of 5.</p>
+<p>The tasks then execute one by one. Each task first acquires the condition, generates a random value, and blocks. Once it resumes it adds a value to the shared work list, reports a message, and notifies the waiting <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine is notified many times but does not resume until the condition is met, after which the final message is reported.</p>
+<p>Importantly, only one coroutine can hold or acquire the condition at a time, although recall that the condition is released when waiting to be notified. In this case, the tasks do not wait, although they are suspended. The lock is held during this block, making the block of the condition context manager coroutine-safe, e.g. mutually exclusive.</p>
+<p>This highlights how we may use the wait-for and notify pattern with coroutines.</p>
+<pre><code>Task added 0.45089927950158515
+Task added 0.8931671797432676
+Task added 0.06484378382773981
+Task added 0.7649095074042099
+Task added 0.9954569956651376
+Done, got: [0.45089927950158515, 0.8931671797432676, 0.06484378382773981, 0.7649095074042099, 0.9954569956651376]</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use an asyncio condition variable in Python.</p>
 </main>
 </body>
 </html>

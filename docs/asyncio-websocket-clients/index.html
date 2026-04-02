@@ -110,6 +110,237 @@ async def client_handler(request):
 <p>We can then start the server.</p>
 <p>This involves first creating an <a href="https://docs.aiohttp.org/en/stable/web_reference.html#aiohttp.web.Application"><strong>aiohttp.web.Application</strong> instance</a> and adding a route that is connected to our handler.</p>
 <p>Finally, we can start the asyncio event loop that will accept client connections. We can specify the host and port details, which in this case are the IP address for the local host and port 8080.</p>
+<pre><code>...
+# create the server
+app = aiohttp.web.Application()
+# register the handler
+app.add_routes([aiohttp.web.get('/ws', client_handler)])
+# accept client connection
+aiohttp.web.run_app(app, host='127.0.0.1', port=8080)</code></pre>
+<p>Tying this together, the complete WebSocket server developed using aiohttp is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio websocket server with aiohttp
+import aiohttp
+import aiohttp.web
+
+# client connection handler
+async def client_handler(request):
+    # create the websocket response
+    ws = aiohttp.web.WebSocketResponse()
+    # prepare the response
+    await ws.prepare(request)
+    # report client connected
+    print(f'Client connected')
+    # read messages from the server and send them back
+    async for message in ws:
+        # report message
+        print(f'&gt; {message.data}')
+        # send message back to client
+        await ws.send_str(message.data)
+    # report client disconnected
+    print(f'Client disconnected')
+    return ws
+
+# create the server
+app = aiohttp.web.Application()
+# register the handler
+app.add_routes([aiohttp.web.get('/ws', client_handler)])
+# accept client connection
+aiohttp.web.run_app(app, host='127.0.0.1', port=8080)
+</code></pre>
+<p>Save the program to file, e.g. server.py and run from the command line.</p>
+<p>For example:</p>
+<pre><code>python server.py</code></pre>
+<p>Next, we can develop a simple WebSocket client to connect to this server.</p>
+<h3>aiohttp WebSocket Echo Client</h3>
+<p>This involves first opening a <strong><a href="https://docs.aiohttp.org/en/stable/client_reference.html#aiohttp.ClientSession">aiohttp.ClientSession</a></strong> and then connecting to the server on port 8080.</p>
+<p>Connecting to the server creates an <a href="https://docs.aiohttp.org/en/stable/client_reference.html#aiohttp.ClientWebSocketResponse"><strong>aiohttp.ClientWebSocketResponse</strong> object</a> that we can use to interact with the server.</p>
+<p>We can use the asynchronous context manager for both the session and the connection.</p>
+<p>Once we have a connection object, we can send and receive strings via <strong>send_str()</strong> and <strong>receive()</strong> methods, like we did on the server.</p>
+<p>The client sends a "<strong>hello world</strong>" message, receives a response, and then closes the connection and session.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio websocket client with aiohttp
+import asyncio
+import aiohttp
+
+# run the client
+async def main():
+    # start a session
+    async with aiohttp.ClientSession() as session:
+        # connect to the server
+        async with session.ws_connect('http://127.0.0.1:8080/ws') as ws:
+            # report progress
+            print('Connected to server')
+            # send the message to the server
+            await ws.send_str('Hello World!')
+            # receive response
+            result = await ws.receive()
+            # report response
+            print(f'Received: {result.data}')
+    # report progress
+    print('Disconnected')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>We can save this program to a file, e.g. client.py, and run it from the command line.</p>
+<p>For example:</p>
+<pre><code>python client.py</code></pre>
+<h3>aiohttp Echo Client and Server Session</h3>
+<p>The WebSocket client connects to the WebSocket server.</p>
+<p>It sends the "Hello World!" message.</p>
+<p>This message is received by the server that reports it locally and then sends it back.</p>
+<p>The client receives and reports the message, then closes the connection and the session automatically by exiting the asynchronous context manager blocks.</p>
+<p>The server remains receptive to further client connections. We can terminate the server with a signal interrupt (SIGINT) via the Control-C key combination.</p>
+<p>The output from the server looks as follows:</p>
+<pre><code>======== Running on http://127.0.0.1:8080 ========
+(Press CTRL+C to quit)
+Client connected: &lt;WebSocketResponse Switching Protocols GET /ws &gt;
+&gt; Hello World!
+Client disconnected: &lt;WebSocketResponse Switching Protocols GET /ws &gt;
+</code></pre>
+<p>The output from the client looks as follows:</p>
+<pre><code>Connected to server
+Received: Hello World!/answer
+Disconnected</code></pre>
+<p>This highlights how we can develop a simple WebSocket echo server and client in asyncio using aiohttp.</p>
+<p>Next, let's look at how we can do something similar using the websockets library.</p>
+<h2>websockets Client Library</h2>
+<p>The <a href="https://github.com/python-websockets/websockets/">websockets library</a> provides an async toolkit for developing WebSocket applications.</p>
+<p>Like aiohttp, it also has support for a websocket server that can be used for testing or hosting small to modestly sized APIs.</p>
+<blockquote>
+<p>websockets is a library for building WebSocket servers and clients in Python with a focus on correctness, simplicity, robustness, and performance. Built on top of asyncio, Python's standard asynchronous I/O framework, the default implementation provides an elegant coroutine-based API.</p>
+<cite>-- <a href="https://github.com/python-websockets/websockets/">websockets GitHub Project</a>.</cite></blockquote>
+<p>The library also supports a threading and Sans-I/O interface, meaning it is not limited to use in asyncio applications.</p>
+<p>Let's explore a simple hello world WebSocket server and client using websockets.</p>
+<p>The documentation provides a simple echo client and server already, and we will use this as a base and update it to match the design above used for aiohttp.</p>
+<p>Firstly, we need to install the websockets library using our preferred Python package manager, such as pip.</p>
+<p>For example:</p>
+<pre><code>pip install websockets</code></pre>
+<p>Next, let's develop a WebSocket client and server.</p>
+<h3>websockets Echo Server</h3>
+<p>We can then define a simple websockets server that echoes any message it receives.</p>
+<p>This involves defining a handler coroutine that takes a <a href="https://websockets.readthedocs.io/en/stable/reference/asyncio/server.html#websockets.server.WebSocketServerProtocol"><strong>websockets.server.WebSocketServerProtocol</strong> object</a>.</p>
+<p>Messages can be read and written via <strong>recv()</strong> and <strong>send()</strong> methods, and like aiohttp, we can use read messages via the asynchronous iterator interface for the <a href="../asyncio-async-for/">"<strong>async for</strong>" expression</a>.</p>
+<p>The coroutine below implements the client handler.</p>
+<pre><code># client connection handler
+async def client_handler(ws):
+    # report client connected
+    print(f'Client connected: {ws.remote_address}')
+    # read messages from the server and send them back
+    async for message in ws:
+        # report message
+        print(f'&gt; {message}')
+        # send message back to client
+        await ws.send(message)
+    # report client disconnected
+    print(f'Client disconnected: {ws.remote_address}')
+</code></pre>
+<p>Next, we can define the main coroutine that runs the server.</p>
+<p>This involves first calling the <a href="https://websockets.readthedocs.io/en/stable/reference/asyncio/server.html#websockets.server.serve">websockets.server.serve() method and specify</a> the name of the handler coroutine, the local address, and the port.</p>
+<p>We can then leave the server to accept client connections forever. This can be achieved by awaiting an empty asyncio.Future.</p>
+<p>The <strong>main()</strong> coroutine below implements this.</p>
+<pre><code># drive the server
+async def main():
+    # start the server
+    async with serve(client_handler, '127.0.0.1', 8080):
+        # report progress
+        print('Server Started, Control-C to stop')
+        # accept connections forever
+        await asyncio.Future()
+</code></pre>
+<p>Finally, we can start the event loop and run the program.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio websocket server with websockets
+import asyncio
+from websockets.server import serve
+
+# client connection handler
+async def client_handler(ws):
+    # report client connected
+    print(f'Client connected: {ws.remote_address}')
+    # read messages from the server and send them back
+    async for message in ws:
+        # report message
+        print(f'&gt; {message}')
+        # send message back to client
+        await ws.send(message)
+    # report client disconnected
+    print(f'Client disconnected: {ws.remote_address}')
+
+# drive the server
+async def main():
+    # start the server
+    async with serve(client_handler, '127.0.0.1', 8080):
+        # report progress
+        print('Server Started, Control-C to stop')
+        # accept connections forever
+        await asyncio.Future()
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Save the program to a file, e.g. server.py, and run from the command line.</p>
+<p>For example:</p>
+<pre><code>python server.py</code></pre>
+<p>Next, we can develop a simple WebSocket client to connect to this server.</p>
+<h3>websockets Echo Client</h3>
+<p>Developing an echo client is straightforward.</p>
+<p>Firstly, we can connect to the server using <strong><a href="https://websockets.readthedocs.io/en/stable/reference/asyncio/client.html#websockets.client.connect">websockets.client.connect()</a></strong>, which can be simplified using the alias <strong>websockets.connect()</strong>.</p>
+<p>This creates a <a href="https://websockets.readthedocs.io/en/stable/reference/asyncio/client.html#websockets.client.WebSocketClientProtocol"><strong>websockets.client.WebSocketClientProtocol</strong> object</a> that can be used to read and write messages via the <strong>recv()</strong> and <strong>send()</strong> methods, and also implements the async iterator interface used via the "<strong>async for</strong>" expression.</p>
+<p>In this case, after connecting, we will send a "Hello World" message, read the response and close the connection.</p>
+<p>The API is simpler than aiohttp, combining the opening and closing of a session and connection into a single activity.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio websocket client with websockets
+import asyncio
+import websockets
+
+# drive the client connection
+async def main():
+    # open a connection to the server
+    async with websockets.connect("ws://127.0.0.1:8080") as websocket:
+        # report progress
+        print('Connected to server')
+        # send a message to server
+        await websocket.send("Hello world!")
+        # read message from server
+        message = await websocket.recv()
+        # report result
+        print(f"Received: {message}")
+    # report progress
+    print('Disconnected')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>We can save this program to a file, e.g. client.py, and run it from the command line.</p>
+<p>For example:</p>
+<pre><code>python client.py</code></pre>
+<h3>websockets Echo Client and Server Session</h3>
+<p>The WebSocket client connects to our server.</p>
+<p>It sends the "Hello World!" message.</p>
+<p>This message is received by the server that reports it locally and then sends it back.</p>
+<p>The client receives and reports the message, then closes the connection automatically via exiting the <a href="../asynchronous-context-manager/">async context manager</a>.</p>
+<p>The server remains receptive to further client connections. We can then terminate the server with a signal interrupt (SIGINT) via the Control-C key combination.</p>
+<p>The output from the server looks as follows:</p>
+<pre><code>Server Started, Control-C to stop
+Client connected: ('127.0.0.1', 61394)
+&gt; Hello world!
+Client disconnected: ('127.0.0.1', 61394)
+</code></pre>
+<p>The output from the client looks as follows:</p>
+<pre><code>Connected to server
+Received: Hello world!
+Disconnected</code></pre>
+<p>This highlights how we can develop a simple WebSocket echo server and client in asyncio using the websockets library.</p>
+<h2>Takeaways</h2>
+<p>You now know about asyncio WebSocket libraries in Python and how to get started using them.</p>
 </main>
 </body>
 </html>

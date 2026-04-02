@@ -65,6 +65,212 @@ asyncio.gather(coro1(), coro2())</code></pre>
 <p>The <strong>asyncio.gather()</strong> function takes awaitables as position arguments.</p>
 <p>We cannot create a list or collection of awaitables and provide it to gather, as this will result in an error.</p>
 <p>For example:</p>
+<pre><code>...
+# cannot provide a list of awaitables directly
+asyncio.gather([coro1(), coro2()])</code></pre>
+<p>A list of awaitables can be provided if it is first unpacked into separate expressions using the star operator (<strong>*</strong>).</p>
+<p>For example:</p>
+<pre><code>...
+# gather with an unpacked list of awaitables
+asyncio.gather(*[coro1(), coro2()])</code></pre>
+<p>If coroutines are provided to <strong>gather()</strong>, they are wrapped in <strong>Task</strong> objects automatically.</p>
+<h3>gather() Returns a Future</h3>
+<p>The <strong>gather()</strong> function does not block.</p>
+<p>Instead, it returns an <a href="https://docs.python.org/3/library/asyncio-future.html#asyncio.Future"><strong>asyncio.Future</strong> object</a> that represents the group of awaitables.</p>
+<p>For example:</p>
+<pre><code>...
+# get a future that represents multiple awaitables
+group = asyncio.gather(coro1(), coro2())</code></pre>
+<p>Once the <strong>Future</strong> object is created it is scheduled automatically within the event loop.</p>
+<p>The awaitable represents the group, and all awaitables in the group will execute as soon as they are able.</p>
+<p>This means that if the caller did nothing else, the scheduled group of awaitables will run (assuming the caller suspends).</p>
+<p>It also means that you do not have to await the Future that is returned from <strong>gather()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# get a future that represents multiple awaitables
+group = asyncio.gather(coro1(), coro2())
+# suspend and wait a while, the group may be executing..
+await asyncio.sleep(10)</code></pre>
+<h3>Awaiting gather()'s' Future</h3>
+<p>The returned <strong>Future</strong> object can be awaited which will wait for all awaitables in the group to be done.</p>
+<p>For example:</p>
+<pre><code>...
+# run the group of awaitables
+await group</code></pre>
+<p>Awaiting the <strong>Future</strong> returned from <strong>gather()</strong> will return a list of return values from the awaitables.</p>
+<p>If the awaitables do not return a value, then this list will contain the default "N<strong>one" return value.</strong></p>
+<p>For example:</p>
+<pre><code>...
+# run the group of awaitables and get return values
+results = await group</code></pre>
+<p>This is more commonly performed in one line.</p>
+<p>For example:</p>
+<pre><code>...
+# run tasks and get results on one line
+results = await asyncio.gather(coro1(), coro2())</code></pre>
+<h3>gather() Can Nest Groups of Awaitables</h3>
+<p>The <strong>gather()</strong> function takes awaitables and itself returns an awaitable.</p>
+<p>Therefore, we can create nested groups of awaitables.</p>
+<p>For example:</p>
+<pre><code>...
+# create a group of tasks
+group1 = asyncio.gather(coro1(), coro2())
+# create another group of tasks
+group2 = asyncio.gather(group1, coro3())
+# run group2 which will also run group1
+await group2</code></pre>
+<h3>gather() and Exceptions</h3>
+<p>If an awaitable fails with an exception, the exception is re-raised in the caller and may need to be handled.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# run tasks and get results
+	results = await asyncio.gather(coro1(), coro2())
+except Exception as e:
+	# ...
+</code></pre>
+<p>Similarly, if a task in the group is canceled, it will re-raise a <strong>CancelledError</strong> exception in the caller and may need to be handled.</p>
+<p>The "<strong>return_exceptions</strong>" argument to <strong>gather()</strong> can be set to <strong>True</strong> which will catch exceptions and provide them as return values instead of re-raising them in the caller.</p>
+<p>This applies to both exceptions raised in awaitables, as well as <strong>CancelledError</strong> exceptions if the awaitables are canceled.</p>
+<p>For example:</p>
+<pre><code>...
+# run tasks and retrieve exceptions as a result
+results = await asyncio.gather(coro1(), coro2(), return_exceptions=True)</code></pre>
+<h3>gather()'s Future Can Be Canceled</h3>
+<p>The Future that is returned from <strong>gather()</strong> can be used just like a normal <a href="https://docs.python.org/3/library/asyncio-future.html#asyncio.Future"><strong>asyncio.Future</strong> object</a>.</p>
+<p>We can check if it is done by calling the <strong>done()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# check if a gather group of tasks is done
+if group.done():
+	# ...
+</code></pre>
+<p>We can also cancel the <strong>gather()</strong>'s <strong>Future</strong>, which will cancel all tasks within the group.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel all tasks in the group
+group.cancel()</code></pre>
+<p>Other helpful methods we might use include adding a done callback function, getting a result, and checking if the group was canceled.</p>
+<p>You can learn more about the <strong>asyncio.gather()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather/">How to Use asyncio.gather() in Python</a></li>
+</ul>
+<p>Next, let's take a look at the <strong>asyncio.wait()</strong> function.</p>
+<h2>What is asyncio.wait()</h2>
+<p>The <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait"><strong>asyncio.wait()</strong> function</a> can be used to wait for a collection of asyncio tasks to complete.</p>
+<p>Recall that an asyncio task is an instance of the <strong>asyncio.Task</strong> class that wraps a coroutine. It allows a coroutine to be scheduled and executed independently, and the <strong>Task</strong> instance provides a handle on the task for querying status and getting results.</p>
+<p>You can learn more about asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task/">What is an Asyncio Task</a></li>
+</ul>
+<p>The <strong>wait()</strong> function allows us to wait for a collection of tasks to be done.</p>
+<p>The call to wait can be configured to wait for different conditions, such as all tasks being completed, the first task completed and the first task failing with an error.</p>
+<p>Next, let's look at how we might use the <strong>wait()</strong> function.</p>
+<h3>wait() for Awaitables</h3>
+<p>The <strong>asyncio.wait()</strong> function takes a collection of awaitables, typically <strong>Task</strong> objects.</p>
+<p>This could be a <strong>list</strong>, <strong>dict</strong>, or <strong>set</strong> of task objects that we have created, such as via calls to the <strong>asyncio.create()</strong> task function in a list comprehension.</p>
+<p>For example:</p>
+<pre><code>...
+# create many tasks
+tasks = [asyncio.create_task(task_coro(i)) for i in range(10)]</code></pre>
+<p>The <strong>asyncio.wait()</strong> will not return until some condition on the collection of tasks is met.</p>
+<p>By default, the condition is that all tasks are completed.</p>
+<p>The <strong>wait()</strong> function returns a tuple of two sets. The first set contains all task objects that meet the condition, and the second contains all other task objects that do not yet meet the condition.</p>
+<p>These sets are referred to as the "<em>done</em>" set and the "<em>pending</em>" set.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to complete
+done, pending = await asyncio.wait(tasks)</code></pre>
+<p>Technically, the <strong>asyncio.wait()</strong> is a coroutine function that returns a coroutine.</p>
+<p>We can then await this coroutine which will return the tuple of sets.</p>
+<p>For example:</p>
+<pre><code>...
+# create the wait coroutine
+wait_coro = asyncio.wait(tasks)
+# await the wait coroutine
+tuple = await wait_coro</code></pre>
+<p>The condition waited for can be specified by the "<strong>return_when</strong>" argument which is set to <strong>asyncio.ALL_COMPLETED</strong> by default.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to complete
+done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)</code></pre>
+<h3>wait() for First Awaitable</h3>
+<p>We can wait for the first task to be completed by setting <strong>return_when</strong> to <strong>FIRST_COMPLETED</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the first task to be completed
+done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)</code></pre>
+<p>When the first task is complete and returned in the done set, the remaining tasks are not canceled and continue to execute concurrently.</p>
+<h3>wait() for First Failed Awaitable</h3>
+<p>We can wait for the first task to fail with an exception by setting <strong>return_when</strong> to <strong>FIRST_EXCEPTION</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the first task to fail
+done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)</code></pre>
+<p>In this case, the done set will contain the first task that failed with an exception. If no task fails with an exception, the done set will contain all tasks, and <strong>wait()</strong> will return only after all tasks are completed.</p>
+<h3>wait() With Timeout</h3>
+<p>We can specify how long we are willing to wait for the given condition via a "<strong>timeout</strong>" argument in seconds.</p>
+<p>If the timeout expires before the condition is met, the tuple of tasks is returned with whatever subset of tasks do meet the condition at that time, e.g. the subset of tasks that are completed if waiting for all tasks to complete.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to complete with a timeout
+done, pending = await asyncio.wait(tasks, timeout=3)</code></pre>
+<p>If the timeout is reached before the condition is met, an exception is not raised and the remaining tasks are not canceled.</p>
+<p>You can learn more about the <strong>asyncio.wait()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait/">How to Use Asyncio wait() in Python</a></li>
+</ul>
+<p>Next, let's take a look at how the <strong>asyncio.gather()</strong> function compares to the <strong>asyncio.wait() </strong>function.</p>
+<h2>asyncio.gather() vs asyncio.wait()</h2>
+<p>The <strong>gather()</strong> and <strong>wait()</strong> functions have a lot of similarities and differences.</p>
+<p>Let's take a closer look at how these functions compare to each other.</p>
+<h3>Similarities</h3>
+<p>The <strong>asyncio.gather()</strong> and <strong>asyncio.wait()</strong> functions have a lot of similarities.</p>
+<p>They are:</p>
+<ol>
+<li>Both functions suspend the caller until the provided tasks are done.</li>
+<li>Both functions take many async tasks as arguments.</li>
+<li>Both functions can take tasks or coroutines.</li>
+<li>Both functions are awaitable.</li>
+</ol>
+<p>Generally, if we have multiple asyncio tasks and we want to suspend them until the tasks are complete, we can use either the <strong>gather()</strong> or <strong>wait()</strong> functions.</p>
+<p>We may have <strong>asyncio.Task</strong> objects, or we may have coroutines to call. In the latter case, we can call either the <strong>wait()</strong> or <strong>gather()</strong> functions and they will automatically wrap the coroutines in <strong>asyncio.Task</strong> objects and schedules them for execution.</p>
+<p>This was true, although, since Python 3.10, the <strong>wait()</strong> function will no longer wrap coroutines in tasks, instead preferring to take asyncio.Task objects (or Futures) as arguments.</p>
+<h3>Differences</h3>
+<p>Although the <strong>gather()</strong> and <strong>wait()</strong> functions have a lot in common, they are also quite different.</p>
+<p>The main differences between the functions are as follows:</p>
+<ol>
+<li><strong>wait()</strong> takes an iterable of tasks, whereas <strong>gather()</strong> takes separate expressions and does not support an iterable as an argument.</li>
+<li><strong>gather()</strong> returns an awaitable (e.g. an <strong>asyncio.Future</strong>) whereas <strong>wait()</strong> is a coroutine function.</li>
+<li><strong>wait()</strong> can be configured in terms of the condition it is waiting for, whereas the <strong>gather()</strong> function will only return when all tasks are done.</li>
+<li><strong>wait()</strong> supports a timeout, whereas <strong>gather()</strong> does not.</li>
+<li><strong>gather()</strong> supports coroutines and tasks, whereas <strong>wait()</strong> only supports tasks as arguments.</li>
+<li><strong>gather()</strong> returns an iterable of results from coroutines and tasks, whereas <strong>wait()</strong> returns sets of done and not done tasks.</li>
+</ol>
+<p>Generally the <strong>asyncio.gather()</strong> function is intended to wait for a specific series of coroutines to complete and return their values.</p>
+<p>The <strong>asyncio.wait()</strong> function is intended to wait for a specific condition in a collection of tasks, such as all complete, the first to complete, or the first to fail.</p>
+<p>The <strong>gather()</strong> function returns an awaitable that can be used to add callback functions to handle results once all tasks are complete. The <strong>wait()</strong> function is just a coroutine function that must be awaited.</p>
+<h3>When to Use asyncio.gather()</h3>
+<p>Consider using the <strong>gather()</strong> function when:</p>
+<ul>
+<li>You have multiple coroutines.</li>
+<li>You want to wait for all coroutines or tasks to complete.</li>
+<li>You want to process the return value results from the coroutines.</li>
+<li>You don't have a time limit.</li>
+<li>You want to use a callback function to handle the results of all coroutines.</li>
+</ul>
+<h3>When to Use asyncio.wait()</h3>
+<p>Consider suing the <strong>wait()</strong> function when:</p>
+<ul>
+<li>You have a collection of tasks.</li>
+<li>You want to wait for all tasks to complete.</li>
+<li>You want to wait for the first task to complete.</li>
+<li>You want to wait for the first task to fail.</li>
+<li>You don't need to return values from tasks as a first priority.</li>
+<li>You have a time limit on how long you can wait.</li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know the similarities and differences between <strong>asyncio.gather()</strong> and <strong>asyncio.wait()</strong> and when to use each in Python.</p>
 </main>
 </body>
 </html>

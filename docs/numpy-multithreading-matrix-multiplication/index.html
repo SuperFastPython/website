@@ -67,6 +67,96 @@ def task(n):
 <p>We can then repeat this task many times and calculate the average time taken.</p>
 <p>This is important as it avoids statistical fluke results in the results where a given single run may take might longer than expected because the operating system hiccups.</p>
 <p>The <strong>experiment()</strong> function below takes a matrix size and number of repeats as arguments and returns the average time taken to multiply two matrices of the given size. The number of repeats has a modest default value of 10.</p>
+<pre><code># repeat the experimental task and return average result
+def experiment(n, repeats=10):
+    # repeat the experiment and gather results
+    results = [task(n) for _ in range(repeats)]
+    # return the average of the results
+    return sum(results) / repeats
+</code></pre>
+<p>We can then run the experiment for a given number of threads.</p>
+<p>In this case, we will fix the matrix size at 5,000x5,000 which is small enough for the experiment to be completed quickly, but large enough to be interesting in many domains.</p>
+<pre><code>...
+# size of the matrix to test
+n = 5000
+# perform task and record time
+result = experiment(n)
+# report result
+print(f'{n} took {result:.6f} seconds')
+</code></pre>
+<p>Tying this together, the complete example of the benchmark code configured to use a single thread is listed below.</p>
+<pre><code># benchmark matrix multiplication
+from os import environ
+environ['OMP_NUM_THREADS'] = '1'
+from time import time
+from numpy.random import rand
+
+# multiply two matrices and return how long it takes
+def task(n):
+    # record start time
+    start = time()
+    # create an array of random values
+    data1 = rand(n, n)
+    data2 = rand(n, n)
+    # matrix multiplication
+    result = data1.dot(data2)
+    # calculate the duration in seconds
+    duration = time() - start
+    # return the result
+    return duration
+
+# repeat the experimental task and return average result
+def experiment(n, repeats=10):
+    # repeat the experiment and gather results
+    results = [task(n) for _ in range(repeats)]
+    # return the average of the results
+    return sum(results) / repeats
+
+# size of the matrix to test
+n = 5000
+# perform task and record time
+result = experiment(n)
+# report result
+print(f'{n} took {result:.6f} seconds')
+</code></pre>
+<p>We can use this code to calculate the average time taken to multiply the fixed-sized matrix with different numbers of threads.</p>
+<p>We can change the number of threads via the '<strong>OMP_NUM_THREADS</strong>' environment variable at the beginning of the important statements.</p>
+<p>I have 4 physical CPU cores in my system, which is double to 8 logical CPU cores with hyperthreading.</p>
+<p>Therefore, I will time the operation with 1 to 8 threads.</p>
+<p>I recommend updating the range of threads to match the number of logical cores in your system.</p>
+<p>Share the results in the comments, I'd love to see what you discover.</p>
+<p>Next, let's look at the results</p>
+<h2>Numpy Multithreading Benchmark Results</h2>
+<p>The table below summarizes the average time for the matrix multiplication with 1 to 8 Numpy/BLAS threads.</p>
+<pre><code>Number of Threads    Time (seconds)
+1                    4.239672
+2                    2.422825
+3                    0.782534
+4                    1.594346
+5                    1.602179
+6                    1.559255
+7                    1.580811
+8                    1.607222
+</code></pre>
+<p>The plot summarizes the same data, showing the number of threads on the x-axis and the average time taken on the y-axis.</p>
+<figure><img alt="Plot of Average Matrix Multiplication Time vs Number of Numpy BLAS Threads" loading="lazy" src="../pics/Plot-of-Average-Matrix-Multiplication-Time-vs-Number-of-Numpy-BLAS-Threads.png"/><figcaption>Plot of Average Matrix Multiplication Time vs Number of Numpy BLAS Threads</figcaption></figure>
+<p>Firstly, we can clearly see a difference between 1 thread and more than one thread.</p>
+<p>Using more than one thread results in better performance, confirming that indeed matrix multiplication is using multiple threads when configured.</p>
+<p>Secondly, we can see an improvement from 1 to 2 threads of about 1.816 seconds and a further improvement from 2 threads to 3 threads of about 1.640 seconds.</p>
+<p>Summarized another way, using 2 threads is about 1.7x faster than using 1 thread. Using 2 threads is about 3x faster than using 2 threads and about 5.4x faster than using one thread.</p>
+<p>This shows that adding more CPU cores and in turn threads to matrix multiplication improves performance.</p>
+<p>The average speed of the operation dropped from about 4.239 seconds with 1 thread to about 0.782 seconds with 3 threads.</p>
+<p>What is fascinating is that performance was worse with 4 threads than with 3 threads.</p>
+<p>This highlights that the Python main thread is not blocked during the execution of the function call, but is instead performing computation.</p>
+<p>Performance did not improve when adding more threads than there are physical CPU cores, e.g. matching the number of logical CPU cores with hyperthreading. It may suggest that the specific matrix multiplication implementation was not able to take advantage of the 305 lift offered by hyperthreading.</p>
+<p>The results suggest that if we are looking to optimize the number of threads for matrix multiplication (at least with matrices around that of the size tested), then we should set the number of BLAS threads to be one minus the number of physical CPU cores.</p>
+<p>That is:</p>
+<ul>
+<li>BLAS Threads = (Number of Physical Cores) - 1</li>
+</ul>
+<p>It highlights that when using multithreaded BLAS functions like matrix multiplication, it is a good idea to benchmark different numbers of threads on a given system to confirm an optimal configuration.</p>
+<h2>Takeaways</h2>
+<p>You now know how to benchmark matrix multiplication performance with different numbers of threads.</p>
 </main>
 </body>
 </html>

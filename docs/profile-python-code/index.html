@@ -215,6 +215,119 @@ Main is done.
 <p>We can explore using the Python profiler on a program that is slow because it repeatedly makes the same function call.</p>
 <p>In this case, we can define a function that performs that same mathematical operation many millions of times, e.g. 100 million calls to <strong>math.sqrt()</strong></p>
 <p>Collectively this is a CPU-bound task and will be slow, but performed in a list comprehension, it does not look like it.</p>
+<pre><code># long running task
+def work():
+    # block the main thread for a long time
+    data = [math.sqrt(i) for i in range(1, 100000000)]
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a program that calls a function repeatedly
+import math
+
+# long running task
+def work():
+    # block the main thread for a long time
+    data = [math.sqrt(i) for i in range(1, 100000000)]
+
+# main program
+def main():
+    # report a message
+    print('Main is running')
+    # run our task
+    work()
+    # report a message
+    print('Main is done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the program
+    main()
+</code></pre>
+<p>Running the program first calls our the <strong>main()</strong> function.</p>
+<p>The <strong>main()</strong> function runs and reports a start message calls the <strong>work()</strong> function.</p>
+<p>The <strong>work()</strong> function runs and executes the list comprehension, creating a list of 100 million squared roots of integers.</p>
+<p>This takes a while and prevents the main thread from progressing.</p>
+<p>Once the list comprehension is complete, the <strong>work()</strong> function terminates.</p>
+<p>The <strong>main()</strong> function resumes, reports a final message, and terminates.</p>
+<pre><code>Main is running
+Main is done.</code></pre>
+<p>Next, let's profile our program and pretend we don't know the cause of why the program is slow.</p>
+<p>We can start off by running the cProfile with default sorting.</p>
+<pre><code>python -m cProfile program.py</code></pre>
+<p>A truncated sample of the output is provided below.</p>
+<p>This does not appear helpful in this case.</p>
+<p>It is reporting the internal infrastructure and the first line of our program as having the highest overall cumulative execution time.</p>
+<pre><code>Main is running
+Main is done.
+         100000230 function calls in 30.953 seconds
+
+   Ordered by: cumulative time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000   30.953   30.953 {built-in method builtins.exec}
+        1    0.000    0.000   30.953   30.953 program.py:1(&lt;module&gt;)
+        1    1.112    1.112   30.952   30.952 program.py:11(main)
+        1    0.000    0.000   29.840   29.840 program.py:6(work)
+        1   20.268   20.268   29.840   29.840 program.py:8(&lt;listcomp&gt;)
+ 99999999    9.572    0.000    9.572    0.000 {built-in method math.sqrt}
+        1    0.000    0.000    0.001    0.001 &lt;frozen importlib._bootstrap&gt;:1165(_find_and_load)
+        1    0.000    0.000    0.001    0.001 &lt;frozen importlib._bootstrap&gt;:1120(_find_and_load_unlocked)
+        1    0.000    0.000    0.000    0.000 &lt;frozen importlib._bootstrap&gt;:666(_load_unlocked)
+...
+</code></pre>
+<p>Next, let's try sorting results by the total execution time of each function.</p>
+<pre><code>python -m cProfile -s tottime program.py</code></pre>
+<p>Here, we can see that line 8 of our program has the highest overall execution time at 20.610 seconds.</p>
+<p>This is the line that contains the list comprehension, pointing us in the right direction.</p>
+<p>The next function with the largest overall time is <strong>math.sqrt</strong> at 9.611 seconds. Excellent.</p>
+<pre><code>Main is running
+Main is done.
+         100000230 function calls in 31.315 seconds
+
+   Ordered by: internal time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1   20.610   20.610   30.221   30.221 program.py:8(&lt;listcomp&gt;)
+ 99999999    9.611    0.000    9.611    0.000 {built-in method math.sqrt}
+        1    1.094    1.094   31.315   31.315 program.py:11(main)
+        1    0.000    0.000    0.000    0.000 {built-in method _imp.create_dynamic}
+        5    0.000    0.000    0.000    0.000 {built-in method posix.stat}
+        2    0.000    0.000    0.000    0.000 {built-in method builtins.print}
+        4    0.000    0.000    0.000    0.000 &lt;frozen importlib._bootstrap_external&gt;:1604(find_spec)
+        1    0.000    0.000    0.000    0.000 {built-in method posix.getcwd}
+       16    0.000    0.000    0.000    0.000 &lt;frozen importlib._bootstrap_external&gt;:128(&lt;listcomp&gt;)
+       16    0.000    0.000    0.000    0.000 &lt;frozen importlib._bootstrap_external&gt;:126(_path_join)
+...
+</code></pre>
+<p>Let's try another approach.</p>
+<p>In this case, let's sort the results by the total number of times each function is called, e.g. <strong>ncalls</strong>.</p>
+<pre><code>python -m cProfile -s ncalls program.py</code></pre>
+<p>Now we see some striking results.</p>
+<p>We can see that the <strong>math.sqrt</strong> function was called nearly 100 million times, 99,999,999 to be precise.</p>
+<p>This is far and away beyond the calls to any other function and the source of our problem.</p>
+<pre><code>Main is running
+Main is done.
+         100000230 function calls in 31.477 seconds
+
+   Ordered by: call count
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+ 99999999    9.577    0.000    9.577    0.000 {built-in method math.sqrt}
+       32    0.000    0.000    0.000    0.000 {method 'rstrip' of 'str' objects}
+       19    0.000    0.000    0.000    0.000 &lt;frozen importlib._bootstrap&gt;:244(_verbose_message)
+       16    0.000    0.000    0.000    0.000 {method 'join' of 'str' objects}
+       16    0.000    0.000    0.000    0.000 &lt;frozen importlib._bootstrap_external&gt;:126(_path_join)
+       16    0.000    0.000    0.000    0.000 &lt;frozen importlib._bootstrap_external&gt;:128(&lt;listcomp&gt;)
+        7    0.000    0.000    0.000    0.000 {built-in method builtins.getattr}
+        6    0.000    0.000    0.000    0.000 {method 'rpartition' of 'str' objects}
+        6    0.000    0.000    0.000    0.000 {built-in method builtins.hasattr}
+        6    0.000    0.000    0.000    0.000 {built-in method _imp.acquire_lock}
+...
+</code></pre>
+<p>This highlights how we can zero in on the cause of a problem by reviewing the same profile data in different ways, both execution time and number of function calls.</p>
+<h2>Takeaways</h2>
+<p>You now know how to profile Python programs in order to discover why they are slow.</p>
 </main>
 </body>
 </html>

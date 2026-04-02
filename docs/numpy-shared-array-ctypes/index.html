@@ -96,6 +96,105 @@ print(array[:10])</code></pre>
 <p>The function will take the shared ctype array as an argument.</p>
 <p>Firstly, it will check that the contents of the array match what was expected, e.g. what was passed in from the parent process. It will then change the content of the array to all zero values and confirm that the content of the array was changed.</p>
 <p>The <strong>task()</strong> function listed below implements this.</p>
+<pre><code># task executed in a child process
+def task(array):
+    # check some data in the array
+    print(array[:10], len(array))
+    # change data in the array
+    for i in range(len(array)):
+        array = 0.0
+    # confirm the data was changed
+    print(array[:10], len(array))
+</code></pre>
+<p>Next, the main process will create a new array with a modest size, initialized to all one values.</p>
+<p>It then reports the contents of the array, to confirm it indeed contains all one values.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000
+# create the numpy array
+data = ones((n,))
+print(data[:10], data.shape)</code></pre>
+<p>Next, the main process gets the ctype equivalent for the array type and uses this type, along with the content of the array to create a new shared ctype <strong>Array</strong> without a mutex lock.</p>
+<p>A lock is not required in this case as we know that the two processes will not be modifying the array at the same time.</p>
+<pre><code>...
+# get ctype for our array
+ctype = as_ctypes(data)
+# create ctype array initialized from our array
+array = Array(ctype._type_, data, lock=False)</code></pre>
+<p>We can then confirm that the new shared ctype <strong>Array</strong> contains the same data as the numpy array.</p>
+<pre><code>...
+# confirm the contents of the shared array
+print(array[:10], len(array))</code></pre>
+<p>The parent process then creates a new child process, configured to execute our task() function, and passes it the shared ctype <strong>Array</strong> as an argument.</p>
+<p>The child process is started and the main process blocks until the child process terminates.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(array,))
+# start the child process
+child.start()
+# wait for the child process to complete
+child.join()</code></pre>
+<p>Finally, the parent process checks the contents of the array.</p>
+<pre><code>...
+# check some data in the shared array
+print(array[:10], len(array))</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># share numpy array via a shared ctype
+from multiprocessing import Process
+from multiprocessing.sharedctypes import Array
+from numpy import ones
+from numpy.ctypeslib import as_ctypes
+
+# task executed in a child process
+def task(array):
+    # check some data in the array
+    print(array[:10], len(array))
+    # change data in the array
+    for i in range(len(array)):
+        array = 0.0
+    # confirm the data was changed
+    print(array[:10], len(array))
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,))
+    print(data[:10], data.shape)
+    # get ctype for our array
+    ctype = as_ctypes(data)
+    # create ctype array initialized from our array
+    array = Array(ctype._type_, data, lock=False)
+    # confirm contents of the shared array
+    print(array[:10], len(array))
+    # create a child process
+    child = Process(target=task, args=(array,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the shared array
+    print(array[:10], len(array))
+</code></pre>
+<p>Running the example first creates a numpy array with 10,000 elements, initialized to one values.</p>
+<p>The content of the numpy array is then confirmed.</p>
+<p>Next, the ctype of the array is determined and is used along with the numpy array itself to create a new shared ctype <strong>Array</strong>.</p>
+<p>The content of the numpy array is copied into the shared ctype array and we confirm that the shared ctype array contains all one values.</p>
+<p>Next, the child process is created and started and the parent process blocks.</p>
+<p>The child process runs. It first confirms the contents of the shared ctype <strong>Array</strong> contains all one values.</p>
+<p>It then updates the shared array to contain all zero values and confirms the array's contents were changed.</p>
+<p>The child process terminates and the parent process resumes.</p>
+<p>The parent process checks the contents of the shared array and confirms that it was changed by the child process.</p>
+<p>This highlights that both parent and child processes operated upon the same single array in memory.</p>
+<pre><code>[1. 1. 1. 1. 1. 1. 1. 1. 1. 1.] (10000,)
+[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] 10000
+[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] 10000
+[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] 10000
+[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] 10000
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share a numpy array between processes using a ctype array.</p>
 </main>
 </body>
 </html>

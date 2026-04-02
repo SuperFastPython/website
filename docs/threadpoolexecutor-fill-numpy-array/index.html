@@ -51,6 +51,336 @@ with ThreadPoolExecutor(4) as pool:
 </ul>
 <p>We can then define a task function that takes the shared NumPy array as an argument as well as the coordinates to fill and the value with which to fill them.</p>
 <p>For example:</p>
+<pre><code># fill a portion of a larger array with a value
+def fill_subarray(coords, data, value):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    # populate subarray
+    data[i1:i2,i3:i4].fill(value)
+</code></pre>
+<p>We can then divide our large NumPy array into sections and issue each as a task to the thread pool to have it populated in parallel.</p>
+<p>This can be challenging to make generic as it depends on the number of threads and the dimensions of the array.</p>
+<p>Let's take a simple case of a two-dimensional NumPy array, e.g. a matrix and 4 physical CPU cores.</p>
+<p>In this case, we would ideally want to split our matrix into 4 tasks to be completed in parallel. This is probably the most efficient use of resources.</p>
+<p>For a square matrix, we can find the midpoint of each dimension, then enumerate the four quadrants using for-loops, using the indices into the larger matrices directly. These indices can be gathered into a tuple to represent the coordinates for the task to populate in the larger array.</p>
+<p>For example:</p>
+<pre><code>...
+# split each dimension (divisor of matrix dimension)
+split = round(n/2)
+# issue tasks
+for x in range(0, n, split):
+    for y in range(0, n, split):
+        # determine matrix coordinates
+        coords = (x, x+split, y, y+split)
+</code></pre>
+<p>We can then issue each set of coordinates to our <strong>fill_subarray()</strong> function using the submit() method of the <strong>ThreadPoolExecutor</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# issue task
+_ = pool.submit(fill_subarray, coords, data, 1)</code></pre>
+<p>You can learn more about submitting asynchronous tasks to the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-submit/">How to use ThreadPoolExecutor submit()</a></li>
+</ul>
+<p>And that's it.</p>
+<p>Note, if you prefer to use the <strong>ThreadPool</strong> to fill the array instead of the <strong>ThreadPoolExecutor</strong>, see the tutorial:</p>
+<ul>
+<li><a href="../numpy-parallel-array-fill/">Parallel Numpy Array Fill (up to 3x faster)</a></li>
+</ul>
+<p>Now that we know how to fill a large array in parallel using threads, let's look at some worked examples.</p>
+<h2>Example of Filing a NumPy Array (slow)</h2>
+<p>Before we develop an example of multithreaded array filling, let's confirm that single-threaded array filling is slow.</p>
+<p>We can explore a case of creating and filling an array using a built-in function.</p>
+<p>Examples of built-in functions that create and populate an array include <strong>numpy.ones()</strong> and <strong>numpy.zeros()</strong>.</p>
+<p>We will use the <a href="https://numpy.org/doc/stable/reference/generated/numpy.ones.html"><strong>numpy.ones()</strong> function</a> to create an array of a given size, in this case, a matrix with the dimensions 50,000×50,000.</p>
+<p>The function below creates an array using the <strong>numpy.ones()</strong> function with the given size and populates it with ones, then returns how long the task took in seconds.</p>
+<pre><code># task function
+def task(n=50000):
+    # record the start time
+    start = time()
+    # create a new matrix and fill with 1
+    data = ones((n,n))
+    # calculate and report duration
+    duration = time() - start
+    # report progress
+    print(f'&gt; took {duration:.3f} seconds, sum={data.sum():.0f}')
+    # return duration
+    return duration
+</code></pre>
+<p>We can then repeat this task a number of times and report the average time it takes to complete in seconds.</p>
+<p>This is important to do as a single run of the task may report an unstable time, taking longer or shorter based on the system. Averaging over multiple runs gives a more fair idea of the expected performance of the task.</p>
+<p>The <strong>experiment()</strong> function below executes the task 3 times and returns the average time taken in seconds.</p>
+<pre><code># experiment that averages duration of task function
+def experiment(repeats=3):
+    # repeat the experiment and gather results
+    results = [task() for _ in range(repeats)]
+    # return the average of the results
+    return sum(results) / repeats
+</code></pre>
+<p>Finally, we can run the experiment and report the average time taken.</p>
+<pre><code>...
+# run the experiment and report the result
+avg = experiment()
+print(f'Average duration: {avg:.3f} seconds')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># single-threaded example of filling an array with ones
+from time import time
+from numpy import ones
+
+# task function
+def task(n=50000):
+    # record the start time
+    start = time()
+    # create a new matrix and fill with 1
+    data = ones((n,n))
+    # calculate and report duration
+    duration = time() - start
+    # report progress
+    print(f'&gt; took {duration:.3f} seconds, sum={data.sum():.0f}')
+    # return duration
+    return duration
+
+# experiment that averages duration of task function
+def experiment(repeats=3):
+    # repeat the experiment and gather results
+    results = [task() for _ in range(repeats)]
+    # return the average of the results
+    return sum(results) / repeats
+
+# run the experiment and report the result
+avg = experiment()
+print(f'Average duration: {avg:.3f} seconds')
+</code></pre>
+<p>Running the example creates a 50,000 x 50,000 array and populates it with ones. This is repeated 3 times and the average time taken is reported in seconds.</p>
+<p>On my system, it took about 6.212 seconds to complete with Python 3.11.4 and NumPy 1.25.0.</p>
+<p>This example may execute in more or less time depending on the capabilities of your system.</p>
+<p>We can imagine how the performance of filling an array may get worse as the size of the array is increased further.</p>
+<pre><code>&gt; took 6.131 seconds, sum=2500000000
+&gt; took 6.207 seconds, sum=2500000000
+&gt; took 6.299 seconds, sum=2500000000
+Average duration: 6.212 seconds</code></pre>
+<p>Next, let's explore how we can perform the same operation faster with parallelism.</p>
+<h2>Example of ThreadPoolExecutor Filing a NumPy Array (fast)</h2>
+<p>We can fill the same array faster using threads.</p>
+<p>We will use a <strong>ThreadPoolExecutor</strong> and issue tasks to operate on sub-sections of the provided array simultaneously, as described in the strategy outlined above.</p>
+<p>Firstly, we can define a task function that takes a tuple of array indices and the shared array. It then calls the fill() function on the sub-array defined by the provided coordinates.</p>
+<pre><code># fill a portion of a larger array with a value
+def fill_subarray(coords, data, value):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    # populate subarray
+    data[i1:i2,i3:i4].fill(value)
+</code></pre>
+<p>Python threads can share memory directly. This means that we can share the same array between all tasks executed in worker threads and they will all operate on the same structure in memory, not copies.</p>
+<p>Next, we can create our shared array.</p>
+<pre><code>...
+# create an empty array
+data = empty((n,n))</code></pre>
+<p>We can then create a thread pool with one worker per physical CPU core.</p>
+<p>I have 4 physical CPU cores in my system, so I will configure the <strong>ThreadPoolExecutor</strong> to use 4 workers. Update the <strong>ThreadPoolExecutor</strong> configuration accordingly to match the number of physical CPU cores in your system.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(4) as pool:
+	# ...
+</code></pre>
+<p>Our array is square, which can be divided into quadrants (4 parts) and each is issued to the <strong>task()</strong> function for parallel filling.</p>
+<pre><code>...
+# split each dimension (divisor of matrix dimension)
+split = round(n/2)
+# issue tasks
+for x in range(0, n, split):
+    for y in range(0, n, split):
+        # determine matrix coordinates
+        coords = (x, x+split, y, y+split)
+        # issue task
+        _ = pool.submit(fill_subarray, coords, data, 1)
+</code></pre>
+<p>The main thread will then exit the context manager for the <strong>ThreadPoolExecutor</strong>, and block until all tasks in the thread pool are completed and the worker threads have been terminated.</p>
+<p>And that's it.</p>
+<p>The updated <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task function
+def task(n=50000):
+    # record the start time
+    start = time()
+    # create an empty array
+    data = empty((n,n))
+    # create the thread pool
+    with ThreadPoolExecutor(4) as pool:
+        # split each dimension (divisor of matrix dimension)
+        split = round(n/2)
+        # issue tasks
+        for x in range(0, n, split):
+            for y in range(0, n, split):
+                # determine matrix coordinates
+                coords = (x, x+split, y, y+split)
+                # issue task
+                _ = pool.submit(fill_subarray, coords, data, 1)
+    # calculate and report duration
+    duration = time() - start
+    # report progress
+    print(f'&gt; took {duration:.3f} seconds, sum={data.sum():.0f}')
+    # return duration
+    return duration
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># multithreaded array filling with thread pool and one worker per physical cpu
+from time import time
+from concurrent.futures import ThreadPoolExecutor
+from numpy import empty
+
+# fill a portion of a larger array with a value
+def fill_subarray(coords, data, value):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    # populate subarray
+    data[i1:i2,i3:i4].fill(value)
+
+# task function
+def task(n=50000):
+    # record the start time
+    start = time()
+    # create an empty array
+    data = empty((n,n))
+    # create the thread pool
+    with ThreadPoolExecutor(4) as pool:
+        # split each dimension (divisor of matrix dimension)
+        split = round(n/2)
+        # issue tasks
+        for x in range(0, n, split):
+            for y in range(0, n, split):
+                # determine matrix coordinates
+                coords = (x, x+split, y, y+split)
+                # issue task
+                _ = pool.submit(fill_subarray, coords, data, 1)
+    # calculate and report duration
+    duration = time() - start
+    # report progress
+    print(f'&gt; took {duration:.3f} seconds, sum={data.sum():.0f}')
+    # return duration
+    return duration
+
+# experiment that averages duration of task function
+def experiment(repeats=3):
+    # repeat the experiment and gather results
+    results = [task() for _ in range(repeats)]
+    # return the average of the results
+    return sum(results) / repeats
+
+# run the experiment and report the result
+avg = experiment()
+print(f'Average duration: {avg:.3f} seconds')
+</code></pre>
+<p>Running the example creates the empty array, then creates the <strong>ThreadPoolExecutor</strong>.</p>
+<p>The large array is divided into quadrants and the indices are issued to the fill task via the thread pool. Each task fills its portion of the shared array in parallel, then the thread pool is closed and released.</p>
+<p>This is repeated three times and the average time taken is reported.</p>
+<p>In this case, it took about 2.546 seconds on my system.</p>
+<p>Compared to the single-threaded version above, this is about 3.666 seconds faster, or a speed-up of about 2.44x.</p>
+<pre><code>&gt; took 2.537 seconds, sum=2500000000
+&gt; took 2.586 seconds, sum=2500000000
+&gt; took 2.514 seconds, sum=2500000000
+Average duration: 2.546 seconds</code></pre>
+<p>Next, let's see if we can do better.</p>
+<h2>Example of ThreadPoolExecutor Filing a NumPy Array (faster)</h2>
+<p>We do not have to split the large array into quadrants or use one worker thread per physical CPU core.</p>
+<p>Modern CPU cores use <a href="https://en.wikipedia.org/wiki/Hyper-threading">hyperthreading</a> that can offer up to a 30% performance benefit on some tasks. This may offer a benefit in the case of filling arrays with the same value, given the repetition of the task function.</p>
+<p>In this case, we will update the <strong>ThreadPoolExecutor</strong> to have one worker per logical CPU core, e.g. double the number of physical CPUs.</p>
+<p>I have 4 physical CPU cores, which is seen as 8 logical CPU cores by the system. Update the configuration to match your system accordingly.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(8) as pool:
+	# ...
+</code></pre>
+<p>Next, we can split the array into more than four pieces.</p>
+<p>In this case, we will split each dimension into 4, giving 4 * 4 or 16 sub-arrays to fill.</p>
+<p>You can experiment with other divisions of the array into sub-arrays.</p>
+<pre><code>...
+# split each dimension (divisor of matrix dimension)
+split = round(n/4)</code></pre>
+<p>And that's it.</p>
+<p>The update <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task function
+def task(n=50000):
+    # record the start time
+    start = time()
+    # create an empty array
+    data = empty((n,n))
+    # create the thread pool
+    with ThreadPoolExecutor(8) as pool:
+        # split each dimension (divisor of matrix dimension)
+        split = round(n/4)
+        # issue tasks
+        for x in range(0, n, split):
+            for y in range(0, n, split):
+                # determine matrix coordinates
+                coords = (x, x+split, y, y+split)
+                # issue task
+                _ = pool.submit(fill_subarray, coords, data, 1)
+    # calculate and report duration
+    duration = time() - start
+    # report progress
+    print(f'&gt; took {duration:.3f} seconds, sum={data.sum():.0f}')
+    # return duration
+    return duration
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># multithreaded array filling with thread pool and one worker per physical cpu
+from time import time
+from concurrent.futures import ThreadPoolExecutor
+from numpy import empty
+
+# fill a portion of a larger array with a value
+def fill_subarray(coords, data, value):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    # populate subarray
+    data[i1:i2,i3:i4].fill(value)
+
+# task function
+def task(n=50000):
+    # record the start time
+    start = time()
+    # create an empty array
+    data = empty((n,n))
+    # create the thread pool
+    with ThreadPoolExecutor(8) as pool:
+        # split each dimension (divisor of matrix dimension)
+        split = round(n/4)
+        # issue tasks
+        for x in range(0, n, split):
+            for y in range(0, n, split):
+                # determine matrix coordinates
+                coords = (x, x+split, y, y+split)
+                # issue task
+                _ = pool.submit(fill_subarray, coords, data, 1)
+    # calculate and report duration
+    duration = time() - start
+    # report progress
+    print(f'&gt; took {duration:.3f} seconds, sum={data.sum():.0f}')
+    # return duration
+    return duration
+
+# experiment that averages duration of task function
+def experiment(repeats=3):
+    # repeat the experiment and gather results
+    results = [task() for _ in range(repeats)]
+    # return the average of the results
+    return sum(results) / repeats
+
+# run the experiment and report the result
+avg = experiment()
+print(f'Average duration: {avg:.3f} seconds')
+</code></pre>
+<p>Running the example creates the empty array, creates the <strong>ThreadPoolExecutor</strong>, then divides the shared array into 16 parts to be filled in parallel.</p>
+<p>In this case, the example took about 2.024 seconds to complete on average.</p>
+<p>This is about 4.188 seconds faster than the single-threaded version or a speed-up of about 3.07x.</p>
+<p>It is also faster than the one worker per physical CPU example developed above. Specifically, it is 0.522 seconds (522 milliseconds) faster or a speed-up of about 1.26x.</p>
+<p>This highlights that it is important to continue testing different configurations, even after parallelism offers a significant speed-up.</p>
+<pre><code>&gt; took 2.022 seconds, sum=2500000000
+&gt; took 1.969 seconds, sum=2500000000
+&gt; took 2.080 seconds, sum=2500000000
+Average duration: 2.024 seconds</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to speed up the filling of NumPy arrays using parallelism with the <strong>ThreadPoolExecutor</strong>.</p>
 </main>
 </body>
 </html>

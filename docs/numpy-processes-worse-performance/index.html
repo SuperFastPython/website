@@ -91,6 +91,184 @@
 <li><a href="../what-is-blas-and-lapack-in-numpy/">What is BLAS and LAPACK in NumPy</a></li>
 </ul>
 <p>The complete example is listed below.</p>
+<pre><code># example of BLAS single-threaded matrix multiplication
+from numpy import ones
+from time import time
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# protect the entry point
+if __name__ == '__main__':
+    # record the start time
+    start = time()
+    # prepare lists of matrices
+    n = 2000
+    data1 = [ones((n,n)) for _ in range(100)]
+    data2 = [ones((n,n)) for _ in range(100)]
+    # apply math operation to items
+    results = [operation(item1, item2) for item1,item2 in zip(data1,data2)]
+    # calculate and report duration
+    duration = time() - start
+    print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first creates two lists of arrays.</p>
+<p>The arrays are then multiplied together producing a list of result arrays.</p>
+<p>The overall time taken to execute the program is then reported.</p>
+<p>In this case, the program takes about 11.249 seconds to complete on my system.</p>
+<p>It may take more or fewer seconds to complete on your system, depending on the speed of your hardware.</p>
+<pre><code>Took 11.249 seconds</code></pre>
+<p>Next, let's look at how to parallelize the example using process-based concurrency.</p>
+<h3>Multiprocessing Example</h3>
+<p>We can update the previous example to execute each matrix multiplication task in parallel using multiprocessing.</p>
+<p>One way we can achieve this is to create a pool of worker processes and issue each task to the pool to be completed as fast as possible.</p>
+<p>This can be achieved using the <strong>multiprocessing.Pool</strong> class and the <strong>starmap()</strong> function.</p>
+<p>If you are new to the Pool class, you can learn more in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-python/">Multiprocessing Pool: The Complete Guide</a></li>
+</ul>
+<p>The <strong>starmap()</strong> function is like the built-in <strong>map()</strong> function except that it issues each task to the process pool and supports multiple arguments for each function call.</p>
+<p>You can learn more about the <strong>Pool.starmap()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-starmap/">Multiprocessing Pool.starmap() in Python</a></li>
+</ul>
+<p>The complete example with this change is listed below.</p>
+<pre><code># example of multiprocessing matrix multiplication with process pool
+from numpy import ones
+from time import time
+from multiprocessing.pool import Pool
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# protect the entry point
+if __name__ == '__main__':
+    # record the start time
+    start = time()
+    # prepare lists of matrices
+    n = 2000
+    data1 = [ones((n,n)) for _ in range(100)]
+    data2 = [ones((n,n)) for _ in range(100)]
+    # create thread pool
+    with Pool() as pool:
+        # prepare arguments
+        args = [(item1,item2) for item1,item2 in zip(data1,data2)]
+        # issue tasks to thread pool
+        results = pool.starmap(operation, args)
+    # calculate and report duration
+    duration = time() - start
+    print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first creates two lists of arrays.</p>
+<p>The Pool is then created with the default number of worker processes.</p>
+<p>Each matrix multiplication task is then issued to the pool of processes and executed as fast as possible.</p>
+<p>Each matrix multiplication is executed using multiple threads via the BLAS algorithm executed behind the scenes.</p>
+<p>The overall time to complete the program is then reported.</p>
+<p>In this case, on my system, it takes about 125.346 seconds.</p>
+<p>This is about 114.097 seconds slower or a slow-down of about 11x.</p>
+<pre><code>Took 125.346 seconds</code></pre>
+<p>The reason for the slow-down is that each 2,000 x 2,000 array has to be transmitted to a child process and the result array has to be transmitted back to the parent process.</p>
+<p>Next, let's see if we can improve the performance of the program with some tweaks.</p>
+<h3>Tuned Multiprocessing Example</h3>
+<p>We can update the previous example and attempt to tune the performance.</p>
+<p>It can be a good practice to have one task per physical CPU core for CPU-bound tasks.</p>
+<p>We are executing a CPU-bound task of matrix multiplication, so we can configure the number of process workers in the pool to equal the number of physical CPU cores. I have 4 cores, so the example will use 4 workers, but update to match the number of cores in your system.</p>
+<p>You can learn more about configuring the number of workers in the process pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-num-workers/">Multiprocessing Pool Number of Workers in Python</a></li>
+</ul>
+<p>It can also be a good practice to transmit tasks to worker processes in batches or groups.</p>
+<p>The <strong>starmap()</strong> function does this by default, but we can tune the number of tasks in each group via the "<strong>chunksize</strong>" argument. Perhaps a good value is to divide the tasks into 4 groups, one for each worker process, e.g. 25 matrix multiplications per worker.</p>
+<p>You can learn more about tuning the "<strong>chunksize</strong>" argument in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-map-chunksize/">How to Configure Multiprocessing Pool.map() Chunksize</a></li>
+</ul>
+<p>The complete example with these changes is listed below.</p>
+<pre><code># example of tuned multiprocessing matrix multiplication with process pool
+from numpy import ones
+from time import time
+from multiprocessing.pool import Pool
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# protect the entry point
+if __name__ == '__main__':
+    # record the start time
+    start = time()
+    # prepare lists of matrices
+    n = 2000
+    data1 = [ones((n,n)) for _ in range(100)]
+    data2 = [ones((n,n)) for _ in range(100)]
+    # create thread pool
+    with Pool(4) as pool:
+        # prepare arguments
+        args = [(item1,item2) for item1,item2 in zip(data1,data2)]
+        # issue tasks to thread pool
+        results = pool.starmap(operation, args, chunksize=25)
+    # calculate and report duration
+    duration = time() - start
+    print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example creates the lists of arrays and the thread pool with 4 workers.</p>
+<p>The tasks are issued to the workers in 4 groups of 25 tasks.</p>
+<p>The overall time is reported, in this case as 112.407 seconds.</p>
+<p>This shows that using some best practices did offer a speed benefit of about 12.939 seconds, but it is still 100 seconds slower than the non-multiprocessing version.</p>
+<pre><code>Took 112.407 seconds</code></pre>
+<p>Next, let's explore whether turning off BLAS threads offers any benefits.</p>
+<h3>Further Tuned Multiprocessing Example</h3>
+<p>The matrix multiplication is implemented using a multithreaded algorithm via a BLAS library.</p>
+<p>It is possible that the threads executing each matrix multiplication and interacting with the worker processes result in lower overall performance.</p>
+<p>We can disable multithreading in the BLAS library so matrix multiplication is single-threaded and then compare performance.</p>
+<p>You can learn more about configuring the number of threads in the BLAS library in the tutorial:</p>
+<ul>
+<li><a href="../numpy-number-blas-threads/">Configure the Number of BLAS/LAPACK Threads for NumPy</a></li>
+</ul>
+<p>The complete example with this change is listed below.</p>
+<pre><code># example of tuned multiprocessing matrix multiplication with process pool
+from os import environ
+environ['OMP_NUM_THREADS'] = '1'
+from numpy import ones
+from time import time
+from multiprocessing.pool import Pool
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# protect the entry point
+if __name__ == '__main__':
+    # record the start time
+    start = time()
+    # prepare lists of matrices
+    n = 2000
+    data1 = [ones((n,n)) for _ in range(100)]
+    data2 = [ones((n,n)) for _ in range(100)]
+    # create thread pool
+    with Pool(4) as pool:
+        # prepare arguments
+        args = [(item1,item2) for item1,item2 in zip(data1,data2)]
+        # issue tasks to thread pool
+        results = pool.starmap(operation, args, chunksize=25)
+    # calculate and report duration
+    duration = time() - start
+    print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first disables multithreading in the BLAS library.</p>
+<p>The lists of arrays are created, the pool of workers is created and all tasks are issued and executed in the pool.</p>
+<p>The overall time taken is reported, which in this case was about 125.448 seconds.</p>
+<p>This is roughly equivalent to the un-optimized multiprocessing example and is worse than not using BLAS multithreading with the same Pool configuration.</p>
+<p>This suggests that the BLAS threads are probably not interacting with the worker processes and interactions of this type are not the cause of the slowdown.</p>
+<pre><code>Took 125.448 seconds</code></pre>
+<h2>Takeaways</h2>
+<p>You now know about the impact of using processing-based concurrency to parallelize numpy programs.</p>
 </main>
 </body>
 </html>

@@ -79,6 +79,852 @@ asyncio.gather(coro1(), coro2())</code></pre>
 <p>The <strong>asyncio.gather()</strong> function takes awaitables as position arguments.</p>
 <p>We cannot create a list or collection of awaitables and provide it to gather, as this will result in an error.</p>
 <p>For example:</p>
+<pre><code>...
+# cannot provide a list of awaitables directly
+asyncio.gather([coro1(), coro2()])</code></pre>
+<p>A list of awaitables can be provided if it is first unpacked into separate expressions using the star operator (*), also called the asterisk operator.</p>
+<p>This operator specifically unpacks iterables, like lists, into separate expressions. It is often referred to as the <a href="https://peps.python.org/pep-3132/">iterable unpacking operator</a>.</p>
+<blockquote>
+<p>An asterisk * denotes iterable unpacking. Its operand must be an iterable. The iterable is expanded into a sequence of items, which are included in the new tuple, list, or set, at the site of the unpacking.</p>
+<cite><a href="https://docs.python.org/3/reference/expressions.html">Expression lists</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# gather with an unpacked list of awaitables
+asyncio.gather(*[coro1(), coro2()])</code></pre>
+<p>If coroutines are provided to <strong>gather()</strong>, they are wrapped in <strong>Task</strong> objects automatically.</p>
+<h3>gather() Returns a Future</h3>
+<p>The <strong>gather()</strong> function does not block.</p>
+<p>Instead, it returns an <a href="https://docs.python.org/3/library/asyncio-future.html#asyncio.Future"><strong>asyncio.Future</strong> object</a> that represents the group of awaitables.</p>
+<p>For example:</p>
+<pre><code>...
+# get a future that represents multiple awaitables
+group = asyncio.gather(coro1(), coro2())</code></pre>
+<p>Once the <strong>Future</strong> object is created it is scheduled automatically within the event loop.</p>
+<p>The awaitable represents the group, and all awaitables in the group will execute as soon as they are able.</p>
+<p>This means that if the caller did nothing else, the scheduled group of awaitables will run (assuming the caller suspends).</p>
+<p>It also means that you do not have to await the <strong>Future</strong> that is returned from <strong>gather()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# get a future that represents multiple awaitables
+group = asyncio.gather(coro1(), coro2())
+# suspend and wait a while, the group may be executing..
+await asyncio.sleep(10)</code></pre>
+<h3>Awaiting gather()'s Future</h3>
+<p>The returned <strong>Future</strong> object can be awaited which will wait for all awaitables in the group to be done.</p>
+<p>For example:</p>
+<pre><code>...
+# run the group of awaitables
+await group</code></pre>
+<p>Awaiting the <strong>Future</strong> returned from <strong>gather()</strong> will return a list of return values from the awaitables.</p>
+<p>If the awaitables do not return a value, then this list will contain the default "<strong>None</strong>" return value.</p>
+<p>For example:</p>
+<pre><code>...
+# run the group of awaitables and get return values
+results = await group</code></pre>
+<p>This is more commonly performed in one line.</p>
+<p>For example:</p>
+<pre><code>...
+# run tasks and get results on one line
+results = await asyncio.gather(coro1(), coro2())</code></pre>
+<h3>gather() Can Nest Groups of Awaitables</h3>
+<p>The <strong>gather()</strong> function takes awaitables and itself returns an awaitable.</p>
+<p>Therefore, we can create nested groups of awaitables.</p>
+<p>For example:</p>
+<pre><code>...
+# create a group of tasks
+group1 = asyncio.gather(coro1(), coro2())
+# create another group of tasks
+group2 = asyncio.gather(group1, coro3())
+# run group2 which will also run group1
+await group2
+</code></pre>
+<h3>gather() and Exceptions</h3>
+<p>If an awaitable fails with an exception, the exception is re-raised in the caller and may need to be handled.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# run tasks and get results
+	results = await asyncio.gather(coro1(), coro2())
+except Exception as e:
+	# ...
+</code></pre>
+<p>Similarly, if a task in the group is canceled, it will re-raise a <strong>CancelledError</strong> exception in the caller and may need to be handled.</p>
+<p>The "<strong>return_exceptions</strong>" argument to <strong>gather()</strong> can be set to <strong>True</strong> which will catch exceptions and provide them as return values instead of re-raising them in the caller.</p>
+<p>This applies to both exceptions raised in awaitables, as well as <strong>CancelledError</strong> exceptions if the awaitables are canceled.</p>
+<p>For example:</p>
+<pre><code>...
+# run tasks and retrieve exceptions as a result
+results = await asyncio.gather(coro1(), coro2(), return_exceptions=True)</code></pre>
+<h3>gather()'s Future Can Be Canceled</h3>
+<p>The <strong>Future</strong> that is returned from <strong>gather()</strong> can be used just like a normal <a href="https://docs.python.org/3/library/asyncio-future.html#asyncio.Future"><strong>asyncio.Future</strong> object</a>.</p>
+<p>We can check if it is done by calling the <strong>done()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# check if a gather group of tasks is done
+if group.done():
+	# ...
+</code></pre>
+<p>We can also cancel the <strong>gather()</strong>'s <strong>Future</strong>, which will cancel all tasks within the group.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel all tasks in the group
+group.cancel()</code></pre>
+<p>Other helpful methods we might use include adding a done callback function, getting a result, and checking if the group was canceled.</p>
+<p>You can learn more about using a done callback on a gather's task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather-done-callback/">Asyncio gather() Add Done Callback Function</a></li>
+</ul>
+<p>Now that we know how to use <strong>asyncio.gather()</strong>, let's look at some worked examples.</p>
+<h2>Examples of gather() with Coroutines</h2>
+<p>In this section, we will look at how we can run coroutines concurrently using the <strong>asyncio.gather()</strong> function.</p>
+<h3>Example of gather() For One Coroutine</h3>
+<p>We can use <strong>gather()</strong> to manage a single coroutine.</p>
+<p>A coroutine can be executed directly by creating it and await it. Nevertheless, we can use the <strong>gather()</strong> function to wrap it in a <strong>Future</strong> object and create a group of one awaitable that can be managed.</p>
+<p>The example below defines a task coroutine that is gathered and run.</p>
+<pre><code># SuperFastPython.com
+# example of gather for one coroutine
+import asyncio
+
+# coroutine used for a task
+async def task_coro():
+    # report a message
+    print('task executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create a coroutine
+    coro = task_coro()
+    # gather one coroutine
+    await asyncio.gather(coro)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates and executes the <strong>main()</strong> coroutine as the entry point to the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine reports a message and then creates the task coroutine.</p>
+<p>The <strong>gather()</strong> function is then called, passing the single task coroutine as an argument. This returns a <strong>Future</strong> object that is awaited.</p>
+<p>The <strong>main()</strong> coroutine is suspended and the task coroutine is executed, reporting a message and sleeping before terminating</p>
+<p>The <strong>main()</strong> coroutine then resumes and reports a final message.</p>
+<p>This highlights how we might run a single coroutine using <strong>gather()</strong>.</p>
+<pre><code>main starting
+task executing
+main done</code></pre>
+<h3>Example of gather() For Many Coroutines</h3>
+<p>We can use <strong>gather()</strong> to group many coroutines together into a single task.</p>
+<p>This is the most common use case for the <strong>gather()</strong> function.</p>
+<p>The example below defines a task coroutine that takes an argument, reports a message with the argument, and sleeps for a moment.</p>
+<p>The main coroutine then calls <strong>gather()</strong> with three separate calls to the task coroutine, each with different arguments. This allows all three coroutines to be executed concurrently and for the caller to wait for all three coroutines to complete before resuming.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of gather for many coroutines
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # run the tasks
+    await asyncio.gather(task_coro(0),
+        task_coro(1),
+        task_coro(2))
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example executes the <strong>main()</strong> coroutine as the entry point to the program.</p>
+<p>A message is reported and then the <strong>gather()</strong> function is called. It is passed three different coroutine instances that call the same coroutine function with different arguments.</p>
+<p>The coroutines are run concurrently and the main <strong>coroutine()</strong> suspends and waits for the group of awaitables to be done.</p>
+<p>Each coroutine runs, reports its message, sleeps for a moment, and terminates.</p>
+<p>The <strong>main()</strong> coroutine resumes only after all three coroutines are completed, and then reports its final message,</p>
+<p>This highlights the most common use case of gathering multiple coroutines and waiting for them to complete.</p>
+<pre><code>main starting
+&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+main done</code></pre>
+<h3>Example of gather() For Many Coroutines in a List</h3>
+<p>It is common to create multiple coroutines beforehand and then gather them later.</p>
+<p>This allows a program to prepare the tasks that are to be executed concurrently and then trigger their concurrent execution all at once and wait for them to complete.</p>
+<p>We can collect many coroutines together into a list either manually or using a list comprehension.</p>
+<p>For example:</p>
+<pre><code>...
+# create many coroutines
+coros = [task_coro(i) for i in range(10)]</code></pre>
+<p>We can then call <strong>gather()</strong> with all coroutines in the list.</p>
+<p>The list of coroutines cannot be provided directly to the <strong>gather()</strong> function as this will result in an error.</p>
+<p>Instead, the <strong>gather()</strong> function requires each awaitable to be provided as a separate positional argument.</p>
+<p>This can be achieved by unwrapping the list into separate expressions and passing them to the <strong>gather()</strong> function. The star operator (<strong>*</strong>) will perform this operation for us.</p>
+<p>For example:</p>
+<pre><code>...
+# run the tasks
+await asyncio.gather(*coros)</code></pre>
+<p>Are you new to the star or asterisk (*) operator? It is used for <a href="https://peps.python.org/pep-3132/">iterable unpacking</a>. You can learn more in the <a href="https://docs.python.org/3/reference/expressions.html#expression-lists">expression API documentation</a>.</p>
+<p>Tying this together, the complete example of running a list of pre-prepared coroutines with <strong>gather()</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of gather for many coroutines in a list
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create many coroutines
+    coros = [task_coro(i) for i in range(10)]
+    # run the tasks
+    await asyncio.gather(*coros)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example executes the <strong>main()</strong> coroutine as the entry point to the program.</p>
+<p>The <strong>main()</strong> coroutine then creates a list of 10 coroutine objects using a list comprehension.</p>
+<p>This list is then provided to the <strong>gather()</strong> function and unpacked into 10 separate expressions using the star operator.</p>
+<p>The <strong>main()</strong> coroutine then awaits the <strong>Future</strong> object returned from the call to <strong>gather()</strong>, suspending and waiting for all scheduled coroutines to complete their execution.</p>
+<p>The coroutines run as soon as they are able, reporting their unique messages and sleeping before terminating.</p>
+<p>Only after all coroutines in the group are complete does the <strong>main()</strong> coroutine resume and report its final message.</p>
+<p>This highlights how we might prepare a collection of coroutines and provide them as separate expressions to the <strong>gather()</strong> function.</p>
+<pre><code>main starting
+&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+&gt;task 3 executing
+&gt;task 4 executing
+&gt;task 5 executing
+&gt;task 6 executing
+&gt;task 7 executing
+&gt;task 8 executing
+&gt;task 9 executing
+main done</code></pre>
+<h3>Example of gather() With Return Values</h3>
+<p>We may execute coroutines that return a value.</p>
+<p>Using the <strong>gather()</strong> function to execute multiple coroutines that return values allows the results of all coroutines to be gathered together at one point for use, giving the <strong>gather()</strong> function its name.</p>
+<p>Recall that the <strong>gather()</strong> function does not block, but returns immediately with a <strong>Future</strong> object.</p>
+<p>When the <strong>Future</strong> object that is returned from <strong>gather()</strong> is awaited, it will return a list of return values from the grouped tasks.</p>
+<p>The example below demonstrates this by updating the task coroutine to return a value and gathering and reporting the list of return values from all tasks in the main coroutine.</p>
+<pre><code># SuperFastPython.com
+# example of gather for many coroutines that return values
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+    # return a value
+    return value * 10
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create many tasks
+    tasks = [task_coro(i) for i in range(10)]
+    # run the tasks
+    values = await asyncio.gather(*tasks)
+    # report the values
+    print(values)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates and runs the <strong>main()</strong> coroutine as the entry point into the program.</p>
+<p>A list of coroutines is then created, each with a different argument.</p>
+<p>The gather function is called and the list of coroutines is then unpacked into separate expressions using the star operator.</p>
+<p>This schedules each coroutine for execution.</p>
+<p>The main coroutine suspends and waits for all coroutines in the group to complete.</p>
+<p>Each coroutine runs, reporting a message, sleeping, and returning a value that is a multiple of 10 of the input argument.</p>
+<p>All coroutines are completed and the awaited Future returned from <strong>gather()</strong> provides a list of return values.</p>
+<p>The <strong>main()</strong> coroutine then reports the list of return values.</p>
+<p>This highlights how we can retrieve return values from multiple coroutines that return values.</p>
+<pre><code>main starting
+&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+&gt;task 3 executing
+&gt;task 4 executing
+&gt;task 5 executing
+&gt;task 6 executing
+&gt;task 7 executing
+&gt;task 8 executing
+&gt;task 9 executing
+[0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+main done
+</code></pre>
+<h3>Example of gather() With Nested Groups</h3>
+<p>The <strong>gather()</strong> function can be used to create one awaitable that represents multiple awaitables.</p>
+<p>The natural consequence of this is that we can nest groups of awaitables.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>In this example, we create two separate groups of three coroutines. We then define a third group that combines the two previously created groups of coroutines.</p>
+<p>This creates a hierarchy with three levels of awaitables, for example:</p>
+<ul>
+<li>group 3
+<ul>
+<li>group 1
+<ul>
+<li>coroutine 0</li>
+<li>coroutine 1</li>
+<li>coroutine 2</li>
+</ul>
+</li>
+<li>group 2
+<ul>
+<li>coroutine 3</li>
+<li>coroutine 4</li>
+<li>coroutine 5</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>Performing an operation on the top-level awaitable will perform an operation on all nested awaitables.</p>
+<p>Most importantly, running the top-level will run all nested awaitables concurrently.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of gather nested groups of coroutines
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create group level 1
+    group1 = asyncio.gather(task_coro(0), task_coro(1), task_coro(2))
+    # create group level 2
+    group2 = asyncio.gather(task_coro(3), task_coro(4), task_coro(5))
+    # create group level 3
+    group3 = asyncio.gather(group1, group2)
+    # execute 3, which executes 1 and 2
+    await group3
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine first uses the <strong>gather()</strong> function to create two separate groups of coroutines. It then calls <strong>gather()</strong> to create a third group that combines the first two groups of coroutines.</p>
+<p>It then awaits the third group.</p>
+<p>This schedules all awaitables for execution and suspends the main coroutine until the hierarchy of awaitables is completed.</p>
+<p>All awaitables are completed and the main coroutine resumes and reports a final message.</p>
+<p>This highlights how we can easily create hierarchies of groups of awaitables using the <strong>gather()</strong> function.</p>
+<pre><code>main starting
+&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+&gt;task 3 executing
+&gt;task 4 executing
+&gt;task 5 executing
+main done</code></pre>
+<h3>Example of gather() Mix of Tasks and Coroutines</h3>
+<p>Like a coroutine, an <strong>asyncio.Task</strong> is an awaitable.</p>
+<p>This means that we can provide a mixture of <strong>Task</strong> objects as well as coroutines to the <strong>gather()</strong> function.</p>
+<ul>
+<li>The coroutines provided to <strong>gather()</strong> will be wrapped in <strong>Task</strong> objects and scheduled for execution.</li>
+<li>The <strong>Task</strong> objects will already be scheduled for execution.</li>
+<li>The <strong>Future</strong> object that is returned from the <strong>gather()</strong> function will be scheduled for execution.</li>
+</ul>
+<p>Although we can await the <strong>Future</strong> that is returned from the <strong>gather()</strong> function, this does not execute the group, the group is already scheduled.</p>
+<p>Mixing tasks and coroutines in the call to gather makes this more apparent.</p>
+<p>It also means that some awaitables provided to a call to <strong>gather()</strong> could already be done. Awaiting the group only waits for those awaitables that are not already done.</p>
+<p>The example below explores the ability to mix coroutines and awaitables in a call to <strong>gather()</strong>.</p>
+<p>It also does not explicitly await the <strong>Future</strong> object returned from the <strong>gather()</strong> function but instead sleeps while the group of awaitables is executed.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of gather with of tasks and coroutines
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create a mix of awaitables
+    awaitables = [task_coro(0),
+        asyncio.create_task(task_coro(1)),
+        task_coro(2),
+        asyncio.create_task(task_coro(3)),
+        task_coro(4),]
+    # schedule the group
+    _ = asyncio.gather(*awaitables)
+    # wait around for a while
+    await asyncio.sleep(2)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine then creates a list that contains a mixture of coroutine objects and <strong>Task</strong> objects.</p>
+<p>The <strong>Task</strong> objects are scheduled for execution as soon as they are created. The coroutines are not.</p>
+<p>The list is then provided to the <strong>gather()</strong> function and the returned <strong>Future</strong> that represents the group is ignored.</p>
+<p>This schedules the group of awaitables for execution in the event loop.</p>
+<p>The <strong>main()</strong> coroutine then suspends with a call to sleep.</p>
+<p>All tasks and coroutines are given an opportunity to execute, reporting their message and sleeping.</p>
+<p>The <strong>main()</strong> coroutine resumes after its sleep and all coroutines and tasks happen to be complete by this time.</p>
+<p>A final message is reported and the asyncio program then terminates.</p>
+<p>This highlights that we can create a group that contains a mixture of tasks and coroutines and that we do not have to explicitly await the Future returned from <strong>gather()</strong> in order for the group to be executed.</p>
+<pre><code>main starting
+&gt;task 1 executing
+&gt;task 3 executing
+&gt;task 0 executing
+&gt;task 2 executing
+&gt;task 4 executing
+main done</code></pre>
+<h2>Examples of gather() with Failures</h2>
+<p>This section explores using gather with awaitables that fail with an exception or are canceled.</p>
+<h3>Example of gather() Where One Awaitable Fails</h3>
+<p>An awaitable in group may fail with an unhandled exception.</p>
+<p>If this happens, the exception will be re-raised in the caller and may need to be handled.</p>
+<p>Recall that all awaitables are scheduled after the call to <strong>gather()</strong>.</p>
+<p>This means that even though one awaitable may have failed with an exception, the remaining awaitable may continue to execute and complete normally, if given the opportunity, e.g. the program is not terminated.</p>
+<p>The example below explores this. A total of 10 coroutines are passed to a call to gather() and are scheduled. One of the coroutines will fail with an exception that is re-raised in the caller.</p>
+<pre><code># SuperFastPython.com
+# example of gather where one task fails with an exception
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+    # check for failure
+    if value == 0:
+        raise Exception('Something bad happened')
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create many coroutines
+    coros = [task_coro(i) for i in range(10)]
+    # run the tasks
+    await asyncio.gather(*coros)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates and runs the <strong>main()</strong> coroutine as the entry point into the program.</p>
+<p>The <strong>main()</strong> coroutine then creates 10 task coroutines in a list comprehension. These are then provided to a call to <strong>gather()</strong>.</p>
+<p>All coroutines are scheduled for execution along with the <strong>Future</strong> returned from <strong>gather()</strong>.</p>
+<p>The <strong>main()</strong> coroutine then suspends and waits for the tasks to complete.</p>
+<p>All coroutines execute, reporting a message and blocking.</p>
+<p>One coroutine then raises an exception.</p>
+<p>The exception does not impact any other coroutines in the group.</p>
+<p>The <strong>main()</strong> coroutine resumes and the exception raised in the coroutine is re-raised and not handled, terminating the application.</p>
+<p>This highlights that exceptions that occur within a group of awaitables is re-raised in the caller.</p>
+<pre><code>main starting
+&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+&gt;task 3 executing
+&gt;task 4 executing
+&gt;task 5 executing
+&gt;task 6 executing
+&gt;task 7 executing
+&gt;task 8 executing
+&gt;task 9 executing
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened
+</code></pre>
+<h3>Example of gather() With Return Exceptions</h3>
+<p>We can prevent an exception in the group of awaitables from being re-raised in the caller by setting the "<strong>return_exceptions</strong>" argument to <strong>True</strong> when calling <strong>gather()</strong>.</p>
+<p>This will trap the exception and return it as a return value for the awaitable.</p>
+<p>The example below demonstrates this, updating the above example to set the <strong>return_exceptions</strong> argument to <strong>True</strong>.</p>
+<pre><code># SuperFastPython.com
+# example of gather with returned exceptions
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+    # check for failure
+    if value == 0:
+        raise Exception('Something bad happened')
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create many coroutines
+    coros = [task_coro(i) for i in range(10)]
+    # run the tasks
+    results = await asyncio.gather(*coros, return_exceptions=True)
+    # report results
+    print(results)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates and runs the <strong>main()</strong> coroutine as the entry point into the program.</p>
+<p>The <strong>main()</strong> coroutine then creates 10 task coroutines in a list comprehension. These are then provided to a call to gather().</p>
+<p>All coroutines are scheduled for execution along with the Future returned from <strong>gather()</strong>.</p>
+<p>The <strong>main()</strong> coroutine then suspends and waits for the tasks to complete.</p>
+<p>All coroutines execute, reporting a message and blocking.</p>
+<p>One coroutine then raises an exception.</p>
+<p>The exception does not impact any other coroutines in the group and is not re-raised in the caller.</p>
+<p>The caller retrieves a list of return values from all awaitables. It then reports the values.</p>
+<p>We can see that all awaitables return None, except the one that failed, where we can see the <strong>Exception</strong> object that was returned.</p>
+<p>This highlights that exceptions can be prevented from being re-raised and can be retrieved as a return value from a failed awaitable.</p>
+<pre><code>main starting
+&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+&gt;task 3 executing
+&gt;task 4 executing
+&gt;task 5 executing
+&gt;task 6 executing
+&gt;task 7 executing
+&gt;task 8 executing
+&gt;task 9 executing
+[Exception('Something bad happened'), None, None, None, None, None, None, None, None, None]
+main done
+</code></pre>
+<h3>Example of gather() Where One Task is Canceled</h3>
+<p>Tasks can be canceled.</p>
+<p>It is possible that we call <strong>gather()</strong> with one or more <strong>Tasks</strong> or <strong>Future</strong> objects that have been canceled.</p>
+<p>If a task is canceled in a group, it will raise a <strong>CancelledError</strong> in the wrapped coroutine and this exception will be re-raised in the caller.</p>
+<p>The example below demonstrates this.</p>
+<p>Two tasks are created, and the second is provided as a reference to the first. I then cancel the other task.</p>
+<p>Both tasks are then grouped with a call to gather and the <strong>CancelledError</strong> is re-raised in the caller.</p>
+<pre><code># SuperFastPython.com
+# example of gather where one task is canceled
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value, friend):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # cancel friend task
+    if friend:
+        friend.cancel()
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create many tasks
+    task0 = asyncio.create_task(task_coro(0, None))
+    task1 = asyncio.create_task(task_coro(1, task0))
+    # run the tasks
+    await asyncio.gather(task0, task1)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates and runs the <strong>main()</strong> coroutine as the entry point into the program.</p>
+<p>The <strong>main()</strong> coroutine then creates one task with no paired task. This task is scheduled immediately.</p>
+<p>A second task is created and provides the first task as a reference. This task too is scheduled immediately.</p>
+<p>Both tasks are then provided to the <strong>gather()</strong> function and the main coroutine awaits both tasks.</p>
+<p>The first task is given an opportunity to execute, report a message, and sleep.</p>
+<p>The second task is given an opportunity to execute, it reports a message, then cancels the first task, then sleeps.</p>
+<p>The first task resumes and raises a <strong>CancelledError</strong> exception.</p>
+<p>The <strong>main()</strong> task resumes and re-raises the <strong>CancelledError</strong> that terminates the asyncio program.</p>
+<p>This highlights that tasks in a call to <strong>gather()</strong> can be canceled which causes the <strong>CancelledError</strong> to be re-raised in the calling coroutine.</p>
+<pre><code>main starting
+&gt;task 0 executing
+&gt;task 1 executing
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+</code></pre>
+<h3>Example of gather() Where One Task is Canceled With Return Exceptions</h3>
+<p>It is possible to not re-raise a <strong>CancelledError</strong> for a canceled task in a call to <strong>gather()</strong> by setting the "<strong>return_exceptions</strong>" argument to <strong>True</strong>.</p>
+<p>This will cause the <strong>CancelledError</strong> to be returned as a return value, just as though the task failed with any arbitrary exception.</p>
+<p>The example below demonstrates this by updating the previous example to set the "<strong>return_exceptions</strong>" argument to <strong>True</strong>, then retrieve and report the return values from all awaitables.</p>
+<pre><code># SuperFastPython.com
+# example of gather where one task is canceled with returned exceptions
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value, friend):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # cancel friend task
+    if friend:
+        friend.cancel()
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create many tasks
+    task0 = asyncio.create_task(task_coro(0, None))
+    task1 = asyncio.create_task(task_coro(1, task0))
+    # run the tasks
+    results = await asyncio.gather(task0, task1, return_exceptions=True)
+    # report results
+    print(results)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates and runs the <strong>main()</strong> coroutine as the entry point into the program.</p>
+<p>The <strong>main()</strong> coroutine then creates one task with no paired task. This task is scheduled immediately.</p>
+<p>A second task is created and provides the first task as a reference. This task too is scheduled immediately.</p>
+<p>Both tasks are then provided to the <strong>gather()</strong> function with <strong>return_exceptions</strong> set to <strong>True</strong> and the main coroutine awaits both tasks.</p>
+<p>The first task is given an opportunity to execute, report a message, and sleep.</p>
+<p>The second task is given an opportunity to execute, it reports a message, then cancels the first task, then sleeps.</p>
+<p>The first task resumes and raises a <strong>CancelledError</strong> exception.</p>
+<p>The <strong>main()</strong> task resumes and the return values from both tasks are retrieved and reported. We can see the first task returned a <strong>CancelledError</strong> and the second returned the default value of <strong>None</strong>.</p>
+<p>This highlights that a task in the group can be canceled, but does not have to raise a <strong>CancelledError</strong> in the calling coroutine.</p>
+<pre><code>main starting
+&gt;task 0 executing
+&gt;task 1 executing
+[CancelledError(''), None]
+main done
+</code></pre>
+<h3>Example of Canceling All Tasks in gather()</h3>
+<p>As discussed, a call to <strong>gather()</strong> returns a <strong>Future</strong> object.</p>
+<p>This <strong>Future</strong> object can be canceled by calling the <strong>cancel()</strong> method.</p>
+<p>If canceled, a <strong>CancelledError</strong> exception is raised in the <strong>Future</strong> itself which in turn cancels all tasks in the group, if they are not done.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>In this example, we define a global variable that will reference the <strong>Future</strong> object returned from the call to <strong>gather()</strong>. Initially, it is set to None. It is then assigned within the <strong>main()</strong> coroutine.</p>
+<p>Note, this is different from canceling all tasks in gather() if one task fails. For an example of this, see the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather-cancel-all-if-one-fails/">Asyncio gather() Cancel All Tasks if One Task Fails</a></li>
+</ul>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a gather with many coroutines
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # check if this is the special task
+    if value == 0:
+        global group
+        group.cancel()
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create many coroutines
+    coros = [task_coro(i) for i in range(10)]
+    # create a group of tasks
+    global group
+    group = asyncio.gather(*coros)
+    # await the task
+    await group
+    # report a message
+    print('main done')
+
+# define a global variable
+group = None
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first defines a global variable named "<strong>group</strong>" then creates the <strong>main()</strong> coroutine and uses it as the entry point to the program.</p>
+<p>The <strong>main()</strong> coroutine runs, first reporting a message, then creating a list of coroutines. They are provided with a call to gather and the Future object that is returned is assigned to the "<strong>group</strong>" global variable.</p>
+<p>All coroutines are scheduled as tasks at this point.</p>
+<p>The <strong>main()</strong> coroutine then awaits the group and suspends, giving the coroutines an opportunity to execute.</p>
+<p>The first coroutine executes, reporting a message. It then accesses the "<strong>group</strong>" global variable which is a Future object and cancels it.</p>
+<p>This has the effect of raising a <strong>CancelledError</strong> exception in the <strong>Future</strong> object returned from the <strong>gather()</strong> function, and in turn, canceling all coroutines in the group.</p>
+<p>The tasks terminate with the exception.</p>
+<p>The <strong>main()</strong> coroutine returns and the <strong>CancelledError</strong> exception is raised, terminating the asyncio program.</p>
+<p>This highlights that all awaitables in a group can be canceled.</p>
+<pre><code>main starting
+&gt;task 0 executing
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+</code></pre>
+<h2>Common Errors With asyncio.gather()</h2>
+<p>This section considers some of the more common errors when using the <strong>asyncio.gather()</strong> function.</p>
+<h3>Example of gather() Error With a List</h3>
+<p>Perhaps the most common error when using the <strong>gather()</strong> function occurs when providing a list of awaitables to the function.</p>
+<p>For example:</p>
+<pre><code>...
+# create many coroutines
+coros = [task_coro(i) for i in range(10)]
+# run the tasks
+await asyncio.gather(coros)
+</code></pre>
+<p>This is a problem because the <strong>gather()</strong> function does not take a list of awaitables, it takes multiple awaitables as separate positional arguments.</p>
+<p>The example below demonstrates this common error.</p>
+<pre><code># SuperFastPython.com
+# example of gather with a list that results in an error
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create many coroutines
+    coros = [task_coro(i) for i in range(10)]
+    # run the tasks
+    await asyncio.gather(coros)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates and runs the <strong>main()</strong> coroutine as the entry point into the program.</p>
+<p>It reports a message and then creates a list of coroutines.</p>
+<p>The coroutines are then provided with a call to the <strong>gather()</strong> function.</p>
+<p>This fails with a <strong>TypeError</strong>.</p>
+<p>The reason is that the <strong>gather()</strong> function expects separate awaitable arguments (e.g. a variable number of awaitable arguments), not a list of arguments.</p>
+<pre><code>main starting
+Traceback (most recent call last):
+  ...
+TypeError: unhashable type: 'list'
+sys:1: RuntimeWarning: coroutine 'task_coro' was never awaited
+</code></pre>
+<h3>Example of gather() Error Without Await</h3>
+<p>Another common error is to call <strong>gather()</strong> but not give the tasks an opportunity to execute.</p>
+<p>Recall that when we call <strong>gather()</strong>, all awaitables will be scheduled for execution.</p>
+<p>We do not have to await the <strong>Future</strong> that is returned from the <strong>gather()</strong> function.</p>
+<p>Nevertheless, we do need to give the awaitables an opportunity to execute.</p>
+<p>This can be achieved by suspending the calling coroutine, such as by awaiting a call to <strong>sleep()</strong> or some other task.</p>
+<p>If this is not done, the coroutines are scheduled and never executed and the program will exit.</p>
+<p>The example below demonstrates this problem.</p>
+<pre><code># SuperFastPython.com
+# example of gather without await results in an error
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('main starting')
+    # create many coroutines
+    coros = [task_coro(i) for i in range(10)]
+    # run the tasks
+    asyncio.gather(*coros)
+    # report a message
+    print('main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates and runs the <strong>main()</strong> coroutine as the entry point into the program.</p>
+<p>It reports a message and then creates a list of coroutines.</p>
+<p>The coroutines are then provided with a call to the <strong>gather()</strong> function.</p>
+<p>The <strong>main()</strong> coroutine then reports a message and exits, terminating the program.</p>
+<p>The scheduled tasks are never given an opportunity to execute.</p>
+<p>The garbage collector attempts to cancel the scheduled tasks and is reported before the program finishes terminating.</p>
+<pre><code>main starting
+main done
+&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+&gt;task 3 executing
+&gt;task 4 executing
+&gt;task 5 executing
+&gt;task 6 executing
+&gt;task 7 executing
+&gt;task 8 executing
+&gt;task 9 executing
+_GatheringFuture exception was never retrieved
+future: &lt;_GatheringFuture finished exception=CancelledError()&gt;
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+asyncio.exceptions.CancelledError
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to run asyncio tasks concurrent with <strong>gather()</strong> in Python.</p>
 </main>
 </body>
 </html>

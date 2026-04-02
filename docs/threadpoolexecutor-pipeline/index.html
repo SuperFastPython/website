@@ -152,6 +152,581 @@ task1_queue_out = Queue()
 task2_queue_out = Queue()</code></pre>
 <p>Next, the <strong>ThreadPoolExecutor</strong> is created with a capacity for 5 workers at each step of the pipeline, 10 workers in total.</p>
 <p>We then issue 5 step 1 tasks and 5 step tasks to the thread pool using the <strong>submit()</strong> method, careful to provide the correct input and output queues for each task.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(10) as tpe:
+    # issue task 1 workers
+    _ = [tpe.submit(task1, task1_queue_in, task1_queue_out) for _ in range(5)]
+    # issue task 2 workers
+    _ = [tpe.submit(task2, task1_queue_out, task2_queue_out) for _ in range(5)]
+</code></pre>
+<p>We could have the initial step 0 task executed by the thread pool and the final step 3 task executed by the thread pool if we wished, but in this case, we will execute them in the main thread.</p>
+<p>Firstly, we can define the initial step 0 task that provides the input for the first step. In this case, we will generate 20 inputs to execute 20 multi-step tasks.</p>
+<pre><code>...
+# push work into task 1
+for i in range(20):
+    task1_queue_in.put(i)
+</code></pre>
+<p>Next, we will put a sentinel value into the first input queue to signal to the workers that there will be no further work items and to shut down as soon as possible.</p>
+<pre><code>...
+# signal that there is no more work
+task1_queue_in.put(None)</code></pre>
+<p>Finally, the main thread will block and wait for task results from the final queue in the pipeline and report them as needed. It will exit the main thread only once the sentinel is seen.</p>
+<pre><code>...
+# consume results
+while True:
+    # retrieve data
+    data = task2_queue_out.get()
+    # check for the end of work
+    if data is None:
+        # stop processing
+        break
+    # report the result
+    print(f'Main got {data}')
+</code></pre>
+<p>Once ready to shut down, the main thread reports a final message.</p>
+<pre><code>...
+# report a message
+print('Main all done')</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a threadpoolexecutor pipeline using queues
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+from random import random
+from time import sleep
+
+# first task in the pipeline
+def task1(queue_in, queue_out):
+    # loop forever
+    while True:
+        # read item from queue
+        data = queue_in.get()
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # generate a random value between 0 and 1
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # report message
+        print(f'&gt; Task1 got {data}, produced {value}')
+        # push result onto queue
+        queue_out.put(value)
+    # report message
+    print('&gt; Task1 done')
+
+# second task in the pipeline
+def task2(queue_in, queue_out):
+    # loop forever
+    while True:
+        # read item from queue
+        data = queue_in.get()
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # generate a random value between 0 and 1
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # report message
+        print(f'&gt; &gt; Task2 got {data}, produced {value}')
+        # push result onto queue
+        queue_out.put(value)
+    # report message
+    print('&gt; &gt; Task2 done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared queues
+    task1_queue_in = Queue()
+    task1_queue_out = Queue()
+    task2_queue_out = Queue()
+    # create the thread pool
+    with ThreadPoolExecutor(10) as tpe:
+        # issue task 1 workers
+        _ = [tpe.submit(task1, task1_queue_in, task1_queue_out) for _ in range(5)]
+        # issue task 2 workers
+        _ = [tpe.submit(task2, task1_queue_out, task2_queue_out) for _ in range(5)]
+        # push work into task 1
+        for i in range(20):
+            task1_queue_in.put(i)
+        # signal that there is no more work
+        task1_queue_in.put(None)
+        # consume results
+        while True:
+            # retrieve data
+            data = task2_queue_out.get()
+            # check for the end of work
+            if data is None:
+                # stop processing
+                break
+            # report the result
+            print(f'Main got {data}')
+        # report a message
+        print('Main all done')
+</code></pre>
+<p>Running the example first creates the shared queues.</p>
+<p>Next, the thread pool is created with a capacity of 10 workers.</p>
+<p>Five examples of task1 are issued to the thread pool, starting 5 worker threads. Five examples of task2 are issued to the pool, also starting 5 worker threads.</p>
+<p>The main thread then pushes 20 integer values into the first input queue, then pushes a shutdown value onto the very end of the queue.</p>
+<p>The main thread then loops forever, attempting to consume values from the last output queue.</p>
+<p>Input values are consumed by the task1 workers. Each generates a random value, blocks, reports a message, and outs the generated value in the output queue.</p>
+<p>Task2 workers consume values from their input queue sent from task1. They process them in the same general way as task1 workers, generating a random value, blocking, reporting a message, and putting their value on their own output queue.</p>
+<p>The main thread consumes values from the final output queue and reports their values.</p>
+<p>Eventually, all values are consumed by task1 from the first input queue and the sentinel value is read. Task1 tasks shutdown and share the None value with task2 tasks. They too shut down and share the result on the output queue. Eventually, the main thread sees the sentinel value and terminates with a final message.</p>
+<p>This highlights how we can execute multi-step tasks in a single thread pool as a pipeline.</p>
+<pre><code>&gt; Task1 got 0, produced 0.06374619136923998
+&gt; Task1 got 5, produced 0.22280995185140817
+&gt; &gt; Task2 got 0.06374619136923998, produced 0.42645408618034
+Main got 0.42645408618034
+&gt; Task1 got 1, produced 0.5157028899332281
+&gt; Task1 got 4, produced 0.5797011315649749
+&gt; Task1 got 6, produced 0.31777744757423676
+&gt; &gt; Task2 got 0.22280995185140817, produced 0.40323506535979026
+Main got 0.40323506535979026
+&gt; &gt; Task2 got 0.5797011315649749, produced 0.120355441229539
+Main got 0.120355441229539
+&gt; Task1 got 3, produced 0.7404108956805835
+&gt; Task1 got 10, produced 0.03273152446602101
+&gt; &gt; Task2 got 0.7404108956805835, produced 0.05523796156125449
+Main got 0.05523796156125449
+&gt; &gt; Task2 got 0.5157028899332281, produced 0.3712288895475049
+Main got 0.3712288895475049
+&gt; Task1 got 11, produced 0.12300039009987385
+&gt; Task1 got 8, produced 0.3351433285865908
+&gt; Task1 got 2, produced 0.9817487550932361
+&gt; Task1 got 7, produced 0.5286607855669352
+&gt; Task1 got 15, produced 0.005510345480132073
+&gt; &gt; Task2 got 0.03273152446602101, produced 0.2847713068693353
+Main got 0.2847713068693353
+&gt; Task1 got 9, produced 0.5306014532294463
+&gt; Task1 got 17, produced 0.01546897513174983
+&gt; &gt; Task2 got 0.31777744757423676, produced 0.6244883555127848
+Main got 0.6244883555127848
+&gt; Task1 got 12, produced 0.42959573081012825
+&gt; Task1 got 16, produced 0.28678566185587373
+&gt; Task1 done
+&gt; &gt; Task2 got 0.3351433285865908, produced 0.4916113336570408
+Main got 0.4916113336570408
+&gt; Task1 got 13, produced 0.5162535307172064
+&gt; Task1 done
+&gt; Task1 got 18, produced 0.29613393709666846
+&gt; Task1 done
+&gt; &gt; Task2 got 0.9817487550932361, produced 0.5639002254831308
+Main got 0.5639002254831308
+&gt; &gt; Task2 got 0.005510345480132073, produced 0.32803121175495675
+Main got 0.32803121175495675
+&gt; Task1 got 14, produced 0.7353253211413082
+&gt; Task1 done
+&gt; &gt; Task2 got 0.5286607855669352, produced 0.6663854537886
+Main got 0.6663854537886
+&gt; Task1 got 19, produced 0.4420969832982634
+&gt; Task1 done
+&gt; &gt; Task2 got 0.12300039009987385, produced 0.8823808592344394
+&gt; &gt; Task2 done
+Main got 0.8823808592344394
+Main all done
+&gt; &gt; Task2 got 0.5306014532294463, produced 0.4640589560605952
+&gt; &gt; Task2 got 0.5162535307172064, produced 0.021598748221471675
+&gt; &gt; Task2 done
+&gt; &gt; Task2 got 0.01546897513174983, produced 0.4287481943664151
+&gt; &gt; Task2 got 0.29613393709666846, produced 0.3094994345417468
+&gt; &gt; Task2 done
+&gt; &gt; Task2 got 0.42959573081012825, produced 0.8063789219792559
+&gt; &gt; Task2 got 0.28678566185587373, produced 0.6875850944011184
+&gt; &gt; Task2 done
+&gt; &gt; Task2 got 0.7353253211413082, produced 0.7147631756629578
+&gt; &gt; Task2 got 0.4420969832982634, produced 0.9049768392442796
+&gt; &gt; Task2 done
+</code></pre>
+<p><strong>NOTE</strong>: There is a possible <a href="../thread-race-condition-timing/">race condition</a> in this example (I noticed it immediately after finishing the example).</p>
+<p>It is possible for the sentinel value to propagate through the pipeline by fast-acting workers before all tasks have shared their results. In this demonstration case, it does not matter. If this is a concern, there are a few fixes we could adopt.</p>
+<p>The first fix would be for the main thread to know how many results to expect, then once they have all been received, it can share the sentinel value and shut down the pipeline.</p>
+<p>For example:</p>
+<pre><code>...
+# push work into task 1
+for i in range(20):
+    task1_queue_in.put(i)
+# consume results
+for _ in range(20):
+    # retrieve data
+    data = task2_queue_out.get()
+    # report the result
+    print(f'Main got {data}')
+# signal that there is no more work
+task1_queue_in.put(None)
+# report a message
+print('Main all done')
+</code></pre>
+<p>Another approach is to have all workers at a level share one barrier and to first wait on the barrier for all fellow workers to terminate before passing on the sentinel to the next step in the sequence via the output queue.</p>
+<p>For example:</p>
+<pre><code>...
+# create the barriers
+barrier1 = Barrier(5)
+barrier2 = Barrier(5)
+
+...
+
+# first task in the pipeline
+def task1(queue_in, queue_out, barrier):
+    # loop forever
+    while True:
+        # read item from queue
+        data = queue_in.get()
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+        	# wait on the barrier for all other workers
+        	barrier.wait()
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # generate a random value between 0 and 1
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # report message
+        print(f'&gt; Task1 got {data}, produced {value}')
+        # push result onto queue
+        queue_out.put(value)
+    # report message
+    print('&gt; Task1 done')
+</code></pre>
+<p>You can learn more about how to use threading barriers in the tutorial:</p>
+<ul>
+<li><a href="../thread-barrier-in-python/">Threading Barrier in Python</a></li>
+</ul>
+<p>This is a more general solution as it does not require that the main thread know how many final results to receive but does require each step to know how many fellow workers are running in order for the barrier to be correctly configured.</p>
+<p>The complete example with this change is listed below, for reference.</p>
+<pre><code># SuperFastPython.com
+# example of a threadpoolexecutor pipeline using queues and barriers
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+from random import random
+from time import sleep
+from threading import Barrier
+
+# first task in the pipeline
+def task1(queue_in, queue_out, barrier):
+    # loop forever
+    while True:
+        # read item from queue
+        data = queue_in.get()
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+            # wait on the barrier for all other workers
+            barrier.wait()
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # generate a random value between 0 and 1
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # report message
+        print(f'&gt; Task1 got {data}, produced {value}')
+        # push result onto queue
+        queue_out.put(value)
+    # report message
+    print('&gt; Task1 done')
+
+# first task in the pipeline
+def task2(queue_in, queue_out, barrier):
+    # loop forever
+    while True:
+        # read item from queue
+        data = queue_in.get()
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+            # wait on the barrier for all other workers
+            barrier.wait()
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # generate a random value between 0 and 1
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # report message
+        print(f'&gt; &gt; Task2 got {data}, produced {value}')
+        # push result onto queue
+        queue_out.put(value)
+    # report message
+    print('&gt; &gt; Task2 done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared queues
+    task1_queue_in = Queue()
+    task1_queue_out = Queue()
+    task2_queue_out = Queue()
+    # create the barriers
+    barrier1 = Barrier(5)
+    barrier2 = Barrier(5)
+    # create the thread pool
+    with ThreadPoolExecutor(10) as tpe:
+        # issue task 1 workers
+        _ = [tpe.submit(task1, task1_queue_in, task1_queue_out, barrier1) for _ in range(5)]
+        # issue task 2 workers
+        _ = [tpe.submit(task2, task1_queue_out, task2_queue_out, barrier2) for _ in range(5)]
+        # push work into task 1
+        for i in range(20):
+            task1_queue_in.put(i)
+        # signal that there is no more work
+        task1_queue_in.put(None)
+        # consume results
+        while True:
+            # retrieve data
+            data = task2_queue_out.get()
+            # check for the end of work
+            if data is None:
+                # stop processing
+                break
+            # report the result
+            print(f'Main got {data}')
+        # report a message
+        print('Main all done')
+</code></pre>
+<h2>Example of a ThreadPoolExecutor Pipeline With Separate Thread Pools</h2>
+<p>We can update the example so that each step is executed using a separate <strong>ThreadPoolExecutor</strong>.</p>
+<p>This can be achieved by updating the above example.</p>
+<p>Firstly, we can create two <strong>ThreadPoolExecutor</strong> instances directly, one for each step, instead of using the context manager interface.</p>
+<pre><code>...
+# create the task 1 thread pool
+tpe1 = ThreadPoolExecutor(5)
+# issue task 1 workers
+_ = [tpe1.submit(task1, task1_queue_in, task1_queue_out) for _ in range(5)]
+ # create the task 2 thread pool
+tpe2 = ThreadPoolExecutor(5)
+# issue task 2 workers
+_ = [tpe2.submit(task2, task1_queue_out, task2_queue_out) for _ in range(5)]
+</code></pre>
+<p>To avoid the race condition seen in the previous section, this example explicitly consumes a fixed number of expected results before sending the shutdown signal into the pipeline.</p>
+<pre><code>...
+# consume results
+for _ in range(20):
+    # retrieve data
+    data = task2_queue_out.get()
+    # check for the end of work
+    if data is None:
+        # stop processing
+        break
+    # report the result
+    print(f'Main got {data}')
+# signal that there is no more work
+task1_queue_in.put(None)
+</code></pre>
+<p>At the end of the program, we can manually shut down each thread pool.</p>
+<pre><code>...
+# shutdown thread pools
+tpe1.shutdown()
+tpe2.shutdown()</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a threadpoolexecutor pipeline using queues and separate thread pools
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+from random import random
+from time import sleep
+
+# first task in the pipeline
+def task1(queue_in, queue_out):
+    # loop forever
+    while True:
+        # read item from queue
+        data = queue_in.get()
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # generate a random value between 0 and 1
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # report message
+        print(f'&gt; Task1 got {data}, produced {value}')
+        # push result onto queue
+        queue_out.put(value)
+    # report message
+    print('&gt; Task1 done')
+
+# first task in the pipeline
+def task2(queue_in, queue_out):
+    # loop forever
+    while True:
+        # read item from queue
+        data = queue_in.get()
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # generate a random value between 0 and 1
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # report message
+        print(f'&gt; &gt; Task2 got {data}, produced {value}')
+        # push result onto queue
+        queue_out.put(value)
+    # report message
+    print('&gt; &gt; Task2 done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared queues
+    task1_queue_in = Queue()
+    task1_queue_out = Queue()
+    task2_queue_out = Queue()
+    # create the task 1 thread pool
+    tpe1 = ThreadPoolExecutor(5)
+    # issue task 1 workers
+    _ = [tpe1.submit(task1, task1_queue_in, task1_queue_out) for _ in range(5)]
+     # create the task 2 thread pool
+    tpe2 = ThreadPoolExecutor(5)
+    # issue task 2 workers
+    _ = [tpe2.submit(task2, task1_queue_out, task2_queue_out) for _ in range(5)]
+    # push work into task 1
+    for i in range(20):
+        task1_queue_in.put(i)
+    # consume results
+    for _ in range(20):
+        # retrieve data
+        data = task2_queue_out.get()
+        # check for the end of work
+        if data is None:
+            # stop processing
+            break
+        # report the result
+        print(f'Main got {data}')
+    # signal that there is no more work
+    task1_queue_in.put(None)
+    # report a message
+    print('Main all done')
+    # shutdown thread pools
+    tpe1.shutdown()
+    tpe2.shutdown()
+</code></pre>
+<p>Running the example first creates the shared queues.</p>
+<p>Next, the thread pool for task1 is created with a capacity for 5 workers, and 5 tasks are issued to the pool.</p>
+<p>Then the thread pool for task2 is created with a capacity for 5 workers, and all 5 tasks are issued to the pool.</p>
+<p>The main thread then pushes 20 integer values into the first input queue.</p>
+<p>The main thread then loops forever, attempting to consume values from the last output queue.</p>
+<p>Input values are consumed by the task1 workers in the first thread pool. Each generates a random value, blocks, reports a message, and outs the generated value in the output queue.</p>
+<p>Task2 workers in the second thread pool consume values from their input queue sent from task1. They process them in the same general way as task1 workers, generating a random value, blocking, reporting a message, and putting their value on their own output queue.</p>
+<p>The main thread consumes values from the final output queue and reports their values. It then pushes a shutdown value onto the first input queue.</p>
+<p>Eventually, all values are consumed by task1 from the first input queue and the sentinel value is read. Task1 tasks shutdown and share the None value with task2 tasks. They too shut down and share the result on the output queue. Eventually, the main thread sees the sentinel value and terminates with a final message.</p>
+<p>This highlights how we can execute multi-step tasks in a pipeline with a separate thread pool for each step.</p>
+<pre><code>&gt; Task1 got 0, produced 0.36928729857298637
+&gt; Task1 got 4, produced 0.5391661944325759
+&gt; Task1 got 1, produced 0.5735422887671429
+&gt; &gt; Task2 got 0.36928729857298637, produced 0.20843724288457122
+Main got 0.20843724288457122
+&gt; &gt; Task2 got 0.5391661944325759, produced 0.19758767163104396
+Main got 0.19758767163104396
+&gt; Task1 got 2, produced 0.7848429380744457
+&gt; Task1 got 3, produced 0.8529521848021492
+&gt; Task1 got 5, produced 0.5111241599463854
+&gt; Task1 got 6, produced 0.4908872328758084
+&gt; Task1 got 10, produced 0.40307794959535304
+&gt; Task1 got 8, produced 0.6019551159981671
+&gt; Task1 got 7, produced 0.8241816834956085
+&gt; Task1 got 13, produced 0.09050412771639793
+&gt; &gt; Task2 got 0.5735422887671429, produced 0.9459468872801333
+Main got 0.9459468872801333
+&gt; &gt; Task2 got 0.4908872328758084, produced 0.5162143391804884
+Main got 0.5162143391804884
+&gt; Task1 got 11, produced 0.5820216834621625
+&gt; &gt; Task2 got 0.6019551159981671, produced 0.11555441277605871
+Main got 0.11555441277605871
+&gt; &gt; Task2 got 0.5111241599463854, produced 0.8560806469629169
+Main got 0.8560806469629169
+&gt; &gt; Task2 got 0.8529521848021492, produced 0.9176874983371848
+Main got 0.9176874983371848
+&gt; &gt; Task2 got 0.7848429380744457, produced 0.9905936792940581
+Main got 0.9905936792940581
+&gt; Task1 got 9, produced 0.9661051893683117
+&gt; Task1 got 15, produced 0.36828658286530924
+&gt; &gt; Task2 got 0.9661051893683117, produced 0.12066545947023144
+Main got 0.12066545947023144
+&gt; Task1 got 14, produced 0.6955094414264186
+&gt; &gt; Task2 got 0.40307794959535304, produced 0.5857288345594803
+Main got 0.5857288345594803
+&gt; &gt; Task2 got 0.8241816834956085, produced 0.45749026507622026
+Main got 0.45749026507622026
+&gt; Task1 got 12, produced 0.8854878444702812
+&gt; Task1 got 18, produced 0.36511931630679306
+&gt; Task1 got 16, produced 0.6616228450362268
+&gt; Task1 got 17, produced 0.6157262902267976
+&gt; &gt; Task2 got 0.5820216834621625, produced 0.7264203708677363
+Main got 0.7264203708677363
+&gt; Task1 got 19, produced 0.4985094535776535
+&gt; &gt; Task2 got 0.36828658286530924, produced 0.6713814453765958
+Main got 0.6713814453765958
+&gt; &gt; Task2 got 0.6955094414264186, produced 0.5327026032134283
+Main got 0.5327026032134283
+&gt; &gt; Task2 got 0.09050412771639793, produced 0.9227140928329207
+Main got 0.9227140928329207
+&gt; &gt; Task2 got 0.6616228450362268, produced 0.2976807505368585
+Main got 0.2976807505368585
+&gt; &gt; Task2 got 0.8854878444702812, produced 0.7780435647414249
+Main got 0.7780435647414249
+&gt; &gt; Task2 got 0.6157262902267976, produced 0.3836770581178164
+Main got 0.3836770581178164
+&gt; &gt; Task2 got 0.4985094535776535, produced 0.5383580460138072
+Main got 0.5383580460138072
+&gt; &gt; Task2 got 0.36511931630679306, produced 0.7122436948383247
+Main got 0.7122436948383247
+Main all done
+&gt; Task1 done
+&gt; Task1 done
+&gt; &gt; Task2 done
+&gt; Task1 done
+&gt; &gt; Task2 done
+&gt; Task1 done
+&gt; &gt; Task2 done
+&gt; Task1 done
+&gt; &gt; Task2 done
+&gt; &gt; Task2 done
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to execute multi-step tasks using a <strong>ThreadPoolExecutor</strong> pipeline.</p>
 </main>
 </body>
 </html>

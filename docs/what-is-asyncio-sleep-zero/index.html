@@ -165,6 +165,114 @@ async def main():
 <p>This is because the new task was created and scheduled, but is not given an opportunity to run.</p>
 <p>When we try to retrieve the result from this task, we expect an exception, specifically as <strong>InvalidStateError</strong> because the task is not done, it is not even started. It is pending.</p>
 <p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of starting a new task without asyncio.sleep(0)
+import asyncio
+
+# a background task
+async def other_task():
+    # report a message
+    print('Other task is running')
+    # prepare some data and return it
+    return 99
+
+# entry point coroutine
+async def main():
+    # create and schedule the new task
+    task = asyncio.create_task(other_task())
+    # do some other blocking things
+    data = [i*i for i in range(10000000)]
+    # get the result from by other task
+    result = task.result()
+    # report the result
+    print(result)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine creates the <strong>other_task()</strong> coroutine, then creates a task and schedules it for this coroutine.</p>
+<p>This task does not yet run.</p>
+<p>The <strong>main()</strong> coroutine then does some CPU-bound task that blocks the event loop.</p>
+<p>It then checks on the result of the background task.</p>
+<p>This fails with an exception because the background task has not had the opportunity to execute. It is scheduled and is pending.</p>
+<p>This highlights a common problem where new tasks are created and scheduled but not given an opportunity to execute.</p>
+<pre><code>Other task is running
+Traceback (most recent call last):
+  File "...", line 24, in &lt;module&gt;
+    asyncio.run(main())
+  File ".../asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File ".../asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "...", line 19, in main
+    result = task.result()
+             ^^^^^^^^^^^^^
+asyncio.exceptions.InvalidStateError: Result is not set.
+</code></pre>
+<p>Next, let's look at an example that fixes this situation by adding a <strong>asyncio.sleep(0)</strong>.</p>
+<h2>Example With asyncio.sleep(0)</h2>
+<p>We can explore how to update the above example to work as expected by adding an <strong>asyncio.sleep(0)</strong>.</p>
+<p>Firstly, we note that the <strong>main()</strong> coroutine could just await the new task.</p>
+<p>Perhaps after it is created, or perhaps right before the result is needed.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from by other task
+result = await task</code></pre>
+<p>We won't do this.</p>
+<p>In this contrived situation, we require the caller to not block on the new task for some reason. It doesn't want to wait on the new task.</p>
+<p>Instead, the solution is for the caller to give up control for one cycle of the event loop.</p>
+<p>This allows all other scheduled tasks, like our background task, an opportunity to progress until their next point of suspension. In the case of the background task, it will complete.</p>
+<p>This can be achieved by adding in a call to <strong>asyncio.sleep(0)</strong> somewhere, such as right after the new task is created and scheduled.</p>
+<pre><code>...
+# suspend for a moment and allow all scheduled tasks to run
+await asyncio.sleep(0)</code></pre>
+<p>The caller is not blocking on the background task directly. It is allowing all other scheduled tasks an opportunity to progress, which includes our background task.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of starting a new task without asyncio.sleep(0)
+import asyncio
+
+# a background task
+async def other_task():
+    # report a message
+    print('Other task is running')
+    # prepare some data and return it
+    return 99
+
+# entry point coroutine
+async def main():
+    # create and schedule the new task
+    task = asyncio.create_task(other_task())
+    # suspend for a moment and allow all scheduled tasks to run
+    await asyncio.sleep(0)
+    # do some other blocking things
+    data = [i*i for i in range(10000000)]
+    # get the result from by other task
+    result = task.result()
+    # report the result
+    print(result)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine creates the <strong>other_task()</strong> coroutine, then creates a task and schedules it for this coroutine.</p>
+<p>It then suspends with <strong>asyncio.sleep(0)</strong> and the event loop to progress one cycle.</p>
+<p>The background task is given a chance to run and is completed.</p>
+<p>The <strong>main()</strong> coroutine resumes and then does some CPU-bound task that blocks the event loop.</p>
+<p>It then checks on the result of the background task.</p>
+<p>This succeeds as the result is now available.</p>
+<p>This highlights how we can fix a common problem in asyncio that allows newly created and scheduled tasks an opportunity to get started from the creator of those new tasks.</p>
+<pre><code>Other task is running
+99</code></pre>
+<h2>Takeaways</h2>
+<p>You now know about <strong>asyncio.sleep(0)</strong>, what it is, and why it is important.</p>
 </main>
 </body>
 </html>

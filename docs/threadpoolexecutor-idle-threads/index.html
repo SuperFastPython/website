@@ -135,6 +135,145 @@ with ThreadPoolExecutor(4) as tpe:
 <li><a href="../threadpoolexecutor-context-manager/">How to Use the ThreadPoolExecutor Context Manager</a></li>
 </ul>
 <p>We will then issue 2 tasks to the pool and wait for them to complete, then report all active threads in the process.</p>
+<pre><code>...
+# issue two tasks
+futures = [tpe.submit(task) for _ in range(2)]
+# wait for the tasks to complete
+_ = wait(futures)
+# report all running threads
+print('Running threads:')
+for thread in threading.enumerate():
+    print(f'\t{thread}')
+</code></pre>
+<p>Finally, we will issue one more task to the pool, wait for it to complete, and report all active threads again.</p>
+<pre><code>...
+# issue one task
+futures = [tpe.submit(task)]
+# wait for the task to complete
+_ = wait(futures)
+# report all running threads
+print('Running threads:')
+for thread in threading.enumerate():
+    print(f'\t{thread}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of idle threads being reused for new tasks
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+from time import sleep
+import threading
+
+# task executed in the thread pool
+def task():
+    # block for a moment
+    sleep(1)
+
+# create the thread pool
+with ThreadPoolExecutor(4) as tpe:
+    # issue two tasks
+    futures = [tpe.submit(task) for _ in range(2)]
+    # wait for the tasks to complete
+    _ = wait(futures)
+    # report all running threads
+    print('Running threads:')
+    for thread in threading.enumerate():
+        print(f'\t{thread}')
+    # issue one task
+    futures = [tpe.submit(task)]
+    # wait for the task to complete
+    _ = wait(futures)
+    # report all running threads
+    print('Running threads:')
+    for thread in threading.enumerate():
+        print(f'\t{thread}')
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPoolExecutor</strong> with four worker threads.</p>
+<p>Two tasks are then issued to the thread pool, and return Future objects. The main thread then blocks until the tasks are completed.</p>
+<p>Two worker threads are created in the <strong>ThreadPoolExecutor</strong>, one for each task. The tasks execute, block, resume, and complete.</p>
+<p>The two worker threads remain idle in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>The main thread resumes and reports all active threads, showing the main thread and two worker threads in the <strong>ThreadPoolExecutor</strong>, as we expect.</p>
+<p>Next, one additional task is issued to the <strong>ThreadPoolExecutor</strong>, and the main thread blocks until it is complete.</p>
+<p>An existing worker thread in the <strong>ThreadPoolExecutor</strong> executes the task. The task runs, blocks for a moment then terminates.</p>
+<p>The main thread resumes again and reports all active threads. As before, we can see that there are only the main thread and two worker threads running in the process.</p>
+<p>This highlights that an additional worker thread was not created for the third task, instead an idle thread in the <strong>ThreadPoolExecutor</strong> was reused to execute the new task.</p>
+<pre><code>Running threads:
+	&lt;_MainThread(MainThread, started 4718198272)&gt;
+	&lt;Thread(ThreadPoolExecutor-0_0, started 123145437466624)&gt;
+	&lt;Thread(ThreadPoolExecutor-0_1, started 123145454256128)&gt;
+Running threads:
+	&lt;_MainThread(MainThread, started 4718198272)&gt;
+	&lt;Thread(ThreadPoolExecutor-0_0, started 123145437466624)&gt;
+	&lt;Thread(ThreadPoolExecutor-0_1, started 123145454256128)&gt;
+</code></pre>
+<h2>Example of Idle Threads Not Released After Tasks Are Done</h2>
+<p>We can explore the case where idle threads in the <strong>ThreadPoolExecutor</strong> are not released.</p>
+<p>In this example, we will create a <strong>ThreadPoolExecutor</strong> and issue tasks, then wait for them to complete. We will then wait some period of time and then report all active threads in the process. This will show that even after an extended period, the idle worker threads are not released.</p>
+<p>We can update the above example, and reuse the simple task that blocks.</p>
+<p>We will create a thread pool with four workers, then issue 4 tasks to ensure all worker threads are created. The main thread then blocks until all tasks are completed.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(4) as tpe:
+    # issue four tasks
+    futures = [tpe.submit(task) for _ in range(4)]
+    # wait for the tasks to complete
+    _ = wait(futures)
+</code></pre>
+<p>Next, the main thread will block for an extended period, 10 minutes (600 seconds) in this case.</p>
+<pre><code>...
+print('Main thread waiting...')
+sleep(600)</code></pre>
+<p>Finally, the main thread resumes and reports all active threads.</p>
+<pre><code>...
+# report all running threads
+print('Running threads:')
+for thread in threading.enumerate():
+    print(f'\t{thread}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of idle threads not being released after tasks are done
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+from time import sleep
+import threading
+
+# task executed in the thread pool
+def task():
+    # block for a moment
+    sleep(1)
+
+# create the thread pool
+with ThreadPoolExecutor(4) as tpe:
+    # issue four tasks
+    futures = [tpe.submit(task) for _ in range(4)]
+    # wait for the tasks to complete
+    _ = wait(futures)
+    # wait a while for any idle threads to be released
+    print('Main thread waiting...')
+    sleep(600)
+    # report all running threads
+    print('Running threads:')
+    for thread in threading.enumerate():
+        print(f'\t{thread}')
+</code></pre>
+<p>Running the example first creates a <strong>ThreadPoolExecutor</strong> with four worker threads.</p>
+<p>Four tasks are issued to the thread pool, and the main thread blocks until the tasks are completed.</p>
+<p>The <strong>ThreadPoolExecutor</strong> creates four worker threads, one for each task issued. The tasks execute, block, then terminate.</p>
+<p>The main thread resumes and then blocks for an extended period of ten minutes.</p>
+<p>The main thread eventually resumes and reports all active threads. This shows the main thread and the four worker threads.</p>
+<p>This example highlights that worker threads in the <strong>ThreadPoolExecutor</strong> that sit idle for an extended period are not closed or terminated.</p>
+<p>Worker threads in the <strong>ThreadPoolExecutor</strong> are not terminated until the thread pool is shut down.</p>
+<pre><code>Main thread waiting...
+Running threads:
+	&lt;_MainThread(MainThread, started 4687715840)&gt;
+	&lt;Thread(ThreadPoolExecutor-0_0, started 123145478320128)&gt;
+	&lt;Thread(ThreadPoolExecutor-0_1, started 123145495109632)&gt;
+	&lt;Thread(ThreadPoolExecutor-0_2, started 123145511899136)&gt;
+	&lt;Thread(ThreadPoolExecutor-0_3, started 123145528688640)&gt;
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how the <strong>ThreadPoolExecutor</strong> manages idle worker threads.</p>
 </main>
 </body>
 </html>

@@ -126,6 +126,175 @@ with lock:
 <p>First we must develop a task function to execute in new threads.</p>
 <p>The function will take the shared list, iterate many times and each iteration it will iterate over the list and increment each value in the list.</p>
 <p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task function to be executed in new threads
+def task(data):
+    # iterate many times
+    for i in range(1000):
+        for j in range(len(data)):
+            data += 1
+</code></pre>
+<p>Next, we can initialize the list variable with zero values.</p>
+<pre><code>...
+# create the shared variable
+data = [0 for i in range(100)]</code></pre>
+<p>We can then create many new threads and configure each to execute our <strong>task()</strong> function and operate on the same shared list variable.</p>
+<p>This can be achieved in a list comprehension.</p>
+<p>For example:</p>
+<pre><code>...
+# create threads to operate on the shared variable
+threads = [Thread(target=task, args=(data,)) for _ in range(100)]</code></pre>
+<p>In this case, we will have 100 threads calling the <strong>task()</strong> function. Each thread will iterate 1,000 times and increment the values in the list. Therefore, without a race condition, we would expect each value in the list to be 100,000 at the end of the program, e.g. 100 threads * 1,000 iterations of being incremented.</p>
+<p>Next, we can start the threads, then the main thread will wait until all threads have finished and terminated.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Finally, we can report the values in the list.</p>
+<pre><code>...
+# report data
+print(data)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of updating a variable from many threads resulting in a race condition
+from threading import Thread
+
+# task function to be executed in new threads
+def task(data):
+    # iterate many times
+    for i in range(1000):
+        for j in range(len(data)):
+            data += 1
+
+# create the shared variable
+data = [0 for i in range(100)]
+# create threads to operate on the shared variable
+threads = [Thread(target=task, args=(data,)) for _ in range(100)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+# report data
+print(data)
+</code></pre>
+<p>Running the example first initializes the shared list with zero values.</p>
+<p>Then one hundred threads are created and configured to execute our <strong>task()</strong> function on the shared list variable.</p>
+<p>The threads are started and the main thread blocks until the threads terminate.</p>
+<p>All threads execute concurrently. The global interpreter lock ensures that only one thread can update the Python interpreter at a time, because the operating system will context switch between threads frequently, giving each an opportunity to run for a short time.</p>
+<p>Each thread will iterate 1,000 times and increment values in the list.</p>
+<p>A race condition exists in the way the values in the list are incremented. An increment involves:</p>
+<ol><li>Reading the current value from a position in the list.</li><li>Calculating a new value.</li><li>Writing the new value to the position in the list.</li></ol>
+<p>It is possible for a thread to be context switched in the middle of these steps, and when it releases it may write a value that is invalid, e.g. less than the actual value because another thread updated it.</p>
+<p>This race condition means some incremented values in the list will be less than 100,000 at the end of the program.</p>
+<p>And this is exactly what we see.</p>
+<p>Note, your specific results may differ given how the race condition may manifest on different platforms.</p>
+<pre><code>[97428, 99862, 100000, 99844, 100000, 99016, 100000, 99793, 100000, 100000, 99088, 99739, 100000, 100000, 99066, 100000, 100000, 100000, 99894, 100000, 99149, 100000, 100000, 100000, 100000, 100000, 99069, 100000, 100000, 97489, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 99086, 100000, 100000, 100000, 99079, 99256, 100000, 99700, 100000, 100000, 99105, 100000, 100000, 100000, 100000, 100000, 97869, 99138, 99273, 100000, 100000, 100000, 99728, 100000, 100000, 100000, 98113, 99125, 97816, 100000, 100000, 100000, 100000, 100000, 100000, 99760, 97788, 100000, 97992, 99814, 100000, 99908, 100000, 98819, 100000, 98319, 98513, 99296, 99286, 99705, 99182, 100000, 100000, 99012, 100000, 97833, 100000, 100000, 100000, 98497, 97108]</code></pre>
+<p>We can fix this race condition by using a lock to protect the variable.</p>
+<h3>Example With Lock (Thread-Safe)</h3>
+<p>The race condition can be fixed by making all usage of the shared variable mutually exclusive.</p>
+<p>That means, while one thread is operating on the variable, other threads must wait until the thread is finished.</p>
+<p>This can be achieved using a mutex lock provided by the <strong>threading.Lock</strong> class.</p>
+<p>The lock can be created and shared along with the shared list variable. Each time the values in the list are modified by threads in the <strong>task() </strong>function, the lock must be acquired, then released once the updates are complete.</p>
+<p>We can update the example in the previous section to demonstrate this.</p>
+<p>First, the <strong>task()</strong> function must be updated to take the shared lock as an argument, along with the shared list.</p>
+<p>For example:</p>
+<pre><code>...
+# task function to be executed in new threads
+def task(data, lock):
+	# ...
+</code></pre>
+<p>Next, we must update the function so that the lock is acquired before updating the values in the list.</p>
+<p>We have a few options of where we may place the lock.</p>
+<p>Such as:</p>
+<ul><li>Lock the entire function, e.g. before the outer iteration.</li><li>Lock each iteration, e.g. within the outer loop.</li><li>Lock each update to the list, e.g. within the inner loop.</li></ul>
+<p>The choice of where to place the lock depends on the specifics of the application.</p>
+<p>A coarse grained lock, e.g. locking the whole function, may mean that threads acquiring the lock will hold the lock for longer and other threads waiting for the lock will have to wait for longer. Overall, execution of all threads may be faster.</p>
+<p>For example:</p>
+<pre><code># task function to be executed in new threads
+def task(data, lock):
+    # acquire the lock
+    with lock:
+        # iterate many times
+        for i in range(1000):
+            for j in range(len(data)):
+                data += 1
+</code></pre>
+<p>The fine-grain lock, e.g. locking each increment to the list, may mean that the lock is acquired for a very short duration, and waiting threads will not have to wait long. The lock would be acquired and released many times, adding overhead and slowing down the execution of all threads.</p>
+<p>For example:</p>
+<pre><code># task function to be executed in new threads
+def task(data, lock):
+    # iterate many times
+    for i in range(1000):
+        for j in range(len(data)):
+            # acquire the lock
+    		with lock:
+            	data += 1</code></pre>
+<p>In this case, we will aim for some middle ground between the two above cases and require that each thread acquire the lock at the beginning of each iteration of the outer loop.</p>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task function to be executed in new threads
+def task(data, lock):
+    # iterate many times
+    for i in range(1000):
+        # acquire the lock
+        with lock:
+            for j in range(len(data)):
+                data += 1
+</code></pre>
+<p>Next, in the main thread, we can create the shared lock along with the shared list variable.</p>
+<pre><code>...
+# create the shared lock
+lock = Lock()</code></pre>
+<p>This lock can then be passed to the <strong>task()</strong> function along with the shared list variable when creating and configuring the new threads.</p>
+<pre><code>...
+# create threads to operate on the shared variable
+threads = [Thread(target=task, args=(data,lock)) for _ in range(100)]</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of locking a variable to protect it from a race condition
+from threading import Thread
+from threading import Lock
+
+# task function to be executed in new threads
+def task(data, lock):
+    # iterate many times
+    for i in range(1000):
+        # acquire the lock
+        with lock:
+            for j in range(len(data)):
+                data += 1
+
+# create the shared lock
+lock = Lock()
+# create the shared variable
+data = [0 for i in range(100)]
+# create threads to operate on the shared variable
+threads = [Thread(target=task, args=(data,lock)) for _ in range(100)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+# report data
+print(data)
+</code></pre>
+<p>Running the example first creates the shared lock, then initializes the shared list with zero values.</p>
+<p>Then one hundred threads are created and configured to execute our <strong>task()</strong> function on the shared list variable.</p>
+<p>The threads are started and the main thread blocks until the threads terminate.</p>
+<p>Each iteration of the <strong>task()</strong> function by each thread requires that the lock be acquired before modifying values in the list. One thread will acquire the lock at a time and all other threads must block and wait for the lock to be released.</p>
+<p>This process is then repeated until all threads complete their task.</p>
+<p>This ensures that the modification of the values in the list variable are mutually exclusive, avoiding the race condition of data loss seen in the previous section.</p>
+<p>The results confirm that the race condition was fixed by locking the variable.</p>
+<p>Each value in the list has the expected value of 100,000.</p>
+<pre><code>[100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000]
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to lock a variable in Python.</p>
 </main>
 </body>
 </html>

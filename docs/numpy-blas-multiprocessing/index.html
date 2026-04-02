@@ -79,6 +79,227 @@
 <p>Am operation is then applied to each pair of 100 matrices, in this case, a simple matrix multiplication.</p>
 <p>This is a contrived test case, but we can see how creating random matrices could be replaced with loading datasets or images, and how the matrix multiplication operation could be applied with some relevant operation required on the loaded data supported by NumPy that calls down into BLAS.</p>
 <p>The complete example is listed below.</p>
+<pre><code># example of loading matrices and multiplying them together (no threads)
+from os import environ
+# turn off threads in numpy (with openblas)
+environ['OMP_NUM_THREADS'] = '1'
+from numpy.random import rand
+
+# function for creating a test matrix
+def load_data(n=2000):
+    # square matrix of random floats
+    return rand(n, n)
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# load data
+data1 = [load_data() for _ in range(100)]
+data2 = [load_data() for _ in range(100)]
+# apply operation to items
+results = [operation(item1, item2) for item1,item2 in zip(data1,data2)]
+</code></pre>
+<p>Running the example on my system takes about 33.1 seconds.</p>
+<p>We could improve the benchmarking by running the example many times and taking the average time.</p>
+<p>This could be further automated using a module like <a href="https://docs.python.org/3/library/timeit.html">timeit</a>. I leave this as an exercise for the reader.</p>
+<p>Here, the numbers are directional rather than definitive.</p>
+<p>I don't want to give hard numbers for "this" is better than "that" for all cases. I want to teach you how you can benchmark your own use case and discover what works well/best for you.</p>
+<p>Next, let's re-run the example with BLAS threads.</p>
+<h2>Example of Default Number of BLAS Threads</h2>
+<p>We can update the example to use threads to perform the matrix multiplication via BLAS.</p>
+<p>Most BLAS libraries use threads by default, therefore we can simply remove the explicit setting of the <strong>OMP_NUM_THREADS</strong> environment variable and use the default number of threads.</p>
+<p>The complete example with this change is listed below.</p>
+<pre><code># example of loading matrices and multiplying them together (default numpy threads)
+from numpy.random import rand
+
+# function for creating a test matrix
+def load_data(n=2000):
+    # square matrix of random floats
+    return rand(n, n)
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# load data
+data1 = [load_data() for _ in range(100)]
+data2 = [load_data() for _ in range(100)]
+# apply operation to items
+results = [operation(item1, item2) for item1,item2 in zip(data1,data2)]
+</code></pre>
+<p>Running the example takes about 15.9 seconds on my system.</p>
+<p>This is interesting. I have 4 physical CPU cores (8 logical cores), and might have thought that the example would be 4x faster, not 2x faster.</p>
+<p>Generating random matrices is slow, perhaps that's it.</p>
+<p>Nevertheless, we beat the baseline, but can we do better?</p>
+<h3>Example of Tuned Number of NumPy (BLAS) Threads</h3>
+<p>When installing the BLAS library it is probably compiled for the specific hardware and operating system.</p>
+<p>As such it may be configured with a default number of threads based on the number of logical CPU cores in the system. Recall each physical CPU core may be considered 2 logical CPU cores if we have support for hyperthreading, which most CPUs do these days.</p>
+<p>You can learn more about physical vs logical CPUs in the tutorial:</p>
+<ul>
+<li><a href="../number-of-cpus-python/">Number of CPUs in Python</a></li>
+</ul>
+<p>This means in my system the default number of BLAS threads may be set to 8.</p>
+<p>Alternatively, the BLAS library may use an arbitrary number of default threads, such as 24.</p>
+<p>We may see a benefit by explicitly setting the number of threads supported by BLAS to be equal to the number of physical CPU cores.</p>
+<p>I will use 4 in this case but change this to match the number of physical cores in your system, or try different values and discover what works best.</p>
+<pre><code># example of loading matrices and multiplying them together (optimal numpy threads)
+from os import environ
+# set threads equal to number of physical cores (with openblas)
+environ['OMP_NUM_THREADS'] = '4'
+from numpy.random import rand
+
+# function for creating a test matrix
+def load_data(n=2000):
+    # square matrix of random floats
+    return rand(n, n)
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# load data
+data1 = [load_data() for _ in range(100)]
+data2 = [load_data() for _ in range(100)]
+# apply operation to items
+results = [operation(item1, item2) for item1,item2 in zip(data1,data2)]
+</code></pre>
+<p>Running the example takes about 15.9 seconds on my system.</p>
+<p>This is no different to the default, so no win here (on this specific case on my specific hardware).</p>
+<p><strong>Did you see a better result?</strong></p>
+<h2>Example of Multiprocessing Without BLAS Threads</h2>
+<p>We can implement-task level parallelism using multiprocessing.</p>
+<p>Specifically, we can define a task, then issue it to a pool of workers to execute as soon as possible.</p>
+<p>We can use the <strong>multiprocessing.Pool</strong> class to create a pool of worker processes, one worker per physical CPU core in the system. I will use 4 workers in this case, but you can tune it for the number of cores in your system.</p>
+<p>You can learn more about the process pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-python/">Multiprocessing Pool: The Complete Guide</a></li>
+</ul>
+<p>The task can be defined as generating two square matrices of random numbers and calculating a matrix multiplication.</p>
+<p>Parallelism in the NumPy matrix multiplication can be disabled by configuring BLAS to use a single thread.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example with multiprocessing and no numpy threads
+from os import environ
+# turn off threads in numpy (with openblas)
+environ['OMP_NUM_THREADS'] = '1'
+from numpy.random import rand
+from multiprocessing import Pool
+
+# function for creating a test matrix
+def load_data(n=2000):
+    # square matrix of random floats
+    return rand(n, n)
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# function that defines a single task
+def task():
+    # load items
+    item1 = load_data()
+    item2 = load_data()
+    # perform operation
+    result = operation(item1, item2)
+    return result
+
+# entry point
+if __name__ == '__main__':
+    # create process pool
+    with Pool(4) as pool:
+        # issue tasks and gather results
+        results = [pool.apply_async(task) for _ in range(100)]
+        # close the process pool
+        pool.close()
+        # wait for tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example takes about 11.5 seconds.</p>
+<p>This is closer to the 4x speed-up I would expect with 4 physical CPU cores. For example, 33.1 * 0.25 = 8.275. The 3-second discrepancy (11 minus 8 seconds) is probably overhead in the Pool (and elsewhere).</p>
+<p>Perhaps in this scenario, or just in this contrived version of the use case, task-level parallelism is a better approach than the operation-level parallel, at least with the configurations tested so far.</p>
+<h2>Example of Multiprocessing And BLAS Threads</h2>
+<p>Finally, we can try to combine task and operation-level parallelism.</p>
+<p>That is, process-based parallelism with the multiprocessing module and parallelism of the matrix operation in NumPy via threads in the BLAS library implementation.</p>
+<p>This is tricky as the threads, at the operating system level, will likely step on each other. Recall each Python process has a main thread.</p>
+<p>Python developers often try to speed up NumPy programs by using multiprocessing with NumPy arrays, unaware of the BLAS-level parallelism provided automatically. As such, they may get equal or worse performance and have no idea why.</p>
+<p>In this case, we will use the default number of BLAS threads and configure the multiprocessing pool to use 4 workers, one for each physical CPU core. After testing on my system, this seemed to give better performance than other configurations, e.g. 2 BLAS threads and 2 workers, and other configs.</p>
+<p>Try a suite of configurations on your system based on the number of CPU cores and see what works.</p>
+<p>Recall, setting BLAS to 1 thread and the pool to one process is equivalent to the baseline example (no threads) performed above, although will be slightly slower given the overhead of managing tasks by a worker in the pool.</p>
+<p>The complete example is listed below.</p>
+<pre><code># example with multiprocessing and numpy threads
+from numpy.random import rand
+from multiprocessing import Pool
+
+# function for creating a test matrix
+def load_data(n=2000):
+    # square matrix of random floats
+    return rand(n, n)
+
+# function for performing operation on matrices
+def operation(item1, item2):
+    # matrix multiplication
+    return item1.dot(item2)
+
+# function that defines a single task
+def task():
+    # load items
+    item1 = load_data()
+    item2 = load_data()
+    # perform operation
+    result = operation(item1, item2)
+    return result
+
+# entry point
+if __name__ == '__main__':
+    # create process pool
+    with Pool(4) as pool:
+        # issue tasks and gather results
+        results = [pool.apply_async(task) for _ in range(100)]
+        # close the process pool
+        pool.close()
+        # wait for tasks to complete
+        pool.join()
+</code></pre>
+<p>In this case, the example took about 12.1 seconds to complete on my system.</p>
+<p>Hmm.</p>
+<p>Naively, I would have bet on a program structure like this, with some tuned configuration of BLAS threads and Pool workers, would have been the best. This false expectation is why we experiment and test!</p>
+<p>I would guess that there might be an optimal arrangement for task and operation level parallelism, but perhaps the tools of the Pool class and BLAS are too blunt to find it.</p>
+<h2>Comparison of Results</h2>
+<p>We have tested a number of instances of the case study with what we have termed operation-level parallelism and task-level parallelism.</p>
+<p>The table below summarizes the cases tested and their wall clock time (reported by my IDE).</p>
+<pre><code>Multiprocessing | NumPy (BLAS) Threads | Time (sec)
+---------------------------------------------------
+No              | No                   | 33.1
+No              | Yes (default)        | 15.9
+No              | Yes (tailored)       | 15.9
+Yes             | No                   | 11.5
+Yes             | Yes (default)        | 12.1
+</code></pre>
+<p>In this case (the specific number and size of data) on my system (hardware and software), it seems that task-level parallelism via multiprocessing was faster overall.</p>
+<p>So what should you do in your situation?</p>
+<p>Test.</p>
+<p>If you are using NumPy, take a close look at the functions to see if they are calling down into BLAS. If you're not sure, check this tutorial:</p>
+<ul>
+<li><a href="../multithreaded-numpy-functions/">Which NumPy Functions Are Multithreaded</a></li>
+</ul>
+<p>If you're still not sure, contrive a test with one BLAS thread and multiple BLAS threads and compare the performance.</p>
+<p>Then, test your use case with different levels of parallelism, such as those listed above.</p>
+<p>Use the code examples above as templates.</p>
+<p>Don't assume what approach will be fastest, devise experiments and discover what approach is fastest with your data on your hardware.</p>
+<p>You can always go further too.</p>
+<ul>
+<li>Loading data could be parallel.</li>
+<li>Generating data can be made parallel.</li>
+<li>Using alternative NumPy functions can use more or fewer BLAS and LAPACK functions and in turn achieve more or less parallelism.</li>
+<li>Issuing calls down to BLAS in batch might be possible in some cases, e.g. see the <a href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.multi_dot.html"><strong>numpy.linalg.multi_dot()</strong> function</a>.</li>
+<li>Custom operations can be defined down in C/FORTRAN in third-party code to use native threads then called from Python.</li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know how to combine and test multiprocessing and NumPy parallelism in order to achieve the best performance.</p>
 </main>
 </body>
 </html>

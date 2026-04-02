@@ -56,6 +56,493 @@ with ThreadPoolExecutor(1000) as executor:
 </code></pre>
 <p>Finally, we will submit 10,000 tasks to the thread pool as calls to our <strong>task()</strong> function.</p>
 <p>This can be achieved by calling the <strong>submit()</strong> function in a list comprehension, assigning each call to the <strong>task()</strong> function a unique integer from 0 to 9,999. Each call to the <strong>submit()</strong> function returns a <strong>Future</strong> object to keep track of the task, which we will ignore in this case as we do not require any result from our task.</p>
+<pre><code>...
+# dispatch all tasks
+_ = [executor.submit(task, i, handle) for i in range(10000)]
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of writing to a file from multiple threads in an unsafe manner is listed below.</p>
+<pre><code># SuperFastPython.com
+# write to a file from multiple threads results in unexpected behaviour
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+
+# task that blocks for a moment and write to a file
+def task(identifier, file_handle):
+    # block for a moment
+    value = random()
+    sleep(value)
+    # write to a file
+    file_handle.write(f'Task {identifier} blocked for {value} of a second.\n')
+
+# write to a file from multiple threads
+def main():
+    # open a file
+    with open('results.txt', 'a', encoding='utf-8') as handle:
+        # create the thread pool
+        with ThreadPoolExecutor(1000) as executor:
+            # dispatch all tasks
+            _ = [executor.submit(task, i, handle) for i in range(10000)]
+    # wait for all tasks to complete
+    print('Done.')
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example opens the file '<strong>results.txt</strong>', creates the thread pool with 1,000 workers and submits 10,000 tasks, each attempting to append a unique line to the file.</p>
+<p>We expect 10,000 lines in the file, which is not the case because of the corruption.</p>
+<p>This can be confirmed on a POSIX system by typing the following command (cat the file and count lines) in the same directory as our script and the <strong>results.txt</strong> file:</p>
+<pre><code>cat results.txt | wc -l</code></pre>
+<p>In this case the result shows that we are naively missing 66 lines of data, although things are worse than this.</p>
+<pre><code>9934</code></pre>
+<p>In this case, the result is a file that contains large segments of corrupt data.</p>
+<p>Some sections look fine, as we expect, for example:</p>
+<pre><code>...
+Task 133 blocked for 0.005006482755166575 of a second.
+Task 152 blocked for 0.010829546448452021 of a second.
+Task 53 blocked for 0.01792173357462179 of a second.
+Task 6 blocked for 0.024116631866498706 of a second.
+Task 345 blocked for 0.0025878837158017642 of a second.
+Task 346 blocked for 0.01254960400966576 of a second.
+Task 208 blocked for 0.020621257382234193 of a second.
+Task 192 blocked for 0.025857220704669226 of a second.
+Task 26 blocked for 0.03524524788377992 of a second.
+Task 81 blocked for 0.037315156394633786 of a second.
+...</code></pre>
+<p>Other sections clearly look like something went wrong, for example:</p>
+<pre><code>...
+õQð•Q9ð5QSð5îZãîõïZÿîUñZïõòZ/ï•ôZIï•÷Task 1242 blocked for 0.037004895386893 of a second.
+...</code></pre>
+<p>This corruption occurred because calling <strong>write()</strong> on the same file handle is not thread-safe.</p>
+<p>Next, we can explore some ways of how we might append data to the same file in a thread-safe manner.</p>
+<h2>Append a File From Multiple Threads With Lock</h2>
+<p>We can safely append to a file from multiple threads using a mutual exclusion lock.</p>
+<p>Python provides a mutual exclusion lock, also called a mutex, via the <strong>threading.Lock</strong> class.</p>
+<p>First, we can create an instance of the lock to be shared by all threads.</p>
+<pre><code>...
+# create a lock to protect the file
+lock = Lock()</code></pre>
+<p>This lock instance can be passed to the <strong>task()</strong> function as an argument.</p>
+<p>Then, before any thread attempts to write to the file it must obtain the lock. Only one thread can have the lock at any one time, and if writes to the file can only occur when the lock is held, then only one thread can write to the file at a time.</p>
+<p>This will make writing to the file thread-safe and will avoid any corruption of messages.</p>
+<p>A lock can be obtained by calling the <strong>acquire()</strong> function which will block (not return) until the lock is available. Once obtained, the lock can be released by calling the <strong>release()</strong> function.</p>
+<p>It is a better practice to use the context manager, if possible, which will ensure that the lock is always released automatically once the code block is exited.</p>
+<p>For example:</p>
+<pre><code>...
+# obtain the lock
+with lock:
+    # write to a file
+    file_handle.write(f'Task {identifier} blocked for {value} of a second.\n')
+</code></pre>
+<p>Tying this together, the complete example of writing to file from multiple threads using a lock is listed below.</p>
+<pre><code># SuperFastPython.com
+# write to a file from multiple threads using a shared lock
+from time import sleep
+from random import random
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
+
+# task that blocks for a moment and write to a file
+def task(identifier, lock, file_handle):
+    # block for a moment
+    value = random()
+    sleep(value)
+    # obtain the lock
+    with lock:
+        # write to a file
+        file_handle.write(f'Task {identifier} blocked for {value} of a second.\n')
+
+# write to a file from multiple threads
+def main():
+    # open a file
+    with open('results.txt', 'a', encoding='utf-8') as handle:
+        # create a lock to protect the file
+        lock = Lock()
+        # create the thread pool
+        with ThreadPoolExecutor(1000) as executor:
+            # dispatch all tasks
+            _ = [executor.submit(task, i, lock, handle) for i in range(10000)]
+    # wait for all tasks to complete
+    print('Done.')
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example opens the file, creates the thread pool and writes messages to the file from multiple worker threads.</p>
+<p>The mutual exclusion lock ensures that only one thread can write to the file at a time.</p>
+<p>The result is clean crisp messages, one per line as we would expect.</p>
+<pre><code>Task 121 blocked for 0.001110901802077513 of a second.
+Task 170 blocked for 0.006215832438211666 of a second.
+Task 259 blocked for 8.716446563850067e-05 of a second.
+Task 152 blocked for 0.012671481481186686 of a second.
+Task 99 blocked for 0.01723248272457567 of a second.
+Task 297 blocked for 0.005388827042946631 of a second.
+Task 90 blocked for 0.024467488619056676 of a second.
+Task 277 blocked for 0.008290633269665726 of a second.
+Task 65 blocked for 0.029065442968607247 of a second.
+Task 104 blocked for 0.02690572979786665 of a second.
+...</code></pre>
+<p>Checking the number of lines confirms that all 10,000 tasks wrote their message to the file.</p>
+<p>Running the command:</p>
+<pre><code>cat results.txt | wc -l</code></pre>
+<p>Results in the output:</p>
+<pre><code>10000</code></pre>
+<p>This was one way to make appending a single file from threads thread-safe, but there are other approaches we can use.</p>
+<p>Next, let's look at an alternative.</p>
+<h2>Append to File From Multiple Threads Via Main</h2>
+<p>An alternative approach to appending a file from multiple threads is to send all messages back to the main thread.</p>
+<p>This is a change to the program that ensures that writes to the file are thread-safe because only the main thread is able to perform those writes. It simplifies the problem by avoiding concurrent access to the file.</p>
+<p>The benefit of this approach is that it is simpler as we do not need to maintain a lock.</p>
+<p>We can implement this by first updating the <strong>task()</strong> function to not have access to the file handle and instead return the message it wishes logged as a string.</p>
+<pre><code># task that blocks for a moment and write to a file
+def task(identifier):
+    # block for a moment
+    value = random()
+    sleep(value)
+    # return data to write
+    return f'Task {identifier} blocked for {value} of a second.\n'
+</code></pre>
+<p>Next, we can update the main thread.</p>
+<p>First, we must collect the <strong>Future</strong> objects returned from each call to <strong>submit()</strong> so that we can get the return value from each task.</p>
+<pre><code>...
+# dispatch all tasks
+futures = [executor.submit(task, i) for i in range(10000)]
+</code></pre>
+<p>We can then iterate over the <strong>Future</strong> objects in the order that tasks are completed by using the <strong>concurrent.futures.as_completed()</strong> function.</p>
+<pre><code>...
+# process results as tasks are completed
+for future in as_completed(futures):
+	# ...
+</code></pre>
+<p>Finally, for each task that is completed, we can retrieve the return value of the task via the <strong>result()</strong> function on the task's <strong>Future</strong> object, then append it to the file.</p>
+<pre><code>...
+# retrieve result to write
+result = future.result()
+# write to file
+handle.write(result)
+</code></pre>
+<p>Tying this together, the complete example of writing to a file from multiple threads via the main thread is listed below.</p>
+<pre><code># SuperFastPython.com
+# write to a file from multiple threads from main
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# task that blocks for a moment and write to a file
+def task(identifier):
+    # block for a moment
+    value = random()
+    sleep(value)
+    # return data to write
+    return f'Task {identifier} blocked for {value} of a second.\n'
+
+# write to a file from multiple threads
+def main():
+    # open a file
+    with open('results.txt', 'a', encoding='utf-8') as handle:
+        # create the thread pool
+        with ThreadPoolExecutor(1000) as executor:
+            # dispatch all tasks
+            futures = [executor.submit(task, i) for i in range(10000)]
+            # process results as tasks are completed
+            for future in as_completed(futures):
+                # retrieve result to write
+                result = future.result()
+                # write to file
+                handle.write(result)
+    # wait for all tasks to complete
+    print('Done.')
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example creates the <strong>results.txt</strong> file as before and writes all task messages directly from the main thread of our program.</p>
+<p>Because only a single thread is writing the messages, it is thread-safe and results in crisp one-message-per-line as we would expect.</p>
+<pre><code>Task 530 blocked for 0.1459173312697858 of a second.
+Task 1020 blocked for 0.002690097829839644 of a second.
+Task 1041 blocked for 0.02761931182005417 of a second.
+Task 982 blocked for 0.037005242195674914 of a second.
+Task 609 blocked for 0.1287759330853232 of a second.
+Task 270 blocked for 0.02273684939048015 of a second.
+Task 696 blocked for 0.017208115848418748 of a second.
+Task 903 blocked for 0.07774458649738047 of a second.
+Task 1135 blocked for 5.8044184067629345e-05 of a second.
+Task 590 blocked for 0.05840949802243367 of a second.
+...
+</code></pre>
+<p>We can then check the number of lines on the command line:</p>
+<pre><code>cat results.txt | wc -l</code></pre>
+<p>The result confirms that indeed all ten thousand tasks were able to write one message per line without corruption.</p>
+<pre><code>10000</code></pre>
+<h2>Append a File From Multiple Threads Via Queue</h2>
+<p>Another alternative for writing to a file from multiple threads involves using a queue.</p>
+<p>A queue is a data structure, like a list, although it allows you to add items at one end and get items from the other in a first-in-first-out manner (FIFO).</p>
+<p>Python provides a number of queues, although the <strong>queue.Queue</strong> class is a version of a queue that is also thread-safe. This means that that data structure will not become corrupt by multiple threads putting or getting items from the queue concurrently.</p>
+<p>The <strong>Queue</strong> class also provides a facility that allows threads to wait until all tasks that have been put on the queue have been completed, a feature we will require.</p>
+<p>Each worker thread can put messages on the queue by calling the <strong>put()</strong> function. We can then define a separate thread that is responsible for consuming messages from the queue forever via calls to <strong>get()</strong>. This will return immediately with a message from the queue if available, otherwise will block and return once a message becomes available.</p>
+<p>We can adapt our program to use a queue by first creating an instance of a <strong>Queue</strong> in the main thread.</p>
+<pre><code>...
+# create a queue for collecting message to write
+queue = Queue()</code></pre>
+<p>Next, we can define a function that will run forever and will consume messages from the Queue.</p>
+<p>We can loop forever using a while-loop.</p>
+<pre><code>...
+# loop forever
+while True:
+    # ...
+</code></pre>
+<p>Each iteration of the loop, we can get a message from the queue (or block until a message becomes available), then append the message to the file.</p>
+<pre><code>...
+# retrieve a messages from the queue
+message = queue.get()
+# write the message to file
+file_handle.write(message)
+</code></pre>
+<p>Importantly, we can then mark the message as done. This can be achieved by calling the <strong>Queue.task_done()</strong> function.</p>
+<pre><code>...
+# mark this ask as done
+queue.task_done()
+</code></pre>
+<p>This is useful for any threads that are waiting on the queue until all messages that have been sent to the queue have both been retrieved by <strong>get()</strong> and processed. We will come back to this later.</p>
+<p>The <strong>file_writer()</strong> function below implements this that takes the queue and the file handle as arguments.</p>
+<pre><code># consume messages from the queue and write to the file
+def file_writer(queue, file_handle):
+    # loop forever
+    while True:
+        # retrieve a messages from the queue
+        message = queue.get()
+        # write the message to file
+        file_handle.write(message)
+        # mark this ask as done
+        queue.task_done()
+</code></pre>
+<p>Next, back in the main thread, we can create a new thread that is responsible for running our <strong>file_writer()</strong> function.</p>
+<p>This can be achieved by creating an instance of the <strong>threading.Thread</strong> class and specifying the "<strong>target</strong>" argument as the <strong>file_writer</strong> function and the "<strong>args</strong>" argument as a tuple that contains the queue and the file handle.</p>
+<p>We will also set the "<strong>daemon</strong>" argument to <strong>True</strong> so that the thread will close once we exit the main thread. If we didn't set the thread to be a daemon, it means that the main thread will never exit because this new thread will run forever given our while loop.</p>
+<pre><code>...
+# start a daemon thread to write queued messages
+writer = Thread(target=file_writer, args=(queue, handle), daemon=True)
+writer.start()
+</code></pre>
+<p>Finally, after all threads have finished running successfully and submitted their messages to the queue, the main thread will wait on the queue for all messages to be consumed and dealt with, e.g. appended to the file.</p>
+<p>We can achieve this by calling the <strong>join()</strong> function on the queue which will block until all items on the queue are marked as done.</p>
+<p>Recall that our daemon thread that appends to the file will mark each message as done by a call to the <strong>Queue.task_done()</strong> function. Think of each <strong>put()</strong> on the queue as incrementing a counter and each call to <strong>task_done()</strong> in the daemon thread as decrementing a counter. The call to the <strong>join()</strong> function in the main thread will block until the counter is zero, meaning all calls to <strong>put()</strong> on the queue have an equivalent <strong>get()</strong> and <strong>task_done()</strong> call.</p>
+<pre><code>...
+# after all threads are done, wait for all message to be consumed
+queue.join()
+</code></pre>
+<p>Only after all messages have been appended to the file by the daemon thread will this function return.</p>
+<p>Importantly, we will join the queue only after all tasks in the thread pool have been completed.</p>
+<p>If we tried to join the queue while some tasks were still running, it is possible that we may stop prematurely as some workers may not have put their message on the queue, yet all consumed messages were marked done.</p>
+<p>Tying this together, the complete example of writing to a file from multiple threads via a queue is listed below.</p>
+<pre><code># SuperFastPython.com
+# write to a file from multiple threads using a queue
+from time import sleep
+from random import random
+from queue import Queue
+from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
+
+# task that blocks for a moment and write to a file
+def task(identifier, queue):
+    # block for a moment
+    value = random()
+    sleep(value)
+    # push data into the queue
+    queue.put(f'Task {identifier} blocked for {value} of a second.\n')
+
+# consume messages from the queue and write to the file
+def file_writer(queue, file_handle):
+    # loop forever
+    while True:
+        # retrieve a messages from the queue
+        message = queue.get()
+        # write the message to file
+        file_handle.write(message)
+        # mark this ask as done
+        queue.task_done()
+
+# write to a file from multiple threads
+def main():
+    # open a file
+    with open('results.txt', 'a', encoding='utf-8') as handle:
+        # create a queue for collecting message to write
+        queue = Queue()
+        # start a daemon thread to write queued messages
+        writer = Thread(target=file_writer, args=(queue, handle), daemon=True)
+        writer.start()
+        # create the thread pool
+        with ThreadPoolExecutor(1000) as executor:
+            # dispatch all tasks
+            _ = [executor.submit(task, i, queue) for i in range(10000)]
+        # after all threads are done, wait for all message to be consumed
+        queue.join()
+    print('Done.')
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example opens the file, starts the writer thread, then starts the thread pool and submits all tasks. Only after all messages have been written to file is the file closed and the main thread exits.</p>
+<p>Checking the content of the <strong>results.txt</strong> file confirms one message per line as we would expect.</p>
+<pre><code>Task 75 blocked for 0.005800440245577132 of a second.
+Task 26 blocked for 0.015495757355513562 of a second.
+Task 213 blocked for 0.006410974121583091 of a second.
+Task 121 blocked for 0.01226657386657537 of a second.
+Task 315 blocked for 0.0010640189024394564 of a second.
+Task 86 blocked for 0.014855929776373511 of a second.
+Task 110 blocked for 0.02312239182836373 of a second.
+Task 264 blocked for 0.014721519221568835 of a second.
+Task 480 blocked for 0.0018767276024731494 of a second.
+Task 403 blocked for 0.012265893451503307 of a second.
+...</code></pre>
+<p>Finally, we can check the number of lines in the file:</p>
+<pre><code>cat results.txt | wc -l</code></pre>
+<p>Which shows that all 10,000 lines were written successfully.</p>
+<pre><code>10000</code></pre>
+<h2>Append a File From Multiple Coroutines With Asyncio</h2>
+<p>We can also append a file concurrently using <a href="https://docs.python.org/3/library/asyncio.html">asyncio</a>.</p>
+<p>Generally, Python does not support non-blocking IO operations when working with files. It is not provided in the asyncio module. This is because it is challenging to implement in a general cross-platform manner.</p>
+<p>The <a href="https://pypi.org/project/aiofiles/">third-party library aiofiles</a> provides file operations for use in asyncio operations, but again, the operations are not true non-blocking IO and instead the concurrency is simulated using thread pools.</p>
+<p>Nevertheless, we can use aiofiles in an asyncio program to append to a file concurrently.</p>
+<p>You can install the aiofiles library using your Python package manager, such as <strong>pip</strong>:</p>
+<pre><code>pip3 install aiofiles</code></pre>
+<p>We will adapt the lock-based file appending example above to use coroutines and aiofiles.</p>
+<p>First, we must adapt the <strong>task()</strong> function that appends the file.</p>
+<p>The function must be made a coroutine that can yield control, therefore it must be defined using the <strong>async</strong> keyword.</p>
+<pre><code># task that blocks for a moment and write to a file
+async def task(identifier, lock, file_handle):
+    # ...
+</code></pre>
+<p>Next, the function blocks for a moment using a call to <strong>sleep()</strong>. This can be updated to use the <strong>asyncio.sleep()</strong> function that we can await, yielding control to other coroutines.</p>
+<pre><code>...
+await asyncio.sleep(value)
+</code></pre>
+<p>We can then append data to the file.</p>
+<p>First, the lock must be acquired.</p>
+<pre><code>...
+# obtain the lock
+async with lock:
+    # ...
+</code></pre>
+<p>Finally, we can append data to the file awaiting the call and yielding control.</p>
+<pre><code>...
+# write to a file
+await file_handle.write(f'Task {identifier} blocked for {value} of a second.\n')
+</code></pre>
+<p>Tying this together, the updated version of the <strong>task()</strong> function to append a file using asyncio is listed below.</p>
+<pre><code># task that blocks for a moment and write to a file
+async def task(identifier, lock, file_handle):
+    # block for a moment
+    value = random()
+    await asyncio.sleep(value)
+    # obtain the lock
+    async with lock:
+        # write to a file
+        await file_handle.write(f'Task {identifier} blocked for {value} of a second.\n')
+</code></pre>
+<p>Next, we need to update the <strong>main()</strong> function.</p>
+<p>We can open the file using the <strong>aiofiles.open()</strong> function and create a lock to protect appending the file between coroutines using the <strong>asyncio.Lock</strong> class.</p>
+<pre><code>...
+async with aiofiles.open('results.txt', 'a', encoding='utf-8') as handle:
+    # create a lock to protect the file
+    lock = asyncio.Lock()
+</code></pre>
+<p>Next, we can create a list of coroutines, each a call to the <strong>task()</strong> function that will append the file.</p>
+<p>This can be achieved using a list comprehension.</p>
+<pre><code>...
+# create coroutines
+tasks = [task(i, lock, handle) for i in range(10000)]
+</code></pre>
+<p>Recall that this will create a list of coroutines, it will not execute the <strong>task()</strong> function.</p>
+<p>Finally, we can execute all of the coroutines and wait for them to finish.</p>
+<p>This can be achieved by awaiting the <strong>asyncio.gather()</strong> function and passing it the list of coroutines that can be unpacked using the star (<strong>*</strong>) operator. The <strong>task()</strong> function does not return any values, so we can ignore the return value from <strong>gather()</strong>.</p>
+<pre><code>...
+# execute tasks and wait for them to finish
+_ = await asyncio.gather(*tasks)
+</code></pre>
+<p>Tying this together, the updated <strong>main()</strong> function is listed below.</p>
+<pre><code># write to a file from multiple threads
+async def main():
+    # open a file
+    async with aiofiles.open('results.txt', 'a', encoding='utf-8') as handle:
+        # create a lock to protect the file
+        lock = asyncio.Lock()
+        # create coroutines
+        tasks = [task(i, lock, handle) for i in range(10000)]
+        # execute tasks and wait for them to finish
+        _ = await asyncio.gather(*tasks)
+    print('Done.')
+</code></pre>
+<p>Finally, we can start the asyncio event loop that will begin executing coroutines by calling the <strong>main()</strong> function.</p>
+<pre><code># entry point
+if __name__ == '__main__':
+    asyncio.run(main())
+</code></pre>
+<p>Tying this all together, the complete example of appending a file concurrently from coroutines using asyncio is listed below.</p>
+<pre><code># SuperFastPython.com
+# write to a file concurrently with asyncio and a shared lock
+from random import random
+import asyncio
+import aiofiles
+
+# task that blocks for a moment and write to a file
+async def task(identifier, lock, file_handle):
+    # block for a moment
+    value = random()
+    await asyncio.sleep(value)
+    # obtain the lock
+    async with lock:
+        # write to a file
+        await file_handle.write(f'Task {identifier} blocked for {value} of a second.\n')
+
+# write to a file from multiple threads
+async def main():
+    # open a file
+    async with aiofiles.open('results.txt', 'a', encoding='utf-8') as handle:
+        # create a lock to protect the file
+        lock = asyncio.Lock()
+        # create coroutines
+        tasks = [task(i, lock, handle) for i in range(10000)]
+        # execute tasks and wait for them to finish
+        _ = await asyncio.gather(*tasks)
+    print('Done.')
+
+# entry point
+if __name__ == '__main__':
+    asyncio.run(main())
+</code></pre>
+<p>Running the example creates the <strong>results.txt</strong> file as before and writes all task messages directly from the main thread of our program.</p>
+<p>Because appending the file is protected with the lock, it is thread-safe and the example results in crisp one-message-per-line output.</p>
+<pre><code>Task 35 blocked for 0.0061771157918364406 of a second.
+Task 385 blocked for 0.00516245918413738 of a second.
+Task 561 blocked for 0.0016374068833635569 of a second.
+Task 349 blocked for 0.008151823643203437 of a second.
+Task 515 blocked for 0.0066746106689640206 of a second.
+Task 126 blocked for 0.010198001664967093 of a second.
+Task 577 blocked for 0.004251209136449385 of a second.
+Task 256 blocked for 0.009546150249558849 of a second.
+Task 667 blocked for 0.00456190424278291 of a second.
+Task 6 blocked for 0.012846047059235088 of a second.
+...</code></pre>
+<p>We can then check the number of lines on the command line:</p>
+<pre><code>cat results.txt | wc -l</code></pre>
+<p>The result confirms that indeed all ten thousand tasks were able to write one message per line without corruption.</p>
+<pre><code>10000</code></pre>
+<h2>Extensions</h2>
+<p>This section lists ideas for extending the tutorial.</p>
+<ul>
+<li><strong>Open File From Each Thread</strong>. Explore the failure cause of opening the target file from each worker thread and attempting to append.</li>
+<li><strong>Use Logging</strong>. The Python logging module is thread-safe and supports writing to a single log file from multiple threads. Explore how you can use the logging framework to append messages to the same file from multiple threads.</li>
+<li><strong>Use Processes</strong>. Explore how you might write to the same file from multiple workers in a ProcessPoolExecutor.</li>
+</ul>
+<h2>Takeaways</h2>
+<p>In this tutorial you discovered how to explore how to append a file from multiple threads.</p>
 </main>
 </body>
 </html>

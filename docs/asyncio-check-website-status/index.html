@@ -368,6 +368,294 @@ _ = await asyncio.wait(tasks_to_url)</code></pre>
 </ul>
 <p>Once all tasks are complete, the status of each URL can be reported.</p>
 <p>We can traverse the dict of tasks, retrieve the URL for each, retrieve the status from the task and report the result.</p>
+<pre><code>...
+# report all results
+for task in tasks_to_url:
+    # get the url
+    url = tasks_to_url
+    # get the status
+    status = task.result()
+    # report status
+    print(f'{url:30}:\t{status}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# check the status of many webpages
+import asyncio
+from urllib.parse import urlsplit
+
+# get the HTTP/S status of a webpage
+async def get_status(url):
+    # split the url into components
+    url_parsed = urlsplit(url)
+    # open the connection
+    if url_parsed.scheme == 'https':
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 443, ssl=True)
+    else:
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 80)
+    # send GET request
+    query = f'GET {url_parsed.path} HTTP/1.1\r\nHost: {url_parsed.hostname}\r\n\r\n'
+    # write query to socket
+    writer.write(query.encode())
+    # wait for the bytes to be written to the socket
+    await writer.drain()
+    # read the single line response
+    response = await reader.readline()
+    # close the connection
+    writer.close()
+    # decode and strip white space
+    status = response.decode().strip()
+    # return the response
+    return status
+
+# main coroutine
+async def main():
+    # list of top 10 websites to check
+    sites = ['https://www.google.com/',
+        'https://www.youtube.com/',
+        'https://www.facebook.com/',
+        'https://twitter.com/',
+        'https://www.instagram.com/',
+        'https://www.baidu.com/',
+        'https://www.wikipedia.org/',
+        'https://yandex.ru/',
+        'https://yahoo.com/',
+        'https://www.whatsapp.com/'
+        ]
+    # create all task requests
+    tasks_to_url = {asyncio.create_task(get_status(url)):url for url in sites}
+    # wait for all tasks to complete
+    _ = await asyncio.wait(tasks_to_url)
+    # report all results
+    for task in tasks_to_url:
+        # get the url
+        url = tasks_to_url
+        # get the status
+        status = task.result()
+        # report status
+        print(f'{url:30}:\t{status}')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example executes the <strong>main()</strong> coroutine as before.</p>
+<p>In this case, a <strong>get_status()</strong> is created and scheduled for execution for each URL in the list.</p>
+<p>The dict is created, mapping each <strong>asyncio.Task</strong> object to its URL string.</p>
+<p>The <strong>main()</strong> coroutine then suspends and waits for all issued tasks to complete.</p>
+<p>The tasks complete as fast as they are able. The suspend when awaiting the connection to open and when reading a response from the server. This allows cooperating multitasking between the tasks.</p>
+<p>Once all tasks are complete, the <strong>main()</strong> coroutine resumes and results are reported.</p>
+<p>This highlights how we can query website status concurrently using asyncio by scheduling tasks and waiting for them to be completed.</p>
+<p>It is faster than the sequential version above, completing in about 1.3 seconds on my system.</p>
+<pre><code>https://www.google.com/       :	HTTP/1.1 200 OK
+https://www.youtube.com/      :	HTTP/1.1 200 OK
+https://www.facebook.com/     :	HTTP/1.1 302 Found
+https://twitter.com/          :	HTTP/1.1 200 OK
+https://www.instagram.com/    :	HTTP/1.1 200 OK
+https://www.baidu.com/        :	HTTP/1.1 200 OK
+https://www.wikipedia.org/    :	HTTP/1.1 200 OK
+https://yandex.ru/            :	HTTP/1.1 302 Moved temporarily
+https://yahoo.com/            :	HTTP/1.1 301 Moved Permanently
+https://www.whatsapp.com/     :	HTTP/1.1 302 Found</code></pre>
+<p>Next, let's look at another way to execute the coroutines concurrently.</p>
+<h3>Example using asyncio.gather()</h3>
+<p>We can query the status of websites concurrently in asyncio using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.gather"><strong>asyncio.gather()</strong> function</a>.</p>
+<p>This function takes one or more coroutines, suspends executing the provided coroutines, and returns the results from each as an iterable. We can then traverse the list of URLs and iterable of return values from the coroutines and report results.</p>
+<p>This may be a simpler approach than the above.</p>
+<p>First, we can create a list of coroutines.</p>
+<pre><code>...
+# create all coroutine requests
+coros = [get_status(url) for url in sites]</code></pre>
+<p>Next, we can execute the coroutines and get the iterable of results using <strong>asyncio.gather()</strong>.</p>
+<p>Note that we cannot provide the list of coroutines directly, but instead must unpack the list into separate expressions that are provided as positional arguments to the function.</p>
+<pre><code>...
+# execute all coroutines and wait
+results = await asyncio.gather(*coros)</code></pre>
+<p>This will execute all of the coroutines concurrently and retrieve their results.</p>
+<p>You can learn more about the <strong>asyncio.gather()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather/">Asyncio gather() to Run Many Tasks Concurrently</a></li>
+</ul>
+<p>We can then traverse the list of URLs and returned status and report each in turn.</p>
+<pre><code>...
+# process all results
+for url, status in zip(sites, results):
+    # report status
+    print(f'{url:30}:\t{status}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# check the status of many webpages
+import asyncio
+from urllib.parse import urlsplit
+
+# get the HTTP/S status of a webpage
+async def get_status(url):
+    # split the url into components
+    url_parsed = urlsplit(url)
+    # open the connection
+    if url_parsed.scheme == 'https':
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 443, ssl=True)
+    else:
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 80)
+    # send GET request
+    query = f'GET {url_parsed.path} HTTP/1.1\r\nHost: {url_parsed.hostname}\r\n\r\n'
+    # write query to socket
+    writer.write(query.encode())
+    # wait for the bytes to be written to the socket
+    await writer.drain()
+    # read the single line response
+    response = await reader.readline()
+    # close the connection
+    writer.close()
+    # decode and strip white space
+    status = response.decode().strip()
+    # return the response
+    return status
+
+# main coroutine
+async def main():
+    # list of top 10 websites to check
+    sites = ['https://www.google.com/',
+        'https://www.youtube.com/',
+        'https://www.facebook.com/',
+        'https://twitter.com/',
+        'https://www.instagram.com/',
+        'https://www.baidu.com/',
+        'https://www.wikipedia.org/',
+        'https://yandex.ru/',
+        'https://yahoo.com/',
+        'https://www.whatsapp.com/'
+        ]
+    # create all coroutine requests
+    coros = [get_status(url) for url in sites]
+    # execute all coroutines and wait
+    results = await asyncio.gather(*coros)
+    # process all results
+    for url, status in zip(sites, results):
+        # report status
+        print(f'{url:30}:\t{status}')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example executes the <strong>main()</strong> coroutine as before.</p>
+<p>In this case, a list of coroutines is created in a list comprehension.</p>
+<p>The <strong>asyncio.gather()</strong> function is then called, passing the coroutines and suspending the <strong>main()</strong> coroutine until they are all complete.</p>
+<p>The coroutines execute, querying each website concurrently and returning their status.</p>
+<p>The <strong>main()</strong> coroutine resumes and receives an iterable of status values. This iterable along with the list of URLs is then traversed using the <strong>zip()</strong> built-in function and the statuses are reported.</p>
+<p>This highlights a simpler approach to executing the coroutines concurrently and reporting the results after all tasks are completed.</p>
+<p>It is also faster than the sequential version above, completing in about 1.4 seconds on my system.</p>
+<pre><code>https://www.google.com/       :	HTTP/1.1 200 OK
+https://www.youtube.com/      :	HTTP/1.1 200 OK
+https://www.facebook.com/     :	HTTP/1.1 302 Found
+https://twitter.com/          :	HTTP/1.1 200 OK
+https://www.instagram.com/    :	HTTP/1.1 200 OK
+https://www.baidu.com/        :	HTTP/1.1 200 OK
+https://www.wikipedia.org/    :	HTTP/1.1 200 OK
+https://yandex.ru/            :	HTTP/1.1 302 Moved temporarily
+https://yahoo.com/            :	HTTP/1.1 301 Moved Permanently
+https://www.whatsapp.com/     :	HTTP/1.1 302 Found</code></pre>
+<p>Next, let's explore how we might query HTTP statuses concurrently and report results dynamically, as they become available.</p>
+<h2>Example of Checking Website Status Dynamically</h2>
+<p>We can execute many tasks concurrently and traverse them in the order that they are completed.</p>
+<p>This approach can then be used to report website status dynamically, as the statuses become available.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.as_completed"><strong>asyncio.as_completed()</strong> function</a>.</p>
+<p>This function takes a collection of iterables as an argument, such as a list of coroutines. It then wraps each iterable in a coroutine for execution and returns an iterable that yields these new coroutines in the order that they are completed.</p>
+<p>Although we can use the <strong>as_completed()</strong> method to report HTTP statuses dynamically, we have no easy way to relate the new wrapping coroutines to the URL provided as an argument.</p>
+<p>Instead, we can update the <strong>get_status()</strong> coroutine to return the status and the URL together.</p>
+<p>First, we can create a list of coroutines, one for each URL using a list comprehension.</p>
+<pre><code>...
+# create all coroutine requests
+coros = [get_status(url) for url in sites]</code></pre>
+<p>We can then call the <strong>asyncio.as_completed()</strong> function with the list of coroutines. This returns a list of iterables that yield coroutines in the order they are completed.</p>
+<p>You can learn more about the <strong>asyncio.as_completed()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-as_completed/">How to Use Asyncio as_completed() in Python</a></li>
+</ul>
+<p>We can await each in turn to get the return value, in this case, the HTTP status and URL, which can be reported.</p>
+<pre><code>...
+# traverse tasks in completion order
+for coro in asyncio.as_completed(coros):
+    # get status from task
+    status, url = await coro
+    # report status
+    print(f'{url:30}:\t{status}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# check the status of many webpages
+import asyncio
+from urllib.parse import urlsplit
+
+# get the HTTP/S status of a webpage
+async def get_status(url):
+    # split the url into components
+    url_parsed = urlsplit(url)
+    # open the connection
+    if url_parsed.scheme == 'https':
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 443, ssl=True)
+    else:
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 80)
+    # send GET request
+    query = f'GET {url_parsed.path} HTTP/1.1\r\nHost: {url_parsed.hostname}\r\n\r\n'
+    # write query to socket
+    writer.write(query.encode())
+    # wait for the bytes to be written to the socket
+    await writer.drain()
+    # read the single line response
+    response = await reader.readline()
+    # close the connection
+    writer.close()
+    # decode and strip white space
+    status = response.decode().strip()
+    # return the response
+    return status, url
+
+# main coroutine
+async def main():
+    # list of top 10 websites to check
+    sites = ['https://www.google.com/',
+        'https://www.youtube.com/',
+        'https://www.facebook.com/',
+        'https://twitter.com/',
+        'https://www.instagram.com/',
+        'https://www.baidu.com/',
+        'https://www.wikipedia.org/',
+        'https://yandex.ru/',
+        'https://yahoo.com/',
+        'https://www.whatsapp.com/'
+        ]
+    # create all coroutine requests
+    coros = [get_status(url) for url in sites]
+    # traverse tasks in completion order
+    for coro in asyncio.as_completed(coros):
+        # get status from task
+        status, url = await coro
+        # report status
+        print(f'{url:30}:\t{status}')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example executes the <strong>main()</strong> coroutine as before.</p>
+<p>In this case, a list of coroutines is created.</p>
+<p>This is then provided to the <strong>asyncio.as_completed()</strong> function. This wraps each coroutine in a new coroutine (in case a timeout is needed) and returns an iterable.</p>
+<p>We can traverse the iterable using a normal for loop which will automatically await the coroutines and yield them in the order they are completed.</p>
+<p>Once yielded, we can retrieve the return values by awaiting them and reporting the website status.</p>
+<p>This highlights how we can check HTTP status concurrently with asyncio and report results dynamically as tasks are completed.</p>
+<p>The example may be slightly faster than the above concurrent examples, completing in about 1.2 seconds on my system.</p>
+<pre><code>https://www.youtube.com/      :	HTTP/1.1 200 OK
+https://www.facebook.com/     :	HTTP/1.1 302 Found
+https://www.google.com/       :	HTTP/1.1 200 OK
+https://www.whatsapp.com/     :	HTTP/1.1 302 Found
+https://twitter.com/          :	HTTP/1.1 200 OK
+https://www.instagram.com/    :	HTTP/1.1 200 OK
+https://www.wikipedia.org/    :	HTTP/1.1 200 OK
+https://yahoo.com/            :	HTTP/1.1 301 Moved Permanently
+https://www.baidu.com/        :	HTTP/1.1 200 OK
+https://yandex.ru/            :	HTTP/1.1 302 Moved temporarily</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to check the status of multiple web pages concurrently using async in Python.</p>
 </main>
 </body>
 </html>

@@ -29,6 +29,979 @@
 <p>We can create .CSV data files full of random numbers then add them to one large zip file.</p>
 <p>First, we can define a function that creates one line of ten random numeric data values separated by commas.</p>
 <p>The <strong>generate_line()</strong> function below implements this.</p>
+<pre><code># generate a line of mock data of 10 random data points
+def generate_line():
+    return ','.join([str(random()) for _ in range(10)])
+</code></pre>
+<p>Next, we can call this function 10,000 times (e.g. 10,000 lines) to create a CSV data file that is about 2 megabytes when unzipped.</p>
+<p>The <strong>generate_file_data()</strong> function below implements this, returning a string that represents the content of a CSV data file full of random numbers.</p>
+<pre><code># generate file data of 10K lines each with 10 data points
+def generate_file_data():
+    # generate many lines of data
+    lines = [generate_line() for _ in range(10000)]
+    # convert to a single ascii doc with new lines
+    return '\n'.join(lines)
+</code></pre>
+<p>Finally, we can create a zip file and fill it with 1,000 different CSV data files.</p>
+<p>First, we can open the zip file, which we will call '<strong>testing.zip</strong>' stored in our current working directory. This can be achieved using the <strong>zipfile.ZipFile</strong> class with a context manager to ensure the file is closed once we are finished with it.</p>
+<pre><code>...
+# create the zip file
+with ZipFile('testing.zip', 'w', compression=ZIP_DEFLATED) as handle:
+	# ...
+</code></pre>
+<p>We can then iterate 1,000 times and in each iteration generate the data, specify a unique filename and store the data against the filename in the zip file.</p>
+<pre><code>...
+# generate data
+data = generate_file_data()
+# create filenames
+filename = f'data-{i:04d}.csv'
+# save data file
+handle.writestr(filename, data)
+# report progress
+print(f'.added {filename}')
+</code></pre>
+<p>Tying these elements together, the complete example of creating the large zip file full of smaller CSV files is listed below.</p>
+<pre><code># SuperFastPython.com
+# create a zip file containing many files
+from random import random
+from zipfile import ZipFile
+from zipfile import ZIP_DEFLATED
+
+# generate a line of mock data of 10 random data points
+def generate_line():
+    return ','.join([str(random()) for _ in range(10)])
+
+# generate file data of 10K lines each with 10 data points
+def generate_file_data():
+    # generate many lines of data
+    lines = [generate_line() for _ in range(10000)]
+    # convert to a single ascii doc with new lines
+    return '\n'.join(lines)
+
+# create a zip file
+def main(num_files=1000):
+    # create the zip file
+    with ZipFile('testing.zip', 'w', compression=ZIP_DEFLATED) as handle:
+        # create some files
+        for i in range(num_files):
+            # generate data
+            data = generate_file_data()
+            # create filenames
+            filename = f'data-{i:04d}.csv'
+            # save data file
+            handle.writestr(filename, data)
+            # report progress
+            print(f'.added {filename}')
+    print('Done')
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example will create a single zip file named '<strong>testing.zip</strong>' in your current working directory.</p>
+<p>Progress is reported along the way and a "<strong>Done</strong>" message is reported at the end of the run.</p>
+<pre><code>...
+.added data-0990.csv
+.added data-0991.csv
+.added data-0992.csv
+.added data-0993.csv
+.added data-0994.csv
+.added data-0995.csv
+.added data-0996.csv
+.added data-0997.csv
+.added data-0998.csv
+.added data-0999.csv
+Done
+</code></pre>
+<p>It may take a while depending on the speed of your machine.</p>
+<p>On my system it takes 210.9 seconds to complete and the resulting zip file is about 847 megabytes in size.</p>
+<pre><code>testing.zip</code></pre>
+<p>This provides an excellent case study to see if we can use multithreading to speed-up the decompression of a large zip file archive that contains thousands of smaller files.</p>
+<p>Before we explore multithreading, let's write a program to unzip the archive sequentially.</p>
+<h2>Unzip the Files One-by-One (slowly)</h2>
+<p>Unzipping a file with Python is straightforward,</p>
+<p>We can open the archive using the context manager as we did when creating the zip file, then call the <strong>ZipFile.extractall()</strong> function and specify a path.</p>
+<p>For example:</p>
+<pre><code>...
+# open the zip file
+with ZipFile('testing.zip', 'r') as handle:
+    # extract all files
+    handle.extractall(path)
+</code></pre>
+<p>That's all there is to it.</p>
+<p>The complete example of unzipping the 847 megabytes zip file containing 1,000 data files is listed below.</p>
+<p>It has been configured to unzip all files into a <strong>tmp/ </strong>sub-directory under the current working directory, to avoid clutter.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files sequentially
+from zipfile import ZipFile
+
+# unzip a large number of files
+def main(path='tmp'):
+    # open the zip file
+    with ZipFile('testing.zip', 'r') as handle:
+        # extract all files
+        handle.extractall(path)
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example will open the '<strong>testing.zip</strong>' archive and will uncompress all data files into a <strong>tmp/</strong> sub-directory.</p>
+<p>It is reasonably fast, depending on the speed of your hardware (e.g. hard drive).</p>
+<p>On my system, it takes about 8.0 seconds.</p>
+<pre><code>[Finished in 8.1s]
+[Finished in 8.0s]
+[Finished in 7.9s]
+</code></pre>
+<p>Looking in the <strong>tmp/</strong> subdirectory shows 1,000 data files, each about 2 megabytes in size.</p>
+<pre><code>...
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0990.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0991.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0992.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0993.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0994.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0995.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0996.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0997.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0998.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:19 data-0999.csv
+</code></pre>
+<p>We can also unzip the files one by one by calling the <strong>ZipFile.extract()</strong> function for each filename in the archive.</p>
+<p>We can get a list of filenames in the archive by calling the <strong>ZipFile.namelist()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# open the zip file
+with ZipFile('testing.zip', 'r') as handle:
+    # iterate over all files in the archive
+    for member in handle.namelist():
+        # unzip a single file from the archive
+        handle.extract(member, path)
+        # report progress
+        print(f'.unzipped {member}')
+</code></pre>
+<p>Tying this together, the complete example of extracting each file from the archive one at a time by name is listed below.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files sequentially
+from zipfile import ZipFile
+
+# unzip a large number of files
+def main(path='tmp'):
+    # open the zip file
+    with ZipFile('testing.zip', 'r') as handle:
+        # iterate over all files in the archive
+        for member in handle.namelist():
+            # unzip a single file from the archive
+            handle.extract(member, path)
+            # report progress
+            print(f'.unzipped {member}')
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example does exactly the same thing as the previous example, that is extracts all files into a <strong>tmp/</strong> sub-directory.</p>
+<p>It also takes about the same amount of time to run, e.g. about 8.36 seconds on my machine, perhaps slightly slower because of the print messages reporting progress.</p>
+<pre><code>[Finished in 8.3s]
+[Finished in 8.4s]
+[Finished in 8.4s]</code></pre>
+<p><strong>How long does the serial version take to run on your machine?</strong><br/>Let me know in the comments below.</p>
+<p>Next, let's explore how we might use multi-threading to speed-up the unzipping process.</p>
+<h2>How to Unzip Files Concurrently</h2>
+<p>We can adapt the program to be multithreaded with very few changes.</p>
+<p>Unzipping files has three elements:</p>
+<ol>
+<li>Load the compressed data into memory.</li>
+<li>Decompress data.</li>
+<li>Save the decompressed data to disk.</li>
+</ol>
+<p>Decompressing data in memory is purely algorithmic and intuitively we might think it is CPU-bound. That is, it runs as fast as the CPU.</p>
+<p>Saving the decompressed data to file is IO-bound as it is limited by the speed that we can move data from main memory onto the hard drive. Intuitively, we would expect that the IO-bound part of the task is slower than the CPU-bound part of the task. That is, we expect to spend more time waiting for the hard drive than waiting for the CPU.</p>
+<p>One approach would be to call the <strong>ZipFile.extract() </strong>function directly to first decompress the data into memory then save the data to disk.</p>
+<p>An alternate approach might be to first decompress the data into memory as a string using the <strong>ZipFile.read()</strong> function, then create a path and save the file to disk manually using Python disk IO functions. This might offer a benefit if we wish to explore possible speed-ups by separating the two elements of unzipping each file.</p>
+<p>Next, let's start to explore the use of threads to speed-up file unzipping and saving.</p>
+<h2>Unzip Files Concurrently With Threads</h2>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of worker threads that we can use.</p>
+<p>Each file can be submitted as a task to the thread pool and worker threads can perform the task of loading data from disk into memory.</p>
+<p>First, we can create the thread pool with 100 worker threads.</p>
+<p>We will use the context manager to ensure the thread pool is closed once we are finished with it.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(100) as exe:
+	# ...
+</code></pre>
+<p>We can then call the <strong>submit()</strong> function to issue a task to the worker threads for each file in the archive to unzip.</p>
+<p>Each call to the <strong>ZipFile.extract()</strong> function can be a separate concurrent task, passing the name of the member to unzip and the path location on disk where to save the uncompressed data.</p>
+<p>For example:</p>
+<pre><code>...
+# unzip each file from the archive
+_ = [exe.submit(handle.extract, m, path) for m in handle.namelist()]
+</code></pre>
+<p>It appears that reading the compressed data from the archive is thread safe in the <strong>ZipFile</strong> class, although there no mention of this in the <a href="https://docs.python.org/3/library/zipfile.html">API documentation</a> at the time of writing (Python 3.10).</p>
+<p>Tying this together, the complete example of using multiple worker threads to unzip the 847 megabyte file full of smaller data files is listed below.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files concurrently
+from zipfile import ZipFile
+from concurrent.futures import ThreadPoolExecutor
+
+# unzip a large number of files
+def main(path='tmp'):
+    # open the zip file
+    with ZipFile('testing.zip', 'r') as handle:
+        # start the thread pool
+        with ThreadPoolExecutor(100) as exe:
+            # unzip each file from the archive
+            _ = [exe.submit(handle.extract, m, path) for m in handle.namelist()]
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example unzips the archive into a <strong>tmp/</strong> local sub-directory, just like the serial case.</p>
+<p>Checking the <strong>tmp/</strong> subdirectory shows 1,000 data files, each about 2 megabytes in size.</p>
+<pre><code>...
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0990.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0991.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0992.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0993.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0994.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0995.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0996.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0997.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0998.csv
+-rw-r--r--  1 jasonb  staff   1.8M 20 Dec 10:29 data-0999.csv
+</code></pre>
+<p>In this case, we see a large speedup by unzipping files concurrently.</p>
+<p>On my system, the example takes about 3.16 seconds, compared to about 8 seconds by unzipping the files sequentially. That is about <strong>2.53x faster</strong>.</p>
+<pre><code>[Finished in 3.2s]
+[Finished in 3.1s]
+[Finished in 3.2s]</code></pre>
+<p>We can adapt the multithreaded unzip example to use a separate target function to unzip a single file.</p>
+<p>This may provide more control over the unzip process which we may require later in more advanced examples.</p>
+<p>We can define a function that takes the zip file handle, the name of the member to zip and the path to write the file, then unzip the file and report progress.</p>
+<p>The <strong>unzip_file()</strong> function below implements this.</p>
+<pre><code># unzip a file from an archive
+def unzip_file(handle, filename, path):
+    # unzip the file
+    handle.extract(filename, path)
+    # report progress
+    print(f'.unzipped {filename}')
+</code></pre>
+<p>We can then call this function for each member in the zip file using the thread pool.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files concurrently with threads
+from zipfile import ZipFile
+from concurrent.futures import ThreadPoolExecutor
+
+# unzip a file from an archive
+def unzip_file(handle, filename, path):
+    # unzip the file
+    handle.extract(filename, path)
+    # report progress
+    print(f'.unzipped {filename}')
+
+# unzip a large number of files
+def main(path='tmp'):
+    # open the zip file
+    with ZipFile('testing.zip', 'r') as handle:
+        # start the thread pool
+        with ThreadPoolExecutor(100) as exe:
+            # unzip each file from the archive
+            _ = [exe.submit(unzip_file, handle, m, path) for m in handle.namelist()]
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example unzips all 1,000 files as before, although now reports progress.</p>
+<pre><code>...
+.unzipped data-0986.csv
+.unzipped data-0989.csv
+.unzipped data-0995.csv
+.unzipped data-0987.csv
+.unzipped data-0996.csv
+.unzipped data-0997.csv
+.unzipped data-0993.csv
+.unzipped data-0994.csv
+.unzipped data-0999.csv
+.unzipped data-0998.csv
+</code></pre>
+<p>The example is functionally equivalent to the previous version although makes use of a custom target task function. Therefore, it should take about the same amount of time to complete.</p>
+<p>On my system, the example takes about 3.4 seconds, compared to about 8.36 seconds for the sequential version. That is about <strong>2.46x faster</strong>.</p>
+<pre><code>[Finished in 3.4s]
+[Finished in 3.4s]
+[Finished in 3.4s]</code></pre>
+<h2>Unzip Files Concurrently with Threads in Batch</h2>
+<p>Each task in the thread pool adds overhead that slows down the overall task.</p>
+<p>This includes function calls and object creation for each task, occurring internally within the <strong>ThreadPoolExecutor</strong> class.</p>
+<p>We might reduce this overhead by performing file operations in a batch within each worker thread.</p>
+<p>This can be achieved by updating the <strong>unzip_file()</strong> function to receive a list of files to unzip, and splitting up the files in the <strong>main()</strong> function into chunks to be submitted to worker threads for batch processing.</p>
+<p>The hope is that this would reduce some of the overhead required for submitting so many small tasks by replacing it with a few larger batch tasks.</p>
+<p>First, we can change the target function to receive a list of file names to unzip, listed below.</p>
+<pre><code># unzip files from an archive
+def unzip_files(handle, filenames, path):
+    # unzip multiple files
+    for filename in filenames:
+        # unzip the file
+        handle.extract(filename, path)
+        # report progress
+        print(f'.unzipped {filename}')
+</code></pre>
+<p>Next, in the <strong>main()</strong> function we can select a chunksize based on the number of worker threads and the number of files to copy.</p>
+<p>First, we must create a list of all files we wish to unzip by calling the <strong>namelist()</strong> function on the zip file.</p>
+<p>In this case, we will use 100 worker threads with 1,000 files to unzip. Dividing the files evenly between workers (1,000 / 100) or 10 files to unzip for each worker.</p>
+<pre><code>...
+# determine chunksize
+n_workers = 100
+chunksize = round(len(files) / n_workers)
+</code></pre>
+<p>Next, we can create the thread pool with the parameterized number of worker threads.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(n_workers) as exe:
+    ...
+</code></pre>
+<p>Next, we can iterate over the list of files to unzip and split them into chunks defined by a chunksize.</p>
+<p>This can be achieved by iterating over the list of files and using the chunksize as the increment size in a for-loop. We can then split off a chunk of files to send to a worker thread as a task.</p>
+<pre><code>...
+# split the copy operations into chunks
+for i in range(0, len(files), chunksize):
+    # select a chunk of filenames
+    filenames = files[i:(i + chunksize)]
+    # submit the batch copy task
+    _ = exe.submit(copy_files, filenames, dest)
+</code></pre>
+<p>And that's it.</p>
+<p>The complete example of unzipping files in a batch concurrently using worker threads is listed below.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files concurrently with threads in batch
+from zipfile import ZipFile
+from concurrent.futures import ThreadPoolExecutor
+
+# unzip files from an archive
+def unzip_files(handle, filenames, path):
+    # unzip multiple files
+    for filename in filenames:
+        # unzip the file
+        handle.extract(filename, path)
+        # report progress
+        print(f'.unzipped {filename}')
+
+# unzip a large number of files
+def main(path='tmp'):
+    # open the zip file
+    with ZipFile('testing.zip', 'r') as handle:
+        # list of all files to unzip
+        files = handle.namelist()
+        # determine chunksize
+        n_workers = 100
+        chunksize = round(len(files) / n_workers)
+        # start the thread pool
+        with ThreadPoolExecutor(n_workers) as exe:
+            # split the copy operations into chunks
+            for i in range(0, len(files), chunksize):
+                # select a chunk of filenames
+                filenames = files[i:(i + chunksize)]
+                # submit the batch copy task
+                _ = exe.submit(unzip_files, handle, filenames, path)
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example unzips all 1,000 files to the <strong>tmp/</strong> subdirectory as before.</p>
+<pre><code>...
+.unzipped data-0389.csv
+.unzipped data-0089.csv
+.unzipped data-0789.csv
+.unzipped data-0889.csv
+.unzipped data-0659.csv
+.unzipped data-0979.csv
+.unzipped data-0109.csv
+.unzipped data-0359.csv
+.unzipped data-0969.csv
+.unzipped data-0679.csv
+</code></pre>
+<p>In this case, we don't see any benefit in terms of reduced execution time.</p>
+<p>On my system it takes about 3.3 seconds to complete, compared to about 8.36 seconds for the sequential version. That is about <strong>2.53x faster</strong>.</p>
+<p>It is slightly faster than the non-batch version that took about 3.4 seconds, although may be within the margin of measurement error.</p>
+<pre><code>[Finished in 3.3s]
+[Finished in 3.4s]
+[Finished in 3.3s]</code></pre>
+<h2>Unzip Files Concurrently with Processes</h2>
+<p>We can also try to unzip files concurrently with processes instead of threads.</p>
+<p>It is unclear whether processes can offer a speed benefit in this case. Given that we can get a benefit using threads, we know it is possible. Nevertheless, using processes requires data for each task to be serialized which introduces additional overhead that might negate any speed-up from performing file operations with true parallelism via processes.</p>
+<p>We can explore using processes to unzip files concurrently using the <strong>ProcessPoolExecutor</strong>.</p>
+<p>Unlike the <strong>ThreadPoolExecutor</strong>, we cannot simply send the handle to the open zip file to each worker process as the ZipFile class cannot be serialized.</p>
+<p>Instead, each process must open the zip archive and extract files separately.</p>
+<p>First, we can update the <strong>unzip_file()</strong> function to take the name of the zip file instead of the file handle. Then open the zip file before then unzipping a single file to the destination directory.</p>
+<p>The updated version of the <strong>unzip_file()</strong> function is listed below.</p>
+<pre><code># unzip a file from an archive
+def unzip_file(zip_filename, filename, path):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # unzip the file
+        handle.extract(filename, path)
+        # report progress
+        print(f'.unzipped {filename}')
+</code></pre>
+<p>Next, we must open the zip file in the main thread and get a list of all files to unzip.</p>
+<pre><code>...
+# open the zip file
+with ZipFile('testing.zip', 'r') as handle:
+    # get a list of files to unzip
+    files = handle.namelist()
+</code></pre>
+<p>We can then submit each filename as a task to the process pool.</p>
+<p>In this case, we will use 8 workers in the pool because I have 8 logical CPU cores. You may want to adapt this for the number of logical CPU cores in your system or try different configurations in order to discover what works well.</p>
+<pre><code>...
+# start the process pool
+with ProcessPoolExecutor(8) as exe:
+    # unzip each file from the archive
+    _ = [exe.submit(unzip_file, zip_filename, name, path) for name in files]
+</code></pre>
+<p>And that's it.</p>
+<p>The complete example of unzipping files concurrently using processes is listed below.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files concurrently with processes
+from zipfile import ZipFile
+from concurrent.futures import ProcessPoolExecutor
+
+# unzip a file from an archive
+def unzip_file(zip_filename, filename, path):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # unzip the file
+        handle.extract(filename, path)
+        # report progress
+        print(f'.unzipped {filename}')
+
+# unzip a large number of files
+def main(path='tmp', zip_filename='testing.zip'):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # get a list of files to unzip
+        files = handle.namelist()
+    # start the process pool
+    with ProcessPoolExecutor(8) as exe:
+        # unzip each file from the archive
+        _ = [exe.submit(unzip_file, zip_filename, name, path) for name in files]
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example unzips all files from the archive as before.</p>
+<pre><code>...
+.unzipped data-0928.csv
+.unzipped data-0937.csv
+.unzipped data-0944.csv
+.unzipped data-0951.csv
+.unzipped data-0960.csv
+.unzipped data-0968.csv
+.unzipped data-0976.csv
+.unzipped data-0984.csv
+.unzipped data-0992.csv
+.unzipped data-0999.csv</code></pre>
+<p>In this case, using a process pool offers a benefit over the single-threaded version, although about the same performance as the multi-threaded example.</p>
+<p>On my system, the example takes about 3.26 seconds to complete, compared to about 8.36 seconds for the single-threaded version. That is about <strong>2.56x faster</strong>.</p>
+<pre><code>[Finished in 3.2s]
+[Finished in 3.3s]
+[Finished in 3.3s]</code></pre>
+<h2>Unzip Files Concurrently with Processes in Batch</h2>
+<p>Opening the zip file for each of the 1,000 files to unzip likely results in too much overhead.</p>
+<p>Instead, it may be more efficient to open the zip file once per process, then unzip a subset of the files in batch.</p>
+<p>Therefore, we can adapt the example from the previous section to unzip multiple files per task, similar to the multithreaded batch example we developed previously.</p>
+<p>First, we can update the <strong>unzip_files()</strong> function to take a list of files to unzip.</p>
+<pre><code># unzip files from an archive
+def unzip_files(zip_filename, filenames, path):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # unzip multiple files
+        for filename in filenames:
+            # unzip the file
+            handle.extract(filename, path)
+            # report progress
+            print(f'.unzipped {filename}')
+</code></pre>
+<p>We can then split the list of files into chunks.</p>
+<p>In this case, we will use 8 processes and split the 1,000 files to unzip evenly giving 125 files to unzip per process. It may be interesting to explore different divisions of work among the processes.</p>
+<pre><code>...
+# determine chunksize
+n_workers = 8
+chunksize = round(len(files) / n_workers)
+</code></pre>
+<p>Finally, we can iterate the list of files to unzip in chunks and send each into the process pool as a task, much like we did in the multithreaded batch unzipping example.</p>
+<pre><code>...
+# split the copy operations into chunks
+for i in range(0, len(files), chunksize):
+    # select a chunk of filenames
+    filenames = files[i:(i + chunksize)]
+    # submit the batch copy task
+    _ = exe.submit(unzip_files, zip_filename, filenames, path)
+</code></pre>
+<p>Tying this together, the complete example of unzipping files concurrently using the process pool in batch is listed below.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files concurrently with processes in batch
+from zipfile import ZipFile
+from concurrent.futures import ProcessPoolExecutor
+
+# unzip files from an archive
+def unzip_files(zip_filename, filenames, path):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # unzip multiple files
+        for filename in filenames:
+            # unzip the file
+            handle.extract(filename, path)
+            # report progress
+            print(f'.unzipped {filename}')
+
+# unzip a large number of files
+def main(path='tmp', zip_filename='testing.zip'):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # list of all files to unzip
+        files = handle.namelist()
+    # determine chunksize
+    n_workers = 8
+    chunksize = round(len(files) / n_workers)
+    # start the thread pool
+    with ProcessPoolExecutor(n_workers) as exe:
+        # split the copy operations into chunks
+        for i in range(0, len(files), chunksize):
+            # select a chunk of filenames
+            filenames = files[i:(i + chunksize)]
+            # submit the batch copy task
+            _ = exe.submit(unzip_files, zip_filename, filenames, path)
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example unzips all files from the archive as before.</p>
+<pre><code>...
+.unzipped data-0865.csv
+.unzipped data-0866.csv
+.unzipped data-0867.csv
+.unzipped data-0868.csv
+.unzipped data-0869.csv
+.unzipped data-0870.csv
+.unzipped data-0871.csv
+.unzipped data-0872.csv
+.unzipped data-0873.csv
+.unzipped data-0874.csv</code></pre>
+<p>In this case, we see a benefit over all previous examples tried so far.</p>
+<p>On my system, the example takes about 2.03 seconds, compared to about 8.36 seconds for the single-threaded version. That is about <strong>4.12x faster</strong>.</p>
+<pre><code>[Finished in 2.1s]
+[Finished in 2.0s]
+[Finished in 2.0s]
+</code></pre>
+<p>Interestingly, the <strong>ZipFile.extractall()</strong> allows a subset of files to be extracted in batch.</p>
+<p>We could call this function from each process for a chunk of files. This could be slightly more efficient given the fewer lines of code although it means we cannot report progress along the way.</p>
+<p>The <strong>unzip_files()</strong> function can be updated to call the <strong>ZipFile.extractall()</strong> function directly, specifying the directory in which the files are to be extracted and a list of names of files to extract from the archive.</p>
+<p>The <strong>unzip_files()</strong> function with these changes is listed below.</p>
+<pre><code># unzip files from an archive
+def unzip_files(zip_filename, filenames, path):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # unzip a batch of files
+        handle.extractall(path=path, members=filenames)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files concurrently with processes in batch
+from zipfile import ZipFile
+from concurrent.futures import ProcessPoolExecutor
+
+# unzip files from an archive
+def unzip_files(zip_filename, filenames, path):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # unzip a batch of files
+        handle.extractall(path=path, members=filenames)
+
+# unzip a large number of files
+def main(path='tmp', zip_filename='testing.zip'):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # list of all files to unzip
+        files = handle.namelist()
+    # determine chunksize
+    n_workers = 8
+    chunksize = round(len(files) / n_workers)
+    # start the thread pool
+    with ProcessPoolExecutor(n_workers) as exe:
+        # split the copy operations into chunks
+        for i in range(0, len(files), chunksize):
+            # select a chunk of filenames
+            filenames = files[i:(i + chunksize)]
+            # submit the batch copy task
+            _ = exe.submit(unzip_files, zip_filename, filenames, path)
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example extracts all 1,000 files from the archive as before.</p>
+<p>In this case, we don't see any significant speed improvement.</p>
+<p>On my system, it takes about 2.0 seconds, compared to about 2.03 seconds when calling the <strong>ZipFile.extract()</strong> function manually for each file to decompress which may be within the margin of measurement error.</p>
+<p>Nevertheless, compared to the sequential version that took 8.36 seconds, this version is about <strong>4.18x faster</strong>.</p>
+<pre><code>[Finished in 2.0s]
+[Finished in 2.0s]
+[Finished in 2.0s]</code></pre>
+<h2>Unzip Files Concurrently with Processes and Threads in Batch</h2>
+<p>It is possible to separate the CPU-bound and IO-bound effort of each file unzip task.</p>
+<p>We can decompress a file from the archive to main memory by calling the <strong>ZipFile.read()</strong> function, then save it to disk manually by creating a path and writing the bytes.</p>
+<p>The decompression of each file in memory could be performed by processes and the writing of each file to disk could be performed by threads.</p>
+<p>This could be achieved by first using a process pool to decompress batches of files from the archive then using a thread pool within each process to save the decompressed file data to disk.</p>
+<p>There are a lot of moving parts and it is unclear whether this would offer a speed improvement. Nevertheless, it is an interesting exercise.</p>
+<p>First, we can define a task to save data to disk to be executed in a thread pool.</p>
+<p>The function takes the decompressed data, the filename and the directory in which to save the file. A relative path is constructed using the <strong>os.path.join()</strong> function, then the file is opened in write mode and the decompressed bytes are written to disk and progress is reported.</p>
+<p>The <strong>save_file()</strong> function below implements this.</p>
+<pre><code># save file to disk
+def save_file(data, filename, path):
+    # create a path
+    filepath = join(path, filename)
+    # write to disk
+    with open(filepath, 'wb') as file:
+        file.write(data)
+    # report progress
+    print(f'.unzipped {filename}', flush=True)
+</code></pre>
+<p>Next, the <strong>unzip_files()</strong> function needs to be updated to first decompress each file, then issue a save task to a thread pool.</p>
+<p>First, we must create a thread pool. We will use 10 workers per pool in this case, chosen arbitrarily. Recall, each of the eight processes will have its own thread pool.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(10) as exe:
+    # ...
+</code></pre>
+<p>We can then iterate over the list of files that the process is responsible for unzipping and decompressing each and submit the data to the thread pool for saving.</p>
+<p>Because the thread pool is within the process, no inter-process communication is required, avoiding additional computational overhead, such as if the main thread/process were to save the decompressed files.</p>
+<pre><code>...
+# unzip each file
+for filename in filenames:
+    # decompress data
+    data = handle.read(filename)
+    # save to disk
+    _ = exe.submit(save_file, data, filename, path)
+</code></pre>
+<p>The updated version of the <strong>unzip_files()</strong> function with these changes is listed below.</p>
+<pre><code># unzip files from an archive
+def unzip_files(zip_filename, filenames, path):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # create a thread pool
+        with ThreadPoolExecutor(10) as exe:
+            # unzip each file
+            for filename in filenames:
+                # decompress data
+                data = handle.read(filename)
+                # save to disk
+                _ = exe.submit(save_file, data, filename, path)
+</code></pre>
+<p>And that is it. </p>
+<p>No other changes from the previous example for batch unzipping with processes are required.</p>
+<p>The complete example is listed below.</p>
+<p>It is more complicated than the previous example, so let's review what is happening. First, we split the list of files into chunks and send each chunk to a separate process for extraction. Each process then starts a thread pool, extracts the data for each file and throws tasks into the thread pool to save the decompressed data for each file.</p>
+<p>The hope is that decompressing data is faster than saving data to disk so that the CPU can get through the decompression steps fast and then wait on the threads to save all the files.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files concurrently with processes and threads in batch
+from os import makedirs
+from os.path import join
+from zipfile import ZipFile
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
+
+# save file to disk
+def save_file(data, filename, path):
+    # create a path
+    filepath = join(path, filename)
+    # write to disk
+    with open(filepath, 'wb') as file:
+        file.write(data)
+    # report progress
+    print(f'.unzipped {filename}', flush=True)
+
+# unzip files from an archive
+def unzip_files(zip_filename, filenames, path):
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # create a thread pool
+        with ThreadPoolExecutor(10) as exe:
+            # unzip each file
+            for filename in filenames:
+                # decompress data
+                data = handle.read(filename)
+                # save to disk
+                _ = exe.submit(save_file, data, filename, path)
+
+# unzip a large number of files
+def main(path='tmp', zip_filename='testing.zip'):
+    # create the target directory
+    makedirs(path, exist_ok=True)
+    # open the zip file
+    with ZipFile(zip_filename, 'r') as handle:
+        # list of all files to unzip
+        files = handle.namelist()
+    # determine chunksize
+    n_workers = 8
+    chunksize = round(len(files) / n_workers)
+    # start the thread pool
+    with ProcessPoolExecutor(n_workers) as exe:
+        # split the copy operations into chunks
+        for i in range(0, len(files), chunksize):
+            # select a chunk of filenames
+            filenames = files[i:(i + chunksize)]
+            # submit the batch copy task
+            _ = exe.submit(unzip_files, zip_filename, filenames, path)
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example decompresses all 1,000 data files to the tmp/ sub-directory as with all previous examples and reports progress.</p>
+<pre><code>...
+.unzipped data-0747.csv
+.unzipped data-0998.csv
+.unzipped data-0623.csv
+.unzipped data-0873.csv
+.unzipped data-0374.csv
+.unzipped data-0748.csv
+.unzipped data-0999.csv
+.unzipped data-0624.csv
+.unzipped data-0874.csv
+.unzipped data-0749.csv
+</code></pre>
+<p>In this case, we may see a small speed increase</p>
+<p>On my system, it takes about 1.83 seconds to complete, compared to about 8.36 seconds for the sequential version. That is about <strong>4.57x faster</strong>.</p>
+<pre><code>[Finished in 1.8s]
+[Finished in 1.8s]
+[Finished in 1.9s]
+</code></pre>
+<h2>Unzip Files Concurrently with AsyncIO</h2>
+<p>We can also unzip files concurrently using <a href="https://docs.python.org/3/library/asyncio.html">asyncio</a>.</p>
+<p>Generally, Python does not support non-blocking IO operations when working with files. It is not provided in the asyncio module. This is because it is challenging to implement in a general cross-platform manner.</p>
+<p>The <a href="https://pypi.org/project/aiofiles/">third-party library aiofiles</a> provides file operations for use in asyncio operations, but again, the operations are not true non-blocking IO and instead the concurrency is simulated using thread pools.</p>
+<p>Nevertheless, we can use aiofiles in an asyncio program to load files concurrently. It does not support an asynchronous version of the <strong>ZipFile</strong> class.</p>
+<p>You can install the aiofiles library using your Python package manager, such as pip:</p>
+<pre><code>pip3 install aiofiles</code></pre>
+<p>Given that the <strong>aiofiles</strong> library does not support asyncio support for <strong>ZipFile</strong>, we can develop an example that first decompresses each file in a blocking manner, then save the decompressed data to disk using (simulated) non-blocking IO.</p>
+<p>First, we can develop a function to extract data from the zip file and save data to disk using aiofiles.</p>
+<p>The data can be extracted from the zip file, which requires a blocking read operation.</p>
+<pre><code>...
+# decompress data, blocking
+data = handle.read(filename)
+</code></pre>
+<p>Next, we can construct the output path for saving the file using <strong>os.path.join()</strong> function.</p>
+<pre><code>...
+# create a path
+filepath = join(path, filename)
+</code></pre>
+<p>We can then open the file using <strong>aiofiles.open() </strong>and write the data to disk, yielding control until the task is completed.</p>
+<pre><code>...
+# write to disk
+async with aiofiles.open(filepath, 'wb') as fd:
+    await fd.write(data)
+</code></pre>
+<p>The <strong>extract_and_save()</strong> function below implements this.</p>
+<pre><code># extract a file from the archive and save to disk
+async def extract_and_save(handle, filename, path):
+    # decompress data, blocking
+    data = handle.read(filename)
+    # create a path
+    filepath = join(path, filename)
+    # write to disk
+    async with aiofiles.open(filepath, 'wb') as fd:
+        await fd.write(data)
+    # report progress
+    print(f'.unzipped {filename}')
+</code></pre>
+<p>Finally, we can update the <strong>main()</strong> function.</p>
+<p>We can create the directory in which all files will be saved using the <strong>os.makedirs()</strong> function.</p>
+<pre><code>...
+# create the target directory
+makedirs(path, exist_ok=True)
+</code></pre>
+<p>After opening the <strong>ZipFile</strong> for unzipping, we can create a list of coroutines, each with a call to our <strong>extract_and_save()</strong> function for each filename in the zip archive.</p>
+<p>This can be achieved using a list comprehension.</p>
+<pre><code>...
+# create coroutines
+tasks = [extract_and_save(handle, name, path) for name in handle.namelist()]
+</code></pre>
+<p>Recall that this will create a list of coroutines and will not call the <strong>extract_and_save()</strong> function.</p>
+<p>We can execute all of the coroutines and await their completion using the <strong>asyncio.gather() </strong>function. We can unpack the coroutines for the gather function using the <strong>*</strong> operator, for example:</p>
+<pre><code>...
+# execute all tasks
+_ = await asyncio.gather(*tasks)
+</code></pre>
+<p>Finally, we can start the asyncio runtime and call the <strong>main()</strong> to begin the event loop and start processing coroutines.</p>
+<pre><code># entry point
+if __name__ == '__main__':
+    asyncio.run(main())
+</code></pre>
+<p>Tying this together, the complete example of concurrently unzipping files using asyncio is listed below.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files concurrently with asyncio
+from os import makedirs
+from os.path import join
+from zipfile import ZipFile
+import asyncio
+import aiofiles
+
+# extract a file from the archive and save to disk
+async def extract_and_save(handle, filename, path):
+    # decompress data, blocking
+    data = handle.read(filename)
+    # create a path
+    filepath = join(path, filename)
+    # write to disk
+    async with aiofiles.open(filepath, 'wb') as fd:
+        await fd.write(data)
+    # report progress
+    print(f'.unzipped {filename}')
+
+# unzip a large number of files
+async def main(path='tmp'):
+    # create the target directory
+    makedirs(path, exist_ok=True)
+    # open the zip file
+    with ZipFile('testing.zip', 'r') as handle:
+        # create coroutines
+        tasks = [extract_and_save(handle, name, path) for name in handle.namelist()]
+        # execute all tasks
+        _ = await asyncio.gather(*tasks)
+
+# entry point
+if __name__ == '__main__':
+    asyncio.run(main())
+</code></pre>
+<p>Running the example unzips all files to the <strong>tmp/</strong> subdirectory as before.</p>
+<pre><code>...
+.unzipped data-0987.csv
+.unzipped data-0994.csv
+.unzipped data-0989.csv
+.unzipped data-0993.csv
+.unzipped data-0995.csv
+.unzipped data-0998.csv
+.unzipped data-0999.csv
+.unzipped data-0992.csv
+.unzipped data-0997.csv
+.unzipped data-0996.csv
+</code></pre>
+<p>In this case, we don't see any speed benefit, in fact, the asyncio version has much worse performance than other multithreaded versions.</p>
+<p>On my system, the example takes about 7.6 seconds, compared to about 8.36 seconds with the sequential version. This is about <strong>1.10x faster</strong>.</p>
+<pre><code>[Finished in 7.9s]
+[Finished in 7.6s]
+[Finished in 7.5s]
+</code></pre>
+<h2>Unzip Files Concurrently with AsyncIO in Batch</h2>
+<p>Perhaps we can reduce some of the overhead in unzipping files concurrently with asyncio by performing tasks in batch.</p>
+<p>In the previous example, each coroutine performed a single IO-bound operation. We can update the <strong>extract_and_save()</strong> function to process multiple files in a batch as we did in previous batch processing examples.</p>
+<p>This will reduce the number of coroutines in the asyncio runtime and may reduce the amount of data moving around. </p>
+<p>The updated version of the task function that will process a list of files is listed below. The task will yield control for each file write operation, but only to other coroutines. The for-loop within a task will not progress while it is waiting.</p>
+<pre><code># extract files from the archive and save to disk
+async def extract_and_save(handle, filenames, path):
+    # extract each file
+    for filename in filenames:
+        # decompress data, blocking
+        data = handle.read(filename)
+        # create a path
+        filepath = join(path, filename)
+        # write to disk
+        async with aiofiles.open(filepath, 'wb') as fd:
+            await fd.write(data)
+        # report progress
+        print(f'.unzipped {filename}')</code></pre>
+<p>Next, we can prepare a list of all files we expect to unzip from the archive.</p>
+<pre><code>...
+# determine all of the files to extract
+files = handle.namelist()</code></pre>
+<p>We can then choose the number of coroutines we wish to use and then divide the total number of files up evenly into chunks.</p>
+<p>We will use 100 in this case, chosen arbitrarily.</p>
+<pre><code>...
+# determine chunksize
+n_workers = 100
+chunksize = round(len(files) / n_workers)</code></pre>
+<p>We can then iterate over the chunks and add each coroutine to a list for execution at the end.</p>
+<pre><code>...
+# split the move operations into chunks
+tasks = list()
+for i in range(0, len(files), chunksize):
+    # select a chunk of filenames
+    filenames = files[i:(i + chunksize)]
+    # add coroutine to list of tasks
+    tasks.append(extract_and_save(handle, filenames, path))</code></pre>
+<p>Finally, we can execute all 100 coroutines concurrently.</p>
+<pre><code>...
+# execute and wait for all coroutines
+await asyncio.gather(*tasks)</code></pre>
+<p>Tying this together, a complete example of batch file unzipping using asyncio is listed below.</p>
+<pre><code># SuperFastPython.com
+# unzip a large number of files concurrently with asyncio in batch
+from os import makedirs
+from os.path import join
+from zipfile import ZipFile
+import asyncio
+import aiofiles
+
+# extract files from the archive and save to disk
+async def extract_and_save(handle, filenames, path):
+    # extract each file
+    for filename in filenames:
+        # decompress data, blocking
+        data = handle.read(filename)
+        # create a path
+        filepath = join(path, filename)
+        # write to disk
+        async with aiofiles.open(filepath, 'wb') as fd:
+            await fd.write(data)
+        # report progress
+        print(f'.unzipped {filename}')
+
+# unzip a large number of files
+async def main(path='tmp'):
+    # create the target directory
+    makedirs(path, exist_ok=True)
+    # open the zip file
+    with ZipFile('testing.zip', 'r') as handle:
+        # determine all of the files to extract
+        files = handle.namelist()
+        # determine chunksize
+        n_workers = 100
+        chunksize = round(len(files) / n_workers)
+        # split the move operations into chunks
+        tasks = list()
+        for i in range(0, len(files), chunksize):
+            # select a chunk of filenames
+            filenames = files[i:(i + chunksize)]
+            # add coroutine to list of tasks
+            tasks.append(extract_and_save(handle, filenames, path))
+        # execute and wait for all coroutines
+        await asyncio.gather(*tasks)
+
+# entry point
+if __name__ == '__main__':
+    asyncio.run(main())
+</code></pre>
+<p><meta/>Running the example unzips all files to the <strong>tmp/</strong> subdirectory as before.</p>
+<pre><code>.unzipped data-0769.csv
+.unzipped data-0819.csv
+.unzipped data-0989.csv
+.unzipped data-0579.csv
+.unzipped data-0959.csv
+.unzipped data-0969.csv
+.unzipped data-0879.csv
+.unzipped data-0999.csv
+.unzipped data-0979.csv
+.unzipped data-0949.csv</code></pre>
+<p>In this case we see a modest speed improvement over the non-batch asyncio version of unzipping files.</p>
+<p>On my system, the example takes about 6.4 seconds to complete, compared to 8.36 seconds for the sequential version. That is about <strong>1.31x faster</strong>.</p>
+<pre><code>[Finished in 6.4s]
+[Finished in 6.4s]
+[Finished in 6.4s]</code></pre>
+<h2>Takeaways</h2>
+<p>In this tutorial, you discovered how to explore concurrent file unzipping in Python.</p>
 </main>
 </body>
 </html>

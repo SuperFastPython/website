@@ -87,6 +87,304 @@ result = concatenate(result_list)</code></pre>
 array = empty(1000000000)</code></pre>
 <p>Next, we can define a function that will populate a portion of a provided array with random numbers.</p>
 <p>Again, we can create a random number generator via the <strong>numpy.random.default_rng()</strong> function with a given random seed, then call the <strong>random()</strong> method and specify the portion of the array to populate.</p>
+<pre><code># populate a subsequence of a large array
+def populate(seed, vector, ix_start, ix_end):
+    # create random number generator with the seed
+    rand = default_rng(seed)
+    # populate a subsequence of the large vector
+    rand.random(out=vector[ix_start:ix_end])
+</code></pre>
+<p>We can partition the indexes of our large array based on the number of workers in the pool.</p>
+<p>This requires first calculating the size of each partition, such as 125,000,000 items if we had a vector of 1 million items and 8 workers.</p>
+<pre><code>...
+# determine the size of each subsequence
+size = 125000000</code></pre>
+<p>We can then determine the beginning and end indexes of the array for each worker to populate.</p>
+<p>These can be prepared as arguments to be passed to the <strong>starmap()</strong> method on the <strong>Pool</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# prepare arguments for each call to populate()
+args = [(i, array, i*size, (i+1)*size) for i in range(8)]
+# populate each subsequence
+result_list = pool.starmap(populate, args)
+</code></pre>
+<h3>Note on Seeds of Random Number Generators</h3>
+<p>Each worker requires its own random number generator.</p>
+<p>It is important that each random number generator uses a different seed so that the sequence of generated numbers does not overlap with any other subsequence.</p>
+<p>This can be achieved by first creating a generator for random number seeds via the <a href="https://numpy.org/doc/stable/reference/random/bit_generators/generated/numpy.random.SeedSequence.html"><strong>numpy.random.SeedSequence</strong> class</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# create generator for random number generator seeds
+seed_seq = SeedSequence(1)</code></pre>
+<p>This can then be used to generate a sequence of unique seeds to pass to each child worker to seed their random number generator.</p>
+<p>This can be achieved by calling the <a href="https://numpy.org/doc/stable/reference/random/bit_generators/generated/numpy.random.SeedSequence.spawn.html"><strong>spawn()</strong> method</a> and specifying the number of seeds to generate.</p>
+<p>For example:</p>
+<pre><code>...
+# create seeds to use for random number generators
+seeds = seed_seq.spawn(8)</code></pre>
+<p>The seed can then be passed to the random number generator when it is created.</p>
+<p>For example:</p>
+<pre><code>...
+# create random number generator with the seed
+rand = default_rng(seed)</code></pre>
+<p>The random number generator can then be used to create random numbers with the required distribution, such as a uniform distribution.</p>
+<p>Now that we know how to generate a large vector of random numbers in parallel with multiprocessing, let's look at some worked examples.</p>
+<h2>Create a Large Vector of Random Numbers (sequential)</h2>
+<p>Firstly, we can explore how we might create one large vector of random numbers sequentially.</p>
+<p>We can call the <strong>numpy.random.rand()</strong> function to create a vector of random numbers with a given size.</p>
+<pre><code>...
+# size of the vector
+n = 1000000000
+# create the array
+array = rand(n)</code></pre>
+<p>We will time how long this takes to run as a point of comparison.</p>
+<p>The complete example is listed below.</p>
+<pre><code># create a large vector of random numbers
+from time import time
+from numpy.random import rand
+# record start time
+start = time()
+# size of the vector
+n = 1000000000
+# create the array
+array = rand(n)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example takes about 7.745 seconds on my system.</p>
+<p>It may take more or fewer seconds, depending on the speed of your hardware, Python version, and numpy version.</p>
+<pre><code>Took 7.745 seconds</code></pre>
+<p>Next, let's look at how we can create and then populate a large array with random numbers.</p>
+<h2>Populate a Large Vector of Random Numbers (sequential)</h2>
+<p>An alternative approach to creating a large vector of random numbers is to populate it, with a single process.</p>
+<p>That is, we can create the vector first, then populate it with random numbers.</p>
+<pre><code>...
+# size of the vector
+n = 1000000000
+# create the array
+array = empty(n)
+# create random number generator with the seed
+rand = default_rng(seed=1)
+# populate the array
+rand.random(out=array)</code></pre>
+<p>The complete example is listed below.</p>
+<pre><code># populate a large vector with random numbers
+from time import time
+from numpy.random import default_rng
+# from numpy.random import random
+from numpy import empty
+# record start time
+start = time()
+# size of the vector
+n = 1000000000
+# create the array
+array = empty(n)
+# create random number generator with the seed
+rand = default_rng(seed=1)
+# populate the array
+rand.random(out=array)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the example is faster than having the numpy.random.rand() function create it for us.</p>
+<p>On my system, this example was completed in about 4.907 seconds.</p>
+<p>This is surprising.</p>
+<p>This is a difference of about 2.838 seconds or about 1.58x faster.</p>
+<pre><code>Took 4.907 seconds</code></pre>
+<p>Next, let's look at creating a vector of random numbers in parallel using multiprocessing.</p>
+<h2>Create Random Numbers Vectors in Parallel with Processes</h2>
+<p>We can create subvectors of random numbers in parallel using processes.</p>
+<p>These vectors can then be combined into one large vector.</p>
+<p>Firstly, we must define a function that will take a random number seed and a size of a vector to create, then returns a vector of random numbers of the given size.</p>
+<pre><code># create and return a vector of random numbers
+def populate(seed, size):
+    # create random number generator with the seed
+    rand = default_rng(seed)
+    # create vector of random floats
+    return rand.random(size=size)
+</code></pre>
+<p>We can then create the process pool.</p>
+<p>In this case, we will use 4 worker processes, one for each physical CPU core in my system. Update to match the number of scores in your system or experiment to find a configuration that works best for your system.</p>
+<pre><code>...
+# create a pool of workers
+n_workers = 4
+with Pool(n_workers) as pool:
+	# ...
+</code></pre>
+<p>We can then prepare the seeds for the random number generators used in each child worker.</p>
+<pre><code>...
+# create seeds for child processes
+seed_seq = SeedSequence(1)
+seeds = seed_seq.spawn(n_workers)</code></pre>
+<p>We can then automatically determine the size of each sub-array, based on the overall vector size and the number of workers we have available.</p>
+<pre><code>...
+# determine the size of each sub-array
+size = int(ceil(n / n_workers))</code></pre>
+<p>Next, we can prepare the arguments for each task and issue them to the process pool.</p>
+<pre><code>...
+# create arguments
+args = [(seed, size) for seed in seeds]
+# create sub arrays
+result_list = pool.starmap(populate, args)</code></pre>
+<p>Finally, we can concatenate the subarrays into one large vector.</p>
+<pre><code>...
+# convert arrays into one large array
+result = concatenate(result_list)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example of creating vectors of random values in parallel
+from time import time
+from numpy import concatenate
+from numpy import ceil
+from numpy.random import SeedSequence
+from numpy.random import default_rng
+from multiprocessing.pool import Pool
+
+# create and return a vector of random numbers
+def populate(seed, size):
+    # create random number generator with the seed
+    rand = default_rng(seed)
+    # create vector of random floats
+    return rand.random(size=size)
+
+# protect the entry point
+if __name__ == '__main__':
+    # record start time
+    start = time()
+    # size of the vector
+    n = 1000000000
+    # create a pool of workers
+    n_workers = 4
+    with Pool(n_workers) as pool:
+        # create seeds for child processes
+        seed_seq = SeedSequence(1)
+        seeds = seed_seq.spawn(n_workers)
+        # determine the size of each sub array
+        size = int(ceil(n / n_workers))
+        # create arguments
+        args = [(seed, size) for seed in seeds]
+        # create sub arrays
+        result_list = pool.starmap(populate, args)
+        # convert arrays into one large array
+        result = concatenate(result_list)
+    # calculate and report duration
+    duration = time() - start
+    print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example took about 65.267 seconds on my system. That's just over one minute.</p>
+<p>That is about 57.522 seconds SLOWER than the sequential (non-parallel) version of the code, or 8.43x slower.</p>
+<p><strong>Why is it slower?</strong></p>
+<p>The reason is that each array created in a worker process must be transmitted back to the main process. This requires that the array be serialized (pickled) and sent via inter-process communication, then unpickled.</p>
+<p>This adds a huge overhead.</p>
+<pre><code>Took 65.267 seconds</code></pre>
+<p>Next, let's look at how to develop a multiprocessing version of populating a large vector.</p>
+<h2>Populate Vectors with Random Numbers in Parallel</h2>
+<p>We can use multiprocessing to populate a large numpy vector with random numbers in parallel using worker processes.</p>
+<p>Firstly, we must define a task function used to populate a portion of the large vector.</p>
+<p>The function takes the seed for the random number generator, the vector itself, and the start and end indexes. It creates the random number generator and then specifies the subarray to populate.</p>
+<pre><code># populate a subsequence of a large array
+def populate(seed, vector, ix_start, ix_end):
+    # create random number generator with the seed
+    rand = default_rng(seed)
+    # populate a subsequence of the large vector
+    rand.random(out=vector[ix_start:ix_end])
+</code></pre>
+<p>Next, we can create the process pool with one worker per physical CPU core in our system. Update to match the number of CPUs in your system.</p>
+<pre><code>...
+# create the pool of workers
+n_workers = 4
+with Pool(n_workers) as pool:
+	# ...
+</code></pre>
+<p>We can then create the sequence of seeds for the random number generators.</p>
+<pre><code>...
+# create seeds for child processes
+seed_seq = SeedSequence(1)
+seeds = seed_seq.spawn(n_workers)</code></pre>
+<p>We can also automatically determine the size of each subsequence based on the size of the array and the number of workers we have available.</p>
+<pre><code>...
+# determine the size of each subsequence
+size = int(ceil(n / n_workers))</code></pre>
+<p>Finally, we can prepare the arguments for each task and issue the tasks to the process pool to be executed in parallel.</p>
+<pre><code>...
+# prepare arguments for each call to populate()
+args = [(seeds, array, i*size, (i+1)*size) for i in range(n_workers)]
+# populate each subsequence
+result_list = pool.starmap(populate, args)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example of populating a large vector in parallel using processes
+from time import time
+from numpy import concatenate
+from numpy import ceil
+from numpy import empty
+from numpy.random import SeedSequence
+from numpy.random import default_rng
+from multiprocessing.pool import Pool
+
+# populate a subsequence of a large array
+def populate(seed, vector, ix_start, ix_end):
+    # create random number generator with the seed
+    rand = default_rng(seed)
+    # populate a subsequence of the large vector
+    rand.random(out=vector[ix_start:ix_end])
+
+if __name__ == '__main__':
+    # record start time
+    start = time()
+    # size of the vector
+    n = 1000000000
+    # create array
+    array = empty(n)
+    # create the pool of workers
+    n_workers = 4
+    with Pool(n_workers) as pool:
+        # create seeds for child processes
+        seed_seq = SeedSequence(1)
+        seeds = seed_seq.spawn(n_workers)
+        # determine the size of each subsequence
+        size = int(ceil(n / n_workers))
+        # prepare arguments for each call to populate()
+        args = [(seeds, array, i*size, (i+1)*size) for i in range(n_workers)]
+        # populate each subsequence
+        result_list = pool.starmap(populate, args)
+    # calculate and report duration
+    duration = time() - start
+    print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running this example took about 139.228 seconds to complete on my system. That is about 2.3 minutes.</p>
+<p>That is about 134.321 seconds SLOWER than the sequential (single-process) version of the code for populating the array or about 28.37x slower.</p>
+<p>Again, we can reason why.</p>
+<p>Sending one large array to worker processes to be populated, and sending it back again, is very slow because of inter-process communication.</p>
+<pre><code>Took 139.228 seconds</code></pre>
+<h2>Results and Recommendations</h2>
+<p>The results clearly show that using multiprocessing to create arrays of random numbers is slower than the single-process version.</p>
+<p>The main reason is that processes do not have shared memory. Instead, data must be sent from the main process to the child process, and back again.</p>
+<p>The table below summarizes the results.</p>
+<pre><code>Approach                    | Time (sec)
+----------------------------------------
+Create Array (sequential)   | 7.745
+Populate Array (sequential) | 4.907
+Create Array (parallel)     | 65.267
+Populate Array (parallel)   | 139.228
+</code></pre>
+<p>We saw that using multiprocessing can result in up to 28x worse performance.</p>
+<p>Do not use multiprocessing to create random numbers in parallel.</p>
+<p>There may be a workaround.</p>
+<p>Python does offer mechanisms to share memory between processes. Perhaps one of these mechanisms will help to improve performance back to and even beyond the single process versions.</p>
+<p>Examples of techniques to explore include:</p>
+<ol>
+<li>Using shared ctypes such as <strong>multiprocessing.Array</strong>.</li>
+<li>Using a hosted object via a <strong>multiprocessing.Manager</strong>.</li>
+<li>Using shared memory via <strong>multiprocessing.shared_memory</strong>.</li>
+</ol>
+<p>Alternatively, we can achieve a speed-up by creating random numbers using threads. This is because numpy releases the global interpreter lock (GIL) when calling C-code, such as generating random numbers.</p>
+<p>You can learn more about NumPy releasing the GIL in the tutorial:</p>
+<ul>
+<li><a href="../numpy-vs-gil/">NumPy vs the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<p>Generating random numbers in parallel using multiprocessing is not recommended. However, generating random numbers in parallel using threads is the recommended approach.</p>
+<h2>Takeaways</h2>
+<p>You now know how to create a numpy vector of random numbers in parallel using multiprocessing.</p>
 </main>
 </body>
 </html>

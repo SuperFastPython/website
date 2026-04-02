@@ -130,6 +130,89 @@ if future.cancel():
 </code></pre>
 <p>It is a common pattern to submit many tasks to a thread pool and store the <code>Future</code> objects in a collection.</p>
 <p>For example, it is common to use a list comprehension.</p>
+<pre><code>...
+# create many tasks and store the future objects in a list
+futures = [executor.submit(work) for _ in range(100)]
+</code></pre>
+<p>We can iterate the list of <meta/><code>Future</code> objects to get results in the order that the tasks were submitted; for example:</p>
+<pre><code>...
+# get results from tasks in the order they were submitted
+for future in futures:
+	# get the result
+	result = future.result()
+</code></pre>
+<p>Recall that the call to the <code>result()</code> function on the <meta/><code>Future</code> will not return until the task is done.</p>
+<p>The collection of future objects can then be handed off to utility functions provided by the <code>concurrent.futures</code> module, such as <code>wait()</code> and <code>as_completed()</code>.</p>
+<p>The <meta/><code>wait()</code> module function takes a collection of <meta/><code>Future</code> objects and by default will return all tasks that are done, although can be configured to return when any task raises an exception or is done.</p>
+<pre><code>...
+# wait for all tasks to be done
+wait(futures)
+</code></pre>
+<p>The <code>as_completed()</code> module function takes a collection of <meta/><code>Future</code> objects and will return the <meta/><code>Future</code> objects in the order that the tasks are completed as they are completed. This is instead of the order that they were submitted to the thread pool, allowing your program to be more responsive.</p>
+<pre><code>...
+# respond to tasks as they are completed
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+</code></pre>
+<p>The processing of future objects in the order they are completed may be the most common usage pattern of the <code>submit()</code> function with the <code>ThreadPoolExecutor</code>.</p>
+<p>The example below demonstrates this pattern, submitting the tasks in order from 0 to 9 and showing results in the order that they were completed.</p>
+<pre><code># SuperFastPython.com
+# example of the submit and use as completed pattern for the ThreadPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# start the thread pool
+with ThreadPoolExecutor(10) as executor:
+    # submit tasks and collect futures
+    futures = [executor.submit(task, i) for i in range(10)]
+    # process task results as they are available
+    for future in as_completed(futures):
+        # retrieve the result
+        print(future.result())
+</code></pre>
+<p>Running the example we can see that the results are retrieved and printed in the order that the tasks completed, not the order that the tasks were submitted to the thread pool.</p>
+<pre><code>5
+9
+6
+1
+0
+7
+3
+8
+4
+2
+</code></pre>
+<p>Now that we are familiar with how to use <code>submit()</code> to execute tasks in the <code>ThreadPoolExecutor</code>, let's take a look at a comparison between <code>map()</code> and <meta/><code>submit()</code>.</p>
+<h2>map() vs submit() With the ThreadPoolExecutor</h2>
+<p>Let's compare the <meta/><code>map()</code> and <meta/><code>submit()</code> functions for the <meta/><code>ThreadPoolExecutor</code>.</p>
+<p>Both the <meta/><code>map()</code> and <meta/><code>submit()</code> functions are similar in that they both allow you to execute tasks asynchronously using threads.</p>
+<p><strong>The <meta/><code>map()</code> function is simpler:</strong></p>
+<ul><li>It is a threaded version of the built-in <code>map()</code> function.</li><li>It assumes you want to call the same function many times with different values.</li><li>It only takes iterables as arguments to the target function.</li><li>It only allows you to iterate results from the target function.</li></ul>
+<p>In an effort to keep your code simpler and easier to read, you should try to use <meta/><code>map()</code> first, before you try to use the <meta/><code>submit()</code> function.</p>
+<p><strong>The simplicity of the <meta/><code>map()</code> function means it is also limited:</strong></p>
+<ul><li>It does not provide control over the order that task results are used.</li><li>It does not provide a way to check the status of tasks.</li><li>It does not allow you to cancel tasks before they start running.</li><li>It does not allow you control over how to handle an exception raised by a task function.</li></ul>
+<p>If the <meta/><code>map()</code> function is too restrictive, you may want to consider the <meta/><code>submit()</code> function instead.</p>
+<p><strong>The <meta/><code>submit()</code> function gives more control:</strong></p>
+<ul><li>It assumes you want to submit one task at a time.</li><li>It allows a different target function with a variable number of arguments for each task.</li><li>It allows you to check on the status of each task.</li><li>It allows you to cancel a task before it has started running.</li><li>It allows callback functions to be called automatically when tasks are done.</li><li>It allows you to handle an exception raised by a target task function.</li><li>It allows you control over when you would like to get the result of the task, if at all.</li><li>It can be used with module functions like <code>wait()</code> and <code>as_completed()</code> to work with tasks in groups.</li></ul>
+<p><strong>The added control with <code>submit()</code> comes with added complexity:</strong></p>
+<ul><li>It requires that you manage the <code>Future</code> object for each task.</li><li>It requires that you explicitly retrieve the result for each task.</li><li>It requires extra code if you need to apply the same function with different arguments.</li></ul>
+<p>Now that we have compared and contrasted the <code>map()</code> and <code>submit()</code> functions on the <code>ThreadPoolExecutor</code>, which one should you use?</p>
+<p><strong>Use <code>map()</code> if:</strong></p>
+<ul><li>You are already using the built-in <meta/><code>map()</code> function.</li><li>You are calling a (near-)pure function in a for-loop for each item in an iterable.</li></ul>
+<p><strong>Use <code>submit()</code> if:</strong></p>
+<ul><li>You need to check the status of tasks while they are executing.</li><li>You need control over the order that you process results from tasks.</li><li>You need to conditionally cancel the execution of tasks.</li><li>You can simplify your code by using callback functions called when tasks are done.</li></ul>
+<p><strong>So which are you going to use for your program?</strong><br/>Let me know in the comments below.</p>
+<h2>Takeaways</h2>
+<p>You now know when to use <meta/><code>map()</code> and <meta/><code>submit()</code> to execute tasks with the <code>ThreadPoolExecutor</code>.</p>
 </main>
 </body>
 </html>

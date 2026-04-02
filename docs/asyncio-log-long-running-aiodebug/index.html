@@ -99,6 +99,211 @@ with open(filepath) as file:
 <p>A CPU-bound task is a task that runs as fast as the CPU will permit.</p>
 <p>This is a function call that performs compute or number crunching.</p>
 <p>For example:</p>
+<pre><code>...
+# block the event loop for a long time
+data = [i*i for i in range(100000000)]</code></pre>
+<p>This will block the event loop until the work is complete.</p>
+<p>Ideally, tasks of this type should be performed in another thread via <strong>asyncio.to_thread()</strong> or in another process via <strong>loop.run_in_executor()</strong>.</p>
+<p>You can learn more about running CPU-bound tasks outside of the event loop in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-blocking-tasks/">How to Run Blocking Tasks in Asyncio</a></li>
+</ul>
+<p>Now that we know what a long-running task is, let's look at how we can use aiodebug to identify them.</p>
+<h2>How to Install aiodebug</h2>
+<p>The aiodebug library can be installed using your favorite package manager.</p>
+<p>For example, we can install it using pip:</p>
+<pre><code>pip install aiodebug</code></pre>
+<p>That's it.</p>
+<h2>How to Report Long-Running Tasks with aiodebug</h2>
+<p>We can use aiodebug in our program to identify long-running tasks that block the asyncio event loop for "too long".</p>
+<p>This can be achieved by calling the <strong>aiodebug.log_slow_callbacks.enable()</strong> function and specifying the time in seconds that a task takes that is too long.</p>
+<p>For example:</p>
+<pre><code>import aiodebug.log_slow_callbacks
+
+...
+# set time in sec for long running tasks
+aiodebug.log_slow_callbacks.enable(0.1)</code></pre>
+<p>When a task is completed, if it has blocked the event loop for longer than the specified time, then its details will be reported in standard output.</p>
+<p>We can configure a handler function so that we can log these tasks.</p>
+<p>This can be achieved by defining a function that takes the task and duration it ran as an argument and then logging it using the Python logging infrastructure.</p>
+<p>For example:</p>
+<pre><code># handler for long running tasks
+def log_slow_handler(task, duration):
+    # log the task
+    logging.debug(f'Task blocked async loop for too long. Task {task} Duration {duration} ')
+</code></pre>
+<p>We can then configure the aiodebug package to call our function each time a task is done and has blocked the event loop for too long.</p>
+<p>This can be achieved by calling the <strong>aiodebug.log_slow_callbacks.enable()</strong> function and specifying the "<strong>on_slow_callback</strong>" argument to equal the name of our function.</p>
+<p>For example:</p>
+<pre><code>...
+# enable logging of long running tasks
+aiodebug.log_slow_callbacks.enable(1, on_slow_callback=log_slow_handler)</code></pre>
+<h2>Limitation of aiodebug</h2>
+<p>The aiodebug module has some limitations.</p>
+<p>Firstly, only the task is reported. A task may make many blocking calls and one or more of the calls may be "too long".</p>
+<p>Nevertheless, reporting will only show a task that took too long.</p>
+<p>Secondly, the aiodebug module will only report on tasks that take too long because they block the event loop. It does not report on tasks whose overall execution time took too long.</p>
+<p>Many tasks perform correct async calls but take much longer than we would like. These will be missed by aiodebug.</p>
+<p>Finally, the aiodebug will only report on tasks that block the event loop for more than the specified number of seconds. This means that if a coroutine is awaited that has a blocking call, it will be the parent task that awaits that coroutine that will be reported, not the coroutine.</p>
+<p>To have coroutines names that make blocking calls reported directly, they must be run as independent tasks, e.g. tasks created via <strong>asyncio.create_task()</strong> or similar.</p>
+<p>Now that we know how to use aiodebug and some of its limitations, let's look at some worked examples.</p>
+<h2>Example of Reporting Long-Running Tasks with aiodebug</h2>
+<p>We can explore an example of reporting a long-running blocking task with aiodebug.</p>
+<p>In this example, we will define a task that blocks the event loop for a long time. We will then run this task from a coroutine. The aiodebug <strong>log_slow_callbacks</strong> capability will be enabled and report all tasks that block the event loop for longer than one second.</p>
+<p>Firstly, we will define a coroutine that blocks the event loop with a call to <strong>time.sleep()</strong> for 5 seconds.</p>
+<pre><code># long running task
+async def work():
+    # block the event loop for a long time
+    time.sleep(5)
+</code></pre>
+<p>Next, we can define the <strong>main()</strong> coroutine that reports a message, awaits the <strong>work()</strong> coroutine that has the blocking function call, and then report a done message.</p>
+<pre><code># main program
+async def main():
+    # report a message
+    print('Main is running')
+    # create the task
+    task = asyncio.create_task(work())
+    # await our task
+    await task
+    # report a message
+    print('Main is done.')
+</code></pre>
+<p>Finally, we can enable long-task reporting with aiodebug and then start the event loop.</p>
+<pre><code>...
+# enable logging of long running tasks
+aiodebug.log_slow_callbacks.enable(1)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging long running tasks with aiodebug
+import time
+import asyncio
+import aiodebug.log_slow_callbacks
+
+# long running task
+async def work():
+    # block the event loop for a long time
+    time.sleep(5)
+
+# main program
+async def main():
+    # report a message
+    print('Main is running')
+    # create the task
+    task = asyncio.create_task(work())
+    # await our task
+    await task
+    # report a message
+    print('Main is done.')
+
+# enable logging of long running tasks
+aiodebug.log_slow_callbacks.enable(1)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first configures the aiodebug module to report tasks that block the event loop for more than one second.</p>
+<p>It then starts the asyncio event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a message. It then awaits the <strong>work()</strong> coroutine.</p>
+<p>The <strong>work()</strong> coroutine runs and calls <strong>time.sleep()</strong> for 5 seconds.</p>
+<p>This blocks the entire event loop for 5 seconds. In fact, it blocks the entire thread.</p>
+<p>The call to <strong>time.sleep()</strong> returns and the <strong>work()</strong> coroutine resumes and terminates.</p>
+<p>Once the task is done, the aiodebug module reports the task that took too long. It reports that the <strong>work()</strong> coroutine took more than 5 seconds to complete.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final message before terminating.</p>
+<p>This highlights that we can use aiodebug to report tasks that block the event loop for too long.</p>
+<pre><code>Main is running
+Executing result=None&gt; took 5.001 seconds
+Main is done.</code></pre>
+<p>Note, if we updated the example so that <strong>main()</strong> awaited the <strong>work()</strong> coroutine directly, then aiodebug would report on the <strong>main()</strong> task, and not the <strong>work()</strong> task. This would be misleading.</p>
+<p>For example:</p>
+<pre><code>...
+# await our task
+await work()</code></pre>
+<p>This would report:</p>
+<pre><code>...
+Executing &lt;Task finished name='Task-1' coro=&lt;main() done, defined at ...:13&gt; result=None&gt; took 5.004 seconds
+</code></pre>
+<p>This highlights a limitation of aiodebug, that it is focused on reporting on new tasks, not coroutines that are awaited.</p>
+<p>Next, let's look at how we might update the example to log the long-running task.</p>
+<h2>Example of Logging Long-Running Tasks with aiodebug</h2>
+<p>We can explore an example that logs tasks that block the event loop for too long.</p>
+<p>In this case, we will update the above example so that we define a custom handler function to be called when a task is done that blocked the event loop for too long. We will then configure the aiodebug module to call our custom handler.</p>
+<p>Firstly, we can define our handler function to call when a task is done and blocked for too long.</p>
+<p>The function must take the task object and the duration it was blocked in seconds as arguments.</p>
+<p>We will log a debug message and include the details of the task and its duration.</p>
+<pre><code># handler for long running tasks
+def log_slow_handler(task, duration):
+    # log the task
+    logging.debug(f'Task blocked async loop for too long. Task {task} Duration {duration} ')
+</code></pre>
+<p>Before starting the event loop, we will configure the Python logging infrastructure to report all log messages with a <strong>DEBUG</strong> level and above.</p>
+<pre><code>...
+# get the root logger
+log = logging.getLogger()
+# log all messages, debug and up
+log.setLevel(logging.DEBUG)
+</code></pre>
+<p>We will then enable long-running task warnings via the aiodebug module and configure it to call our function handler each time a task is done that is blocked for more than one second.</p>
+<pre><code>...
+# enable logging of long running tasks
+aiodebug.log_slow_callbacks.enable(1, on_slow_callback=log_slow_handler)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging long running tasks with aiodebug
+import logging
+import time
+import asyncio
+import aiodebug.log_slow_callbacks
+
+# handler for long running tasks
+def log_slow_handler(task, duration):
+    # log the task
+    logging.debug(f'Task blocked async loop for too long. Task {task} Duration {duration} ')
+
+# long running task
+async def work():
+    # block the event loop for a long time
+    time.sleep(5)
+
+# main program
+async def main():
+    # report a message
+    print('Main is running')
+    # create the task
+    task = asyncio.create_task(work())
+    # await our task
+    await task
+    # report a message
+    print('Main is done.')
+
+# get the root logger
+log = logging.getLogger()
+# log all messages, debug and up
+log.setLevel(logging.DEBUG)
+# enable logging of long running tasks
+aiodebug.log_slow_callbacks.enable(1, on_slow_callback=log_slow_handler)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first configures the Python logging infrastructure to report all messages.</p>
+<p>Next, the aiodebug module is configured to report all tasks that block the event loop for more than one second and to call our custom handler function as soon as the task is done.</p>
+<p>It then starts the asyncio event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a message. It then awaits the <strong>work()</strong> coroutine.</p>
+<p>The <strong>work()</strong> coroutine runs and calls <strong>time.sleep()</strong> for 5 seconds.</p>
+<p>This blocks the entire event loop for 5 seconds. In fact, it blocks the entire thread.</p>
+<p>The call to <strong>time.sleep()</strong> returns and the <strong>work()</strong> coroutine resumes and terminates.</p>
+<p>Once the task is done, the aiodebug module calls our custom handler function <strong>log_slow_handler()</strong> because the function took too long.</p>
+<p>Our <strong>log_slow_handler()</strong> function runs and logs a debug message with the details of the <strong>work()</strong> task and that it blocked the event loop for longer than 5 seconds.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final message before terminating.</p>
+<p>This highlights that we can use a custom handler to log messages as soon as tasks are done that block the event loop for too long.</p>
+<pre><code>Main is running
+DEBUG:root:Task blocked async loop for too long. Task &lt;Task finished name='Task-2' coro=&lt;work() done, defined at ...:14&gt; result=None&gt; Duration 5.005230398033746
+Main is done.
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to report and log asyncio tasks that make function calls that block the event loop for too long.</p>
 </main>
 </body>
 </html>

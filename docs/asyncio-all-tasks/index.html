@@ -116,6 +116,219 @@ asyncio.run(main())
 <p>In this example, we first create 10 tasks, each wrapping and running the same coroutine.</p>
 <p>The main coroutine then gets a set of all tasks scheduled or running in the program and reports their details.</p>
 <p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of starting many tasks and getting access to all tasks
+import asyncio
+
+# coroutine for a task
+async def task_coroutine(value):
+    # report a message
+    print(f'task {value} is running')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# define a main coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # start many tasks
+    started_tasks = [asyncio.create_task(task_coroutine(i)) for i in range(10)]
+    # allow some of the tasks time to start
+    await asyncio.sleep(0.1)
+    # get all tasks
+    tasks = asyncio.all_tasks()
+    # report all tasks
+    for task in tasks:
+        print(f'&gt; {task.get_name()}, {task.get_coro()}')
+    # wait for all tasks to complete
+    for task in started_tasks:
+        await task
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the main coroutine and uses it to start the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and first reports a message.</p>
+<p>It then creates and schedules 10 tasks that wrap the custom coroutine,</p>
+<p>The <strong>main()</strong> coroutine then blocks for a moment to allow the tasks to begin running.</p>
+<p>The tasks start running and each reports a message and then sleeps.</p>
+<p>The <strong>main()</strong> coroutine resumes and gets a list of all tasks in the program.</p>
+<p>It then reports the name and coroutine of each.</p>
+<p>Finally, it enumerates the list of tasks that were created and awaits each, allowing them to be completed.</p>
+<p>This highlights that we can get a set of all tasks in an asyncio program that includes both the tasks that were created as well as the task that represents the entry point into the program.</p>
+<pre><code>main coroutine started
+task 0 is running
+task 1 is running
+task 2 is running
+task 3 is running
+task 4 is running
+task 5 is running
+task 6 is running
+task 7 is running
+task 8 is running
+task 9 is running
+&gt; Task-9, &lt;coroutine object task_coroutine at 0x10e186e30&gt;
+&gt; Task-2, &lt;coroutine object task_coroutine at 0x10e184e40&gt;
+&gt; Task-11, &lt;coroutine object task_coroutine at 0x10e186f10&gt;
+&gt; Task-7, &lt;coroutine object task_coroutine at 0x10e186d50&gt;
+&gt; Task-4, &lt;coroutine object task_coroutine at 0x10e185700&gt;
+&gt; Task-10, &lt;coroutine object task_coroutine at 0x10e186ea0&gt;
+&gt; Task-8, &lt;coroutine object task_coroutine at 0x10e186dc0&gt;
+&gt; Task-5, &lt;coroutine object task_coroutine at 0x10e186ab0&gt;
+&gt; Task-1, &lt;coroutine object main at 0x10e1847b0&gt;
+&gt; Task-3, &lt;coroutine object task_coroutine at 0x10e184f90&gt;
+&gt; Task-6, &lt;coroutine object task_coroutine at 0x10e186ce0&gt;
+</code></pre>
+<p>Next, let's look at how we might wait on all tasks in the program.</p>
+<h2>Example of Waiting on All Tasks</h2>
+<p>A common use case for getting all tasks in an asyncio program is to wait on all tasks.</p>
+<p>This allows the caller to suspend and wait for all tasks to execute, such as before exiting the program.</p>
+<p>The problem is, if we get all tasks and naively await each, it will result in an error. The reason is that the set of all tasks includes the current task and the current task cannot await itself.</p>
+<p>We can demonstrate this with an example.</p>
+<p>The example below first creates 10 tasks, it waits a moment for the tasks to start, then gets the set of all tasks and awaits each in turn.</p>
+<p>The result is a <strong>RuntimeException</strong>.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of staring many tasks and getting access to all tasks
+import asyncio
+
+# coroutine for a task
+async def task_coroutine(value):
+    # report a message
+    print(f'task {value} is running')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# define a main coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # start many tasks
+    for i in range(10):
+        asyncio.create_task(task_coroutine(i))
+    # allow some of the tasks time to start
+    await asyncio.sleep(0.1)
+    # get all tasks
+    tasks = asyncio.all_tasks()
+    # wait for all tasks to complete
+    for task in tasks:
+        await task
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the main coroutine and uses it to start the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and first reports a message.</p>
+<p>It then creates and schedules 10 tasks that wrap the custom coroutine,</p>
+<p>The <strong>main()</strong> coroutine then blocks for a moment to allow the tasks to begin running.</p>
+<p>The tasks start running and each reports a message and then sleeps.</p>
+<p>The <strong>main()</strong> coroutine resumes and gets a set of all tasks in the program.</p>
+<p>It traverses the set of all tasks and awaits each.</p>
+<p>This fails with a <strong>RuntimeException</strong>.</p>
+<p>It fails because the set of all tasks contains a task for the currently running task and a task cannot await itself.</p>
+<pre><code>main coroutine started
+task 0 is running
+task 1 is running
+task 2 is running
+task 3 is running
+task 4 is running
+task 5 is running
+task 6 is running
+task 7 is running
+task 8 is running
+task 9 is running
+Traceback (most recent call last):
+  ...
+RuntimeError: Task cannot await on itself: &lt;Task pending name='Task-1' coro=&lt;main() running at ...&gt; cb=[_run_until_complete_cb() at ...]&gt;
+</code></pre>
+<p>Instead, the example must be updated so that the running task does not await itself.</p>
+<p>This can be achieved by first getting the <strong>Task</strong> object for the currently running task.</p>
+<p>We then await each task as long as it does not represent the currently running task.</p>
+<p>For example:</p>
+<pre><code>...
+# get all tasks
+tasks = asyncio.all_tasks()
+# get the current task
+current = asyncio.current_task()
+# wait for all tasks to complete
+for task in tasks:
+    # skip the current task
+    if task is current:
+        continue
+    # await the task
+    await task
+</code></pre>
+<p>We can simplify this by removing the current task from the set of all tasks, then traverse the set of the remaining tasks and await each in turn.</p>
+<p>For example:</p>
+<pre><code>...
+# get all tasks
+tasks = asyncio.all_tasks()
+# get the current task
+current = asyncio.current_task()
+# remove the current task from the set
+tasks.remove(current)
+# wait for all tasks to complete
+for task in tasks:
+    # await the task
+    await task
+</code></pre>
+<p>Tying this together, the example of first getting all tasks in an asyncio program and awaiting each is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of starting many tasks and getting access to all tasks
+import asyncio
+
+# coroutine for a task
+async def task_coroutine(value):
+    # report a message
+    print(f'task {value} is running')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# define a main coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # start many tasks
+    for i in range(10):
+        asyncio.create_task(task_coroutine(i))
+    # allow some of the tasks time to start
+    await asyncio.sleep(0.1)
+    # get all tasks
+    tasks = asyncio.all_tasks()
+    # get the current task
+    current = asyncio.current_task()
+    # remove the current task from the set
+    tasks.remove(current)
+    # wait for all tasks to complete
+    for task in tasks:
+        # await the task
+        await task
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the main coroutine and uses it to start the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and first reports a message.</p>
+<p>It then creates and schedules 10 tasks that wrap the custom coroutine,</p>
+<p>The <strong>main()</strong> coroutine then blocks for a moment to allow the tasks to begin running.</p>
+<p>The tasks start running and each reports a message and then sleeps.</p>
+<p>The <strong>main()</strong> coroutine resumes and gets a set of all tasks in the program. It also gets the Task object for the currently running task (e.g. the entry point) and removes it from the set of all tasks.</p>
+<p>It then traverses the remaining set of all tasks and awaits each in turn.</p>
+<p>This highlights how we can get a set of all tasks in an asyncio program and await each before exiting the program.</p>
+<pre><code>main coroutine started
+task 0 is running
+task 1 is running
+task 2 is running
+task 3 is running
+task 4 is running
+task 5 is running
+task 6 is running
+task 7 is running
+task 8 is running
+task 9 is running
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to get all asyncio tasks in Python.</p>
 </main>
 </body>
 </html>

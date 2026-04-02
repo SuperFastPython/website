@@ -266,6 +266,297 @@ for result in executor.map(task, items):
 <p>The <code>concurrent.futures</code> module provides an <code>as_completed()</code> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
 <p>We can call the function and provide it a list of future objects created by calling <code>submit()</code> and it will return future objects as they are completed in whatever order.</p>
 <p>For example, we can use a list comprehension to submit the tasks and create the list of <meta/><code>Future</code> objects:</p>
+<pre><code>...
+# submit all tasks into the thread pool and create a list of futures
+futures = [pool.submit(work, task) for task in tasks]
+</code></pre>
+<p>Then get results for tasks as they complete in a for loop:</p>
+<pre><code># iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+	# do something with the result...
+</code></pre>
+<h3>Step 4: Shutdown the Thread Pool</h3>
+<p>Once all tasks are completed, we can close down the thread pool, which will release each thread and any resources it may hold (e.g. the stack space).</p>
+<pre><code>...
+# shutdown the thread pool
+executor.shutdown()
+</code></pre>
+<p>An easier way to use the thread pool is via the context manager (the <code>with</code> keyword), which ensures it is closed automatically once we are finished with it.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=10) as executor:
+	# submit tasks
+	futures = [executor.submit(work, task) for task in tasks]
+	# get results as they are available
+	for future in as_completed(futures):
+		# get the result
+		result = future.result()
+		# do something with the result...
+</code></pre>
+<p>Now that we are familiar with <code>ThreadPoolExecutor</code> and how to use it, let's look at how we can adapt our program for checking the status of websites to make use of it.</p>
+<h2>Check the Status of Websites Concurrently</h2>
+<p>We can update our program to make use of the <meta/><code>ThreadPoolExecutor</code> with very few changes.</p>
+<p>All of the changes are contained to the <code>check_status_urls()</code> function.</p>
+<p>First, we can create a thread pool using the context manager and set the number of worker threads to the number of URLs in our list. This way, we can attempt to query all ten websites at once.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(len(urls)) as executor:
+	# ...
+</code></pre>
+<p>Next, we need to perform asynchronous calls to the <code>get_website_status()</code> function.</p>
+<p>Perhaps the simplest approach is to use the <code>map()</code> function on the <meta/><code>ThreadPoolExecutor</code>.</p>
+<p>Each task is a call to the <code>get_website_status()</code> with a URL argument that returns an HTTP response code that we can then interpret and report.</p>
+<pre><code>...
+# check the status of each url
+for code in executor.map(get_website_status, urls):
+    # interpret the status
+    status = get_status(code)
+    # report status
+    print(f'{status:5s}\t{code}')
+</code></pre>
+<p>The problem with this approach is that we have no way to associate the HTTP response code with each URL.</p>
+<p>We could add a counter and increment it as we iterate through the results, then use the counter to access the appropriate address in the list of URLs.</p>
+<p>A better version of this solution is to first retrieve the iterable of results from the call to <meta/><code>map()</code>.</p>
+<pre><code>...
+# check the status of each url
+results = executor.map(get_website_status, urls)
+</code></pre>
+<p>We can then call the <code>enumerate()</code> built-in function on the iterable to get an index and the item from the iterable for each iteration in a for loop. The index can be used directly to get the URL in the list for the result.</p>
+<pre><code>...
+# enumerate the results in the same order as the list of urls
+for i,code in enumerate(results):
+	# get the url
+    url = urls
+    # ...
+</code></pre>
+<p>For example:</p>
+<pre><code>...
+# check the status of each url
+results = executor.map(get_website_status, urls)
+# enumerate the results in the same order as the list of urls
+for i,code in enumerate(results):
+    # get the url
+    url = urls
+    # interpret the status
+    status = get_status(code)
+    # report status
+    print(f'{url:20s}\t{status:5s}\t{code}')
+</code></pre>
+<p>Tying this together, the complete example of querying a list of websites asynchronously using a <code>ThreadPoolExecutor</code> in Python is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of pinging the status of a set of websites asynchronously
+from urllib.request import urlopen
+from urllib.error import URLError
+from urllib.error import HTTPError
+from http import HTTPStatus
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# get the status of a website
+def get_website_status(url):
+    # handle connection errors
+    try:
+        # open a connection to the server with a timeout
+        with urlopen(url, timeout=3) as connection:
+            # get the response code, e.g. 200
+            code = connection.getcode()
+            return code
+    except HTTPError as e:
+        return e.code
+    except URLError as e:
+        return e.reason
+    except:
+        return e
+
+# interpret an HTTP response code into a status
+def get_status(code):
+    if code == HTTPStatus.OK:
+        return 'OK'
+    return 'ERROR'
+
+# check status of a list of websites
+def check_status_urls(urls):
+    # create the thread pool
+    with ThreadPoolExecutor(len(urls)) as executor:
+        # check the status of each url
+        results = executor.map(get_website_status, urls)
+        # enumerate the results in the same order as the list of urls
+        for i,code in enumerate(results):
+            # get the url
+            url = urls
+            # interpret the status
+            status = get_status(code)
+            # report status
+            print(f'{url:20s}\t{status:5s}\t{code}')
+
+# list of urls to check
+URLS = ['https://twitter.com',
+        'https://google.com',
+        'https://facebook.com',
+        'https://reddit.com',
+        'https://youtube.com',
+        'https://amazon.com',
+        'https://wikipedia.org',
+        'https://ebay.com',
+        'https://instagram.com',
+        'https://cnn.com']
+# check all urls
+check_status_urls(URLS)
+</code></pre>
+<p>Running the example reports the websites and their status as before, but this time, the code is much faster.</p>
+<p>On my system, all sites are queried in about 1.5 seconds, which is much faster than nearly ten seconds in the sequential version, about a 5x speedup.</p>
+<pre><code>https://twitter.com 	OK   	200
+https://google.com  	OK   	200
+https://facebook.com	OK   	200
+https://reddit.com  	OK   	200
+https://youtube.com 	OK   	200
+https://amazon.com  	OK   	200
+https://wikipedia.org	OK   	200
+https://ebay.com    	OK   	200
+https://instagram.com	OK   	200
+https://cnn.com     	OK   	200</code></pre>
+<p>What if we wanted to use the <meta/><code>submit()</code> function to dispatch the tasks and report the status for results as the tasks are completed, rather than the order that the URLs are listed?</p>
+<p>This would require a slightly more complicated solution.</p>
+<p>Recall that the <code>submit()</code> function returns a <code>Future</code> object that provides a handle on the asynchronous task. For example, we can use a list comprehension to create a list of <meta/><code>Future</code> objects by calling <meta/><code>submit()</code> for the <code>get_website_status()</code> function with each URL in the list of URLs.</p>
+<pre><code>...
+# submit each url as a task
+futures = [executor.submit(get_website_status, url) for url in urls]
+</code></pre>
+<p>The tricky part is we don't have a way to associate the <meta/><code>Future</code> or its result with the URL.</p>
+<p>We could enumerate the futures in the same order as the list of URLs and use the <code>enumerate()</code> function as we did with the iterable of results returned when calling <code>map()</code>; for example:</p>
+<pre><code>...
+# submit each url as a task
+futures = [executor.submit(get_website_status, url) for url in urls]
+# get results as they are available
+for i,future in enumerate(futures):
+    # get the url for the future
+    url = urls
+    # get the status for the website
+    code = future.result()
+    # interpret the status
+    status = get_status(code)
+    # report status
+    print(f'{url:20s}\t{status:5s}\t{code}')
+</code></pre>
+<p>This would work, but it is a more complicated version of calling <meta/><code>map()</code>; we may as well just call <meta/><code>map()</code>.</p>
+<p>It also does not give us the benefit of reporting website status as it becomes available via the <code>as_completed()</code> function.</p>
+<p>An alternative approach is to create a dictionary that maps each <code>Future</code> object to the data that was passed to the <code>Future</code>'s task, in this case, the URL argument to <code>get_website_status()</code>. This idea is also suggested in the <code>ThreadPoolExecutor</code>'s API documentation.</p>
+<p>For example:</p>
+<pre><code>...
+# submit each task, create a mapping of futures to urls
+future_to_url = {executor.submit(get_website_status, url):url for url in urls}
+</code></pre>
+<p>We can then call the <meta/><code>as_completed()</code> function with the <code>future_to_url</code> dictionary and process the <meta/><code>Future</code> objects in the order that they are completed.</p>
+<pre><code>...
+# get results as they are available
+for future in as_completed(future_to_url):
+	# ...
+</code></pre>
+<p>We can then look-up the URL value in the <meta/><code>future_to_url</code> dictionary for the given <meta/><code>Future</code> key; for example:</p>
+<pre><code>...
+# get the url for the future
+url = future_to_url
+</code></pre>
+<p>We now have everything we need to report website status in the order that the status is returned, rather than the order that we query the websites. This might be slightly faster and more responsive than the linear version.</p>
+<p>The updated version of the <code>check_status_urls()</code> function is listed below.</p>
+<pre><code># check status of a list of websites
+def check_status_urls(urls):
+    # create the thread pool
+    with ThreadPoolExecutor(len(urls)) as executor:
+        # submit each task, create a mapping of futures to urls
+        future_to_url = {executor.submit(get_website_status, url):url for url in urls}
+        # get results as they are available
+        for future in as_completed(future_to_url):
+            # get the url for the future
+            url = future_to_url
+            # get the status for the website
+            code = future.result()
+            # interpret the status
+            status = get_status(code)
+            # report status
+            print(f'{url:20s}\t{status:5s}\t{code}')
+</code></pre>
+<p>Tying this together, the complete example of querying websites and reporting results in task completion order is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of pinging the status of a set of websites asynchronously
+from urllib.request import urlopen
+from urllib.error import URLError
+from urllib.error import HTTPError
+from http import HTTPStatus
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# get the status of a website
+def get_website_status(url):
+    # handle connection errors
+    try:
+        # open a connection to the server with a timeout
+        with urlopen(url, timeout=3) as connection:
+            # get the response code, e.g. 200
+            code = connection.getcode()
+            return code
+    except HTTPError as e:
+        return e.code
+    except URLError as e:
+        return e.reason
+    except:
+        return e
+
+# interpret an HTTP response code into a status
+def get_status(code):
+    if code == HTTPStatus.OK:
+        return 'OK'
+    return 'ERROR'
+
+# check status of a list of websites
+def check_status_urls(urls):
+    # create the thread pool
+    with ThreadPoolExecutor(len(urls)) as executor:
+        # submit each task, create a mapping of futures to urls
+        future_to_url = {executor.submit(get_website_status, url):url for url in urls}
+        # get results as they are available
+        for future in as_completed(future_to_url):
+            # get the url for the future
+            url = future_to_url
+            # get the status for the website
+            code = future.result()
+            # interpret the status
+            status = get_status(code)
+            # report status
+            print(f'{url:20s}\t{status:5s}\t{code}')
+
+# list of urls to check
+URLS = ['https://twitter.com',
+        'https://google.com',
+        'https://facebook.com',
+        'https://reddit.com',
+        'https://youtube.com',
+        'https://amazon.com',
+        'https://wikipedia.org',
+        'https://ebay.com',
+        'https://instagram.com',
+        'https://cnn.com']
+# check all urls
+check_status_urls(URLS)
+</code></pre>
+<p>Running the example, we can see that website statuses are reported in a different order from the list of URLs.</p>
+<p>Specifically, the results are reported in the order that websites responded to the query. We can see that Amazon was the slowest to respond, likely because it does not like the specific address or Python client we are using to make the query.</p>
+<p>On my system, this example is also slightly faster, shaving off a fraction of a second.</p>
+<pre><code>https://twitter.com 	OK   	200
+https://cnn.com     	OK   	200
+https://reddit.com  	OK   	200
+https://youtube.com 	OK   	200
+https://google.com  	OK   	200
+https://wikipedia.org	OK   	200
+https://facebook.com	OK   	200
+https://instagram.com	OK   	200
+https://ebay.com    	OK   	200
+https://amazon.com  	ERROR	503</code></pre>
+<h2>Takeaways</h2>
+<p>In this tutorial you discovered how to concurrently check the status of websites on the internet using thread pools in Python.</p>
+<ul><li>How to check the status of websites on the internet sequentially in Python and how slow it can be.</li><li>How to use the ThreadPoolExecutor to manage a pool of worker threads.</li><li>How to update code to check multiple websites at the same time and dramatically accelerate the process.</li></ul>
 </main>
 </body>
 </html>

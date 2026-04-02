@@ -39,6 +39,167 @@
 <p>We can define a task coroutine that is passed the lock. The lock is acquired to protect a critical section that reports a message and sleeps a moment.</p>
 <p>The main coroutine creates the lock, creates a number of coroutines that will share and make use of the lock concurrently, and then executes all coroutines and waits for them to finish.</p>
 <p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a threading Lock in an asyncio program
+from random import random
+from threading import Lock
+import asyncio
+
+# task coroutine with a critical section
+async def task(lock, num, value):
+    # acquire the lock to protect the critical section
+    with lock:
+        # report a message
+        print(f'&gt;coroutine {num} got the lock, sleeping for {value}')
+        # block for a moment
+        await asyncio.sleep(value)
+
+# entry point
+async def main():
+    # create a shared lock
+    lock = Lock()
+    # create many concurrent coroutines
+    coros = [task(lock, i, random()) for i in range(10)]
+    # execute and wait for tasks to complete
+    await asyncio.gather(*coros)
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutines and executes it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs, first creating the threading mutex lock.</p>
+<p>A list comprehension is then used to create 10 coroutines, each passing the lock, a unique integer, and a random number.</p>
+<p>The <strong>main()</strong> coroutine is then suspended and awaits the execution of all coroutines.</p>
+<p>The coroutines executed. The first acquires the lock, reports a message, then sleeps a moment.</p>
+<p>This allows another coroutine to resume. It attempts to acquire the lock.</p>
+<p>The program freezes with a deadlock.</p>
+<p>It must be killed manually using CONTROL-C.</p>
+<p>A sample of the program output is listed below, showing the message reported by the first coroutine only.</p>
+<pre><code>&gt;coroutine 0 got the lock, sleeping for 0.10450054983534196</code></pre>
+<h3>What happened?</h3>
+<p>A thread can only acquire a mutex lock once.</p>
+<p>Attempting to acquire a lock that itself already holds, results in a deadlock.</p>
+<p>It is irrelevant whether the thread attempted to acquire the lock again in a coroutine or not.</p>
+<p>We can make this clearer with a more focused example.</p>
+<h2>Example of A Thread Acquiring a Lock Twice</h2>
+<p>We can explore a simpler example of a thread attempting to acquire the same lock twice.</p>
+<p>In this example, we define a function to execute in a new thread.</p>
+<p>The function takes the lock as an argument, reports a message, acquires the lock, reports a message again, attempts to acquire it again, then reports a final message.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a thread attempting to acquire the same lock more than once
+from threading import Thread
+from threading import Lock
+
+# function executed in a new thread
+def task(lock):
+    # report a message
+    print('Acquiring lock')
+    # acquire the lock
+    with lock:
+        # report a message
+        print('Acquiring lock again')
+        # acquire the lock
+        with lock:
+            # report message
+            print('All done')
+
+# create the lock
+lock = Lock()
+# create the thread
+thread = Thread(target=task, args=(lock,))
+# start the thread
+thread.start()
+# wait for the thread to finish
+thread.join()
+</code></pre>
+<p>Running the example first creates the shared lock.</p>
+<p>A new thread is created and configured to execute the <strong>task()</strong> function and is passed the shared lock as an argument. The thread is started and the main thread blocks until the new thread is terminated.</p>
+<p>The new thread runs.</p>
+<p>A message is reported and the lock is acquired.</p>
+<p>A second message is reported and the thread attempts to acquire the lock again.</p>
+<p>This fails. The thread waits forever for the lock to become available. It does not become available because it already holds the lock.</p>
+<p>The program must be terminated manually, e.g. via CONTROL-C.</p>
+<pre><code>Acquiring lock
+Acquiring lock again</code></pre>
+<p>The <strong>threading.Lock</strong> is not reentrant, meaning a thread may not acquire the same lock again.</p>
+<p>Doing so results in a deadlock.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul><li><a href="../thread-deadlock-in-python/">How to Identify a Deadlock in Python</a></li></ul>
+<p>This is what happens in our asyncio program in the previous section.</p>
+<p>The thread attempts to acquire the same lock twice, resulting in a deadlock.</p>
+<p>This highlights why we cannot use a <strong>threading.Lock</strong> in an asyncio program and instead must use an <strong>asyncio.Lock</strong>.</p>
+<p>Next, let's consider using a reentrant <strong>threading Lock</strong>.</p>
+<h2>Example of threading Reentrant Lock in Asyncio</h2>
+<p>A <strong>threading.Lock</strong> is not reentrant, meaning a thread cannot acquire the lock, then acquire it again.</p>
+<p>Nevertheless, the threading API provides a reentrant lock via the <strong>threading.RLock</strong> class.</p>
+<p>You can learn more about the <strong>threading.RLock</strong> class in the tutorial:</p>
+<ul><li><a href="../thread-reentrant-lock/">Threading RLock in Python</a></li></ul>
+<p>This lock can be acquired by a thread, then acquired again.</p>
+<p>Can we use this to protect critical sections in our coroutines?</p>
+<p>The example below updates the asyncio program to use the reentrant lock instead of the non-reentrant lock.</p>
+<pre><code># SuperFastPython.com
+# example of using a threading RLock in an asyncio program
+from random import random
+from threading import RLock
+import asyncio
+
+# task coroutine with a critical section
+async def task(lock, num, value):
+    # acquire the lock to protect the critical section
+    with lock:
+        # report a message
+        print(f'&gt;coroutine {num} got the lock, sleeping for {value}')
+        # block for a moment
+        await asyncio.sleep(value)
+
+# entry point
+async def main():
+    # create a shared lock
+    lock = RLock()
+    # create many concurrent coroutines
+    coros = [task(lock, i, random()) for i in range(10)]
+    # execute and wait for tasks to complete
+    await asyncio.gather(*coros)
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutines and executes it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs, first creating the threading reentrant mutex lock.</p>
+<p>A list comprehension is then used to create 10 coroutines, each passing the lock, a unique integer and a random number.</p>
+<p>The <strong>main()</strong> coroutine is then suspended and awaits the execution of all coroutines.</p>
+<p>The coroutines executed. The first acquires the lock, reports a message, then sleeps a moment.</p>
+<p>This allows another coroutine to resume. It attempts to acquire the lock and does. It reports a message, then sleeps for a moment.</p>
+<p>The next coroutine runs, and so on.</p>
+<p>All coroutines execute as fast as they are able and the lock is acquired immediately each time.</p>
+<pre><code>&gt;coroutine 0 got the lock, sleeping for 0.4568901431793604
+&gt;coroutine 1 got the lock, sleeping for 0.29864186932986536
+&gt;coroutine 2 got the lock, sleeping for 0.09374909488228744
+&gt;coroutine 3 got the lock, sleeping for 0.4073937933735554
+&gt;coroutine 4 got the lock, sleeping for 0.5205997886127717
+&gt;coroutine 5 got the lock, sleeping for 0.38918445371545385
+&gt;coroutine 6 got the lock, sleeping for 0.17515599302225426
+&gt;coroutine 7 got the lock, sleeping for 0.4054819258792076
+&gt;coroutine 8 got the lock, sleeping for 0.36510786246727756
+&gt;coroutine 9 got the lock, sleeping for 0.13441856138988206</code></pre>
+<h3>What happened?</h3>
+<p>The lock is thread-reentrant.</p>
+<p>Asyncio uses a single thread to execute all coroutines.</p>
+<p>Therefore, the same thread attempts to acquire the reentrant lock each time a coroutine reaches the critical section. This is allowed, the thread reenters the lock, and the critical section is not protected from concurrent execution.</p>
+<p>This highlights that we cannot use threading mutex locks, reentrant, or otherwise to protect critical sections from concurrent execution by coroutines.</p>
+<h2>Mixing Threads and Coroutines</h2>
+<p>We now know that we cannot use threading concurrency primitives to protect coroutines from race conditions.</p>
+<p>This supports the need for asyncio-specific mutex locks.</p>
+<p>What if we wanted to mix coroutines and threads?</p>
+<p>For example, we may have a resource used by multiple coroutines across multiple threads.</p>
+<p>That is, one asyncio event loop per thread, and multiple coroutines per event loop, all accessing the same critical section or resource.</p>
+<p>I would strongly recommend separating the concerns of coroutines and threads.</p>
+<p>For example, perhaps access to the resource can be limited to threads, such as in a thread pool, protected by a thread-safe mutex and coordinated by coroutines.</p>
+<p>Or the verse, accessed only via coroutines and coordinated by threads, such as via a message queue.</p>
+<p>If you are exploring this use case, let me know and I will develop some further examples.</p>
+<h2>Takeaways</h2>
+<p>You now know that threading mutex locks cannot be used to protect critical sections in coroutines.</p>
 </main>
 </body>
 </html>

@@ -105,6 +105,142 @@ async def task():
 <p>Next, in the main coroutine, we can declare the global variable and initialize it with a value of 0.</p>
 <p>We can then create 10,000 instances of the coroutine to update the variable and execute them all concurrently.</p>
 <p>Finally, the value of the global variable is reported.</p>
+<pre><code># main coroutine
+async def main():
+    # declare the global variable
+    global value
+    # define the global variable
+    value = 0
+    # create many coroutines to update the global sate
+    coros = [task() for _ in range(10000)]
+    # execute all coroutines
+    await asyncio.gather(*coros)
+    # report the value of the counter
+    print(value)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio race condition with shared memory
+import asyncio
+
+# task that operates on a shared variable
+async def task():
+    # declare global variable
+    global value
+    # retrieve the value
+    tmp = value
+    # suspend for a moment
+    await asyncio.sleep(0)
+    # update the tmp value
+    tmp = tmp + 1
+    # suspend for a moment
+    await asyncio.sleep(0)
+    # store the updated value
+    value = tmp
+
+# main coroutine
+async def main():
+    # declare the global variable
+    global value
+    # define the global variable
+    value = 0
+    # create many coroutines to update the global sate
+    coros = [task() for _ in range(10000)]
+    # execute all coroutines
+    await asyncio.gather(*coros)
+    # report the value of the counter
+    print(value)
+
+# entry point
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the main() coroutine and executes it as the entry point of the program.</p>
+<p>The <strong>main()</strong> coroutine runs and initializes the global variable.</p>
+<p>The 10,000 coroutines are then created and awaited.</p>
+<p>Each coroutine runs, copying the value of the global variable, suspending, updating the temporary variable, sleeping, then storing the updated variable back into the global variable.</p>
+<p>All the coroutines finish and the <strong>main()</strong> coroutine reports the value of the global variable.</p>
+<p>The value is one, instead of the expected 10,000.</p>
+<pre><code>1</code></pre>
+<p><strong>What happened?</strong></p>
+<p>We might have expected each coroutine to execute as an atomic block, but it didn't.</p>
+<p>Each coroutine was suspended (like a context switch) two times, once after copying the global variable, and once after incrementing the temporary variable.</p>
+<p>The first coroutine runs and suspends at the first point, the second coroutine runs and suspends at the first point, and so on. This continues on for all 10,000 coroutines.</p>
+<p>They have all copied the current value of the global variable of zero into the temporary value.</p>
+<p>The first coroutine resumes and increments the temporary variable from zero to one then suspends. The second coroutine does the same, and so on for all 10,000 coroutines.</p>
+<p>They all have a value of one in their temporary variables.</p>
+<p>Finally, the first coroutine copies the temporary variable into the global variable. The second coroutine does the same and so on for all 10,000 coroutines.</p>
+<p>The global variable is set to one each time.</p>
+<p>Therefore, when the main() coroutine reports the value of the global variable, it is one, instead of the expected 10,000.</p>
+<h2>Example Fixing an Asyncio Race Condition</h2>
+<p>We can achieve the desired result by making the content of the <strong>task()</strong> coroutine an atomic block using a mutex lock.</p>
+<p>This means that only one coroutine can hold the lock and execute the content of the coroutine at a time and the global variable is updated sequentially by coroutines as was intended.</p>
+<p>The updated <strong>task() </strong>coroutine with this change is listed below.</p>
+<pre><code># task that operates on a shared variable
+async def task(lock):
+    # acquire the lock
+    async with lock:
+        # declare global variable
+        global value
+        # retrieve the value
+        tmp = value
+        # suspend for a moment
+        await asyncio.sleep(0)
+        # update the tmp value
+        tmp = tmp + 1
+        # suspend for a moment
+        await asyncio.sleep(0)
+        # store the updated value
+        value = tmp
+</code></pre>
+<p>The complete example with this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio race condition with shared memory
+import asyncio
+
+# task that operates on a shared variable
+async def task(lock):
+    # acquire the lock
+    async with lock:
+        # declare global variable
+        global value
+        # retrieve the value
+        tmp = value
+        # suspend for a moment
+        await asyncio.sleep(0)
+        # update the tmp value
+        tmp = tmp + 1
+        # suspend for a moment
+        await asyncio.sleep(0)
+        # store the updated value
+        value = tmp
+
+# main coroutine
+async def main():
+    # declare the global variable
+    global value
+    # define the global variable
+    value = 0
+    # create the shared lock
+    lock = asyncio.Lock()
+    # create many coroutines to update the global sate
+    coros = [task(lock) for _ in range(10000)]
+    # execute all coroutines
+    await asyncio.gather(*coros)
+    # report the value of the counter
+    print(value)
+
+# entry point
+asyncio.run(main())
+</code></pre>
+<p>The example runs as before.</p>
+<p>This time, the lock is passed to each task coroutine and must be acquired before the body is executed.</p>
+<p>Only a single coroutine can acquire the lock at a time, acquiring the lock is mutually exclusive. All other coroutines must wait for the lock to be released, remaining suspended.</p>
+<p>The single coroutine updates the global variable and releases the lock. The next coroutine acquires the lock and all other coroutines remain suspended, and so on.</p>
+<p>The final value of the global variable is reported and has the expected value of 10,000.</p>
+<p>This highlights how we can fix an asyncio race condition with shared data.</p>
+<pre><code>10000</code></pre>
+<h2>Takeaways</h2>
+<p>You now know about asyncio race conditions with coroutines in Python.</p>
 </main>
 </body>
 </html>

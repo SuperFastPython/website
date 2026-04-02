@@ -205,6 +205,123 @@ asyncio.run(main())
 <p>The server then disconnects the client, and later the client disconnects from the server.</p>
 <p>The server can then be manually terminated, such as via the control-c key combination that sends a SIGINT signal to the server program, causing it to exit.</p>
 <p>Below is a sample output from the server.</p>
+<pre><code>Server is running
+Client connected
+&lt;Task pending name='Task-1' coro=&lt;main() running at ...:26&gt; wait_for=&lt;Future pending cb=[Task.task_wakeup()]&gt; cb=[_run_until_complete_cb() at .../asyncio/base_events.py:180]&gt;
+&lt;Task pending name='Task-4' coro=&lt;handler() running at ...:13&gt;&gt;
+</code></pre>
+<p>Below is a sample output from the client.</p>
+<pre><code>Connecting...
+Connected
+Shutting down...</code></pre>
+<p>We can see that within the server asyncio event loop there are two tasks running.</p>
+<p>The first is running the <strong>main()</strong> coroutine and accepting client connections.</p>
+<p>The second is the task running the single client that is connected, executing our <strong>handler()</strong> coroutine.</p>
+<p>This highlights that client connections executing the client callback handler are executed in separate asyncio tasks within the server.</p>
+<p>Next, let's explore the implications of this, starting with an exception raised in the client callback and its effect on the server task.</p>
+<h2>Example of Exception in Client Callback</h2>
+<p>We can explore the effect on the server if an unhandled exception is raised within a task handling a client connection.</p>
+<p>The expectation is that the task is isolated and that it will not affect the server.</p>
+<p>Let's dive in.</p>
+<h3>Asyncio Server</h3>
+<p>We can update the server to raise an unhandled exception.</p>
+<pre><code>...
+# fail with an unhandled exception
+raise Exception('Something bad happened')</code></pre>
+<p>The expectation is that this will terminate the task running the client connection.</p>
+<p>The updated <strong>handler()</strong> coroutine with this change is listed below.</p>
+<pre><code># handler for client connections
+async def handler(reader, writer):
+    # report progress
+    print('Client connected')
+    # await a moment
+    await asyncio.sleep(2)
+    # fail with an unhandled exception
+    raise Exception('Something bad happened')
+    # a line that is never reached
+    print('Never reached')
+</code></pre>
+<p>Tying this together, the updated server program is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of unhandled exception in client handler
+import asyncio
+
+# handler for client connections
+async def handler(reader, writer):
+    # report progress
+    print('Client connected')
+    # await a moment
+    await asyncio.sleep(2)
+    # fail with an unhandled exception
+    raise Exception('Something bad happened')
+    # a line that is never reached
+    print('Never reached')
+
+# main coroutine
+async def main():
+    # create the server and accept clients forever
+    async with (server:= await asyncio.start_server(handler, '127.0.0.1', 8888)):
+        # report progress
+        print('Server is running')
+        # accept client connections forever
+        await server.serve_forever()
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's look at the client program.</p>
+<h3>Asyncio Client</h3>
+<p>The client program does not require any change, it is the same as in the above example.</p>
+<p>The complete code listing is provided below.</p>
+<pre><code># SuperFastPython.com
+# client for our test server
+import asyncio
+
+# test client
+async def main():
+    print('Connecting...')
+    # open a connection to the server
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+    # report message
+    print('Connected')
+    # wait around
+    await asyncio.sleep(10)
+    # close the connection
+    print('Shutting down...')
+    writer.close()
+    await writer.wait_closed()
+
+# run the event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's look at an exchange between the client and the server.</p>
+<h3>Client-Server Exchange</h3>
+<p>We can run the server, connect the client, and review the output of the server.</p>
+<p>Firstly, we can save the server program to a file, such as <strong>server.py</strong>, and run it on the command line.</p>
+<p>For example:</p>
+<pre><code>python server.py</code></pre>
+<p>Next, we can save the client program to a file, such as <strong>client.py</strong>, and run it on the command line.</p>
+<p>For example:</p>
+<pre><code>python client.py</code></pre>
+<p>The client connects to the server and the server handles the connection.</p>
+<p>The server reports a message, sleeps, and then raises an unhandled exception. This immensely terminates the task running the client connection. Later the client stops blocking and disconnects.</p>
+<p>We can then connect another client to the server and repeat the process.</p>
+<p>The server can then be manually terminated, such as via the control-c key combination that sends a <strong>SIGINT</strong> signal to the server program, causing it to exit.</p>
+<p>Below is a sample output from the server with a number of clients connecting over time.</p>
+<pre><code>Server is running
+Client connected
+Client connected
+Client connected
+...
+</code></pre>
+<p>Below is a sample output from a client.</p>
+<pre><code>Connecting...
+Connected
+Shutting down...</code></pre>
+<p>This highlights that although an unhandled exception can be raised within the client callback, it does not affect the server. The asyncio server is able to continue to accept connections from new clients.</p>
+<p>This further highlights the isolated nature of tasks running client connections from the server task.</p>
+<h2>Takeaways</h2>
+<p>You now know about the client callback coroutine used by the asyncio server to manage connections.</p>
 </main>
 </body>
 </html>

@@ -156,6 +156,154 @@ for result in pool.map(task, items):
 </code></pre>
 <p>Unlike the built-in <strong>map()</strong> function, the pool version of <strong>map()</strong> only supports one iterable instead of multiple iterable, and all items are iterated and submitted as tasks instead of being lazily evaluated.</p>
 <p>The <strong>starmap()</strong> method can be used for a version of <strong>map()</strong> that supports a target function that handles multiple arguments.</p>
+<blockquote><p>Like map() except that the elements of the iterable are expected to be iterables that are unpacked as arguments. Hence an iterable of [(1,2), (3, 4)] results in [func(1,2), func(3,4)].</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# prepare arguments
+args = [(1,2), (3,4), (5,6)]
+# execute tasks in the thread pool and handle results
+for result in pool.starmap(task, args):
+	# ...
+</code></pre>
+<p>The <strong>imap()</strong> method provides a version of the <strong>map()</strong> method on the thread pool that performs a lazy evaluation. That is, it does not dispatch tasks to the thread pool until just-in-time, such as when requesting the next result on the returned iterator.</p>
+<p>It also yields task return values in the same lazy manner, as they become available. The <strong>imap_unordered()</strong> method is the same, except it yields task return values in the order that tasks are completed rather than the order they were issued.</p>
+<p>For example:</p>
+<pre><code>...
+# execute tasks in the thread pool and handle results
+for result in pool.imap(task, items):
+	# ...
+</code></pre>
+<p>Most methods for issuing tasks to the thread pool have both a blocking (synchronous) and a non-blocking (asynchronous) version.</p>
+<p>Recall that a blocking function call will not return until the function has finished, whereas a non-blocking function call will return immediately and provide a callback mechanism for getting the result of the function call.</p>
+<p>The methods for issuing tasks to the thread pool listed above, <strong>apply()</strong>, <strong>map()</strong>, and <strong>starmap()</strong> are all blocking function calls.</p>
+<p>The non-blocking or asynchronous versions of these methods have a <strong>_async</strong> suffix, for example:</p>
+<ul><li><strong>apply_async()</strong></li><li><strong>map_async()</strong></li><li><strong>starmap_async()</strong></li></ul>
+<p>All async versions of the methods allow callback and error handling functions to be specified and called automatically once the issued task is complete.</p>
+<p>The async methods return immediately with an instance of the <strong>AsyncResult</strong> class for each task that provides a mechanism for getting the results of the submitted tasks once they are completed.</p>
+<p>Next, let's take a closer look at the <strong>AsyncResult</strong> class.</p>
+<h2>What is the AsyncResult Class</h2>
+<p>The <strong>multiprocessing.pool.AsyncResult</strong> represents a result from a task issued asynchronously to the <strong>ThreadPool</strong> class (or the <strong>Pool</strong> class).</p>
+<p>It provides a mechanism to check the status, wait for, and get the result for a task executed asynchronously in the thread pool.</p>
+<p>An instance of the <strong>multiprocessing.pool.AsyncResult</strong> class is returned for each task submitted by both the <strong>appl_async()</strong>, <strong>map_async()</strong> and <strong>starmap_async()</strong> methods.</p>
+<p>For example, a call to <strong>map_async()</strong> for a function <strong>task()</strong> with an iterable of ten items, will return a list of ten instances of the <strong>multiprocessing.pool.AsyncResult</strong> class.</p>
+<p>For example:</p>
+<pre><code>...
+# submit tasks to the pool in a non-blocking manner
+async_result = pool.map_async(task, items)</code></pre>
+<p>For a single task represented via a <strong>multiprocessing.pool.AsyncResult</strong>, we can check if the task is completed via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.ready"><strong>ready()</strong> method</a> which returns <strong>True</strong> if the task is completed (successfully or with an error) or <strong>False</strong> otherwise.</p>
+<p>For example:</p>
+<pre><code>...
+# check if a task is done
+if async_result.ready():
+	# ...
+</code></pre>
+<p>A task may be completed successfully or may raise an <strong>Error</strong> or <strong>Exception</strong>. We can check if a task completed successfully via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.successful"><strong>successful()</strong> method</a>. If the task is still running, it raises a <strong>ValueError</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# check if a task was completed successfully
+if async_result.successful():
+	# ...
+</code></pre>
+<p>We can wait for a task to complete via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.wait"><strong>wait()</strong> method</a>.</p>
+<p>If called with no argument, the call will block until the task finishes. A "<strong>timeout</strong>" can be provided so that the function will after a fixed number of seconds if the task has not completed.</p>
+<p>For example:</p>
+<pre><code>...
+# wait 10 seconds for the task to complete
+async_result.wait(timeout=10)</code></pre>
+<p>Finally, we can get the result from the task via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.get"><strong>get()</strong> method</a>.</p>
+<p>If the task is finished, then <strong>get()</strong> will return immediately. If the task is still running, a call to <strong>get()</strong> will not return until the task finishes and returns the result.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result of a task
+result = async_result.get()</code></pre>
+<p>If an exception was raised while the task was being executed, it is re-raised by the <strong>get()</strong> method in the parent thread.</p>
+<p>Finally, a "<strong>timeout</strong>" argument can be specified when getting the result. It will return when the task is finished or after the fixed number of seconds have elapsed after which a time <strong>multiprocessing.TimeoutError</strong> is raised.</p>
+<p>You can learn more about how to use the <strong>AsyncResult</strong> class in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-asyncresult/">Multiprocessing Pool AsyncResult in Python</a></li></ul>
+<p>Next, let's look at how we might close down the thread pool.</p>
+<h2>How to Close the ThreadPool</h2>
+<p>The thread pool can be closed once we have no further tasks to issue.</p>
+<p>We can call the <strong>close()</strong> method to close down the thread pool once all the currently issued tasks have completed.</p>
+<p>The <strong>close()</strong> method will return immediately and the pool will not take any further tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# close the thread pool
+pool.close()</code></pre>
+<p>The pool can also be closed by calling the <strong>terminate()</strong> method.</p>
+<p>On the <strong>Pool</strong> class this will forcefully terminate the workers, even if they are are executing tasks. This cannot be achieved when using thread workers in the <strong>ThreadPool</strong>. As such, calling the <strong>terminate()</strong> method has the same effect as calling <strong>close()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# forcefully close all worker threads
+pool.terminate()</code></pre>
+<p>We may want to then wait for all tasks in the pool to finish.</p>
+<p>This can be achieved by calling the <strong>join()</strong> method on the pool.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all issued tasks to complete
+pool.join()</code></pre>
+<p>Alternately, we may use the context manager interface with the <strong>ThreadPool</strong> class.</p>
+<p>This will mean that all usage of the pool will be limited to the context manager block, and once this block is exited (normally or by an error), the pool will be closed automatically.</p>
+<p>For example:</p>
+<pre><code>...
+# create the thread pool
+with multiprocessing.pool.ThreadPool() as pool:
+	# ...
+</code></pre>
+<p>This is the preferred way to use the thread pool, if possible.</p>
+<p>Next, let's look at an example of using the thread pool.</p>
+<h2>Example of Using the ThreadPool</h2>
+<p>Now that we are familiar with how to use the <strong>ThreadPool</strong> class, let's look at a worked example.</p>
+<p>We can update the above example of executing a task function in a new thread and waiting for the result seen above.</p>
+<p>In this case, we can create the <strong>ThreadPool</strong> instance using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPool() as pool:
+    # ...
+</code></pre>
+<p>We can then issue the task asynchronously to the pool using the <strong>apply_async()</strong> method which will return immediately with an <strong>AsyncResult</strong> object.</p>
+<pre><code>...
+# execute the task asynchronously
+async_result = pool.apply_async(task)</code></pre>
+<p>We can report a message, then wait for the task to complete by calling the <strong>wait()</strong> method on the <strong>AsyncResult</strong> object.</p>
+<pre><code>...
+# display a message
+print('Waiting for the new thread to finish...')
+# wait for the task to complete
+async_result.wait()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of executing a function in a new thread using a threadpool
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task function executed in a new thread
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print('This is coming from another thread')
+
+# create a thread pool
+with ThreadPool() as pool:
+    # execute the task asynchronously
+    async_result = pool.apply_async(task)
+    # display a message
+    print('Waiting for the new thread to finish...')
+    # wait for the task to complete
+    async_result.wait()
+</code></pre>
+<p>Running the example first starts the thread pool.</p>
+<p>This will start the default number of worker threads in the pool, waiting and ready for work.</p>
+<p>Next the task function is issued to the pool asynchronously. This call returns immediately with an <strong>AsyncResult</strong> object.</p>
+<p>The main thread then reports a message and waits on the <strong>AsyncResult</strong> object for the task to complete.</p>
+<p>A worker thread in the pool then executes the task, blocking for a moment and reporting a message.</p>
+<p>The task completes and the main thread continues on.</p>
+<p>The thread pool is closed automatically by the context manager interface and the program exits.</p>
+<pre><code>Waiting for the new thread to finish...
+This is coming from another thread</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to create and use a thread pool in Python.</p>
 </main>
 </body>
 </html>

@@ -73,6 +73,216 @@ def thread_work(process_id, thread_id):
 <p>First we create the thread pool with the default number of threads, then submit five separate tasks as calls to the <strong>thread_work()</strong> function, each with the unique process task identifier and a unique integer for each call to the thread task function.</p>
 <p>We will use the <strong>submit()</strong> function to issue the tasks which returns a <strong>Future</strong> object for each call.</p>
 <p>We then explicitly wait on the tasks to complete with a call to the <strong>wait() </strong>module function passing in all <strong>Future</strong> objects. This is technically not required as we could just wait for the thread pool to shutdown as part of the context manager which in turn will wait for all tasks to complete.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as exe:
+    # submit tasks
+    futures = [exe.submit(thread_work, identifier, i) for i in range(5)]
+    # wait for tasks to complete
+    _ = wait(futures)
+</code></pre>
+<p>The <strong>process_work() </strong>function implements this, providing a target task function for worker processes.</p>
+<pre><code># task for process workers
+def process_work(identifier):
+    # create the thread pool
+    with ThreadPoolExecutor() as exe:
+        # submit tasks
+        futures = [exe.submit(thread_work, identifier, i) for i in range(5)]
+        # wait for tasks to complete
+        _ = wait(futures)
+    print(f'Process {identifier} Done', flush=True)
+</code></pre>
+<p>Finally, we can define the entry point of the program.</p>
+<p>First, the process pool is created with the default number of worker processes.</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor() as exe:
+	# ...
+</code></pre>
+<p>We then submit five tasks to the process pool as calls to the <strong>process_work()</strong> function with a unique integer for each call.</p>
+<p>We use <strong>submit()</strong> to issue calls to the process pool and then explicitly wait on the tasks to complete with a call to the <strong>wait()</strong> module function, passing in the list of <strong>Future</strong> objects for our process tasks.</p>
+<pre><code>...
+# submit tasks
+futures = [exe.submit(process_work, i) for i in range(5)]
+# wait for tasks to complete...
+_ = wait(futures)
+</code></pre>
+<p>We issue five process tasks and each process task will start a thread pool and issue five thread tasks, giving a total of 25 thread tasks in all.</p>
+<p>And that's it, the entry point for the program is defined below.</p>
+<pre><code># entry point
+if __name__ == '__main__':
+    # create a process pool
+    with ProcessPoolExecutor() as exe:
+        # submit tasks
+        futures = [exe.submit(process_work, i) for i in range(5)]
+        # wait for tasks to complete...
+        _ = wait(futures)
+    print('Main Done', flush=True)
+</code></pre>
+<p>Tying this together, the complete example of creating a thread pool within each process worker is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using thread pools within worker processes
+from random import random
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# task for thread workers within each process worker
+def thread_work(process_id, thread_id):
+    # block for a moment
+    sleep(random())
+    # report a unique message
+    print(f'Process {process_id}, thread worker {thread_id}', flush=True)
+
+# task for process workers
+def process_work(identifier):
+    # create the thread pool
+    with ThreadPoolExecutor() as exe:
+        # submit tasks
+        futures = [exe.submit(thread_work, identifier, i) for i in range(5)]
+        # wait for tasks to complete
+        _ = wait(futures)
+    print(f'Process {identifier} Done', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create a process pool
+    with ProcessPoolExecutor() as exe:
+        # submit tasks
+        futures = [exe.submit(process_work, i) for i in range(5)]
+        # wait for tasks to complete...
+        _ = wait(futures)
+    print('Main Done', flush=True)
+</code></pre>
+<p>Running the example first creates the process pool then submits tasks into the pool.</p>
+<p>Each task in the process pool then creates a thread pool and submits tasks to the worker threads.</p>
+<p>Finally, the thread worker tasks finish and report a message, the process worker tasks complete and report a message and finally the main thread reports that all tasks are complete.</p>
+<pre><code>...
+Process 4, thread worker 1
+Process 4, thread worker 3
+Process 4 Done
+Process 0, thread worker 1
+Process 0, thread worker 3
+Process 0, thread worker 2
+Process 0 Done
+Process 3, thread worker 1
+Process 3 Done
+Main Done</code></pre>
+<p>Next, let's look at how we might collate data from worker threads into worker processes and finally into the main thread.</p>
+<h2 id="collate-results-from-worker-threads-and-worker-processes">Collate Results From Worker Threads and Worker Processes</h2>
+<p>We may want to gather results from worker threads within each worker process and even push the subtotals back to the main thread for a final collation.</p>
+<p>This can easily be achieved by having both the target function for worker threads and worker processes return values.</p>
+<p>We can demonstrate this by adapting the example from the previous section to sum values at each level. This provides a straightforward code template that you can adapt for your own project.</p>
+<p>Firstly, we can update the <strong>thread_work()</strong> function to generate a pseudo random value between 0 and 1, report this value and then return it to the caller.</p>
+<pre><code># task for thread workers within each process worker
+def thread_work(process_id, thread_id):
+    # generate a unique value for this worker thread
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report a unique message
+    print(f'Process {process_id}, thread worker {thread_id}, value={value}', flush=True)
+    return value
+</code></pre>
+<p>Next, we can update the <strong>process_work() </strong>function to collate the values returned from the calls to <strong>thread_work()</strong> issued to the thread pool.</p>
+<p>One approach would be to issue each call using the <strong>submit()</strong> function on the thread pool, then iterate the <strong>Future</strong> objects returned and call the <strong>result()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# submit tasks
+futures = [exe.submit(thread_work, identifier, i) for i in range(4)]
+# sum the values
+total = 0
+for future in futures:
+	total += future.result()
+</code></pre>
+<p>A simpler approach is to use the <strong>map()</strong> function to issue tasks on the thread pool and sum the return values directly, for example:</p>
+<pre><code>...
+# sum the value from threads
+total = sum(exe.map(thread_work, *5, range(5)))
+</code></pre>
+<p>The updated version of the <strong>process_work()</strong> function that returns the sum of the values calculated by the worker threads is listed below.</p>
+<pre><code># task for process workers
+def process_work(identifier):
+    # create the thread pool
+    with ThreadPoolExecutor() as exe:
+        # sum the value from threads
+        total = sum(exe.map(thread_work, *5, range(5)))
+    print(f'Process {identifier} Done, total={total}', flush=True)
+    return total
+</code></pre>
+<p>Finally, we can update the main thread to collate the values from each worker process.</p>
+<p>Again, we could use the <strong>submit()</strong> function, get <strong>Future</strong> objects, then call the <strong>result()</strong> function on each. </p>
+<p>Instead, in this case, it is simpler to use the <strong>map()</strong> function again and sum the iterable returned, for example:</p>
+<pre><code>...
+# sum result from processes
+total = sum(exe.map(process_work, range(5)))
+</code></pre>
+<p>The updated entry point that collates values from worker processes is listed below.</p>
+<pre><code># entry point
+if __name__ == '__main__':
+    # create a process pool
+    with ProcessPoolExecutor() as exe:
+        # sum result from processes
+        total = sum(exe.map(process_work, range(5)))
+    print(f'Main Done, total={total}', flush=True)
+</code></pre>
+<p>Tying this together, the complete example of using thread pools and a process pool to collate results is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using thread pools within worker processes to collate results
+from random import random
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
+
+# task for thread workers within each process worker
+def thread_work(process_id, thread_id):
+    # generate a unique value for this worker thread
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report a unique message
+    print(f'Process {process_id}, thread worker {thread_id}, value={value}', flush=True)
+    return value
+
+# task for process workers
+def process_work(identifier):
+    # create the thread pool
+    with ThreadPoolExecutor() as exe:
+        # sum the value from threads
+        total = sum(exe.map(thread_work, *5, range(5)))
+    print(f'Process {identifier} Done, total={total}', flush=True)
+    return total
+
+# entry point
+if __name__ == '__main__':
+    # create a process pool
+    with ProcessPoolExecutor() as exe:
+        # sum result from processes
+        total = sum(exe.map(process_work, range(5)))
+    print(f'Main Done, total={total}', flush=True)
+</code></pre>
+<p>Running the example first creates the process pool and submits five tasks.</p>
+<p>Each process task creates a thread pool and submits five tasks. The thread tasks complete and the results returned from each are summed together and the total is reported by each process task.</p>
+<p>Finally, the process tasks return their values which are summed by the main thread and the overall total is reported.</p>
+<pre><code>...
+Process 1, thread worker 4, value=0.5784439574691612
+Process 1 Done, total=1.8513536135254558
+Process 2, thread worker 3, value=0.9798105837814127
+Process 0, thread worker 3, value=0.7251034762402645
+Process 3, thread worker 4, value=0.8473968578985317
+Process 3 Done, total=2.19615754102612
+Process 4, thread worker 3, value=0.48889645146676286
+Process 2, thread worker 4, value=0.285544567351118
+Process 2 Done, total=2.385693049839012
+Process 4, thread worker 4, value=0.17721274068245063
+Process 4 Done, total=2.420825508785872
+Process 0, thread worker 4, value=0.3492667693766406
+Process 0 Done, total=2.4611316259705975
+Main Done, total=11.315161339147057
+</code></pre>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to create and use <strong>ThreadPoolExecutor</strong> thread pools within <strong>ProcessPoolExecutor</strong> worker processes.</p>
 </main>
 </body>
 </html>

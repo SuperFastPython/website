@@ -169,6 +169,246 @@ def cancel_all_tasks(exclude_list=[]):
 cancel_all_tasks()</code></pre>
 <p>If we wanted to exclude the calling tasks, we could provide a list with one argument, the current task.</p>
 <p>For example:</p>
+<pre><code>...
+# cancel all tasks except the current task
+cancel_all_tasks([asyncio.current_task()])</code></pre>
+<p>Otherwise, we can provide a list of all the tasks we want to exclude.</p>
+<pre><code>...
+# cancel all tasks except a subset
+cancel_all_tasks([monitor, logger, asyncio.current_task()])</code></pre>
+<p>Another way we could implement this is to give each task a name and exclude tasks by name.</p>
+<p>For example, we can call the <strong>set_name()</strong> method on an <strong>asyncio.Task</strong> after it is created to assign a useful name, then call the <strong>get_name()</strong> method on tasks in the <strong>cancel_all_tasks()</strong> function to check for tasks to exclude from cancellation.</p>
+<p>You can learn more about managing task names in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-name/">How to Get and Set Asyncio Task Names</a></li>
+</ul>
+<h2>How to Cancel All Asyncio Tasks And Wait</h2>
+<p>A common pattern when canceling all tasks is to wait for the tasks to be canceled.</p>
+<p>Recall that calling the <strong>cancel()</strong> method only requests that a task be canceled. A target task is not canceled until it is given an opportunity to run and raise a <strong>CancelledError</strong> exception and unwind.</p>
+<p>Therefore, some callers who cancel tasks may explicitly wait for the target to be done before moving on.</p>
+<p>You can learn more about the cancel and await pattern in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task-and-wait/">Asyncio Cancel Task and Wait</a></li>
+</ul>
+<p>We may need to wait for all tasks to stop running before performing some clean-up of resources and logging.</p>
+<p>This can be achieved by explicitly awaiting all tasks that were canceled.</p>
+<p>Firstly, this requires changing the <strong>cancel_all_tasks()</strong> function into a coroutine that can await.</p>
+<pre><code>...
+# cancel all running tasks
+async def cancel_all_tasks(exclude_list=[]):
+	# ...
+</code></pre>
+<p>We then must keep track of all tasks that were requested to be canceled.</p>
+<p>This can be achieved in a few ways. In this case, we will create a new list of all tasks with the excluded tasks filtered out.</p>
+<p>For example:</p>
+<pre><code>...
+# remove all excluded tasks
+all_tasks = </code></pre>
+<p>We can then await all tasks to be canceled.</p>
+<p>Again, this can be achieved in a few ways.</p>
+<p>One way is to call <strong>asyncio.gather()</strong> and pass the list of canceled tasks. This approach might be preferred over other approaches as we can set the <strong>return_exceptions</strong> argument to return exceptions raised by the target tasks rather than have the exceptions propagate to the current task and unwind our intent to cancel and wait.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to cancel
+await asyncio.gather(*all_tasks, return_exceptions=True)</code></pre>
+<p>Awaiting all tasks will suspend the current task and allow all requested tasks to cancel, e.g. raise a <strong>CancelledError</strong> exception and unwind.</p>
+<p>You can learn more about how to use <strong>asyncio.gather()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather/">How to Use asyncio.gather() in Python</a></li>
+</ul>
+<p>The updated <strong>cancel_all_tasks()</strong> coroutine with these changes is listed below.</p>
+<pre><code># cancel all running tasks
+async def cancel_all_tasks(exclude_list=[]):
+    # get all tasks
+    all_tasks = asyncio.all_tasks()
+    # remove all excluded tasks
+    all_tasks = 
+    # enumerate all tasks
+    for task in all_tasks:
+        # request the task cancel
+        task.cancel()
+    # wait for all tasks to cancel
+    await asyncio.gather(*all_tasks, return_exceptions=True)
+</code></pre>
+<p>This coroutine can then be awaited anywhere we wish to trigger all tasks to be canceled.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel all tasks except the current task
+await cancel_all_tasks([asyncio.current_task()])</code></pre>
+<h2>On Exiting The Main Coroutine</h2>
+<p>The main coroutine is the coroutine used as the entry point into the asyncio program.</p>
+<p>For example, the coroutine we might pass to <strong>asyncio.run()</strong> to start our program.</p>
+<pre><code>...
+# start the event loop and execute main()
+asyncio.run(main())</code></pre>
+<p>When the main coroutine is done, e.g. returns or raises an exception, the asyncio event loop is terminated.</p>
+<p>This will cause all asyncio tasks to be canceled.</p>
+<p>We can look inside the <a href="https://github.com/python/cpython/blob/3.11/Lib/asyncio/runners.py#L71"><strong>run()</strong> function</a>, actually the <strong>asyncio.Runner</strong> class and see that when it closes, it calls an internal function called <strong>_cancel_all_tasks()</strong>.</p>
+<p>The <a href="https://github.com/python/cpython/blob/3.11/Lib/asyncio/runners.py#L193C1-L211C15"><strong>_cancel_all_tasks()</strong> function</a> is listed below for reference.</p>
+<pre><code>def _cancel_all_tasks(loop):
+    to_cancel = tasks.all_tasks(loop)
+    if not to_cancel:
+        return
+
+    for task in to_cancel:
+        task.cancel()
+
+    loop.run_until_complete(tasks.gather(*to_cancel, return_exceptions=True))
+
+    for task in to_cancel:
+        if task.cancelled():
+            continue
+        if task.exception() is not None:
+            loop.call_exception_handler({
+                'message': 'unhandled exception during asyncio.run() shutdown',
+                'exception': task.exception(),
+                'task': task,
+            })
+</code></pre>
+<p>We can see that it is doing a lot of the things that we are doing when we want to cancel all tasks.</p>
+<p>It is first getting a list of all tasks, and bailing early if there are no tasks.</p>
+<p>It then requests that all tasks be canceled by calling the <strong>cancel()</strong> method.</p>
+<p>It then waits for all tasks to be canceled by calling <strong>asyncio.gather()</strong> configured to return rather than re-raise exceptions.</p>
+<p>Finally, it logs any exceptions that might have been raised in the canceled tasks.</p>
+<p>This is good confirmation that we are on the right track when we want to quickly cancel all tasks.</p>
+<p>Now that we have reviewed how we might cancel all tasks in the asyncio event loop, let's look at a worked example.</p>
+<h2>Example of Canceling All Asyncio Tasks</h2>
+<p>We can explore an example of canceling all tasks in asyncio.</p>
+<p>In this example, we will define a task that sleeps for a fraction of 10 seconds. We will then issue 100 of these tasks and allow them to run for a while. We will then use our <strong>cancel_all_tasks()</strong> coroutine to cancel all tasks except the current task (the main task).</p>
+<p>Firstly, we can define the task that will run for a random fraction of 10 seconds.</p>
+<p>The body of the task will have a try-finally structure, and the finally block will simulate cleanup for a fraction of 2 seconds, to show that the tasks were canceled and are finishing up.</p>
+<p>The <strong>work()</strong> coroutine below implements this.</p>
+<pre><code># task that take a long time
+async def work(value):
+    try:
+        # sleep a long time
+        await asyncio.sleep(10 * random())
+        print(f'&gt;task {value} done')
+    finally:
+        # take some time to clean up
+        await asyncio.sleep(2 * random())
+</code></pre>
+<p>Next, we can define the main() coroutine.</p>
+<p>Firstly, a message is reported that the program has started, then 100 <strong>work()</strong> tasks are issued and allowed to run for a while.</p>
+<p>The <strong>main()</strong> coroutine then awaits our <strong>cancel_all_tasks()</strong> coroutine defined above to cancel all running tasks except the current task, the main coroutine.</p>
+<p>Finally, the <strong>main()</strong> coroutine reports a done message.</p>
+<p>The <strong>main()</strong> coroutine below implements this.</p>
+<pre><code># main coroutine
+async def main():
+    # report a message
+    print('Main started')
+    # issue many tasks
+    tasks = [asyncio.create_task(work(i)) for i in range(100)]
+    # allow the tasks to run a while
+    await asyncio.sleep(4)
+    # cancel all tasks
+    print('Main canceling all tasks')
+    await cancel_all_tasks([asyncio.current_task()])
+    # report a message
+    print('Main done')
+</code></pre>
+<p>We can then start the asyncio event loop and run the <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling all tasks
+from random import random
+import asyncio
+
+# cancel all running tasks
+async def cancel_all_tasks(exclude_list=[]):
+    # get all tasks
+    all_tasks = asyncio.all_tasks()
+    # remove all excluded tasks
+    all_tasks = 
+    # enumerate all tasks
+    for task in all_tasks:
+        # request the task cancel
+        task.cancel()
+    # wait for all tasks to cancel
+    await asyncio.gather(*all_tasks, return_exceptions=True)
+
+# task that take a long time
+async def work(value):
+    try:
+        # sleep a long time
+        await asyncio.sleep(10 * random())
+        print(f'&gt;task {value} done')
+    finally:
+        # take some time to clean up
+        await asyncio.sleep(2 * random())
+
+# main coroutine
+async def main():
+    # report a message
+    print('Main started')
+    # issue many tasks
+    tasks = [asyncio.create_task(work(i)) for i in range(100)]
+    # allow the tasks to run a while
+    await asyncio.sleep(4)
+    # cancel all tasks
+    print('Main canceling all tasks')
+    await cancel_all_tasks([asyncio.current_task()])
+    # report a message
+    print('Main done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a message.</p>
+<p>It then creates and issues 100 work() tasks and then suspends for 4 seconds.</p>
+<p>The <strong>work()</strong> tasks run and sleep for a fraction of 10 seconds. Some complete and report a done message.</p>
+<p>The <strong>main()</strong> coroutine resumes and awaits the <strong>cancel_all_tasks()</strong> coroutine and excludes itself.</p>
+<p>The <strong>cancel_all_tasks()</strong> coroutine runs and retrieves all tasks and removes the excluded task from the list. It then requests that all tasks in the list be canceled and then suspends and awaits the tasks to be done.</p>
+<p>A <strong>CancelledError</strong> exception is raised in each of the remaining running tasks. Their finally blocks run and suspend each task for a random fraction of 2 seconds.</p>
+<p>The finally blocks exit and the tasks are done.</p>
+<p>The <strong>cancel_all_tasks()</strong> coroutine resumes and returns once all tasks exit their finally block.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final message before the program terminates.</p>
+<p>This highlights how we can cancel all running tasks and exclude the main coroutine from the cancellation. It also highlights that although tasks can be requested to cancel, they may also delay the termination of the program with their own cleanup in a finally block.</p>
+<pre><code>Main started
+&gt;task 91 done
+&gt;task 12 done
+&gt;task 60 done
+&gt;task 72 done
+&gt;task 71 done
+&gt;task 70 done
+&gt;task 36 done
+&gt;task 7 done
+&gt;task 4 done
+&gt;task 82 done
+&gt;task 33 done
+&gt;task 98 done
+&gt;task 46 done
+&gt;task 57 done
+&gt;task 26 done
+&gt;task 6 done
+&gt;task 28 done
+&gt;task 53 done
+&gt;task 5 done
+&gt;task 58 done
+&gt;task 14 done
+&gt;task 38 done
+&gt;task 10 done
+&gt;task 54 done
+&gt;task 16 done
+&gt;task 93 done
+&gt;task 78 done
+&gt;task 65 done
+&gt;task 49 done
+&gt;task 32 done
+&gt;task 11 done
+&gt;task 80 done
+&gt;task 29 done
+&gt;task 84 done
+&gt;task 34 done
+&gt;task 86 done
+Main canceling all tasks
+Main done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to shut down the asyncio event loop immediately by canceling all tasks.</p>
 </main>
 </body>
 </html>

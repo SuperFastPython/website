@@ -241,6 +241,169 @@ logger.info('Main process started.')</code></pre>
 <p>Next, we can execute our tasks in the multiprocessing pool by calling our custom <strong>task()</strong> function multiple times and pass in the share queue for logging.</p>
 <p>We will use the <strong>apply_async()</strong> function and gather the <strong>AsyncResult</strong> objects returned from each call as we will need them in a moment.</p>
 <p>This can be achieved in a list comprehension.</p>
+<pre><code>...
+# issue task to the process pool
+results = [pool.apply_async(task, args=(queue,)) for i in range(5)]</code></pre>
+<p>Next, we can wait for the five issued tasks to complete by waiting on the <strong>AsyncResult</strong> object for each task.</p>
+<p>This can be achieved in a loop by calling the <strong>AsyncResult.wait()</strong> function.</p>
+<pre><code>...
+# wait for all issued tasks to complete
+logger.info('Main process waiting...')
+for result in results:
+    result.wait()
+</code></pre>
+<p>Once all tasks have completed, we can shutdown the logging process in the pool.</p>
+<p>We could just terminate the process pool directly, but instead, we will shutdown the logging process in a controlled manner.</p>
+<p>This is achieved by putting the special <strong>None</strong> sentinel value on the queue which will instruct the logging process to exit its loop and terminate.</p>
+<pre><code>...
+# report final message
+logger.info('Main process done.')
+# shutdown the long running logger task
+queue.put(None)</code></pre>
+<p>We can then close the multiprocessing pool, which will prevent it from receiving any further tasks, then wait for the logging process to complete, and for all worker processes to terminate.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait for all tasks to complete (e.g. the logger to close)
+pool.join()</code></pre>
+<h3>Complete Example</h3>
+<p>Tying all of this together, the complete example of logging from workers in the multiprocessing pool is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging from multiple workers in the multiprocessing pool
+from random import random
+from time import sleep
+from multiprocessing import current_process
+from multiprocessing import Pool
+from multiprocessing import Queue
+from multiprocessing import Manager
+from logging.handlers import QueueHandler
+import logging
+
+# executed in a process that performs logging
+def logger_process(queue):
+    # create a logger
+    logger = logging.getLogger('app')
+    # configure a stream handler
+    logger.addHandler(logging.StreamHandler())
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # report that the logger process is running
+    logger.info(f'Logger process running.')
+    # run forever
+    while True:
+        # consume a log message, block until one arrives
+        message = queue.get()
+        # check for shutdown
+        if message is None:
+            logger.info(f'Logger process shutting down.')
+            break
+        # log the message
+        logger.handle(message)
+
+# task to be executed in child processes
+def task(queue):
+    # create a logger
+    logger = logging.getLogger('app')
+    # add a handler that uses the shared queue
+    logger.addHandler(QueueHandler(queue))
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # get the current process
+    process = current_process()
+    # report initial message
+    logger.info(f'Child {process.name} starting.')
+    # simulate doing work
+    for i in range(5):
+        # report a message
+        logger.debug(f'Child {process.name} step {i}.')
+        # block
+        sleep(random())
+    # report final message
+    logger.info(f'Child {process.name} done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared queue and get the proxy object
+        queue = manager.Queue()
+        # create a logger
+        logger = logging.getLogger('app')
+        # add a handler that uses the shared queue
+        logger.addHandler(QueueHandler(queue))
+        # log all messages, debug and up
+        logger.setLevel(logging.DEBUG)
+        # create the process pool with default configuration
+        with Pool() as pool:
+            # issue a long running task to receive logging messages
+            _ = pool.apply_async(logger_process, args=(queue,))
+            # report initial message
+            logger.info('Main process started.')
+            # issue task to the process pool
+            results = [pool.apply_async(task, args=(queue,)) for i in range(5)]
+            # wait for all issued tasks to complete
+            logger.info('Main process waiting...')
+            for result in results:
+                result.wait()
+            # report final message
+            logger.info('Main process done.')
+            # shutdown the long running logger task
+            queue.put(None)
+            # close the process pool
+            pool.close()
+            # wait for all tasks to complete (e.g. the logger to close)
+            pool.join()
+</code></pre>
+<p>Running the example first creates the manager and the shared queue, then configures the logging infrastructure in the main process to use the <strong>QueueHandler</strong> with the shared queue.</p>
+<p>This ensures that any logging in the main process is sent to the logging process.</p>
+<p>Next, the logging task is configured and started in the multiprocessing pool. It is responsible for reading messages from the shared queue and logging them to a central location, in this case to standard error.</p>
+<p>Five tasks are then issued to the multiprocessing pool. The main process then waits for each of the issued tasks to complete.</p>
+<p>Each task runs and configures its logging infrastructure to use a <strong>QueueHandler</strong> with the shared queue. The tasks then perform their simulated work and log their messages which are all sent into the shared queue to the logging process.</p>
+<p>The logging process reads messages one-at-a-time from the queue and lets its local logging infrastructure handle them, logging them to stderr.</p>
+<p>The tasks finish and the main process carries on. It sends a None message into the queue which triggers the logging task to exit its loop and terminate.</p>
+<p>The main process then waits for the pool to close completely for terminating the program.</p>
+<pre><code>Logger process running.
+Main process started.
+Main process waiting...
+Child SpawnPoolWorker-3 starting.
+Child SpawnPoolWorker-3 step 0.
+Child SpawnPoolWorker-5 starting.
+Child SpawnPoolWorker-5 step 0.
+Child SpawnPoolWorker-4 starting.
+Child SpawnPoolWorker-4 step 0.
+Child SpawnPoolWorker-6 starting.
+Child SpawnPoolWorker-6 step 0.
+Child SpawnPoolWorker-7 starting.
+Child SpawnPoolWorker-7 step 0.
+Child SpawnPoolWorker-7 step 1.
+Child SpawnPoolWorker-6 step 1.
+Child SpawnPoolWorker-3 step 1.
+Child SpawnPoolWorker-5 step 1.
+Child SpawnPoolWorker-4 step 1.
+Child SpawnPoolWorker-6 step 2.
+Child SpawnPoolWorker-5 step 2.
+Child SpawnPoolWorker-5 step 3.
+Child SpawnPoolWorker-7 step 2.
+Child SpawnPoolWorker-5 step 4.
+Child SpawnPoolWorker-6 step 3.
+Child SpawnPoolWorker-7 step 3.
+Child SpawnPoolWorker-3 step 2.
+Child SpawnPoolWorker-4 step 2.
+Child SpawnPoolWorker-6 step 4.
+Child SpawnPoolWorker-5 done.
+Child SpawnPoolWorker-7 step 4.
+Child SpawnPoolWorker-3 step 3.
+Child SpawnPoolWorker-6 done.
+Child SpawnPoolWorker-4 step 3.
+Child SpawnPoolWorker-3 step 4.
+Child SpawnPoolWorker-7 done.
+Child SpawnPoolWorker-4 step 4.
+Child SpawnPoolWorker-4 done.
+Child SpawnPoolWorker-3 done.
+Main process done.
+Logger process shutting down.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to log from worker processes in the multiprocessing pool.</p>
 </main>
 </body>
 </html>

@@ -610,6 +610,179 @@ daemon.start()
 <li><a href="../daemon-threads-in-python/">How to Use Daemon Threads in Python</a></li>
 </ul>
 <p>Tying these changes together, the complete example of reporting results for streamed tasks as tasks are completed is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of stream of tasks and reporting the first result
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+from queue import Queue
+from threading import Thread
+
+# task function that will sleep for a random number of seconds
+def task(task_id):
+    # generate value between 5 and 20
+    value = 5 + (random() * 20)
+    # block to simulate effort
+    sleep(value)
+    # return the result of the task
+    return (task_id, value)
+
+# callback function to call when a task is completed
+def handler(future):
+    # declare global queue
+    global queue
+    # get result from task
+    result = future.result()
+    # put result on the queue
+    queue.put(f'Done: {result}')
+
+# task to inject a stream of tasks into the thread pool
+def task_stream(tpe):
+    for i in range(1, 51):
+        # issue a task
+        future = tpe.submit(task, i)
+        # add the done handler
+        future.add_done_callback(handler)
+        # report progress
+        print(f'&gt;issued task {i}')
+        # block a moment
+        sleep(0.2)
+
+# consume and report results forever
+def result_consumer(queue):
+    # consume results forever
+    while True:
+        # consume result
+        result = queue.get()
+        # report result
+        print(result)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a shared queue
+    queue = Queue()
+    # start daemon thread to report results as they are available
+    daemon = Thread(target=result_consumer, args=(queue,), daemon=True)
+    daemon.start()
+    # create a thread pool
+    with ThreadPoolExecutor(max_workers=50) as tpe:
+        # issue task that streams work into the pool
+        future = tpe.submit(task_stream, tpe)
+        # wait on the streamer task
+        wait()
+    # wait until all tasks are done...
+</code></pre>
+<p>Running the example first creates the shared queue as a global variable.</p>
+<p>Next, the daemon thread is created and started. This task blocks until results are available on the queue. Because</p>
+<p>The thread pool is created and the task streaming task is started and the main thread blocks until this task is done.</p>
+<p>Tasks are streamed into the thread pool and the done callback is added to each.</p>
+<p>As tasks are completed, the done callback function is called, and results are retrieved and put on the queue.</p>
+<p>The result consumer notices objects on the queue retrieves them, and reports the results.</p>
+<p>Once all tasks are streamed, the main thread blocks until all issued tasks in the thread pool are done.</p>
+<p>This highlights how we can get and use results from streamed tasks in the order that tasks are completed.</p>
+<pre><code>&gt;issued task 1
+&gt;issued task 2
+&gt;issued task 3
+&gt;issued task 4
+&gt;issued task 5
+&gt;issued task 6
+&gt;issued task 7
+&gt;issued task 8
+&gt;issued task 9
+&gt;issued task 10
+&gt;issued task 11
+&gt;issued task 12
+&gt;issued task 13
+&gt;issued task 14
+&gt;issued task 15
+&gt;issued task 16
+&gt;issued task 17
+&gt;issued task 18
+&gt;issued task 19
+&gt;issued task 20
+&gt;issued task 21
+&gt;issued task 22
+&gt;issued task 23
+&gt;issued task 24
+&gt;issued task 25
+&gt;issued task 26
+&gt;issued task 27
+&gt;issued task 28
+&gt;issued task 29
+&gt;issued task 30
+&gt;issued task 31
+&gt;issued task 32
+&gt;issued task 33
+&gt;issued task 34
+&gt;issued task 35
+&gt;issued task 36
+&gt;issued task 37
+Done: (3, 6.924631245284321)
+&gt;issued task 38
+&gt;issued task 39
+Done: (6, 6.723111956475185)
+Done: (4, 7.1699159728956126)
+&gt;issued task 40
+&gt;issued task 41
+&gt;issued task 42
+&gt;issued task 43
+&gt;issued task 44
+Done: (19, 5.217706149540529)
+&gt;issued task 45
+&gt;issued task 46
+&gt;issued task 47
+&gt;issued task 48
+&gt;issued task 49
+Done: (23, 5.372807839240585)
+&gt;issued task 50
+Done: (12, 8.019315097166409)
+Done: (35, 5.792907473539836)
+Done: (37, 5.525447943776321)
+Done: (36, 5.901940793513239)
+Done: (34, 7.102549903548725)
+Done: (7, 12.977708180254538)
+Done: (28, 9.049853326624772)
+Done: (41, 7.122348761882598)
+Done: (30, 9.380128974512012)
+Done: (9, 14.18480939583592)
+Done: (13, 13.430369875356355)
+Done: (5, 15.131460610909519)
+Done: (10, 14.589536036559599)
+Done: (33, 10.749000592053278)
+Done: (17, 14.383864055545452)
+Done: (14, 15.593349433075778)
+Done: (22, 14.440562808188396)
+Done: (40, 10.844932551292612)
+Done: (25, 14.2756621454851)
+Done: (18, 15.819311808688974)
+Done: (26, 14.22840587296549)
+Done: (1, 20.202985721700202)
+Done: (20, 16.729957791080363)
+Done: (46, 11.787319921266148)
+Done: (45, 12.085828786775716)
+Done: (38, 13.587892368751035)
+Done: (32, 14.818876027215818)
+Done: (27, 16.394197361134808)
+Done: (2, 21.59001845129945)
+Done: (31, 15.735354124235638)
+Done: (8, 20.4739632048844)
+Done: (29, 16.626035568832016)
+Done: (15, 19.514429726230816)
+Done: (50, 12.477077854741658)
+Done: (49, 13.018280382966449)
+Done: (47, 13.865094538552006)
+Done: (11, 21.260599668210297)
+Done: (21, 19.712779042929405)
+Done: (48, 17.554122089845233)
+Done: (16, 24.160599737054017)
+Done: (39, 19.666578849552316)
+Done: (24, 24.930859272011837)
+Done: (43, 21.315162475883795)
+Done: (42, 21.56986347732603)
+Done: (44, 24.743008724627146)</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to get the first result from tasks streamed into the <strong>ThreadPoolExecutor</strong>.</p>
 </main>
 </body>
 </html>

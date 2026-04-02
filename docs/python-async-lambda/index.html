@@ -31,6 +31,679 @@
 <cite>-- <a href="https://docs.python.org/3/glossary.html">Python Glossary</a></cite></blockquote>
 <p>The Python syntax for creating a lambda is the "<strong>lambda</strong>" keyword followed by any arguments, then a colon ":" followed by the expression to execute.</p>
 <p>For example:</p>
+<pre><code>lambda : expression</code></pre>
+<p>Perhaps the most common lambda use case is in specifying how to sort a list.</p>
+<p>The <strong>sort()</strong> method on the list takes a function via the "<strong>key</strong>" argument that takes a list item and returns the property by which to sort the list item.</p>
+<p>It is common, almost universal to specify a lambda for the key function.</p>
+<p>For example:</p>
+<pre><code>...
+# sort a list and use a lambda
+mylist.sort(key=lambda x:x[1])</code></pre>
+<h2>Lambdas Are Useful</h2>
+<p>Lambdas are very useful in Python, they are used all over the place.</p>
+<p>Some reasons for the wide use of lambdas include:</p>
+<ol>
+<li><strong>Conciseness</strong>: Lambda functions allow you to define small, simple functions in a single line of code. They are particularly handy for short, one-off operations where defining a full function using def would be overkill.</li>
+<li><strong>Readability</strong>: For straightforward operations, lambda functions can make code more readable by keeping the function logic closely associated with the operation being performed. This can reduce cognitive load when reading the code.</li>
+<li><strong>Inline Usage</strong>: You can use lambda functions inline, without needing to give them a name or define them elsewhere in the code. This is especially useful for quick calculations or transformations within a larger expression.</li>
+<li><strong>Anonymous Callbacks</strong>: Lambda functions are often used as anonymous callbacks in event-driven programming, where you need a simple function to execute in response to an event without creating a named function.</li>
+<li><strong>Reduced Code Bloat</strong>: In situations where you have many small, utility-like functions, using lambda can help reduce code bloat and make the codebase more maintainable.</li>
+</ol>
+<p>Generally, we we want an <strong>async lambda</strong>, we also seek to achieve these properties.</p>
+<p>Now that we know what lambdas are and why they are useful, let's consider the need for asynchronous lambdas.</p>
+<h2>What Is An Async Lambda?</h2>
+<p>Just as a lambda is an anonymous function, e.g. a function with no name and one expression, an async lambda would be an anonymous coroutine.</p>
+<ul>
+<li><strong>Async Lambda</strong>: An anonymous coroutine with no name and one expression.</li>
+</ul>
+<p>Python does not support async lambdas (at the time of writing). They were mentioned in the PEP that introduced the async/await syntax, for example:</p>
+<blockquote>
+<p>Async lambda functions: Syntax for asynchronous lambda functions could be provided, but this construct is outside of the scope of this PEP.</p>
+<cite>-- <a href="https://peps.python.org/pep-0492/">PEP 492 – Coroutines with async and await syntax</a></cite></blockquote>
+<p>If Python did support async lambdas, perhaps an async lambda would be defined using an "<strong>async lambda</strong>" expression, for example:</p>
+<pre><code>async lambda : expression</code></pre>
+<p>An async lambda would have the properties of a coroutine.</p>
+<p>It would be able to await other coroutines and tasks, e.g. use the await expression.</p>
+<p>For example:</p>
+<pre><code>async lambda : await asyncio.sleep(1)</code></pre>
+<p>It could then be passed around as an argument, such as to another coroutine to be awaited.</p>
+<p>For example:</p>
+<pre><code>...
+# await some other coroutine that takes an awaitable
+await somefunction(target=async lambda : await asyncio.sleep(1))</code></pre>
+<p>As mentioned, Python does not support this syntax for async lambdas at the time of writing.</p>
+<p>It has been requested though, for example:</p>
+<ul>
+<li><a href="https://github.com/python/cpython/issues/77628">Asynchronous lambda syntax</a></li>
+<li><a href="https://github.com/python/cpython/issues/101871">Add support for async/await in the lambda expression</a></li>
+<li><a href="https://discuss.python.org/t/add-support-for-async-await-in-the-lambda-expression/23834/1">Add support for async/await in the lambda expression</a></li>
+</ul>
+<p>The general consensus from the experts and core developers is that there is no strong need for an async lambda.</p>
+<p>For example:</p>
+<blockquote>
+<p>I've thought about this idea before. And I came to the conclusion that in the simplest cases you can use a simple synchronous lambda returning an awaitable, and in more complex cases it is better to use a named internal function. Each async and await increase the length of the line, therefore the use of async lambda will not help with readability too much.</p>
+<cite>-- <a href="https://discuss.python.org/t/add-support-for-async-await-in-the-lambda-expression/23834/3">Serhiy Storchaka, CPython core developer</a>.</cite></blockquote>
+<p>Instead of using an async lambda, we need to consider workarounds.</p>
+<h2>Workarounds for Async Lambda</h2>
+<p>We do not have access to async lambdas in Python, yet.</p>
+<p>Therefore, we have to develop a workaround.</p>
+<p>Some suggested workarounds include:</p>
+<ol>
+<li>Define a new coroutine.</li>
+<li>Call a function instead of awaiting a coroutine.</li>
+<li>Use <strong>asyncio.run()</strong> if outside of a coroutine.</li>
+<li>Use a wrapper function.</li>
+<li>Use the asynchronous generator hack.</li>
+</ol>
+<p>These workarounds cover most use cases, if you think I missed one, let me know in the comments below.</p>
+<p>Let's take a closer look at each in turn.</p>
+<h3>1. Define a New Coroutine</h3>
+<p>The default solution is to define a new coroutine that can be awaited.</p>
+<p>We want to avoid this when using a lambda, so we have more compact code. If we let go of this desire and define a coroutine, we can get on with things.</p>
+<p>For example, consider the use case of passing an async lambda as an argument to a coroutine:</p>
+<pre><code>...
+# await some other coroutine that takes an awaitable
+await somefunction(target=async lambda : await asyncio.sleep(1))</code></pre>
+<p>We could define a new coroutine to do this task and pass an instance of the coroutine directly.</p>
+<p>For example:</p>
+<pre><code># new coroutine
+async def task():
+	await asyncio.sleep(1)
+
+...
+# await some other coroutine that takes an awaitable
+await somefunction(target=task())
+</code></pre>
+<h3>2. Define and Call a Function</h3>
+<p>Another solution is to simply define a function to perform the task of the async lambda.</p>
+<p>For example, consider the case where we want to use an async lambda when sorting a list.</p>
+<p>For example:</p>
+<pre><code># helper for getting the value from a tuple
+async def util(item):
+    return item[1]
+
+...
+# sort the list
+mylist.sort(key=lambda x : await util(x))
+</code></pre>
+<p>We define <strong>util()</strong> as a coroutine because we want async functions all the way down in our asyncio program.</p>
+<p>The solution is to redefine <strong>util()</strong> as a regular Python function.</p>
+<p>We can then use it as a regular lambda, no async required.</p>
+<p>For example:</p>
+<pre><code># helper for getting the value from a tuple
+def util(item):
+    return item[1]
+
+...
+# sort the list
+mylist.sort(key=lambda x : util(x))
+</code></pre>
+<h3>3. Call With asyncio.run() If Outside of Asyncio</h3>
+<p>We may want to use an async lambda in regular Python, outside of an asyncio program.</p>
+<p>This is likely because we are using some third-party library that has an API that expects awaitables as arguments or callbacks or similar.</p>
+<p>Generally, I'd recommend developing your program as an asyncio program, rather than trying to hack in pockets of asyncio into your regular non-asyncio program.</p>
+<p>Nevertheless, you can execute ad hoc coroutines in your program using the <strong>asyncio.run()</strong> function.</p>
+<p>This will start an asyncio event loop and execute whatever coroutine you need to be executed.</p>
+<p>For example, you may want a lambda to get a return value from a coroutine given an argument.</p>
+<pre><code>...
+value = async lambda : await task(100)</code></pre>
+<p>We can execute the coroutine directly to get the result with <strong>asyncio.run()</strong>.</p>
+<p>For example:</p>
+<pre><code># coroutine for doing a thing
+async def task(arg):
+    # some awaiting
+    await asyncio.sleep(10)
+    # some return value
+    return 100 * arg
+
+...
+# execute coroutine and get return value
+value = asyncio.run(task(100))
+</code></pre>
+<p>You can learn more about executing one-off coroutines in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-run-one-off-coroutine/">How to Run One-Off Asyncio Coroutines</a></li>
+</ul>
+<h3>4. Use a Wrapper Coroutine</h3>
+<p>We may have a use case where we have a function that performs a required task, but an API requires a coroutine or awaitable.</p>
+<p>In this case, we might just want to use an async lambda to call the function for us.</p>
+<p>For example:</p>
+<pre><code>...
+# get the thing we need by calling python function
+value = await async lambda : util(item)</code></pre>
+<p>In this case, we want to dress up a function to look like a coroutine.</p>
+<p>We can achieve the same effect using a wrapper coroutine.</p>
+<p>For example, we can define a wrapper coroutine that calls a target function.</p>
+<pre><code># wrapper coroutine
+async def wrapper(target, *args, **kwds):
+    # call the target
+    return target(*args, **kwds)
+</code></pre>
+<p>We can then await the wrapper and instruct the wrapper to call the target function for us.</p>
+<p>For example:</p>
+<pre><code>...
+# get the thing we need
+value = await wrapper(util, item)</code></pre>
+<p>A variation on this may be a target function that takes the name of a coroutine rather than a coroutine object.</p>
+<p>It will then create and await the coroutine object.</p>
+<p>For example:</p>
+<pre><code>...
+# await some other coroutine that takes an awaitable
+await somefunction(target=async lambda : util)</code></pre>
+<p>We can define a wrapper function that returns a coroutine function that will call the target function for us when called.</p>
+<p>For example:</p>
+<pre><code># wrapper function
+def wrapper(target, *args, **kwds):
+    # wrapper coroutine
+    async def wrapped():
+        # call the target function
+        return target(*args, **kwds)
+    # return the coroutine
+    return wrapped
+</code></pre>
+<p>We can then pass the wrapper to the function.</p>
+<pre><code>...
+# await some other coroutine that takes an awaitable
+await somefunction(target=wrapper(util))</code></pre>
+<p>The <strong>somefunction()</strong> coroutine can then create and await the provided target.</p>
+<p>For example, it might look like:</p>
+<pre><code># some function that takes a target coroutine function
+async def somefunction(target):
+	# ...
+	await target()
+</code></pre>
+<h3>5. Use an Asynchronous Generator Hack</h3>
+<p>We can simulate an anonymous asynchronous function in Python using an asynchronous generator.</p>
+<p>I call this the "asynchronous generator hack".</p>
+<p>I take no credit for this, it is based on an answer by <a href="https://stackoverflow.com/a/66330279/78453">MisterMiyagi</a> aka <a href="https://github.com/maxfischer2781">Max Fischer</a> on StackOverflow. All credit to him.</p>
+<p>This is helpful in the case where we need an async function (e.g. awaitable, coroutines, task, etc.) and do not want to define one, instead, we want to use an async lambda to do a thing, like await something.</p>
+<p>For example, a target coroutine that takes a coroutine object to be awaited for some purpose.</p>
+<pre><code>...
+# await some other coroutine that takes an awaitable
+await somefunction(target=async lambda : await asyncio.sleep(1))</code></pre>
+<p>The asynchronous generator hack works by defining the smallest possible asynchronous generator that just executes the one line we want to be executed.</p>
+<p>For example:</p>
+<pre><code>...
+# define an anonymous async function
+var = (await asyncio.sleep(1) for _ in '_').__anext__()</code></pre>
+<p>Awaiting this thing will suspend the caller and execute the inner statement.</p>
+<p>For example:</p>
+<pre><code>...
+# execute the statement
+await var</code></pre>
+<p>Or in one line:</p>
+<pre><code>...
+# define and await an anonymous async function
+await (await asyncio.sleep(1) for _ in '_').__anext__()</code></pre>
+<p>It is the same as defining a coroutine, creating it, and then awaiting it.</p>
+<pre><code># define a named coroutine
+async def mycoro():
+	await asyncio.sleep(1)
+
+# await the coroutine
+await mycoro()
+</code></pre>
+<p>Which could be squashed to two "lines":</p>
+<pre><code># define a named coroutine
+async def mycoro(): await asyncio.sleep(1)
+# await the coroutine
+await mycoro()
+</code></pre>
+<p>Now, recall our use case.</p>
+<p>The coroutine <strong>somefunction()</strong> takes an argument "<strong>target</strong>" that is an awaitable.</p>
+<p>The updated version using this hack is as follows:</p>
+<pre><code>...
+# await some other coroutine that takes an awaitable
+await somefunction(target=(await asyncio.sleep(1) for _ in '_').__anext__())</code></pre>
+<p>Cool.</p>
+<p>Learn more about the description of the hack as <a href="https://stackoverflow.com/a/66330279/78453">proposed by "MisterMiyagi" aka Max Fischer here</a>.</p>
+<p>Learn more about async generators here:</p>
+<ul>
+<li><a href="../asynchronous-generators-in-python/">Asynchronous Generators in Python</a></li>
+</ul>
+<p>Now that we know how to work around async lambdas, let's look at some worked examples.</p>
+<p><strong>NOTE</strong>: To be crystal clear, the examples below are not intended to motivate the addition of "async lambda" to Python, rather they are exploring contrived use cases we may encounter and thinking we need an async lambda and to show an alternative solution that could be used.</p>
+<h2>Example of Lambda Cannot Await</h2>
+<p>Before we look at workarounds for async lambda, we can explore the case where we cannot use an await expression within a regular synchronous lambda.</p>
+<p>This means that we cannot define regular lambdas that act like asynchronous functions, aka coroutines.</p>
+<p>In this case, we will sort a list of tuples via the <strong>sort()</strong> method on the list. We have a coroutine defined that we want to call to pull the key out of each item in the list so that we can sort by it.</p>
+<pre><code># helper for getting the value from a tuple
+async def util(item):
+    return item[1]
+</code></pre>
+<p>We then attempt to await this coroutine to get the key for each item when sorting the list.</p>
+<pre><code>...
+# sort the list
+mylist.sort(key=lambda x : await util(x))</code></pre>
+<p>The expectation is that the use of an await expression outside of a coroutine, such as within the <strong>sort()</strong> method, will result in a <strong>SyntaxError</strong>.</p>
+<p>This is contrived but demonstrates that a lambda cannot use an await expression.</p>
+<p>It provides a loose context for exploring many cases where we could use an async lambda.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of cannot use await in lambda
+import asyncio
+
+# helper for getting the value from a tuple
+async def util(item):
+    return item[1]
+
+# main coroutine
+async def main():
+    # create list of tuples
+    mylist = [('red', 2), ('green', 1), ('blue', 3)]
+    # report the list
+    print(mylist)
+    # sort the list
+    mylist.sort(key=lambda x : await util(x))
+    # report the sorted list
+    print(mylist)
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>The example does not run, as we expected.</p>
+<p>Instead, it immediately fails with a SyntaxError that an await cannot be used outside of a coroutine.</p>
+<pre><code>SyntaxError: 'await' outside async function</code></pre>
+<p>Next, let's start exploring some workarounds for the need for an async lambda.</p>
+<h2>Example of Defining a Named Coroutine</h2>
+<p>We can explore a workaround to an asyncio lambda by defining a named coroutine.</p>
+<p>In this case, the program will define a list of tuples then traverse the list and await coroutine to retrieve the correct value from each tuple that is then reported.</p>
+<p>Let's pretend that the tuple is a structure that requires awaiting in order to retrieve an item. Bear with me.</p>
+<p>We would like to use an async lambda to await an expression that will retrieve a value from the tuple each iteration.</p>
+<p>For example:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await async lambda item : item[1]
+    # report the value
+    print(value)
+</code></pre>
+<p>Instead, we can define a named coroutine that does this work for us.</p>
+<pre><code># helper for getting the value from a tuple
+async def util(item):
+    return item[1]
+</code></pre>
+<p>We can then await this coroutine directly which will access the required value from the tuple.</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await util(item)
+    # report the value
+    print(value)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of defining a named coroutine
+import asyncio
+
+# helper for getting the value from a tuple
+async def util(item):
+    return item[1]
+
+# main coroutine
+async def main():
+    # create list of tuples
+    mylist = [('red', 2), ('green', 1), ('blue', 3)]
+    for item in mylist:
+        # get the thing we need
+        value = await util(item)
+        # report the value
+        print(value)
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine defines the list of tuples.</p>
+<p>It then traverses the list of tuples.</p>
+<p>For each tuple, it suspends the <strong>main()</strong> coroutine and awaits the <strong>util()</strong> coroutine with an item argument.</p>
+<p>The <strong>util()</strong> coroutine runs and retrieves the correct value from the tuple.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports the retrieved value, and the loop repeats.</p>
+<p>This highlights how we can develop a named coroutine as a workaround, instead of using an anonymous async lambda.</p>
+<pre><code>2
+1
+3</code></pre>
+<h2>Example of Function Call Instead of Await Coroutine</h2>
+<p>We can explore the case of using a function call instead of using an async lambda.</p>
+<p>In this case, the main program defines a list of tuples. It then seeks to sort the list via the <strong>sort()</strong> method and use a given item as a key.</p>
+<p>We have a coroutine named <strong>util()</strong> that is used to define which item to retrieve from the tuple that is to be used to sort the list.</p>
+<p>For example:</p>
+<pre><code>...
+# helper for getting the value from a tuple
+async def util(item):
+    return item[1]
+</code></pre>
+<p>We would like to use an async lambda to await this coroutine when sorting the list.</p>
+<p>For example:</p>
+<pre><code>...
+# sort the list
+mylist.sort(key=async lambda x : await util(x))</code></pre>
+<p>This may happen if our program is an asyncio program and we are using coroutines for everything.</p>
+<p>Instead, in this case, because the target function does nothing coroutine-specific, we can convert the <strong>util()</strong> coroutine to a regular Python function.</p>
+<p>For example:</p>
+<pre><code># helper for getting the value from a tuple
+def util(item):
+    return item[1]
+</code></pre>
+<p>And then use it within the regular lambda in the <strong>sort()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# sort the list
+mylist.sort(key=lambda x : util(x))</code></pre>
+<p>Granted, this could be simpler in this case:</p>
+<pre><code>...
+# sort the list
+mylist.sort(key=lambda x : x[1])</code></pre>
+<p>But let's pretend that <strong>util()</strong> is doing more sophisticated things.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling a target function instead of awaiting a coroutine
+import asyncio
+
+# helper for getting the value from a tuple
+def util(item):
+    return item[1]
+
+# main coroutine
+async def main():
+    # create list of tuples
+    mylist = [('red', 2), ('green', 1), ('blue', 3)]
+    # report the list
+    print(mylist)
+    # sort the list
+    mylist.sort(key=lambda x : util(x))
+    # report the sorted list
+    print(mylist)
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine defines the list of tuples and then reports the contents of the list.</p>
+<p>It then sorts the list using a regular lambda that calls our custom <strong>util()</strong> function for each iteration to get the second item in the tuple as the key by which to sort the list.</p>
+<p>The <strong>main()</strong> coroutine then reports the contents of the list of tuples again, showing they were correctly sorted by the second value in the tuple.</p>
+<p>This highlights how we can convert a coroutine into a Python function to workaround the need for an async lambda.</p>
+<pre><code>[('red', 2), ('green', 1), ('blue', 3)]
+[('green', 1), ('red', 2), ('blue', 3)]</code></pre>
+<h2>Example of Calling asyncio.run() Outside of Asyncio</h2>
+<p>We can explore the case of running a one-off coroutine rather than converting everything to an asyncio program.</p>
+<p>In this case, we have a regular Python program that creates a loop of tuples, then traverses the loop and retrieves a value from each tuple, and reports it.</p>
+<p>We have a coroutine that needs to be used to retrieve a value from each tuple.</p>
+<pre><code># helper for getting the value from a tuple
+async def util(item):
+    return item[1]
+</code></pre>
+<p>We would like to use an async lambda to get the value from each tuple.</p>
+<p>For example:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await async lambda item : util(item)
+    # report the value
+    print(value)
+</code></pre>
+<p>This would fail with a syntax error because we are using an await outside of a coroutine. It is not even a good use case for an async lambda.</p>
+<p>Nevertheless, we can overcome this problem by creating an asyncio event loop and executing the coroutine as a one-off for each iteration.</p>
+<p>This can be achieved via the <strong>asyncio.run()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = asyncio.run(util(item))
+    # report the value
+    print(value)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of executing coroutines outside of asyncio
+import asyncio
+
+# helper for getting the value from a tuple
+async def util(item):
+    return item[1]
+
+# main coroutine
+def main():
+    # create list of tuples
+    mylist = [('red', 2), ('green', 1), ('blue', 3)]
+    for item in mylist:
+        # get the thing we need
+        value = asyncio.run(util(item))
+        # report the value
+        print(value)
+
+# start the program
+main()
+</code></pre>
+<p>Running the example first executes the <strong>main()</strong> function.</p>
+<p>The <strong>main()</strong> function runs and creates a list of tuples.</p>
+<p>It then traverses the list of tuples.</p>
+<p>For each tuple, it creates an asyncio event loop and executes the <strong>util()</strong> coroutine with a tuple argument.</p>
+<p>The event loop runs and executes the <strong>util()</strong> coroutine.</p>
+<p>The <strong>util()</strong> coroutine runs and retrieves the desired value from the provided tuple, which is returned.</p>
+<p>The event loop is terminated and the returned value is assigned and reported.</p>
+<p>This highlights how we can spin up an asyncio event loop to execute one-off coroutines instead of using an async lambda.</p>
+<pre><code>2
+1
+3</code></pre>
+<h2>Example of Wrapper Coroutine For Target Function</h2>
+<p>We can explore the case of using a wrapper coroutine that calls a target function instead of using an async lambda.</p>
+<p>In this case, we will create a list of tuples, then enumerate the list and retrieve one value from each tuple that is reported.</p>
+<p>We have a defined Python function named <strong>util()</strong> that can retrieve the correct value from each tuple.</p>
+<pre><code># helper for getting the value from a tuple
+def util(item):
+    return item[1]
+</code></pre>
+<p>Nevertheless, the main program is required to await a coroutine to get a value from each tuple.</p>
+<p>We would like to use an async lambda that in turn calls the target function.</p>
+<p>For example:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await async lambda item : util(item)
+    # report the value
+    print(value)
+</code></pre>
+<p>This can be achieved using a generic wrapper coroutine.</p>
+<p>The wrapper coroutine takes the name of a Python function to execute and any arguments to the function.</p>
+<p>When awaited, it will execute the target function and return the return value from the function.</p>
+<p>The <strong>wrapper()</strong> coroutine implements this.</p>
+<pre><code># wrapper coroutine
+async def wrapper(target, *args, **kwds):
+    # call the target
+    return target(*args, **kwds)
+</code></pre>
+<p>We can then await the <strong>wrapper()</strong> coroutine in the loop of our main program and pass it the name of the target function "util" and the argument to the <strong>util()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await wrapper(util, item)
+    # report the value
+    print(value)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of wrapper coroutine for target function
+import asyncio
+
+# wrapper coroutine
+async def wrapper(target, *args, **kwds):
+    # call the target
+    return target(*args, **kwds)
+
+# helper for getting the value from a tuple
+def util(item):
+    return item[1]
+
+# main coroutine
+async def main():
+    # create list of tuples
+    mylist = [('red', 2), ('green', 1), ('blue', 3)]
+    for item in mylist:
+        # get the thing we need
+        value = await wrapper(util, item)
+        # report the value
+        print(value)
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates a list of tuples.</p>
+<p>It then enumerates the list of tuples.</p>
+<p>In each iteration the <strong>main()</strong> coroutine suspends and awaits the <strong>wrapper()</strong> coroutine.</p>
+<p>The <strong>wrapper()</strong> coroutine runs and calls the <strong>util()</strong> function and a tuple argument.</p>
+<p>The <strong>util()</strong> function runs and retrieves one item from the tuple which is returned to the <strong>wrapper()</strong> coroutine and then back to the <strong>main()</strong> coroutine where it is reported.</p>
+<p>This example highlights how we can use a wrapper coroutine to call a target function instead of using an async lambda.</p>
+<pre><code>2
+1
+3</code></pre>
+<h2>Example of Wrapper Function That Returns Wrapper Coroutine</h2>
+<p>We can explore the case of using a wrapper function that returns a coroutine that can be created and awaited instead of using an async lambda.</p>
+<p>In this case, the main program will create a list of tuples, then enumerate the list of tuples and create a given coroutine, and await it to retrieve a specific value from each tuple in the list, which is then reported.</p>
+<p>We have a Python function named <strong>util()</strong> that can retrieve the correct value from each tuple.</p>
+<pre><code># helper for getting the value from a tuple
+def util(item):
+    return item[1]
+</code></pre>
+<p>We would like to use an async lambda that can be created and awaited each iteration to call the target function.</p>
+<p>For example, perhaps something like:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await (async lambda item : util(item))()
+    # report the value
+    print(value)
+</code></pre>
+<p>The syntax for defining and instantiating an anonymous coroutine is getting confused now. Anyway, bear with me.</p>
+<p>Instead, we can use a wrapper Python function that takes the name of the target function and any arguments. It then defines an inner coroutine that calls the target function and returns the name of this coroutine.</p>
+<p>This returned coroutine can then be instantiated and executed.</p>
+<p>The <strong>wrapper()</strong> Python function implements this.</p>
+<pre><code># wrapper function
+def wrapper(target, *args, **kwds):
+    # wrapper coroutine
+    async def wrapped():
+        # call the target function
+        return target(*args, **kwds)
+    # return the coroutine
+    return wrapped
+</code></pre>
+<p>We can then call the <strong>wrapper()</strong> function inline and pass it the name of the target function "<strong>util</strong>" and the argument to the function. This will return the name of a coroutine function that can be created and awaited.</p>
+<p>For example:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await wrapper(util, item)()
+    # report the value
+    print(value)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of wrapper function that returns wrapper coroutine
+import asyncio
+
+# wrapper function
+def wrapper(target, *args, **kwds):
+    # wrapper coroutine
+    async def wrapped():
+        # call the target function
+        return target(*args, **kwds)
+    # return the coroutine
+    return wrapped
+
+# helper for getting the value from a tuple
+def util(item):
+    return item[1]
+
+# main coroutine
+async def main():
+    # create list of tuples
+    mylist = [('red', 2), ('green', 1), ('blue', 3)]
+    for item in mylist:
+        # get the thing we need
+        value = await wrapper(util, item)()
+        # report the value
+        print(value)
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates a list of tuples.</p>
+<p>It then enumerates the list of tuples.</p>
+<p>In each iteration, the <strong>main()</strong> coroutines suspends and awaits the coroutine instance of the return value from the <strong>wrapper()</strong> function.</p>
+<p>The <strong>wrapper()</strong> function runs and calls define a coroutine that calls a target function and returns the name of the inner coroutine function.</p>
+<p>The <strong>main()</strong> coroutine suspends and creates an instance of the <strong>wrapped()</strong> coroutine and awaits it.</p>
+<p>The <strong>wrapped()</strong> coroutine runs and executes the <strong>util()</strong> function with an item argument.</p>
+<p>The <strong>util()</strong> function runs and retrieves one item from the tuple which is returned to the <strong>wrapped()</strong> coroutine and then back to the <strong>main()</strong> coroutine where it is reported.</p>
+<p>This example highlights how we can use a wrapper function to define a wrapped coroutine to call a target function that can be created when needed and awaited, instead of using an async lambda.</p>
+<pre><code>2
+1
+3</code></pre>
+<h2>Example of Asynchronous Generator Hack</h2>
+<p>We can explore the use of the asynchronous generator hack to create an anonymous coroutine, instead of using an async lambda.</p>
+<p>In this case, we are traversing a list of tuples and want to retrieve and report one item from each tuple.</p>
+<p>We will pretend that we need a coroutine to await a task that will return the item and would like to use an async lambda.</p>
+<p>For example:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await async lambda item : await util(item)
+    # report the value
+    print(value)
+</code></pre>
+<p>Granted, we could just await the target coroutine directly.</p>
+<p>For example:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await util(item)
+    # report the value
+    print(value)
+</code></pre>
+<p>The example may be overly contrived.</p>
+<p>Nevertheless, we can use the async generator hack to define an anonymous coroutine to await the target for us.</p>
+<p>For example:</p>
+<pre><code>...
+for item in mylist:
+    # get the thing we need
+    value = await (await util(item) for _ in '_').__anext__()
+    # report the value
+    print(value)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of async generator hack
+import asyncio
+
+# helper for getting the value from a tuple
+async def util(item):
+    return item[1]
+
+# main coroutine
+async def main():
+    # create list of tuples
+    mylist = [('red', 2), ('green', 1), ('blue', 3)]
+    for item in mylist:
+        # get the thing we need
+        value = await (await util(item) for _ in '_').__anext__()
+        # report the value
+        print(value)
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates a list of tuples.</p>
+<p>It then enumerates the list of tuples. Each iteration it awaits the anonymous coroutine to get the required data from each tuple, which is then reported.</p>
+<p>The anonymous coroutine is awaited, suspending the caller and executing the async generator and yielding the first value. This suspends and awaits the target <strong>util()</strong> coroutine that returns the second value in the tuple.</p>
+<p>This highlights how we can use the async generator hack to define and await anonymous coroutines to simulate an async lambda.</p>
+<pre><code>2
+1
+3</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to work around async lambdas in Python.</p>
 </main>
 </body>
 </html>

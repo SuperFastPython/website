@@ -193,6 +193,267 @@ if __name__ == '__main__':
 <p>We will use a pool of 8 worker processes. Each task will save one file with a unique filename and unique data.</p>
 <p>All files will be saved in a tmp/ directory under the current directory where we save the program.</p>
 <p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# save many data files concurrently with a process pool
+import os
+import os.path
+import concurrent.futures
+import time
+
+# save data to a file
+def save_file(filepath, data):
+    # open the file
+    with open(filepath, 'w') as handle:
+        # save the data
+        handle.write(data)
+
+# generate a csv file with v=10 values per line and l=10k lines
+def generate_file(identifier, n_values=10, n_lines=10000):
+    # generate many lines of data
+    data = list()
+    for i in range(n_lines):
+        # generate a list of numeric values as strings
+        line = [str(identifier+i+j) for j in range(n_values)]
+        # convert list to string with values separated by commas
+        data.append(','.join(line))
+    # convert list of lines to a string separated by new lines
+    return '\n'.join(data)
+
+# generate and save a file
+def generate_and_save(path, identifier):
+    # generate data
+    data = generate_file(identifier)
+    # create a unique filename
+    filepath = os.path.join(path, f'data-{identifier:04d}.csv')
+    # save data file to disk
+    save_file(filepath, data)
+    # report progress
+    print(f'.saved {filepath}', flush=True)
+
+# save many data files in a directory
+if __name__ == '__main__':
+    # record the start time
+    time_start = time.perf_counter()
+    # define the local dir to save files
+    path = 'tmp'
+    # define the number of files to save
+    n_files = 10000
+    # create a local directory to save files
+    os.makedirs(path, exist_ok=True)
+    # create the process pool
+    with concurrent.futures.ProcessPoolExecutor(8) as exe:
+        # submit tasks to generate files
+        _ = [exe.submit(generate_and_save, path, i) for i in range(n_files)]
+    # calculate the duration
+    time_duration = time.perf_counter() - time_start
+    # report the duration
+    print(f'Took {time_duration} seconds')
+</code></pre>
+<p>Run the program and note how long it takes to execute.</p>
+<p>On my system, it takes about 71 seconds to complete.</p>
+<p>Depending on the speed of your hardware it should be about 2.5x to 3x faster than saving the files sequentially.</p>
+<p>Try varying the number of worker processes and see if it makes a difference to the run time.</p>
+<p>Let me know what you discover.</p>
+<p>You can learn more about concurrent file saving in the tutorial:</p>
+<ul>
+<li><a href="../multithreaded-file-saving/">Multithreaded File Saving in Python</a></li>
+</ul>
+<h2>Lesson 05: Concurrent File Copying</h2>
+<p>Hi, copying files is typically really slow.</p>
+<p>We can explore how to speed up file copying using concurrency.</p>
+<p>In the previous lesson, we saw how we can create many files on disk.</p>
+<p>Re-run the program from the previous lesson to create a tmp/ directory with many files.</p>
+<p>We can then develop a program to copy all 10,000 files from one directory to another.</p>
+<p>If we use the <strong>shutil.copy()</strong> function to copy all files sequentially from the <strong>tmp/</strong> directory to a new directory named <strong>tmp2/</strong> it will take about 10 seconds.</p>
+<p>We can speed this up by using a thread pool.</p>
+<p>Each task will copy one file from the source directory into the destination directory.</p>
+<p>We can then issue one task per file in the source directory.</p>
+<p>The example below implements this with a thread pool of 100 workers.</p>
+<pre><code># SuperFastPython.com
+# copy files from one directory to another concurrently with threads
+import os
+import os.path
+import shutil
+import concurrent.futures
+import time
+
+# copy a file from source to destination
+def copy_file(src_path, dest_dir):
+    # copy source file to dest file
+    dest_path = shutil.copy(src_path, dest_dir)
+    # report progress
+    print(f'.copied {src_path} to {dest_path}')
+
+# copy files from src to dest
+if __name__ == '__main__':
+    # record the start time
+    time_start = time.perf_counter()
+    # define the source and destimation dirs
+    src = 'tmp'
+    dest = 'tmp2'
+    # create the destination directory if needed
+    os.makedirs(dest, exist_ok=True)
+    # create full paths for all files we wish to copy
+    files = [os.path.join(src,name) for name in os.listdir(src)]
+    # create the thread pool
+    with concurrent.futures.ThreadPoolExecutor(100) as exe:
+        # submit all copy tasks
+        _ = [exe.submit(copy_file, path, dest) for path in files]
+    print('Done')
+     # calculate the duration
+    time_duration = time.perf_counter() - time_start
+    # report the duration
+    print(f'Took {time_duration} seconds')
+</code></pre>
+<p>Run the program and note how long it takes to execute.</p>
+<p>On my system, it takes about 3.7 seconds to complete.</p>
+<p>Depending on the speed of your hardware it should be about 2x to 2.5x faster than copying the files sequentially.</p>
+<p>Try varying the number of worker threads and see if it makes a difference to the run time.</p>
+<p>Let me know what you discover.</p>
+<p>You can learn more about concurrent file copying in the tutorial:</p>
+<ul>
+<li><a href="../multithreaded-file-copying/">Multithreaded File Copying in Python</a></li>
+</ul>
+<h2>Lesson 06: Concurrent File Reading</h2>
+<p>Hi, loading a single file from disk can be slow.</p>
+<p>It can become painfully slow in situations where you may need to load thousands of files. The hope is that concurrency can be used to speed up file saving.</p>
+<p>In a previous lesson, we saw how we can create many files on disk.</p>
+<p>Re-run the program from a previous lesson to create a tmp/ directory with many files.</p>
+<p>We can then develop a program to load all files.</p>
+<p>Loading files is faster than saving in general. Loading all 10,000 files sequentially should take about 2.5 seconds to complete.</p>
+<p>We can develop a concurrent version that is more than 2x faster.</p>
+<p>This is an advanced approach that uses a process pool where each worker in the process pool uses a thread pool. Each worker in the thread pool then loads a file.</p>
+<p>This involves two parts.</p>
+<p>The first part involves splitting the number of files to load into chunks. Each worker process will load one chunk of files. All chunks will be executed concurrently.</p>
+<p>The second part involves the task that performs the loading. It will start a new thread pool with one worker thread per file to load. All files can then be loaded concurrently.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# load many files concurrently with processes and threads in batch
+import os
+import os.path
+import concurrent.futures
+import time
+
+# load a file and return the contents
+def load_file(filepath):
+    # open the file
+    with open(filepath, 'r') as handle:
+        # return the contents
+        handle.read()
+
+# return the contents of many files
+def load_files(filepaths):
+    # create a thread pool
+    with concurrent.futures.ThreadPoolExecutor(len(filepaths)) as exe:
+        # load files
+        futures = [exe.submit(load_file, name) for name in filepaths]
+        # collect data
+        data_list = [future.result() for future in futures]
+        # return data and file paths
+        return (data_list, filepaths)
+
+# load all files in a directory into memory
+if __name__ == '__main__':
+    # record the start time
+    time_start = time.perf_counter()
+    # define the pat to load fils
+    path = 'tmp'
+    # prepare all of the paths
+    paths = [os.path.join(path, filepath) for filepath in os.listdir(path)]
+    # determine chunksize
+    n_workers = 8
+    chunksize = round(len(paths) / n_workers)
+    # create the process pool
+    with concurrent.futures.ProcessPoolExecutor(n_workers) as exe:
+        futures = list()
+        # split the load operations into chunks
+        for i in range(0, len(paths), chunksize):
+            # select a chunk of filenames
+            filepaths = paths[i:(i + chunksize)]
+            # submit the task
+            future = exe.submit(load_files, filepaths)
+            futures.append(future)
+        # process all results
+        for future in concurrent.futures.as_completed(futures):
+            # open the file and load the data
+            _, filepaths = future.result()
+            for filepath in filepaths:
+                # report progress
+                print(f'.loaded {filepath}')
+    # calculate the duration
+    time_duration = time.perf_counter() - time_start
+    # report the duration
+    print(f'Took {time_duration} seconds')
+</code></pre>
+<p>Run the program and note how long it takes to execute.</p>
+<p>On my system, it takes about 1.4 seconds to complete.</p>
+<p>Depending on the speed of your hardware it should be about 1.5x to 2x faster than loading the files sequentially.</p>
+<p>Try varying the number of worker processes and worker threads and see if it makes a difference to the run time.</p>
+<p>Let me know what you discover.</p>
+<p>You can learn more about concurrent file saving in the tutorial:</p>
+<ul>
+<li><a href="../multithreaded-file-loading/">Multithreaded File Loading in Python</a></li>
+</ul>
+<h2>Lesson 07: Concurrent File Appending</h2>
+<p>Hi, appending a file from multiple threads is not thread-safe and will result in overwritten data and file corruption.</p>
+<p>We can explore how to append to a file from multiple threads.</p>
+<p>One approach to safely append to a file from multiple threads is by using a mutual exclusion lock.</p>
+<p>Python provides a mutual exclusion lock, also called a mutex, via the <a href="../thread-mutex-lock/"><strong>threading.Lock</strong> class</a>.</p>
+<p>A lock can be created and passed to each task executed in a new thread.</p>
+<p>Then, before any thread attempts to write to the file it must obtain the lock. Only one thread can have the lock at any one time, and if writes to the file can only occur when the lock is held, then only one thread can write to the file at a time.</p>
+<p>This will make writing to the file thread safe and will avoid any corruption of messages.</p>
+<p>Tying this together, the complete example of writing to file from multiple threads using a lock is listed below.</p>
+<pre><code># SuperFastPython.com
+# write to a file from multiple threads using a shared lock
+import time
+import random
+import threading
+import concurrent.futures
+
+# task that blocks for a moment and write to a file
+def task(name, lock, file_handle):
+    # block for a moment
+    value = random.random()
+    time.sleep(value)
+    # obtain the lock
+    with lock:
+        # write to a file
+        file_handle.write(f'Task {name} blocked for {value} of a second.\n')
+
+# write to a file from multiple threads
+if __name__ == '__main__':
+    # open a file
+    with open('results.txt', 'a', encoding='utf-8') as handle:
+        # create a lock to protect the file
+        lock = threading.Lock()
+        # create the thread pool
+        with concurrent.futures.ThreadPoolExecutor(1000) as exe:
+            # dispatch all tasks
+            _ = [exe.submit(task, i, lock, handle) for i in range(10000)]
+    # wait for all tasks to complete
+    print('Done.')
+</code></pre>
+<p>Run the program and note how long it takes to execute.</p>
+<p>Review the created file with the name "<strong>results.txt</strong>" and confirm that it contains 10,000 lines of data without corruption.</p>
+<p>Try varying the number of threads and the number of lines written by each thread.</p>
+<p>Try the same program with and without the use of the lock and compare the results.txt file.</p>
+<p>Let me know what you discover.</p>
+<p>You can learn more about concurrent file appending in the tutorial:</p>
+<ul>
+<li><a href="../multithreaded-file-append/">Multithreaded File Appending in Python</a></li>
+</ul>
+<h2>Thank You</h2>
+<p>Hi, thank you for letting me help you learn more about concurrent File I/O.</p>
+<p>If you ever have any questions about this course or Python concurrency in general, please reach out. Just ask in the comments below.</p>
+<p>If you enjoyed this course and want to know more, check out my new book:</p>
+<ul>
+<li><a href="../concurrent-file-io-in-python/">Concurrent File I/O In Python</a></li>
+</ul>
+<p>This book distills only what you need to know to get started and be effective with concurrent File I/O, super fast.</p>
+<p>The book is divided into 15 chapters spread across 3 parts. It contains everything you need to get started, then get really good at concurrent File I/O, all in one book.</p>
+<p>It's exactly how I would teach you concurrent File I/O if we were sitting together, pair programming.</p>
+<p><strong>Do you have any questions?</strong><br/>Ask your questions in the comments below and I will do my best to answer.</p>
+<p><strong>Did you enjoy this course?</strong><br/>Let me know in the comments below.</p>
 </main>
 </body>
 </html>

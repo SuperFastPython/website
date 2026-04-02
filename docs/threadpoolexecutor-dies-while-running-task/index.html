@@ -107,6 +107,138 @@ tpe.shutdown()</code></pre>
 <p>This too had no effect.</p>
 <p>I had to get on with things, so I explicitly waited on the top-level task within the context manager via the <strong>concurrent.futures.wait()</strong> module function.</p>
 <p>For example:</p>
+<pre><code>...
+# block on the top-level task
+_ = wait()</code></pre>
+<p>You can learn more about waiting for all tasks to complete in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-wait-all-tasks/">How to Wait For All Tasks to Finish in the ThreadPoolExecutor</a></li>
+</ul>
+<p>The complete example with this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the ThreadPoolExecutor with explicit wait
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+
+# task to execute in the thread pool
+def task(tpe):
+    # report a message
+    print('&gt;Hello from task')
+    # issue a task to the same thread pool
+    future2 = tpe.submit(print, '&gt;&gt;Hello from subtask')
+    # report a final message
+    print('&gt;Task is done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # report a message
+    print('Starting program...')
+    # create the thread pool using the context manager interface
+    with ThreadPoolExecutor() as tpe:
+        # issue task
+        future1 = tpe.submit(task, tpe)
+        # block on the top-level task
+        _ = wait()
+        # block and wait for all tasks to complete...
+    # report a final message
+    print('All done')
+</code></pre>
+<p>This had the desired effect.</p>
+<p>The subtask was issued, and reported its message as intended.</p>
+<p>The task then reported its final message and the program ended normally.</p>
+<pre><code>Starting program...
+&gt;Hello from task
+&gt;&gt;Hello from subtask
+&gt;Task is done.
+All done</code></pre>
+<p>I did not think anymore about it until this morning when it began to bug me.</p>
+<h2>Identifying the Cause of the Fault</h2>
+<p>Why is the top-level task dying in the <strong>ThreadPoolExecutor</strong>?</p>
+<p>I tried removing the interaction with the <strong>ThreadPoolExecutor</strong> from within the task. I replaced it with all manner of other activities, such as loops, sleeps, etc. to no effect. The program always worked as intended.</p>
+<p>The cause was the interaction with the <strong>ThreadPoolExecutor</strong> from within an executing task.</p>
+<p>I remember seeing something like this before. My guess was that issuing a task from the task was raising an exception somehow.</p>
+<p>I decided to wrap the entire content of the <strong>task()</strong> function with exception handling and reported any exceptions raised.</p>
+<p>This is the approach I recommend in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-fails-silently/">Why Do Tasks in the ThreadPoolExecutor Fail Silently</a></li>
+</ul>
+<p>For example:</p>
+<pre><code># task to execute in the thread pool
+def task(tpe):
+    try:
+        # report a message
+        print('&gt;Hello from task')
+        # issue a task to the same thread pool
+        _ = tpe.submit(print, '&gt;&gt;Hello from subtask')
+        # report a final message
+        print('&gt;Task is done.')
+    except Exception as e:
+        print(e)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the ThreadPoolExecutor with context manager with exception handling
+from concurrent.futures import ThreadPoolExecutor
+
+# task to execute in the thread pool
+def task(tpe):
+    try:
+        # report a message
+        print('&gt;Hello from task')
+        # issue a task to the same thread pool
+        _ = tpe.submit(print, '&gt;&gt;Hello from subtask')
+        # report a final message
+        print('&gt;Task is done.')
+    except Exception as e:
+        print(e)
+
+# protect the entry point
+if __name__ == '__main__':
+    # report a message
+    print('Starting program...')
+    # create the thread pool using the context manager interface
+    with ThreadPoolExecutor() as tpe:
+        # issue task
+        _ = tpe.submit(task, tpe)
+        # block and wait for all tasks to complete...
+    # report a final message
+    print('All done')
+</code></pre>
+<p>Running the example reported the message from the main thread and the task as per normal.</p>
+<p>As soon as we issue the subtask from <strong>task()</strong>, an exception is raised, caught and the message reported: <strong>cannot schedule new futures after shutdown</strong>.</p>
+<p>The exception suggests that we cannot issue a task to the <strong>ThreadPoolExecutor</strong> after it has been shutdown.</p>
+<p>Of course!</p>
+<pre><code>Starting program...
+&gt;Hello from task
+cannot schedule new futures after shutdown
+All done</code></pre>
+<p>This is a classic gotcha.</p>
+<p>I have seen it before when attempting to reissue tasks to the <strong>ThreadPoolExecutor</strong> that have failed, in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-retry-tasks/">How to Retry Failed Tasks in the ThreadPoolExecutor in Python</a></li>
+</ul>
+<h2>Why Submitting a Subtask from Task to the ThreadPoolExector Fails</h2>
+<p>In the examples above, submitting a subtask to the <strong>ThreadPoolExecutor</strong> from a task running in the <strong>ThreadPoolExecutor</strong> fails with an Exception.</p>
+<p>The reason is that the <strong>ThreadPoolExecutor</strong> is shutdown while the <strong>task()</strong> function is running. When a <strong>ThreadPoolExecutor</strong> is shutdown it cannot accept new tasks via the <strong>submit()</strong> or <strong>map()</strong> methods. It raises an exception with the message:</p>
+<ul>
+<li><strong>cannot schedule new futures after shutdown</strong></li>
+</ul>
+<p>This is also why the quick fix described above worked.</p>
+<p>It caused the main thread to block on the top-level task until it was complete, before closing the <strong>ThreadPoolExecutor</strong> by exiting the context manager. This allowed the subtask to be submitted to the <strong>ThreadPoolExecutor</strong> before being shutdown.</p>
+<h2>Recommended Solution</h2>
+<p>The general solution is to not call <strong>shutdown()</strong> on the <strong>ThreadPoolExecutor</strong> directly or indirectly via the context manager interface until after all tasks have been issued via calls to <strong>submit()</strong> or <strong>map()</strong>.</p>
+<p>If issued task themselves issue tasks, then they must form an acyclic graph (e.g. a tree), this is in order to avoid a deadlock.</p>
+<p>For example:</p>
+<ul>
+<li><a href="../threadpoolexecutor-deadlock/">How To Identify Deadlocks With The ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>As such, waiting on the root task or tasks in the tree of issued tasks would be sufficient to avoid the fault.</p>
+<p>This was the solution we saw above, where the main thread waited on the primary task directly via the <strong>wait()</strong> method.</p>
+<p>My recommendation to avoid the problem entirely is to ensure tasks are only submitted to the <strong>ThreadPoolExecutor</strong> from one context, e.g. the point in the program where the <strong>ThreadPoolExecutor</strong> is created and shutdown.</p>
+<p>This might mean using a queue or similar data structure to connect task functions or done callback functions to the main thread to signal what and when subtasks should be issued.</p>
+<p>In fact, a more robust design might be to have a separate daemon thread whose job is to manage the <strong>ThreadPoolExecutor</strong> and spend its time reading from the work queue and issuing tasks into the <strong>ThreadPoolExecutor</strong>. This would be a good point to add task logging and a way to ensure tasks are only issued from one point.</p>
+<h2>Takeaways</h2>
+<p>You now know how to avoid the problem where we cannot schedule new futures after shutdown in the <strong>ThreadPoolExecutor</strong>.</p>
 </main>
 </body>
 </html>

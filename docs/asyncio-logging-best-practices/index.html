@@ -397,6 +397,49 @@ buffer.close()
 </code></pre>
 <p>We can run a background asyncio task that keeps track of how long tasks have been alive and log their trace if they have been alive for too long, e.g. minutes, hours, days, depending on the application.</p>
 <p>For example, the coroutine below will monitor all running tasks by name and log a message for those tasks that have been alive for too long.</p>
+<pre><code># report duration of all current tasks
+# assumes task names are unique
+async def monitor(task_limit_sec, exclude=[]):
+    # record of all task names and their start times
+    task_dict = dict()
+    # loop forever
+    while True:
+        # get all tasks
+        for task in asyncio.all_tasks():
+            # skip excluded tasks
+            if task in exclude:
+                continue
+            # get task name
+            name = task.get_name()
+            # check if not previously known
+            if name not in task_dict:
+                # add start time (first time seen)
+                task_dict = time.monotonic()
+                continue
+            # compute duration for current task
+            duration = time.monotonic() - task_dict
+            # check if not too long
+            if duration &lt; task_limit_sec:
+                continue
+            # report task that has been alive too long
+            logging.debug(f'{name} alive for too long: {duration:.3f} seconds')
+        # check every second
+        await asyncio.sleep(1)
+</code></pre>
+<p>Note, this monitor requires that tasks are given meaningful names in the application, instead of the default "Task-1", "Task-2", etc. that may repeat.</p>
+<p>This monitor can then be started at the beginning of the program as a background task.</p>
+<p>For example:</p>
+<pre><code>...
+# create the monitor task
+monitor_coro = monitor(3.0, [asyncio.current_task()])
+# start the monitor task
+monitor_task = asyncio.create_task(monitor_coro)</code></pre>
+<p>You can learn more about reporting tasks that have been alive for too long in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-stuck-long-running-tasks/">Find Stuck and Long Running Tasks in Asyncio</a></li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know the best practices for logging in asyncio programs in Python.</p>
 </main>
 </body>
 </html>

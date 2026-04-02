@@ -56,6 +56,322 @@ def task():
 </code></pre>
 <p>We can then define a benchmark function that takes a number of threads to create as an argument, then creates, runs, and waits for the threads to complete, returning the estimated memory usage of the program.</p>
 <p>Threads can be defined via the <strong>threading.Thread</strong> class and the "<strong>target</strong>" argument can specify the <strong>task()</strong> function. We can create the specified number of threads using a list comprehension.</p>
+<pre><code>...
+# create many threads
+tasks = [threading.Thread(target=task) for _ in range(n_threads)]</code></pre>
+<p>You can learn more about running functions in a new thread in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-thread/">How to Run a Function in a New Thread in Python</a></li>
+</ul>
+<p>Threads can be started by calling the <strong>start()</strong> method, then joined by calling the <strong>join()</strong> method, returning only once the target thread is terminated.</p>
+<pre><code>...
+# start many threads
+for thread in tasks:
+    thread.start()
+# wait for all threads to finish
+for thread in tasks:
+    thread.join()
+</code></pre>
+<p>We can estimate the memory usage of the program with a given number of threads using the "<strong>tracemalloc</strong>" module.</p>
+<p>At the beginning of the benchmark, we can take a snapshot of memory usage via the <a href="https://docs.python.org/3/library/tracemalloc.html#tracemalloc.start"><strong>tracemalloc.start()</strong> function</a>.</p>
+<pre><code>...
+# record memory usage
+tracemalloc.start()</code></pre>
+<p>Then, about halfway through the program, after all threads have started and have been running for half a second, we can take a snapshot of the total memory usage. Using the <a href="https://docs.python.org/3/library/tracemalloc.html#tracemalloc.take_snapshot"><strong>tracemalloc.take_snapshot()</strong> function</a>.</p>
+<p>This may be around the peak memory usage for the given number of threads.</p>
+<p>The <strong>tracemalloc.take_snapshot()</strong> function returns a <a href="https://docs.python.org/3/library/tracemalloc.html#tracemalloc.Snapshot"><strong>tracemalloc.Snapshot</strong> object</a> with statistics of memory usage.</p>
+<p>There is a lot of memory usage data in the <strong>tracemalloc.Snapshot</strong>, but we can take a crude summary of memory usage by summing the number of bytes for each line.</p>
+<pre><code>...
+# calculate total memory usage
+total_bytes = sum(stat.size for stat in snapshot.statistics('lineno'))</code></pre>
+<p>We can then convert the bytes to kilobytes and return the value.</p>
+<pre><code>...
+# convert to kb
+total_kb = total_bytes / 1024.0
+# return memory usage
+return total_kb</code></pre>
+<p>Tying this together, the <strong>benchmark()</strong> function below will create a given number of threads and return the memory usage it took for them to be created and run seconds.</p>
+<pre><code># benchmark running a given number of threads threads
+def benchmark(n_threads):
+    # record memory usage
+    tracemalloc.start()
+    # create many threads
+    tasks = [threading.Thread(target=task) for _ in range(n_threads)]
+    # start many threads
+    for thread in tasks:
+        thread.start()
+    # wait a moment
+    time.sleep(0.5)
+    # take a snapshot while all threads are running
+    snapshot = tracemalloc.take_snapshot()
+    # wait for all threads to finish
+    for thread in tasks:
+        thread.join()
+    # calculate total memory usage
+    total_bytes = sum(stat.size for stat in snapshot.statistics('lineno'))
+    # convert to kb
+    total_kb = total_bytes / 1024.0
+    # return memory usage
+    return total_kb
+</code></pre>
+<p>Finally, we can call our <strong>benchmark()</strong> function with different numbers of threads and report the result in seconds.</p>
+<p>We will try different numbers of threads from one to 10,000.</p>
+<pre><code>...
+# define number of threads to test creating
+n_benchmark = [1, 10, 100, 1000, 2000, 5000, 10000]
+# benchmark creating different numbers of threads
+for n in n_benchmark:
+    # perform benchmark
+    sec = benchmark(n)
+    # report result
+    print(f'&gt; threads={n:5} took {sec:.3f} seconds')
+</code></pre>
+<p>Tying this together, the complete example of benchmarking the memory usage to create and run threads is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark memory usage of creating threads
+import time
+import threading
+import tracemalloc
+
+# task to run in a new thread
+def task():
+    for i in range(10):
+        # block for a moment
+        time.sleep(0.1)
+
+# benchmark running a given number of threads threads
+def benchmark(n_threads):
+    # record memory usage
+    tracemalloc.start()
+    # create many threads
+    tasks = [threading.Thread(target=task) for _ in range(n_threads)]
+    # start many threads
+    for thread in tasks:
+        thread.start()
+    # wait a moment
+    time.sleep(0.5)
+    # take a snapshot while all threads are running
+    snapshot = tracemalloc.take_snapshot()
+    # wait for all threads to finish
+    for thread in tasks:
+        thread.join()
+    # calculate total memory usage
+    total_bytes = sum(stat.size for stat in snapshot.statistics('lineno'))
+    # convert to kb
+    total_kb = total_bytes / 1024.0
+    # return memory usage
+    return total_kb
+
+# define number of threads to test creating
+n_benchmark = [1, 10, 100, 1000, 2000, 5000, 10000]
+# benchmark running different numbers of threads
+for n in n_benchmark:
+    # perform benchmark
+    total_kb = benchmark(n)
+    # report result
+    print(f'&gt; threads={n:5} used {total_kb:.3f} KiB')
+</code></pre>
+<p>Running the example benchmarks the memory usage to create and run different numbers of threads.</p>
+<p>The sizes are specific to my system and limited by CPU speed and total memory.</p>
+<p>We can see that as the number of threads is increased, we see an increase in the memory used.</p>
+<p>We might estimate from these numbers that one <strong>threading.Thread</strong> object is about 5 KiB, showing 1, 10, 100, and 1,000 threads require about 5KiB, 50KiB, 500KiB, and 5,000KIB respectively. And this trend continues.</p>
+<p>We can see that 10,000 threads require about 30 megabytes.</p>
+<pre><code>&gt; threads= 1 used 7.848 KiB
+&gt; threads= 10 used 63.902 KiB
+&gt; threads= 100 used 536.400 KiB
+&gt; threads= 1000 used 5166.721 KiB
+&gt; threads= 2000 used 10434.921 KiB
+&gt; threads= 5000 used 16939.733 KiB
+&gt; threads=10000 used 30808.835 KiB</code></pre>
+<p>Note, another way to benchmark memory usage with <strong>tracemalloc</strong> would be to call the <a href="https://docs.python.org/3/library/tracemalloc.html#tracemalloc.get_traced_memory"><strong>get_traced_memory()</strong> function</a> each iteration to get the peak memory usage and <strong><a href="https://docs.python.org/3/library/tracemalloc.html#tracemalloc.reset_peak">reset_peak()</a></strong> to reset the values. I tried this and it gave similar results.</p>
+<p>Next, let's look at the memory usage of coroutines</p>
+<h2>Benchmark Memory Usage of Coroutines</h2>
+<p>We can benchmark how much memory is required to create different numbers of coroutines.</p>
+<p>In this example, we can update the above example for benchmarking threads to benchmark how long it takes to create and run coroutines.</p>
+<p>Firstly, the <strong>task()</strong> function needs to be updated to be a coroutine using the "<strong>async def</strong>" expression. The call to sleep must suspend the task and call the <strong>asyncio.sleep()</strong> function using the "<strong>await</strong>" expression.</p>
+<p>The updated <strong>task()</strong> coroutine function is listed below.</p>
+<pre><code># task to run in a new thread
+async def task():
+    for i in range(10):
+        # block for a moment
+        await asyncio.sleep(0.1)
+</code></pre>
+<p>You can learn more about the <strong>asyncio.sleep()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-sleep/">Asyncio sleep() in Python</a></li>
+</ul>
+<p>Next, we can update the <strong>benchmark()</strong> to create and wait for many <strong>task()</strong> coroutines instead of threads.</p>
+<p>Firstly, the <strong>benchmark()</strong> function can be changed to be a coroutine function using the "<strong>async def</strong>" expression.</p>
+<p>Next, we can create and schedule many coroutines using the <strong>asyncio.create_task()</strong> function in a list comprehension.</p>
+<pre><code>...
+# create and schedule coroutines as tasks
+tasks = [asyncio.create_task(task()) for _ in range(n_coros)]</code></pre>
+<p>You can learn more about creating tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-create-task/">How to Create an Asyncio Tasks in Python</a></li>
+</ul>
+<p>We can then wait for all tasks by awaiting the <strong>asyncio.wait()</strong> function and pass in the list of <strong>Task</strong> objects.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to completes
+_ = await asyncio.wait(tasks)</code></pre>
+<p>You can learn more about the <strong>asyncio.wait()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait/">How to Use Asyncio wait() in Python</a></li>
+</ul>
+<p>Tying this together, the updated <strong>benchmark()</strong> coroutine function is listed below.</p>
+<pre><code># benchmark running a given number of coroutines coroutines
+async def benchmark(n_coros):
+    # record memory usage
+    tracemalloc.start()
+    # create and schedule coroutines as tasks
+    tasks = [asyncio.create_task(task()) for _ in range(n_coros)]
+    # wait a moment
+    await asyncio.sleep(0.5)
+    # take a snapshot while all threads are running
+    snapshot = tracemalloc.take_snapshot()
+    # wait for all tasks to completes
+    _ = await asyncio.wait(tasks)
+    # calculate total memory usage
+    total_bytes = sum(stat.size for stat in snapshot.statistics('lineno'))
+    # convert to kb
+    total_kb = total_bytes / 1024.0
+    # return memory usage
+    return total_kb
+</code></pre>
+<p>Next, we can define a <strong>main()</strong> coroutine to perform the benchmarking of different numbers of coroutines from 1 to 100,000.</p>
+<pre><code># main coroutine
+async def main():
+    # define numbers of coroutines to test creating
+    n_benchmark = [1, 10, 100, 1000, 2000, 5000, 10000, 50000, 100000]
+    # benchmark creating different numbers of coroutines
+    for n in n_benchmark:
+        # perform benchmark
+        total_kb = await benchmark(n)
+        # report result
+        print(f'&gt; coroutines={n:5} used {total_kb:.3f} KiB')
+</code></pre>
+<p>The <strong>main()</strong> coroutine can then be used as the entry point to the asyncio program.</p>
+<pre><code>...
+# start the asyncio program
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of starting coroutines
+import tracemalloc
+import asyncio
+
+# task to run in a new thread
+async def task():
+    for i in range(10):
+        # block for a moment
+        await asyncio.sleep(0.1)
+
+# benchmark running a given number of coroutines coroutines
+async def benchmark(n_coros):
+    # record memory usage
+    tracemalloc.start()
+    # create and schedule coroutines as tasks
+    tasks = [asyncio.create_task(task()) for _ in range(n_coros)]
+    # wait a moment
+    await asyncio.sleep(0.5)
+    # take a snapshot while all threads are running
+    snapshot = tracemalloc.take_snapshot()
+    # wait for all tasks to completes
+    _ = await asyncio.wait(tasks)
+    # calculate total memory usage
+    total_bytes = sum(stat.size for stat in snapshot.statistics('lineno'))
+    # convert to kb
+    total_kb = total_bytes / 1024.0
+    # return memory usage
+    return total_kb
+
+# main coroutine
+async def main():
+    # define numbers of coroutines to test creating
+    n_benchmark = [1, 10, 100, 1000, 2000, 5000, 10000, 50000, 100000]
+    # benchmark creating different numbers of coroutines
+    for n in n_benchmark:
+        # perform benchmark
+        total_kb = await benchmark(n)
+        # report result
+        print(f'&gt; coroutines={n:5} used {total_kb:.3f} KiB')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example benchmarks how much memory is used when creating and running different numbers of coroutines.</p>
+<p>From reviewing the numbers, it seems that a coroutine requires about 2 KiB to be maintained.</p>
+<p>For example, 100, 1,000, and 10,000 coroutines require about double the number of kilobytes with about 200, about 2,000, and about 20,000 KiB respectively.</p>
+<p>Unlike threads, this might be the extent of the memory usage, as the underlying operating system does not need to manage each coroutine with its own stack space.</p>
+<pre><code>&gt; coroutines= 1 used 9.015 KiB
+&gt; coroutines= 10 used 40.556 KiB
+&gt; coroutines= 100 used 237.902 KiB
+&gt; coroutines= 1000 used 2153.204 KiB
+&gt; coroutines= 2000 used 4323.462 KiB
+&gt; coroutines= 5000 used 10977.071 KiB
+&gt; coroutines=10000 used 21546.918 KiB
+&gt; coroutines=50000 used 108986.776 KiB
+&gt; coroutines=100000 used 222494.277 KiB</code></pre>
+<h2>Memory Comparison Coroutines vs Threads</h2>
+<p>We can compare the results for the memory usage of threads vs the memory usage of coroutines.</p>
+<p>Firstly, let's create a table and compare all of the results side by side.</p>
+<pre><code>Units    Threads     Coroutines
+1        7.848       9.015
+10       63.902      40.556
+100      536.400     237.902
+1000     5,166.721   2,153.204
+2000     10,434.921  4,323.462
+5000     16,939.733  10,977.071
+10000    30,808.835  21,546.918
+50000    n/a         108,986.776
+100000   n/a         222,494.277</code></pre>
+<p>Generally, a <strong>threading.Thread</strong> object is about 5KiB and a coroutine object is about 2KiB.</p>
+<p>As we increase the number of units of concurrency (threads or coroutines), we use more memory with thread objects than with coroutine objects.</p>
+<p>This is not a surprise, but it is nice to confirm this expectation.</p>
+<p>Now, we can graph the results to aid in the comparison.</p>
+<p>We can cap the results at 10,000 units to avoid a distortion of the plot.</p>
+<figure><img alt="Memory Usage of Threads vs Coroutines in Python" loading="lazy" src="../pics/Memory-Usage-Threads-and-Coroutines.png"/><figcaption>Memory Usage of Threads vs Coroutines in Python</figcaption></figure>
+<p>The x-axis is nearly a log scale of the number of units.</p>
+<p>The y-axis is memory usage in kilobytes. Dividing a KiB by 1024 gives an estimate in megabytes.</p>
+<p>Again, we can see that as the number of units is creased, threads use more memory than coroutines.</p>
+<p>We know that this is not the whole story.</p>
+<p>If we assume that each thread is pre-allocated a minimum stack space of 32KiB, then we can estimate the memory required for each thread in the previous experiments.</p>
+<p>The table below summarizes these estimates in bytes, kilobytes, and megabytes.</p>
+<pre><code>Units    Size (bytes)    Size (KiB)    Size (MiB)
+1        32,768          32            32
+10       327,680         320           0
+100      3,276,800       3200          3
+1000     32,768,000      32000         31
+2000     65,536,000      64000         63
+5000     163,840,000     160000        156
+10000    327,680,000     320000        313</code></pre>
+<p>We can see that 1,000 threads require about 32 megabytes.</p>
+<p>This is a lot more than the 5 megabytes reported in our above experiments.</p>
+<p>Is this real?</p>
+<p>Yes.</p>
+<p>I confirmed this by checking in "<a href="https://en.wikipedia.org/wiki/Top_(software)">top</a>" and in the "<a href="https://en.wikipedia.org/wiki/List_of_macOS_built-in_apps#Activity_Monitor">Activity Monitor</a>" for my platform.</p>
+<p>I modified the program for the task to take 60 seconds and ran it with just 1,000 threads.</p>
+<p>See below for a screenshot of the Python program with 1,000 threads showing about 32 megabytes of memory usage.</p>
+<figure><img alt="Screenshot of Python with 1000 Threads in Activity Monitor" loading="lazy" src="../pics/Screen-Shot-of-Python-with-1000-Threads-in-Activity-Monitor-1024x55.png"/><figcaption>Screenshot of Python with 1000 Threads in Activity Monitor</figcaption></figure>
+<p>I then did the same experiment with 1,000 coroutines.</p>
+<p>See the screenshot below.</p>
+<figure><img alt="Screenshot of Python with 1000 Coroutines in Activity Monitor" loading="lazy" src="../pics/Screen-Shot-of-Python-with-1000-Coroutines-in-Activity-Monitor-1024x57.png"/><figcaption>Screenshot of Python with 1000 Coroutines in Activity Monitor</figcaption></figure>
+<p>So in real terms, 1,000 coroutines cost about 16 megabytes, whereas 1,000 threads cost about 32 megabytes.</p>
+<p>Still a double in cost, although much more than the previously reported 5 megabytes vs 2 megabytes.</p>
+<p>This highlights with real numbers that coroutines use less memory than threads, regardless of the number of units that are created.</p>
+<p>The benchmarking has limitations</p>
+<ul>
+<li>Tests were performed using one task type, as opposed to testing different task types.</li>
+<li>Tests were performed once, rather than many times, and averaged or distributions of results were compared.</li>
+<li>Tests were performed on one system, rather than many different systems.</li>
+<li>Tests were performed with a log number of units rather than a linear scale of units.</li>
+</ul>
+<p>Try running the benchmarks yourself on your system.</p>
+<p><strong>What results do you see?</strong><br/>Let me know in the comments below.</p>
+<p>I'd love to see how things compare across different platforms (e.g. I don't have access to a windows machine).</p>
+<h2>Takeaways</h2>
+<p>You now know that coroutines use less memory than threads in Python.</p>
 </main>
 </body>
 </html>

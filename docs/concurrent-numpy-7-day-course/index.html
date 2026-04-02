@@ -202,6 +202,180 @@ print(f'Took {time_duration:.3f} seconds')
 <p>Run the example.</p>
 <p>Record how long it takes.</p>
 <p>Now we can initialize the same array in parallel using a thread pool with 4 worker threads.</p>
+<pre><code># SuperFastPython.com
+# initialize a numpy array in parallel with threads
+from concurrent.futures
+import time
+import numpy
+
+# fill a portion of a larger array with a value
+def fill_subarray(coords, data, value):
+    # unpack array indexes
+    i1, i2, i3, i4 = coords
+    # populate subarray
+    data[i1:i2,i3:i4].fill(value)
+
+# record the start time
+time_start = time.perf_counter()
+# create an empty array
+n = 50000
+data = numpy.empty((n,n))
+# create the thread pool
+with concurrent.futures.ThreadPoolExecutor(4) as exe:
+    # split each dimension (divisor of matrix dimension)
+    split = round(n/2)
+    # issue tasks
+    for x in range(0, n, split):
+        for y in range(0, n, split):
+            # determine matrix coordinates
+            coords = (x, x+split, y, y+split)
+            # issue task
+            _ = exe.submit(fill_subarray, coords, data, 1)
+# calculate the duration
+time_duration = time.perf_counter() - time_start
+# report the duration
+print(f'Took {time_duration:.3f} seconds')
+</code></pre>
+<p>Run the example.</p>
+<p>Compare the run time to the single-threaded version above.</p>
+<p>Vary the number of worker threads and number of chunks the array is divided into and see what gives the best result.</p>
+<p>Let me know in the comments what you discover.</p>
+<p>You can learn more about multithreaded array filling in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-fill-numpy-array/">ThreadPoolExecutor Fill NumPy Array</a></li>
+</ul>
+<h2>Lesson 06: Combine BLAS and Python Threads</h2>
+<p>We can combine BLAS threads with Python threads in NumPy programs.</p>
+<p>Maximizing these types of parallelism can help us fully utilize our CPU cores for a given application and achieve a speed-up compared to not using any or only one level of parallelism.</p>
+<p>It can be tricky as sometimes combining threading with NumPy BLAS threads can result in no benefit or even worse performance.</p>
+<p>Consider a program that performs some operation on pairs of NumPy arrays, but must perform the same task on many pairs of arrays.</p>
+<p>The operation we wish to perform can be parallel with BLAS threads, e.g. matrix multiplication.</p>
+<p>Additionally, we can parallelize the tasks themselves, e.g. worker threads handling multiple pairs of arrays on which to perform the operation.</p>
+<p>What configuration of BLAS threads and worker threads should we use?</p>
+<p>Some examples include:</p>
+<ol>
+<li>No worker threads and no BLAS threads.</li>
+<li>No worker threads and a number of BLAS threads.</li>
+<li>A number of worker threads and no BLAS threads.</li>
+<li>A number of worker threads and a number of BLAS threads.</li>
+</ol>
+<p>We cannot know which configuration will work best for a given application on a given system.</p>
+<p>Instead, it is a good idea to test a suite of configurations in order to discover what works best.</p>
+<p>The example below executes 100 tasks using worker threads where each task is completed using a BLAS function that is multithreaded.</p>
+<pre><code># SuperFastPython.com
+# example that combines a thread pool and blas threads
+import os
+os. environ['OMP_NUM_THREADS'] = '4'
+import concurrent.futures
+import time
+import numpy
+
+# function that defines a single task
+def task():
+    # simulate loading arrays
+    item1 = numpy.random.rand(2000, 2000)
+    item2 = numpy.random.rand(2000, 2000)
+    # perform multithreaded operation
+    result = item1.dot(item2)
+    # return the result
+    return result
+
+# record the start time
+time_start = time.perf_counter()
+# create thread pool
+with concurrent.futures.ThreadPoolExecutor(2) as exe:
+    # issue tasks and gather results
+    results = [exe.submit(task) for _ in range(100)]
+# calculate the duration
+time_duration = time.perf_counter() - time_start
+# report the duration
+print(f'Took {time_duration:.3f} seconds')
+</code></pre>
+<p>Run the example.</p>
+<p>Vary the number of BLAS threads and worker threads and discover a configuration that gives the best results.</p>
+<p>Let me know in the comments what you discover.</p>
+<p>You can learn more about combining BLAS threads and Python threads in the tutorial:</p>
+<ul>
+<li><a href="../numpy-blas-threading/">Speed-Up NumPy With Threads in Python (up to 3.41x faster)</a></li>
+</ul>
+<h2>Lesson 07: Share NumPy array with ctype RawArray</h2>
+<p>Python offers process-based concurrency via the multiprocessing module.</p>
+<p>Process-based concurrency is appropriate for those tasks that are CPU-bound.</p>
+<p>Consider the situation where we need to share NumPy arrays between processes. This may be for many reasons, such as data is loaded as an array in one process and analyzed differently in different subprocesses.</p>
+<p>Sharing Python objects and data between processes is slow.</p>
+<p>This is because any data, like NumPy arrays, shared between processes must be transmitted using inter-process communication (ICP) requiring the data first be pickled by the sender and then unpickled by the receiver.</p>
+<p>One approach to sharing NumPy arrays between processes is to use shared memory.</p>
+<p>Python processes do not have shared memory. Instead, processes must simulate shared memory.</p>
+<p>We can create a block of shared memory and use it as a buffer to back a NumPy array.</p>
+<p>This will allow us to share the NumPy array directly and freely between processes.</p>
+<p>It is also fast as each process is able to read and write directly on the same array of data in main memory.</p>
+<p>This can be achieved by first creating a ctype <strong>RawArray</strong> large enough to hold our NumPy array.</p>
+<pre><code>...
+# create the shared array
+array = RawArray('d', n)</code></pre>
+<p>We can then create a new NumPy array that uses the ctype <strong>RawArray</strong> as a buffer via the <strong>frombuffer()</strong> function.</p>
+<pre><code>...
+# create a new numpy array backed by the raw array
+data = frombuffer(array, dtype=double, count=len(array))</code></pre>
+<p>And that's it.</p>
+<p>A complete example of creating a <strong>RawArray</strong>-backed NumPy array and sharing it between Python processes is listed below.</p>
+<pre><code># SuperFastPython.com
+# share numpy array between processes via a shared rawarray
+import multiprocessing
+import numpy
+
+# task executed in a child process
+def task(array):
+    # create a new numpy array backed by the raw array
+    data = numpy.frombuffer(array, dtype=numpy.double, count=len(array))
+    # check the contents
+    print(f'Child {data[:10]}')
+    # increment the data
+    data[:] += 1
+    # confirm change
+    print(f'Child {data[:10]}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the numpy array
+    n = 10000000
+    # create the shared array
+    array = multiprocessing.RawArray('d', n)
+    # create a new numpy array backed by the raw array
+    data = numpy.frombuffer(array, dtype=numpy.double, count=len(array))
+    # populate the array
+    data.fill(1.0)
+    # confirm contents of the new array
+    print(data[:10], len(data))
+    # create a child process
+    child = multiprocessing.Process(target=task, args=(array,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the shared array
+    print(data[:10])
+</code></pre>
+<p>Run the example.</p>
+<p>Vary the size of the array and the operations performed on the array in each process.</p>
+<p>Let me know what you discover.</p>
+<p>You can learn more about developing a RawArray-backed NumPy array in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-shared-ctype-rawarray/">Share a Numpy Array Between Processes Backed By RawArray</a></li>
+</ul>
+<h2>Thank You</h2>
+<p>Thank you for letting me help you learn more about concurrent NumPy.</p>
+<p>If you ever have any questions about this course or Python concurrency in general, please reach out. Just ask in the comments below.</p>
+<p>If you enjoyed this course and want to know more, check out my new book:</p>
+<ul>
+<li><a href="../concurrent-numpy-in-python/">Concurrent NumPy In Python</a></li>
+</ul>
+<p>This book distills only what you need to know to get started and be effective with concurrent NumPy, super fast.</p>
+<p>The book is divided into 32 chapters spread across 4 parts covering a suite of topics such as BLAS threads, thread pools, and inter-process array sharing.</p>
+<p>Everything you need to get started, then get really good at concurrent NumPy, all in one book.</p>
+<p>It's exactly how I would teach you concurrent NumPy if we were sitting together, pair programming.</p>
+<p><strong>Do you have any questions?</strong><br/>Ask your questions in the comments below and I will do my best to answer.</p>
+<p><strong>Did you enjoy this course?</strong><br/>Let me know in the comments below.</p>
 </main>
 </body>
 </html>

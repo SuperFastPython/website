@@ -82,6 +82,502 @@ atags = soup.find_all('a')
 </code></pre>
 <p>We can then iterate through all of the found tags and retrieve the contents of the href property on each, e.g. get the links to files from each tag. If the tag does not contain an href property (which would be odd, e.g. an anchor link), then we will instruct the function to return <code>None</code>.</p>
 <p>This can be down in a list comprehension, giving us a list of URLs to files to download and possibly some <meta/><code>None</code> values.</p>
+<pre><code>...
+# get all href values (links) or None if not present (unlikely)
+return [t.get('href', None) for t in atags]
+</code></pre>
+<p>Tying this all together, the <code>get_urls_from_html()</code> function below takes the downloaded HTML content and returns a list of file URLs.</p>
+<pre><code># decode downloaded html and extract all &lt;a href=""&gt; links
+def get_urls_from_html(content):
+    # decode the provided content as ascii text
+    html = content.decode('utf-8')
+    # parse the document as best we can
+    soup = BeautifulSoup(html, 'html.parser')
+    # find all all of the &lt;a href=""&gt; tags in the document
+    atags = soup.find_all('a')
+    # get all href values (links) or None if not present (unlikely)
+    return [t.get('href', None) for t in atags]
+</code></pre>
+<p>We will use this function to extract all of the files from the HTML page that lists the files we wish to download.</p>
+<h3 id="save-download-to-local-file">Save Download to Local File</h3>
+<p>We know how to download files and get links out of HTML. Another important piece we need is to save downloaded URLs to local files.</p>
+<p>This can be done using the <code>open()</code> built-in Python function.</p>
+<p>We will open the file in write mode and binary format, as we will likely be downloading .zip files or similar.</p>
+<p>As with downloading URLs above, we will use the context manager (the <code>with</code> keyword) to ensure that the connection to the file is closed once we are finished writing the contents.</p>
+<p>The <code>save_file()</code> function below implements this, taking the local path for saving the file and the content of the file downloaded from a URL.</p>
+<pre><code># save provided content to the local path
+def save_file(path, data):
+    # open the local file for writing
+    with open(path, 'wb') as file:
+        # write all provided data to the file
+        file.write(data)
+</code></pre>
+<p>You may want to add error handling here, such as a failure to write or the case of the file already existing locally.</p>
+<p>We need to do some work in order to be able to use this function.</p>
+<p>For example, we need to check that we have a link from the href property (that it's not <code>None</code>), and that the URL we are trying to download is a file (e.g. has a .zip or .gz extension). This is some primitive error checking or filtering over the types of URLs we would like to download.</p>
+<pre><code>...
+# skip bad urls or bad filenames
+if link is None or link == '../':
+    return
+# check for no file extension
+if not (link[-4] == '.' or link[-3] == '.' ):
+    return
+</code></pre>
+<p>HTML pages that list files typically include relative rather than absolute links.</p>
+<p>That is, the links to the files to be downloaded will be relative to the HTML file. We must convert them to absolute links (with <code>http://...</code> at the front) in order to be able to download the files.</p>
+<p>We can use the <code>urljoin()</code> function from the <code>urllib.parse</code> module to convert any relative URLs to absolute URLs for us so that we can download the file.</p>
+<pre><code>...
+# convert relative link to absolute link
+absurl = urljoin(url, link)
+</code></pre>
+<p>The absolute URL can then be downloaded using our <code>download_url()</code> function developed above.</p>
+<pre><code>...
+# download the content of the file
+data = download_url(absurl)
+</code></pre>
+<p>Next, we need to determine the name of the file from the URL that we will be saving locally. This can be achieved using the <code>basename()</code> function from the <code>os.path</code> module.</p>
+<pre><code>...
+# get the filename
+filename = basename(absurl)
+</code></pre>
+<p>We can then determine the local path for saving the file by combining the local directory path with the filename. The <code>join()</code> function from the os.path module will do this for us correctly based on our platform (Unix, Windows, MacOS).</p>
+<pre><code>...
+# construct the output path
+outpath = join(path, filename)
+</code></pre>
+<p>We now have enough information to save the file by calling our <code>save_file()</code> function.</p>
+<pre><code>...
+# save to file
+save_file(outpath, data)
+</code></pre>
+<p>The <code>download_url_to_file()</code> function below ties this all together, taking the URL for the HTML page that lists files, a link to one file on that page to download, and the local path for saving files. It downloads the URL, saves it locally as a file, and returns the relative link and local file path in a tuple.</p>
+<p>If the file was not saved, we return a tuple with just the relative URL and None for the local path.</p>
+<p>We choose to return some information from this function so that the caller can report progress about the success or failure of downloading each file.</p>
+<pre><code># download one file to a local directory
+def download_url_to_file(url, link, path):
+    # skip bad urls or bad filenames
+    if link is None or link == '../':
+        return (link, None)
+    # check for no file extension
+    if not (link[-4] == '.' or link[-3] == '.' ):
+        return (link, None)
+    # convert relative link to absolute link
+    absurl = urljoin(url, link)
+    # download the content of the file
+    data = download_url(absurl)
+    # get the filename
+    filename = basename(absurl)
+    # construct the output path
+    outpath = join(path, filename)
+    # save to file
+    save_file(outpath, data)
+    # return results
+    return (link, outpath)
+</code></pre>
+<h3 id="coordinate-download-process">Coordinate Download Process</h3>
+<p>Finally, we need to coordinate the overall process.</p>
+<p>First, the URL for the HTML page must be downloaded using our <code>download_url()</code> function defined above.</p>
+<pre><code>...
+# download the html webpage
+data = download_url(url)
+</code></pre>
+<p>Next, we need to create any directories on the local path where we have chosen to store the local files. We can do this using the <code>makedirs()</code> function from the <code>os</code> module and ignore the case where the directories already exist.</p>
+<pre><code>...
+# create a local directory to save files
+makedirs(path, exist_ok=True)
+</code></pre>
+<p>Next, we will retrieve a list of all relative links to files listed on the HTML page by calling our <code>get_urls_from_html()</code> function, and report how many links were found.</p>
+<pre><code>...
+# parse html and retrieve all href urls listed
+links = get_urls_from_html(data)
+# report progress
+print(f'Found {len(links)} links in {url}')
+</code></pre>
+<p>Finally, we will iterate through the list of links, download each to a local file with a call to our <code>download_url_to_file()</code> function, then report the success or failure of the download.</p>
+<pre><code>...
+# download each file on the webpage
+for link in links:
+    # download the url to a local file
+    link, outpath = download_url_to_file(url, link, path)
+    # check for a link that was skipped
+    if outpath is None:
+        print(f'&gt;skipped {link}')
+    else:
+        print(f'Downloaded {link} to {outpath}')
+</code></pre>
+<p>Tying this together, the <code>download_all_files()</code> function below takes a URL to an HTML webpage that lists files and a local path to download files and downloads all files listed on the page, reporting progress along the way.</p>
+<pre><code># download all files on the provided webpage to the provided path
+def download_all_files(url, path):
+    # download the html webpage
+    data = download_url(url)
+    # create a local directory to save files
+    makedirs(path, exist_ok=True)
+    # parse html and retrieve all href urls listed
+    links = get_urls_from_html(data)
+    # report progress
+    print(f'Found {len(links)} links in {url}')
+    # download each file on the webpage
+    for link in links:
+        # download the url to a local file
+        link, outpath = download_url_to_file(url, link, path)
+        # check for a link that was skipped
+        if outpath is None:
+            print(f'&gt;skipped {link}')
+        else:
+            print(f'Downloaded {link} to {outpath}')
+</code></pre>
+<h3 id="complete-example">Complete Example</h3>
+<p>We now have all of the elements to download all files listed on an HTML webpage.</p>
+<p>Let's test it out.</p>
+<p>Choose one of the URLs listed above and use the functions that we have developed to download all files listed.</p>
+<p>In this case, I will choose to download all bot modifications developed by third parties for the Quake 1 computer game.</p>
+<pre><code>...
+# url of html page that lists all files to download
+URL = 'https://www.quaddicted.com/files/idgames2/quakec/bots/'
+</code></pre>
+<p>Below is an example of what this webpage looks like.</p>
+<figure><img alt="" loading="lazy" src="../pics/Screenshot-of-the-HTML-Webpage-that-Lists-all-Quake-1-Bots-1024x721.png"/><figcaption>Screenshot of the HTML Webpage that Lists all Quake 1 Bots</figcaption></figure>
+<p>We will save all files in a local directory under a <code>tmp/</code> subdirectory.</p>
+<pre><code>...
+# local directory to save all files on the html page
+PATH = 'tmp'
+</code></pre>
+<p>We can then call the <code>download_all_files() </code>function that we developed above to kick off the download process.</p>
+<pre><code>...
+# download all files on the html webpage
+download_all_files(URL, PATH)
+</code></pre>
+<p>Tying this together, the complete example of downloading all files on the HTML webpage is listed below.</p>
+<pre><code># SuperFastPython.com
+# download all files from a website sequentially
+from os import makedirs
+from os.path import basename
+from os.path import join
+from urllib.request import urlopen
+from urllib.parse import urljoin
+from bs4 import BeautifulSoup
+
+# load a file from a URL, returns content of downloaded file
+def download_url(urlpath):
+    # open a connection to the server
+    with urlopen(urlpath) as connection:
+        # read the contents of the url as bytes and return it
+        return connection.read()
+
+# decode downloaded html and extract all &lt;a href=""&gt; links
+def get_urls_from_html(content):
+    # decode the provided content as ascii text
+    html = content.decode('utf-8')
+    # parse the document as best we can
+    soup = BeautifulSoup(html, 'html.parser')
+    # find all all of the &lt;a href=""&gt; tags in the document
+    atags = soup.find_all('a')
+    # get all href values (links) or None if not present (unlikely)
+    return [t.get('href', None) for t in atags]
+
+# save provided content to the local path
+def save_file(path, data):
+    # open the local file for writing
+    with open(path, 'wb') as file:
+        # write all provided data to the file
+        file.write(data)
+
+# download one file to a local directory
+def download_url_to_file(url, link, path):
+    # skip bad urls or bad filenames
+    if link is None or link == '../':
+        return (link, None)
+    # check for no file extension
+    if not (link[-4] == '.' or link[-3] == '.' ):
+        return (link, None)
+    # convert relative link to absolute link
+    absurl = urljoin(url, link)
+    # download the content of the file
+    data = download_url(absurl)
+    # get the filename
+    filename = basename(absurl)
+    # construct the output path
+    outpath = join(path, filename)
+    # save to file
+    save_file(outpath, data)
+    # return results
+    return (link, outpath)
+
+# download all files on the provided webpage to the provided path
+def download_all_files(url, path):
+    # download the html webpage
+    data = download_url(url)
+    # create a local directory to save files
+    makedirs(path, exist_ok=True)
+    # parse html and retrieve all href urls listed
+    links = get_urls_from_html(data)
+    # report progress
+    print(f'Found {len(links)} links in {url}')
+    # download each file on the webpage
+    for link in links:
+        # download the url to a local file
+        link, outpath = download_url_to_file(url, link, path)
+        # check for a link that was skipped
+        if outpath is None:
+            print(f'&gt;skipped {link}')
+        else:
+            print(f'Downloaded {link} to {outpath}')
+
+# url of html page that lists all files to download
+URL = 'https://www.quaddicted.com/files/idgames2/quakec/bots/'
+# local directory to save all files on the html page
+PATH = 'tmp'
+# download all files on the html webpage
+download_all_files(URL, PATH)
+</code></pre>
+<p>Running the example will first download the HTML webpage that lists all files, then download each file listed on the page into the <code>tmp/</code> directory.</p>
+<p>This will take a long time, perhaps 3-4 minutes, as the files are downloaded one at a time.</p>
+<p>As the program runs, it will report useful progress.</p>
+<p>First, it comments that 113 links were found on the page and that some directories were skipped. It then reports the filenames and local paths of each file saved.</p>
+<pre><code>Found 113 links in https://www.quaddicted.com/files/idgames2/quakec/bots/
+&gt;skipped ../
+&gt;skipped eliminator/
+&gt;skipped reaper/
+Downloaded attacker.txt to tmp/attacker.txt
+Downloaded attacker.zip to tmp/attacker.zip
+Downloaded bgadm101.txt to tmp/bgadm101.txt
+Downloaded bgadm101.zip to tmp/bgadm101.zip
+Downloaded bgbot16.txt to tmp/bgbot16.txt
+Downloaded bgbot16.zip to tmp/bgbot16.zip
+...
+</code></pre>
+<p>How long did it take to run on your computer?<br/>Let me know in the comments below.</p>
+<p>Next, we will look at the <code>ThreadPoolExecutor</code> class that can be used to create a pool of worker threads that will allow us to speed up this download process.</p>
+<h2 id="how-to-create-a-pool-of-worker-threads-with-threadpoolexecutor">How to Create a Pool of Worker Threads With ThreadPoolExecutor</h2>
+<p>We can use the <code>ThreadPoolExecutor</code> class to speed up the download of multiple files listed on an HTML webpage.</p>
+<p>The <code>ThreadPoolExecutor</code> class is provided as part of the <code>concurrent.futures</code> module for easily running concurrent tasks.</p>
+<p>The <meta/><code>ThreadPoolExecutor</code> provides a pool of worker threads, which is different from the <code>ProcessPoolExecutor</code> that provides a pool of worker processes.</p>
+<p>Generally, <meta/><code>ThreadPoolExecutor</code> should be used for concurrent IO-bound tasks, like downloading URLs, and the <meta/><code>ProcessPoolExecutor</code> should be used for concurrent CPU-bound tasks, like calculating.</p>
+<p>Using the <meta/><code>ThreadPoolExecutor</code> was designed to be easy and straightforward. It is like the "<em>automatic mode</em>" for Python threads.</p>
+<ol><li>Create the thread pool by calling <code>ThreadPoolExecutor()</code>.</li><li>Submit tasks and get futures by calling <code>submit()</code>.</li><li>Wait and get results as tasks complete by calling <code>as_completed()</code>.</li><li>Shut down the thread pool by calling <code>shutdown()</code></li></ol>
+<h3 id="create-the-thread-pool">Create the Thread Pool</h3>
+<p>First, a <meta/><code>ThreadPoolExecutor</code> instance must be created. </p>
+<p>By default, it will create a pool of threads that is equal to the number of logical CPU cores in your system plus four. </p>
+<p>This is good for most purposes.</p>
+<pre><code>...
+# create a thread pool with the default number of worker threads
+pool = ThreadPoolExecutor()
+</code></pre>
+<p>You can run tens to hundreds of concurrent IO-bound threads per CPU, although perhaps not thousands or tens of thousands. </p>
+<p>You can specify the number of threads to create in the pool via the <code>max_workers</code> argument; for example:</p>
+<pre><code>...
+# create a thread pool with 10 worker threads
+pool = ThreadPoolExecutor(max_workers=10)
+</code></pre>
+<h3 id="submit-tasks-to-the-thread-pool">Submit Tasks to the Thread Pool</h3>
+<p>Once created, we can send tasks into the pool to be completed using the <code>submit()</code> function.</p>
+<p>This function takes the name of the function to call any and all arguments and returns a <code>Future</code> object.</p>
+<p>The <meta/><code>Future</code> object is a promise to return the results from the task (if any) and provides a way to determine if a specific task has been completed or not.</p>
+<pre><code>...
+# submit a task
+future = pool.submit(my_task, arg1, arg2, ...)
+</code></pre>
+<p>The return from a function executed by the thread pool can be accessed via the <code>result()</code> function on the future object. It will wait until the result is available, if needed, or return immediately if the result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from a future
+result = future.result()
+</code></pre>
+<h3 id="get-results-as-tasks-complete">Get Results as Tasks Complete</h3>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available rather than waiting for tasks to be completed in the order they were submitted.</p>
+<p>The <code>concurrent.futures</code> module provides an <code>as_completed()</code> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
+<p>We can call the function and provide it a list of future objects created by calling <code>submit() </code>and it will return future objects as they are completed in whatever order.</p>
+<p>For example, we can use a list comprehension to submit the tasks and create the list of future objects:</p>
+<pre><code>...
+# submit all tasks into the thread pool and create a list of futures
+futures = [pool.submit(my_func, task) for task in tasks]
+</code></pre>
+<p>Then get results for tasks as they complete in a for loop:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+	# do something with the result...
+</code></pre>
+<h3 id="shutdown-the-thread-pool">Shutdown the Thread Pool</h3>
+<p>Once all tasks are completed, we can close down the thread pool, which will release each thread and any resources it may hold (e.g. the stack space).</p>
+<pre><code>...
+# shutdown the thread pool
+pool.shutdown()
+</code></pre>
+<p>An easier way to use the thread pool is via the context manager (the <code>with</code> keyword), which ensures it is closed automatically once we are finished with it.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=10) as pool:
+	# submit tasks
+	futures = [pool.submit(my_func, task) for task in tasks]
+	# get results as they are available
+	for future in as_completed(futures):
+		# get the result
+		result = future.result()
+		# do something with the result...</code></pre>
+<p>Now that we are familiar with <code>ThreadPoolExecutor</code> and how to use it, let's look at how we can adapt our program for downloading URLs to make use of it.</p>
+<h2 id="how-to-download-multiple-files-concurrently">How to Download Multiple Files Concurrently</h2>
+<p>The program for downloading URLs to file can be adapted to use the <code>ThreadPoolExecutor</code> with very little change.</p>
+<p>The <code>download_all_files()</code> function currently enumerates the list of links extracted from the HTML page and calls the <code>download_url_to_file()</code> function for each.</p>
+<p>This loop can be updated to <code>submit()</code> tasks to a <meta/><code>ThreadPoolExecutor</code> object, and then we can wait on the future objects via a call to <code>as_completed()</code> and report progress.</p>
+<p>For example:</p>
+<pre><code>...
+# create the pool of worker threads
+with ThreadPoolExecutor(max_workers=20) as exe:
+    # dispatch all download tasks to worker threads
+    futures = [exe.submit(download_url_to_file, url, link, path) for link in links]
+    # report results as they become available
+    for future in as_completed(futures):
+        # retrieve result
+        link, outpath = future.result()
+        # check for a link that was skipped
+        if outpath is None:
+            print(f'&gt;skipped {link}')
+        else:
+            print(f'Downloaded {link} to {outpath}')
+</code></pre>
+<p>Here, we use 20 threads for up to 20 concurrent connections to the server that hosts the files. This may need to be adjusted depending on the number of concurrent connections supported by the server from which you wish to download files.</p>
+<p>The updated version of the <code>download_all_files()</code> function that uses the <code>ThreadPoolExecutor</code> is listed below.</p>
+<pre><code># download all files on the provided webpage to the provided path
+def download_all_files(url, path):
+    # download the html webpage
+    data = download_url(url)
+    # create a local directory to save files
+    makedirs(path, exist_ok=True)
+    # parse html and retrieve all href urls listed
+    links = get_urls_from_html(data)
+    # report progress
+    print(f'Found {len(links)} links in {url}')
+    # create the pool of worker threads
+    with ThreadPoolExecutor(max_workers=20) as exe:
+        # dispatch all download tasks to worker threads
+        futures = [exe.submit(download_url_to_file, url, link, path) for link in links]
+        # report results as they become available
+        for future in as_completed(futures):
+            # retrieve result
+            link, outpath = future.result()
+            # check for a link that was skipped
+            if outpath is None:
+                print(f'&gt;skipped {link}')
+            else:
+                print(f'Downloaded {link} to {outpath}')
+</code></pre>
+<p>Tying this together, the complete example of downloading all quake 1 bots concurrently using the <meta/><code>ThreadPoolExecutor</code> is listed below.</p>
+<pre><code># SuperFastPython.com
+# download all files from a website sequentially
+from os import makedirs
+from os.path import basename
+from os.path import join
+from urllib.request import urlopen
+from urllib.parse import urljoin
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+from bs4 import BeautifulSoup
+
+# load a file from a URL, returns content of downloaded file
+def download_url(urlpath):
+    # open a connection to the server
+    with urlopen(urlpath) as connection:
+        # read the contents of the url as bytes and return it
+        return connection.read()
+
+# decode downloaded html and extract all &lt;a href=""&gt; links
+def get_urls_from_html(content):
+    # decode the provided content as ascii text
+    html = content.decode('utf-8')
+    # parse the document as best we can
+    soup = BeautifulSoup(html, 'html.parser')
+    # find all all of the &lt;a href=""&gt; tags in the document
+    atags = soup.find_all('a')
+    # get all href values (links) or None if not present (unlikely)
+    return [t.get('href', None) for t in atags]
+
+# save provided content to the local path
+def save_file(path, data):
+    # open the local file for writing
+    with open(path, 'wb') as file:
+        # write all provided data to the file
+        file.write(data)
+
+# download one file to a local directory
+def download_url_to_file(url, link, path):
+    # skip bad urls or bad filenames
+    if link is None or link == '../':
+        return (link, None)
+    # check for no file extension
+    if not (link[-4] == '.' or link[-3] == '.' ):
+        return (link, None)
+    # convert relative link to absolute link
+    absurl = urljoin(url, link)
+    # download the content of the file
+    data = download_url(absurl)
+    # get the filename
+    filename = basename(absurl)
+    # construct the output path
+    outpath = join(path, filename)
+    # save to file
+    save_file(outpath, data)
+    # return results
+    return (link, outpath)
+
+# download all files on the provided webpage to the provided path
+def download_all_files(url, path):
+    # download the html webpage
+    data = download_url(url)
+    # create a local directory to save files
+    makedirs(path, exist_ok=True)
+    # parse html and retrieve all href urls listed
+    links = get_urls_from_html(data)
+    # report progress
+    print(f'Found {len(links)} links in {url}')
+    # create the pool of worker threads
+    with ThreadPoolExecutor(max_workers=20) as exe:
+        # dispatch all download tasks to worker threads
+        futures = [exe.submit(download_url_to_file, url, link, path) for link in links]
+        # report results as they become available
+        for future in as_completed(futures):
+            # retrieve result
+            link, outpath = future.result()
+            # check for a link that was skipped
+            if outpath is None:
+                print(f'&gt;skipped {link}')
+            else:
+                print(f'Downloaded {link} to {outpath}')
+
+# url of html page that lists all files to download
+URL = 'https://www.quaddicted.com/files/idgames2/quakec/bots/'
+# local directory to save all files on the html page
+PATH = 'tmp'
+# download all files on the html webpage
+download_all_files(URL, PATH)
+</code></pre>
+<p>Running the example will first download and parse the HTML page that lists all of the local files.</p>
+<p>Each file on the page is then downloaded concurrently, with up to 20 files being downloaded at the same time.</p>
+<p>This dramatically speeds up the task, taking 10-15 seconds depending on your internet connection, compared to 3-4 minutes for the sequential version. That is about a 33x speedup.</p>
+<p>Progress is reported like last time, but we can see that the files are reported out of order.</p>
+<p>Here, we can see that the smaller .txt files finish before any of the .zip files.</p>
+<pre><code>Found 113 links in https://www.quaddicted.com/files/idgames2/quakec/bots/
+&gt;skipped ../
+&gt;skipped eliminator/
+&gt;skipped reaper/
+Downloaded bgadm101.txt to tmp/bgadm101.txt
+Downloaded attacker.txt to tmp/attacker.txt
+Downloaded bgbot16.txt to tmp/bgbot16.txt
+Downloaded bgbot20a.txt to tmp/bgbot20a.txt
+Downloaded borg12.txt to tmp/borg12.txt
+Downloaded bplayer2.txt to tmp/bplayer2.txt
+...
+</code></pre>
+<p>How long did it take to run on your computer?<br/>Let me know in the comments below.</p>
+<h2 id="extensions">Extensions</h2>
+<p>This section lists ideas for extending the tutorial.</p>
+<ul><li><strong>Add connection timeout</strong>: Update the <code>download_url() </code>function to add a timeout to the connection and handle the exception if thrown.</li><li><strong>Add file saving error handling</strong>: Update <code>save_file() </code>to handle the case of not being able to write the file and/or a file already existing at that location.</li><li><strong>Only download relative URLs</strong>: Add a check for the extracted links to ensure that the program only downloads relative URLs and ignores absolute URLs or URLs for a different host.</li></ul>
+<p>Share your extensions in the comments below; it would be great to see what you come up with.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>In this tutorial, you learned how to download multiple files concurrently using a pool of worker threads in Python. You learned:</p>
+<ul><li>How to download files from the internet sequentially in Python and how slow it can be.</li><li>How to use the ThreadPoolExecutor to manage a pool of worker threads.</li><li>How to update the code to download multiple files at the same time and dramatically accelerate the process.</li></ul>
 </main>
 </body>
 </html>

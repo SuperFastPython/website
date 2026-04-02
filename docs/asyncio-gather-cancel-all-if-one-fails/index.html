@@ -76,6 +76,305 @@ except Exception as e:
 <p>The example below defines a task coroutine that reports a message, sleeps for a moment, then sleeps for a moment again. One out of the group will fail part way through by raising an exception. All other tasks are expected to be completed normally.</p>
 <p>We will catch the exception raised by any task in the group and cancel all tasks.</p>
 <p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling all tasks if one task fails (the wrong way)
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+    # check if this task should fail
+    if value == 5:
+        print(f'&gt;task {value} failing')
+        raise Exception('Something bad happened')
+    # otherwise, block again
+    await asyncio.sleep(1)
+    print(f'&gt;task {value} done')
+
+# coroutine used for the entry point
+async def main():
+    # create many coroutines
+    coros = [task_coro(i) for i in range(10)]
+    # execute all coroutines as a group
+    group = asyncio.gather(*coros)
+    # handle the case that a task fails
+    try:
+        # wait for the group of tasks to complete
+        await group
+    except Exception as e:
+        # report failure
+        print(f'A task failed with: {e}, canceling all tasks')
+        # cancel the group
+        group.cancel()
+    # wait for all tasks to be canceled
+    await asyncio.sleep(2)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it to start the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine then creates a list of 10 coroutines, each passing a separate integer value from 0 to 9.</p>
+<p>The list of coroutines is then passed to the <strong>gather()</strong> module function, unpacked into separate expressions using the star-operator, a requirement of the <strong>gather()</strong> function.</p>
+<p>This immediately schedules all of the coroutines as tasks in the asyncio event loop and returns a <strong>Future</strong> object. The tasks have not yet started running because the <strong>main()</strong> coroutine has not yet been suspended.</p>
+<p>The <strong>main()</strong> coroutine then awaits the group <strong>Future</strong> object within a try-except expression. This suspends the <strong>main()</strong> coroutine and allows the tasks to execute.</p>
+<p>Each task reports its message in turn and sleeps.</p>
+<p>The tasks awake and then sleep again. One task, the one that receives a value of "5" as an argument, raises an exception.</p>
+<p>The exception is propagated back to the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine resumes and handles the exception. It reports a message and cancels the group <strong>Future</strong> object.</p>
+<p>The expectation is that this will cancel all tasks within the group.</p>
+<p>This does not happen.</p>
+<p>All tasks in the group continue to be executed and completes normally.</p>
+<p>Huh?</p>
+<pre><code>&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+&gt;task 3 executing
+&gt;task 4 executing
+&gt;task 5 executing
+&gt;task 6 executing
+&gt;task 7 executing
+&gt;task 8 executing
+&gt;task 9 executing
+&gt;task 5 failing
+A task failed with: Something bad happened, canceling all tasks
+&gt;task 0 done
+&gt;task 1 done
+&gt;task 2 done
+&gt;task 3 done
+&gt;task 4 done
+&gt;task 6 done
+&gt;task 7 done
+&gt;task 8 done
+&gt;task 9 done
+</code></pre>
+<p>Let's take a look at why it didn't work.</p>
+<h3>Why Didn't It Work</h3>
+<p>Our approach was logical, at least from a high level.</p>
+<p>One key point we overlooked, and that almost everyone overlooks, is the life-cycle of <strong>Task</strong> and <strong>Future</strong> objects.</p>
+<p>You can learn more about the life cycle of <strong>Task</strong> (and <strong>Future</strong>) objects in the tutorial:</p>
+<ul><li><a href="../asyncio-task-life-cycle/">Asyncio Task Life-Cycle</a></li></ul>
+<p>When a <strong>Task</strong> or <strong>Future</strong> object raises an exception it is transitioned from the "<em>running</em>" state into a "<em>done</em>" state.</p>
+<p>By the time the group <strong>Future</strong> object in our example re-raises the exception in the <strong>main()</strong> coroutine, our group <strong>Future</strong> object is "<em>done</em>".</p>
+<p>We then call the <strong>cancel()</strong> method on the <strong>Future</strong> object. But this does nothing because the Future is done.</p>
+<p>And in turn, the cancel operation is not propagated to all tasks in the group and we do not achieve the desired effect.</p>
+<p>We can see this if we report the done status of the group <strong>Future</strong> object in the except block.</p>
+<p>For example:</p>
+<pre><code>...
+# handle the case that a task fails
+try:
+    # wait for the group of tasks to complete
+    await group
+except Exception as e:
+    # report failure
+    print(f'A task failed with: {e}, canceling all tasks')
+    # check if the group future is done
+    print(f'group future done: {group.done()}')
+    # cancel the group
+    group.cancel()
+</code></pre>
+<p>Running the example reports that indeed, as we expected, the group <strong>Future</strong> object is done.</p>
+<p>We cannot cancel a <strong>Future</strong> after it is done.</p>
+<pre><code>...
+group future done: True</code></pre>
+<p>In fact, this specific case is mentioned in the API documentation, although it is easy to skim past.</p>
+<p>For example:</p>
+<blockquote><p>If return_exceptions is False, cancelling gather() after it has been marked done won’t cancel any submitted awaitables. For instance, gather can be marked done after propagating an exception to the caller, therefore, calling gather.cancel() after catching an exception (raised by one of the awaitables) from gather won't cancel any other awaitables.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>Next, let's look at how we might achieve the desired effect.</p>
+<h2>How to Cancel All Tasks if One Task Fails (the right way)</h2>
+<p>There are probably better ways to cancel all tasks if one task fails other than using the <strong>gather()</strong> function.</p>
+<p>Nevertheless, it is a common approach and the API can make it seem an obvious approach and misleading at the same time.</p>
+<p>Therefore, it is a good practice to see how we might achieve the desired result.</p>
+<p>The solution involves simply canceling all tasks in the group manually.</p>
+<p>There are a few ways we can achieve this.</p>
+<p>One way is to create the <strong>Task</strong> objects in a list, pass them to gather, then cancel the tasks if one fails.</p>
+<p>We can create a list of <strong>Tasks</strong> instead of a list of coroutines as follows:</p>
+<pre><code>...
+# create many coroutines
+tasks = [asyncio.create_task(task_coro(i)) for i in range(10)]</code></pre>
+<p>When a task fails, the exception is propagated back to the <strong>main()</strong> coroutine that can catch the exception and manually traverse the list of tasks and cancel each in turn.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel all tasks
+for task in tasks:
+    task.cancel()
+</code></pre>
+<p>Perhaps we would prefer to stick with using coroutines instead of tasks.</p>
+<p>In this case, we cancel all running tasks by first getting a list of all tasks running in the event loop, removing the current task from this list, then canceling all remaining tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# get all running tasks
+tasks = asyncio.all_tasks()
+# get the current task
+current = asyncio.current_task()
+# remove current task from all tasks
+tasks.remove(current)
+# cancel all remaining running tasks
+for task in tasks:
+    task.cancel()
+</code></pre>
+<p>A downside of this approach is that we may need to differentiate between running tasks if there are other tasks running at the same time than those in the call to <strong>gather()</strong>.</p>
+<p>This could be achieved using task names or similar.</p>
+<p>For more on task names, see the tutorial:</p>
+<ul><li><a href="../asyncio-task-name/">How to Get and Set Asyncio Task Names</a></li></ul>
+<p>Now that we know the right way to cancel all tasks if one task fails when using <strong>asyncio.gather()</strong>, let's look at some worked examples.</p>
+<h2>Example of Canceling All Tasks on Failure (Tasks)</h2>
+<p>We can explore how to cancel all tasks if one task fails when using <strong>gather()</strong>.</p>
+<p>In this example, we will create a list of <strong>Task</strong> objects to pass to <strong>gather()</strong>, then directly cancel the <strong>Task</strong> objects if one fails.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling all tasks if one task fails
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+    # check if this task should fail
+    if value == 5:
+        print(f'&gt;task {value} failing')
+        raise Exception('Something bad happened')
+    # otherwise, block again
+    await asyncio.sleep(1)
+    print(f'&gt;task {value} done')
+
+# coroutine used for the entry point
+async def main():
+    # create many coroutines
+    tasks = [asyncio.create_task(task_coro(i)) for i in range(10)]
+    # execute all coroutines as a group
+    group = asyncio.gather(*tasks)
+    # handle the case that a task fails
+    try:
+        # wait for the group of tasks to complete
+        await group
+    except Exception as e:
+        # report failure
+        print(f'A task failed with: {e}, canceling all tasks')
+        # cancel all tasks
+        for task in tasks:
+            task.cancel()
+    # wait a while
+    await asyncio.sleep(2)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it to start the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine then creates a list of 10 <strong>Task</strong> objects, each passing a separate integer value from 0 to 9.</p>
+<p>The task objects are scheduled in the asyncio event loop as part of being created.</p>
+<p>The list of tasks is then passed to the <strong>gather()</strong> module function, unpacked into separate expressions using the star-operator, a requirement of the <strong>gather()</strong> function.</p>
+<p>This returns a <strong>Future</strong> object that represents the group of awaitables.</p>
+<p>The <strong>main()</strong> coroutine then awaits the group <strong>Future</strong> object within a try-except expression. This suspends the <strong>main()</strong> coroutine and allows the tasks to execute.</p>
+<p>Each task reports its message in turn and sleeps.</p>
+<p>The tasks awake and then sleep again. One task, the one that received a value of "5" as an argument, raises an exception.</p>
+<p>The exception is propagated back to the main() coroutine.</p>
+<p>The <strong>main()</strong> coroutine resumes and handles the exception. It reports a message and then manually cancels the group Future objects.</p>
+<p>This has the desired effect and a <strong>CancelledError</strong> exception is raised in each <strong>Task</strong>, causing them to terminate.</p>
+<p>The <strong>main()</strong> coroutine suspends for a moment to allow all canceled tasks to respond to their request for cancellation.</p>
+<p>We achieved the desired effect of canceling all tasks if one task failed when using <strong>gather()</strong>.</p>
+<pre><code>&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+&gt;task 3 executing
+&gt;task 4 executing
+&gt;task 5 executing
+&gt;task 6 executing
+&gt;task 7 executing
+&gt;task 8 executing
+&gt;task 9 executing
+&gt;task 5 failing
+A task failed with: Something bad happened, canceling all tasks
+</code></pre>
+<p>Next, let's look at using the same solution although with coroutines instead of <strong>Task</strong> objects.</p>
+<h2>Example of Canceling All Tasks on Failure (Coroutines)</h2>
+<p>We can explore how to cancel all tasks if one task fails when using <strong>gather()</strong> with coroutines.</p>
+<p>In this example, we will create a list of coroutines to pass to <strong>gather()</strong> as per normal. Then if a task fails, we will get a list of all running tasks, remove the currently running task, and then cancel all remaining tasks in the list.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling all tasks if one task fails
+import asyncio
+
+# cancel all tasks except the current task
+def cancel_all_tasks():
+    # get all running tasks
+    tasks = asyncio.all_tasks()
+    # get the current task
+    current = asyncio.current_task()
+    # remove current task from all tasks
+    tasks.remove(current)
+    # cancel all remaining running tasks
+    for task in tasks:
+        task.cancel()
+
+# coroutine used for a task
+async def task_coro(value):
+    # report a message
+    print(f'&gt;task {value} executing')
+    # sleep for a moment
+    await asyncio.sleep(1)
+    # check if this task should fail
+    if value == 5:
+        print(f'&gt;task {value} failing')
+        raise Exception('Something bad happened')
+    # otherwise, block again
+    await asyncio.sleep(1)
+    print(f'&gt;task {value} done')
+
+# coroutine used for the entry point
+async def main():
+    # create many coroutines
+    coros = [task_coro(i) for i in range(10)]
+    # execute all coroutines as a group
+    group = asyncio.gather(*coros)
+    # handle the case that a task fails
+    try:
+        # wait for the group of tasks to complete
+        await group
+    except Exception as e:
+        # report failure
+        print(f'A task failed with: {e}, canceling all tasks')
+        # cancel all tasks
+        cancel_all_tasks()
+    # wait a while
+    await asyncio.sleep(2)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it to start the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine then creates a list of 10 Task objects, each passing a separate integer value from 0 to 9.</p>
+<p>The task objects are scheduled in the asyncio event loop as part of being created.</p>
+<p>The list of tasks are then passed to the <strong>gather()</strong> module function, unpacked into separate expressions using the star-operator, a requirement of the <strong>gather()</strong> function.</p>
+<p>This returns a <strong>Future</strong> object that represents the group of awaitables.</p>
+<p>The <strong>main()</strong> coroutine then awaits the group <strong>Future</strong> object within a try-except expression. This suspends the <strong>main()</strong> coroutine and allows the tasks to execute.</p>
+<p>Each task reports its message in turn and sleeps.</p>
+<p>The tasks awake and then sleep again. One task, the one that received a value of "5" as an argument, raises an exception.</p>
+<p>The exception is propagated back to the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine resumes and handles the exception. It reports a message and then manually cancels each running task.</p>
+<p>This is achieved using a custom function that first gets a list of all running tasks, gets the Task instance for the current task, removes the current task from the list, then cancels all those tasks that remain in the list.</p>
+<p>This has the desired effect and a <strong>CancelledError</strong> exception is raised in each <strong>Task</strong>, causing them to terminate.</p>
+<p>The <strong>main()</strong> coroutine suspends for a moment to allow all canceled tasks to respond to their request for cancellation.</p>
+<p>This highlights an alternate, although perhaps less robust, approach to canceling all tasks when one task fails when using the <strong>gather()</strong> function.</p>
+<pre><code>&gt;task 0 executing
+&gt;task 1 executing
+&gt;task 2 executing
+&gt;task 3 executing
+&gt;task 4 executing
+&gt;task 5 executing
+&gt;task 6 executing
+&gt;task 7 executing
+&gt;task 8 executing
+&gt;task 9 executing
+&gt;task 5 failing
+A task failed with: Something bad happened, canceling all tasks
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to cancel all asyncio tasks in a gather() group if one task fails.</p>
 </main>
 </body>
 </html>

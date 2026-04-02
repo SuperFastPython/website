@@ -200,6 +200,553 @@ players = len(status['players'])
 <p>The game server names can be pretty wild, such as including non ASCII characters and being very long, perhaps as a type of marketing of servers to game players, a way of standing out.</p>
 <p>Nevertheless, we will have to clean up the server names to display them nicely on the command prompt when running the code.</p>
 <p>First, let's trim out all characters in the name that are not ASCII. Python provides the <a href="https://docs.python.org/3/library/string.html">string.printable</a> constant that lists all of the standard ASCII characters. We can enumerate all characters in the game server name and only keep those that are in the <code>printable</code> constant.</p>
+<pre><code>...
+# strip out non-printable characters from the game server name
+name = ''.join()
+</code></pre>
+<p>We can then trim any leading or trailing white space from the name, just in case.</p>
+<pre><code>...
+# strip white space from the server name
+name = name.strip()
+</code></pre>
+<p>Finally, we can truncate the length of the name to a fixed length, in this case 40 characters (chosen somewhat arbitrarily).</p>
+<pre><code>...
+# truncate for 40 characters if longer than 40 characters
+if len(name) &gt; 40:
+    name = name[:40]
+</code></pre>
+<p>We will design the program to print one summary line per live game server. It would be nice to have the three fields (server name, map name and number of players) line up, which we can achieve using padding when formatting the output string.</p>
+<p>For example:</p>
+<pre><code>...
+line = f'{name:40s}\t{mapname:30s}\t{players:2d} players'
+</code></pre>
+<p>Tying this together, the <code>query_quake3_server()</code> function below takes a server object returned from querying a master server and returns a string summary of the current status of the server, or None if the server cannot be queried successfully.</p>
+<pre><code># query a single game server returning a string summary or None if unreachable
+def query_quake3_server(server):
+    # query the server i
+    try:
+        status = server.get_status()
+    except:
+        return None
+    # retrieve useful data to report
+    name = status['sv_hostname']
+    mapname = status['mapname']
+    players = len(status['players'])
+    # strip out non-printable characters from the game server name
+    name = ''.join()
+    # strip white space from the server name
+    name = name.strip()
+    # truncate for 40 characters if longer than 40 characters
+    if len(name) &gt; 40:
+        name = name[:40]
+    # create a one line summary of the server
+    return f'{name:40s}\t{mapname:30s}\t{players:2d} players'
+</code></pre>
+<p>Next, we can call our <code>query_quake3_server()</code> function for each server returned from the master server and print the results.</p>
+<p>The <code>query_servers()</code> function listed below implements this, taking the details of the master server as input (a tuple of host name and port number), queries the master server for a list of servers, then prints a summary of the status of each game server.</p>
+<pre><code># get a list of game servers from the master server then query each game server
+def query_servers(master_server):
+    # get master list
+    master_list = get_quake3_server_list(master_server)
+    # query each game server in turn
+    for server in master_list:
+        # query game server
+        summary = query_quake3_server(server)
+        # skip unreachable servers
+        if summary is None:
+            continue
+        # report
+        print(summary)
+</code></pre>
+<p>We now have all of the elements for a simple Quake 3 game server query tool.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# get a list of quake servers and then query the status of each in turn
+from string import printable
+from pyq3serverlist import PrincipalServer
+
+# query a master server and get a list of game servers
+def get_quake3_server_list(master_server, master_protocol=68):
+    # configure the master server and connect
+    principal = PrincipalServer(master_server[0], master_server[1])
+    try:
+        # retrieve a list of servers
+        return principal.get_servers(master_protocol)
+    except:
+        # return an empty list if we cannot query the server
+        return []
+
+# query a single game server returning a string summary or None if unreachable
+def query_quake3_server(server):
+    # query the server i
+    try:
+        status = server.get_status()
+    except:
+        return None
+    # retrieve useful data to report
+    name = status['sv_hostname']
+    mapname = status['mapname']
+    players = len(status['players'])
+    # strip out non-printable characters from the game server name
+    name = ''.join()
+    # strip white space from the server name
+    name = name.strip()
+    # truncate for 40 characters if longer than 40 characters
+    if len(name) &gt; 40:
+        name = name[:40]
+    # create a one line summary of the server
+    return f'{name:40s}\t{mapname:30s}\t{players:2d} players'
+
+
+# get a list of game servers from the master server then query each game server
+def query_servers(master_server):
+    # get master list
+    master_list = get_quake3_server_list(master_server)
+    # query each game server in turn
+    for server in master_list:
+        # query game server
+        summary = query_quake3_server(server)
+        # skip unreachable servers
+        if summary is None:
+            continue
+        # report
+        print(summary)
+
+# entry point
+MASTER_SERVER = ('master.quake3arena.com', 27950)
+# report game server status
+query_servers(MASTER_SERVER)
+</code></pre>
+<p>Running the example prints the server name, map name, and current number of players on each game server that responds successfully.</p>
+<p>Using the padding in the string formatting ensures that all of the fields line up vertically for easy scanning and that the server names are truncated to a sensible length.</p>
+<pre><code>VOGON NETHERWORLD                       	q3tourney5                    	 0 players
+Guild Of Slackers Arena *West Coast*    	rota3dm3                      	12 players
+Argentina&lt;RnR&gt; II                       	ut4_kingdom                   	 0 players
+UrbanZone [AU] WWW.DISCORD.ME/URT #2    	ut4_paris                     	 0 players
+VOGON HQ-1 ANARCHY                      	q3dm4                         	 1 players
+VOGON INSTAKILL                         	pro-q3tourney2                	 2 players
+! Freon ! :: Duel :: !                  	q3tourney3                    	 2 players
+[LCDLC] Unofficial Maps                 	ut4_train_dl1                 	 0 players
+Martyr's Quake Server                   	q3dm17                        	 0 players
+PUBZAO :: CTF                           	ut4_terrorism3                	 8 players
+...
+</code></pre>
+<p>Although the program works, it is very slow.</p>
+<p>The 650+ game servers took approximately 13 minutes to query when I ran the example.</p>
+<p>This is far too long to wait, especially for an impatient gamer looking for a game to join.</p>
+<p>We can dramatically speed this up using threads in Python with the <code>ThreadPoolExecutor</code>.</p>
+<h2 id="create-a-pool-of-worker-threads">Create a Pool of Worker Threads </h2>
+<p>We can use the <meta/><code>ThreadPoolExecutor</code> to speed up the querying of Quake III Arena servers.</p>
+<p>The <meta/><code>ThreadPoolExecutor</code> class is provided as part of the <code>concurrent.futures</code> module for easily running concurrent tasks.</p>
+<p>The <meta/><code>ThreadPoolExecutor</code> provides a pool of worker threads, which is different from the <meta/><code>ProcessPoolExecutor</code> that provides a pool of worker processes.</p>
+<p>Generally, <meta/><code>ThreadPoolExecutor</code> should be used for concurrent IO-bound tasks, like downloading URLs, and the <code>ProcessPoolExecutor</code> should be used for concurrent CPU-bound tasks, like calculating.</p>
+<p>Using the <meta/><code>ThreadPoolExecutor</code> was designed to be easy and straightforward. It is like the "automatic mode" for Python threads.</p>
+<ol><li>Create the thread pool by calling <code>ThreadPoolExecutor()</code>.</li><li>Submit tasks and get futures by calling <code>submit()</code> or <code>map()</code>.</li><li>Wait and get results as tasks complete by calling <code>as_completed()</code>.</li><li>Shut down the thread pool by calling <code>shutdown()</code></li></ol>
+<h3 id="create-the-thread-pool">Create the Thread Pool</h3>
+<p>First, a <meta/><code>ThreadPoolExecutor</code> instance must be created. By default, it will create a pool with the number of logical CPUs in your system plus four. This is good for most purposes.</p>
+<pre><code>...
+# create a thread pool with the default number of worker threads
+pool = ThreadPoolExecutor()
+</code></pre>
+<p>You can run tens to hundreds of concurrent IO-bound threads per CPU, although perhaps not thousands or tens of thousands. You can specify the number of threads to create in the pool via the <code>max_workers</code> argument; for example:</p>
+<pre><code>...
+# create a thread pool with 10 worker threads
+pool = ThreadPoolExecutor(max_workers=10)
+</code></pre>
+<h3 id="submit-tasks-to-the-thread-pool">Submit Tasks to the Thread Pool</h3>
+<p>Once created, it can send tasks into the pool to be completed using the <code>submit()</code> function.</p>
+<p>This function takes the name of the function to call any and all arguments and returns a <code>Future</code> object.</p>
+<p>The <meta/><code>Future</code> object is a promise to return the results from the task (if any) and provides a way to determine if a specific task has been completed or not.</p>
+<pre><code>...
+# submit tasks
+future = pool.submit(my_task, arg1, arg2, ...)</code></pre>
+<p>The return from a function executed by the thread pool can be accessed via the <code>result()</code> function on the <meta/><code>Future</code> object. It will wait until the result is available, if needed, or return immediately if the result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from a future
+result = future.result()
+</code></pre>
+<h3 id="get-results-as-tasks-complete">Get Results as Tasks Complete</h3>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available, rather than waiting for tasks to be completed in the order they were submitted.</p>
+<p>The <code>concurrent.futures</code> module provides an <code>as_completed()</code> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
+<p>We can call the function and provide it a list of <meta/><code>Future</code> objects created by calling <code>submit()</code> and it will return future objects as they are completed in whatever order.</p>
+<p>For example, we can use a list comprehension to submit the tasks and create the list of <meta/><code>Future</code> objects:</p>
+<pre><code>...
+# submit all tasks into the thread pool and create a list of futures
+futures = [pool.submit(my_func, task) for task in tasks]
+</code></pre>
+<p>Then get results for tasks as they complete in a for loop:</p>
+<pre><code>...
+# iterate over all submitted tasks and get results as they are available
+for future in as_completed(futures):
+	# get the result
+	result = future.result()
+	# do something with the result...
+</code></pre>
+<h3 id="shutdown-the-thread-pool">Shutdown the Thread Pool</h3>
+<p>Once all tasks are completed, we can close down the thread pool, which will release each thread and any resources it may hold (e.g. the stack space).</p>
+<pre><code>...
+# shutdown the thread pool
+pool.shutdown()
+</code></pre>
+<p>An easier way to use the thread pool is via the context manager (the <code>with</code> keyword), which ensures it is closed automatically once we are finished with it.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=10) as pool:
+	# submit tasks
+	futures = [pool.submit(my_func, task) for task in tasks]
+	# get results as they are available
+	for future in as_completed(futures):
+		# get the result
+		result = future.result()
+		# do something with the result...</code></pre>
+<p>Now that we are familiar with <code>ThreadPoolExecutor</code> and how to use it, let's look at how we can adapt our program for querying Quake 3 servers to make use of it.</p>
+<h2 id="query-quake-3-servers-concurrently">Query Quake 3 Servers Concurrently</h2>
+<p>Our Quake 3 game server query tool can be adapted to use <meta/><code>ThreadPoolExecutor</code> directly.</p>
+<p>This is because querying each game server is an independent task; it does not have a dependency on querying other game servers. This means we can perform the game server query operations in separate Python threads.</p>
+<p>Specifically, we can call <code>query_quake3_server()</code> in a separate thread for each server object returned from the master server.</p>
+<p>The slowest part of this function will be the call to <code>server.get_status()</code> and performing this operation in separate threads will give us a large speed up. A further improvement would be to separate the code so that only this call was executed in a separate thread and the code for distilling the status dictionary into a string for printing could be performed in the main thread.</p>
+<p>We can create a thread pool and call the <code>submit()</code> function with the <code>query_quake3_server()</code> function and each server object in the master list; for example:</p>
+<pre><code>...
+# create thread pool
+with ThreadPoolExecutor() as pool:
+    # send all tasks into the thread pool
+    futures = [pool.submit(query_quake3_server, serv) for serv in master_list]
+</code></pre>
+<p>How many threads should we use in the pool?</p>
+<p>Each server has a separate IP address and port; therefore, we don't have to worry about spamming (denial of service) a single server. With modern hardware and a fast internet connection, we can easily query hundreds of game servers concurrently, e.g. hundreds of parallel threads in Python.</p>
+<p>After some testing, I found that 500 threads works well for this example so that is what we will use. You may want to experiment and see what works well for your specific workstation.</p>
+<p>We now have a list of <code>Future</code> objects that may finish at different times.</p>
+<p>It would be nice to report the status of game servers as they become available, rather than wait for all queries to be completed.</p>
+<p>This can be achieved using the <code>as_completed()</code> function, passing in the list of <meta/><code>Future</code> objects. It will return each <meta/><code>Future</code> object as it is completed.</p>
+<p>Calling the <code>result()</code> function in the future will either give a string summary of the server or None if the query was unsuccessful. We can then print the line summary as we did in the non-threaded example.</p>
+<pre><code>...
+# report results as they are made available
+for future in as_completed(futures):
+    # get the summary line from the task
+    summary = future.result()
+    # skip servers that cannot be contacted
+    if summary is None:
+        continue
+    # report
+    print(summary)
+</code></pre>
+<p>Tying this together, the updated version of the <code>query_servers()</code> function to use the thread pool for querying game servers concurrently is listed below.</p>
+<pre><code># get a list of game servers from the master server then query each game server
+def query_servers(master_server):
+    # get master list
+    master_list = get_quake3_server_list(master_server)
+    # create thread pool
+    with ThreadPoolExecutor(500) as pool:
+        # send all tasks into the thread pool
+        futures = [pool.submit(query_quake3_server, serv) for serv in master_list]
+        # report results as they are made available
+        for future in as_completed(futures):
+            # get the summary line from the task
+            summary = future.result()
+            # skip servers that cannot be contacted
+            if summary is None:
+                continue
+            # report
+            print(summary)
+</code></pre>
+<p>We can now test out the concurrent version of our game server query tool.</p>
+<p>If each game server takes about one second to respond or fail and we have about 650 servers, then we might have results within about two seconds, compared to 13 minutes in the non-threaded version.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# get a list of quake servers and then query the status of each concurrently
+from string import printable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+from pyq3serverlist import PrincipalServer
+
+# query a master server and get a list of game servers
+def get_quake3_server_list(master_server, master_protocol=68):
+    # configure the master server and connect
+    principal = PrincipalServer(master_server[0], master_server[1])
+    try:
+        # retrieve a list of servers
+        return principal.get_servers(master_protocol)
+    except:
+        # return an empty list if we cannot query the server
+        return []
+
+# query a single game server returning a string summary or None if unreachable
+def query_quake3_server(server):
+    # query the server i
+    try:
+        status = server.get_status()
+    except:
+        return None
+    # retrieve useful data to report
+    name = status['sv_hostname']
+    mapname = status['mapname']
+    players = len(status['players'])
+    # strip out non-printable characters from the game server name
+    name = ''.join()
+    # strip white space from the server name
+    name = name.strip()
+    # truncate for 40 characters if longer than 40 characters
+    if len(name) &gt; 40:
+        name = name[:40]
+    # create a one line summary of the server
+    return f'{name:40s}\t{mapname:30s}\t{players:2d} players'
+
+# get a list of game servers from the master server then query each game server
+def query_servers(master_server):
+    # get master list
+    master_list = get_quake3_server_list(master_server)
+    # create thread pool
+    with ThreadPoolExecutor(500) as pool:
+        # send all tasks into the thread pool
+        futures = [pool.submit(query_quake3_server, serv) for serv in master_list]
+        # report results as they are made available
+        for future in as_completed(futures):
+            # get the summary line from the task
+            summary = future.result()
+            # skip servers that cannot be contacted
+            if summary is None:
+                continue
+            # report
+            print(summary)
+
+# entry point
+MASTER_SERVER = ('master.quake3arena.com', 27950)
+# report game server status
+query_servers(MASTER_SERVER)
+</code></pre>
+<p>Running the example queries all game servers returned from the master server concurrently, with up to 500 concurrent connections.</p>
+<p>Below is a truncated version of the results.</p>
+<pre><code>UrbanZone [AU] WWW.DISCORD.ME/URT #2    	ut4_paris                     	 0 players
+[AU] oafps.com CPMA #2                  	cpm24                         	 0 players
+NG's house of terror                    	ut4_casa                      	 0 players
+UrbanZone [AU] WWW.DISCORD.ME/URT       	ut4_casa                      	 0 players
+Profanum Perth #2                       	cpm24                         	 0 players
+EternalHavoc CTF                        	ut4_docks                     	 0 players
+BlazingPhoenix.org Q3A                  	q3dm12                        	 7 players
+[AU] oafps.com CPMA #3                  	cpm24                         	 0 players
+noname                                  	q3dm6                         	 0 players
+AntiLag Beta 2 server                   	q3dm17                        	 4 players
+...
+</code></pre>
+<p>It is dramatically faster.</p>
+<p>In my case, it took about 2.9 seconds to complete as opposed to about 13 minutes, or about 260% faster!</p>
+<p>Now that the program is responsive, we could start to think about other concerns for the user, such as filtering out game servers that have no players or are full and cannot accept new players.</p>
+<p>We are using one master server to get a list of game servers to query, but what if we wanted to get lists of servers from multiple master servers?</p>
+<h2 id="query-quake-3-master-servers-concurrently">Query Quake 3 Master Servers Concurrently</h2>
+<p>We can update the example to first query a number of master servers to create a large list of game servers, then query this list of game servers concurrently as we did previously.</p>
+<p>First, we need a list of Quake 3 master servers.</p>
+<p>A Google search reveals a site dedicated to listing Quake 3 master servers:</p>
+<ul><li><a href="https://www.quakeservers.net/quake3/master_servers/">Quake 3 Arena Master Servers</a></li></ul>
+<p>This gives a list of 8 servers we can use.</p>
+<p>Below are these servers in a list of tuples.</p>
+<pre><code>...
+# entry point
+MASTER_HOSTS = [
+    ('master.quake3arena.com', 27950),
+    ('master2.urbanterror.info', 27900),
+    ('master0.excessiveplus.net', 27950),
+    ('master.ioquake3.org', 27950),
+    ('master.huxxer.de', 27950),
+    ('master.urbanterror.info', 27900),
+    ('master.maverickservers.com', 27950),
+    ('dpmaster.deathmask.net', 27950),
+    ('master3.idsoftware.com', 27950)]
+</code></pre>
+<p>Next, we need to query each master server in turn.</p>
+<p>It might take one second or more to query each master server, and with eight servers doing this sequentially, it would take up to eight seconds.</p>
+<pre><code>...
+# query each master server for a list of game servers
+all_servers_lists = [get_quake3_server_list(master) for master in master_hosts]
+</code></pre>
+<p>Instead, we can query the master servers concurrently, as we did with the game servers themselves in the previous section.</p>
+<p>In this case, we will use the <code>map()</code> function to apply the <code>get_quake3_server_list()</code> function that we developed previously to each master server tuple (host name and port number).</p>
+<p>This will give us an iterable of results once all queries have been completed.</p>
+<pre><code>...
+# get lists of servers from each master server
+with ThreadPoolExecutor(len(master_hosts)) as pool:
+    all_servers_lists = pool.map(get_quake3_server_list, master_hosts)
+</code></pre>
+<p>Notice that we set the number of threads to be the number of master servers, in this case eight.</p>
+<p>This will give an iterable over lists of game servers that we can flatten to a single list of game servers using a list comprehension.</p>
+<pre><code>...
+# flatten list of lists to single list
+all_servers = 
+</code></pre>
+<p>We would expect some overlap in the game servers reported by each master server.</p>
+<p>As such, we would only be interested in a list of unique servers, such as unique server IP address and port number combinations.</p>
+<p>We can achieve this by storing all server objects in a dictionary using a string of IP addresses and port numbers as the key. If a server already exists in the dictionary, we can simply replace it.</p>
+<pre><code>...
+# filter list to a unique set of hosts and ports
+master_list = {}
+for server in all_servers:
+    # create a unique key
+    key = f'{server.ip}-{server.port}'
+    # store server
+    master_list = server
+</code></pre>
+<p>Given that we're only interested in the server objects themselves, we can then retrieve the values from the dictionary.</p>
+<pre><code>...
+master_list = master_list.values()
+</code></pre>
+<p>This list of game servers can then be submitted to another thread pool to be queried, as we did before.</p>
+<p>We can tie all of this together into a function named <code>get_all_quake3_game_servers()</code> that will take a list of master servers and return a list of unique Quake 3 game servers.</p>
+<p>It also reports progress along the way, including the number of game servers total and the size of the distilled list of unique game servers.</p>
+<pre><code># query a list of master servers and return a list of unique game servers
+def get_all_quake3_game_servers(master_hosts):
+    # get lists of servers from each master server
+    with ThreadPoolExecutor(len(master_hosts)) as pool:
+        all_servers_lists = pool.map(get_quake3_server_list, master_hosts)
+    # flatten list of lists to single list
+    all_servers = 
+    print(f'Found {len(all_servers)} servers from {len(master_hosts)} master servers.')
+    # filter list to a unique set of hosts and ports
+    master_list = {}
+    for server in all_servers:
+        # create a unique key
+        key = f'{server.ip}-{server.port}'
+        # store server
+        master_list = server
+    master_list = master_list.values()
+    print(f'Reduced server list to {len(master_list)} unique IP:PORT.')
+    return master_list
+</code></pre>
+<p>An alternative approach would be to use the <code>submit()</code> function and use the as_complete() function on the list of futures returned, then add the game servers to the dictionary one at a time.</p>
+<p>This would be functionally equivalent and perhaps slightly faster if some master servers take much longer to respond than others.</p>
+<p>We can then update our <code>query_servers()</code> function to call our <code>get_all_quake3_game_servers()</code> function to get the list of game servers, then query each game server using a thread pool as before.</p>
+<pre><code># get a list of game servers from the master server then query each game server
+def query_servers(master_hosts):
+    # get a list of game servers
+    master_list = get_all_quake3_game_servers(master_hosts)
+    # create thread pool
+    with ThreadPoolExecutor(500) as pool:
+        # send all tasks into the thread pool
+        futures = [pool.submit(query_quake3_server, serv) for serv in master_list]
+        # report results as they are made available
+        for future in as_completed(futures):
+            # get the summary line from the task
+            summary = future.result()
+            # skip servers that cannot be contacted
+            if summary is None:
+                continue
+            # report
+            print(summary)
+</code></pre>
+<p>An alternate design might be to create a pipeline of thread pools connected via <code>Queue</code> objects. We could then feed master servers in at one end (the first thread pool), which would pass servers on to the second pool, and finally give us individual game server summary strings as the output.</p>
+<p>This might be a sticky design as careful attention would be needed to ensure only unique game servers are queried in the second thread pool. Nevertheless, it would allow for expansion of functionality, such as another step in the pipeline for filtering the results prior to formatting.</p>
+<p>Nevertheless, tying our code together, the complete example of querying multiple master servers using a thread pool, then querying the list of game servers using a second thread pool is listed below.</p>
+<pre><code># SuperFastPython.com
+# get a lists of quake servers from master servers and then query the status of each
+from string import printable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+from pyq3serverlist import PrincipalServer
+
+# query a master server and get a list of game servers
+def get_quake3_server_list(master_server, master_protocol=68):
+    # configure the master server and connect
+    principal = PrincipalServer(master_server[0], master_server[1])
+    try:
+        # retrieve a list of servers
+        return principal.get_servers(master_protocol)
+    except:
+        # return an empty list if we cannot query the server
+        return []
+
+# query a single game server returning a string summary or None if unreachable
+def query_quake3_server(server):
+    # query the server i
+    try:
+        status = server.get_status()
+    except:
+        return None
+    # retrieve useful data to report
+    name = status['sv_hostname']
+    mapname = status['mapname']
+    players = len(status['players'])
+    # strip out non-printable characters from the game server name
+    name = ''.join()
+    # strip white space from the server name
+    name = name.strip()
+    # truncate for 40 characters if longer than 40 characters
+    if len(name) &gt; 40:
+        name = name[:40]
+    # create a one line summary of the server
+    return f'{name:40s}\t{mapname:30s}\t{players:2d} players'
+
+# query a list of master servers and return a list of unique game servers
+def get_all_quake3_game_servers(master_hosts):
+    # get lists of servers from each master server
+    with ThreadPoolExecutor(len(master_hosts)) as pool:
+        all_servers_lists = pool.map(get_quake3_server_list, master_hosts)
+    # flatten list of lists to single list
+    all_servers = 
+    print(f'Found {len(all_servers)} servers from {len(master_hosts)} master servers.')
+    # filter list to a unique set of hosts and ports
+    master_list = {}
+    for server in all_servers:
+        # create a unique key
+        key = f'{server.ip}-{server.port}'
+        # store server
+        master_list = server
+    master_list = master_list.values()
+    print(f'Reduced server list to {len(master_list)} unique IP:PORT.')
+    return master_list
+
+# get a list of game servers from the master server then query each game server
+def query_servers(master_hosts):
+    # get a list of game servers
+    master_list = get_all_quake3_game_servers(master_hosts)
+    # create thread pool
+    with ThreadPoolExecutor(500) as pool:
+        # send all tasks into the thread pool
+        futures = [pool.submit(query_quake3_server, serv) for serv in master_list]
+        # report results as they are made available
+        for future in as_completed(futures):
+            # get the summary line from the task
+            summary = future.result()
+            # skip servers that cannot be contacted
+            if summary is None:
+                continue
+            # report
+            print(summary)
+
+# entry point
+MASTER_HOSTS = [
+    ('master.quake3arena.com', 27950),
+    ('master2.urbanterror.info', 27900),
+    ('master0.excessiveplus.net', 27950),
+    ('master.ioquake3.org', 27950),
+    ('master.huxxer.de', 27950),
+    ('master.urbanterror.info', 27900),
+    ('master.maverickservers.com', 27950),
+    ('dpmaster.deathmask.net', 27950),
+    ('master3.idsoftware.com', 27950)]
+
+# report game server status
+query_servers(MASTER_HOSTS)
+</code></pre>
+<p>Running the example first queries all master game servers and creates a master list of unique game servers, then queries all game servers and reports their status.</p>
+<p>In this case, we can see that a total of about 2,200 game servers were discovered from the eight master servers compared to the 650 discovered when using a single master server. This list was then distilled to 884 unique game servers, still more than the single game server used in previous examples.</p>
+<p>The cost of querying multiple game servers did add about two seconds to the execution time.</p>
+<pre><code>Found 2181 servers from 9 master servers.
+Reduced server list to 884 unique IP:PORT.
+UrbanZone [AU] WWW.DISCORD.ME/URT #2    	ut4_paris                     	 0 players
+[AU] oafps.com CPMA #2                  	cpm24                         	 0 players
+NG's house of terror                    	ut4_casa                      	 0 players
+UrbanZone [AU] WWW.DISCORD.ME/URT       	ut4_casa                      	 0 players
+Profanum Perth #2                       	cpm24                         	 0 players
+EternalHavoc CTF                        	ut4_docks                     	 0 players
+noname                                  	q3dm6                         	 0 players
+[AU] oafps.com CPMA #3                  	cpm24                         	 0 players
+...</code></pre>
+<h2 id="extensions">Extensions</h2>
+<p>This section lists ideas for extending the tutorial.</p>
+<ul><li><strong>Separate Server Query From Formatting</strong>: Update the example so that only the API call to query the game server is performed in a separate thread and that the formatting of the server status is performed in the main thread.</li><li><strong>Optimize Query Threads</strong>: Update the example to time different numbers of query threads in order to discover what works best for your specific workstation hardware and internet connection.</li><li><strong>Filter Server Results</strong>: Update the example to filter out game servers that have no players or are full and cannot accept new players.</li><li><strong>Use a Pipeline</strong>: Update the final example to use a pipeline of thread pools connected by Queue objects and add an additional step in the pipeline to filter servers before formatting their result.</li><li><strong>Create a graphical interface</strong>: Update the example to use a graphical user interface to present the status of all queried game servers.</li></ul>
+<p>Share your extensions in the comments below; it would be great to see what you come up with.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>In this tutorial, you discovered how to query Quake 3 game servers faster using ThreadPoolExecutor in Python.</p>
+<ul><li>How to query the Quake 3 master server and individual servers for their current status.</li><li>How to use the ThreadPoolExecutor to create and manage thread pools in Python.</li><li>How to speed up the querying of Quake 3 game servers nearly 300% using the ThreadPoolExecutor.</li></ul>
 </main>
 </body>
 </html>

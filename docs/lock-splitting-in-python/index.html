@@ -81,6 +81,412 @@ with lock:
 </code></pre>
 <p>Perhaps other variables are always used together.</p>
 <p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# update other variables
+	b += 1
+	c = 0
+</code></pre>
+<p>Threads suffer lock contention because the single lock is used to protect all variables.</p>
+<p>The lock may be split into two locks, one to protect one shared variable and another to protect the other two shared variables.</p>
+<p>This involves first defining two locks, for example:</p>
+<pre><code>...
+# create shared locks
+lock1 = threading.Lock()
+lock2 = threading.Lock()</code></pre>
+<p>Then each lock must be adopted for its own subset of the shared variables.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock1:
+	# update a variable
+	a.append('some new data')
+</code></pre>
+<p>And:</p>
+<pre><code>...
+# acquire the lock
+with lock2:
+	# update other variables
+	b += 1
+	c = 0
+</code></pre>
+<p>In this way, contention for a single lock is removed and replaced with contention for separate locks for separate subsets of the shared variables.</p>
+<h3>Lock Splitting by Functionality</h3>
+<p>Consider the situation where a lock is used to protect a shared resource that may be used in multiple behaviors within the application.</p>
+<p>These behaviors may be used through the application, but each is protected by a single lock to avoid race conditions on the shared resource.</p>
+<p>The shared resource may be data, an object, or access to something external like a file, database or socket.</p>
+<p>For example, we may have read and write operations (functionality or behaviors) on the resource in separate functions, each protected by the same lock.</p>
+<p>We have a single shared lock.</p>
+<pre><code>...
+# create shared lock
+lock = threading.Lock()</code></pre>
+<p>The read operation must be protected from race conditions with the shared lock.</p>
+<p>For example:</p>
+<pre><code># read operation on the resource
+def read(resource, lock):
+	# acquire the lock
+	with lock:
+		# read operation on the resource
+		data = resource.read()</code></pre>
+<p>Similarly, write operations on the resource must be protected from race conditions with the shared lock.</p>
+<p>For example:</p>
+<pre><code># write operation on the resource
+def write(resource, lock):
+	# acquire the lock
+	with lock:
+		# write operation on the resource
+		resource.write(data)</code></pre>
+<p>Threads suffer lock contention as any operation on the shared resource requires obtaining the same lock.</p>
+<p>Lock splitting could be applied by using a separate lock for each operation on the resource, as long as the operations are appropriately mutually exclusive.</p>
+<p>This requires first creating a separate lock for each operation.</p>
+<p>For example:</p>
+<pre><code>...
+# create shared locks
+lock_read = threading.Lock()
+lock_write = threading.Lock()</code></pre>
+<p>And then using a separate lock for each operation.</p>
+<p>For example:</p>
+<pre><code># read operation on the resource
+def read(resource, lock):
+	# acquire the read lock
+	with lock_read:
+		# read operation on the resource
+		data = resource.read()</code></pre>
+<p>And:</p>
+<p>For example:</p>
+<pre><code># write operation on the resource
+def write(resource, lock):
+	# acquire the write lock
+	with lock_write:
+		# write operation on the resource
+		resource.write(data)</code></pre>
+<p>Contention for a single lock has been removed and replaced with hopefully a lower level of contention for two separate locks organized by functionality or operations on a shared resource.</p>
+<p>Now that we have some idea of how to implement lock splitting, let's look at some worked examples.</p>
+<h2>Example of Lock Contention</h2>
+<p>Before we explore lock splitting, we can develop a program with lock contention.</p>
+<p>In this example, we will have a <a href="../threading-in-python/">number of threads</a> all performing the same task on shared data. The task involves iterating a number of times and randomly either writing data to the shared variable or reading data from the shared variable.</p>
+<p>The shared data is a list and is protected by a single lock. The example is contrived as most operations on a Python list are atomic. We might pretend that the list represents a shared resource like a file or socket.</p>
+<p>Nevertheless, it is a good example of lock contention as each thread must contend for the same lock that protects all operations on the shared data. It will provide a good example for lock splitting in the next section as the two operations on the data can be neatly partitioned.</p>
+<p>First, we can define the task and two subtasks.</p>
+<p>The first subtask will read from the shared data using the lock. Each thread will have a unique identifier to help see what is going on in our print messages. This identifier will be used in each subtask.</p>
+<p>The read subtask will block for a random fraction of a second then report the thread identifier and the current state in the shared data.</p>
+<p>The <strong>read_subtask()</strong> function below implements this, taking the shared data, shared lock and thread identifier as arguments.</p>
+<pre><code># read subtask
+def read_subtask(data, lock, identifier):
+    # acquire the lock
+    with lock:
+        # block
+        sleep(random())
+        # report value
+        print(f'.thread {identifier} read {data}')
+</code></pre>
+<p>The write subtask is similar to the read subtask, except it involves adding a value to the shared list. Namely, the thread identifier itself is appended to the list.</p>
+<p>The <strong>write_subtask()</strong> below implements this, taking the shared data, shared lock and thread identifier as arguments.</p>
+<pre><code># write subtask
+def write_subtask(data, lock, identifier):
+    # acquire the lock
+    with lock:
+        # block
+        sleep(random())
+        # add value
+        data.append(identifier)
+        # report value
+        print(f'.thread {identifier} wrote to data')
+</code></pre>
+<p>Next, we can define the task function that will be executed in a new thread.</p>
+<p>This function will iterate five times and each iteration it will randomly either execute the read task or the write task.</p>
+<p>The <strong>task()</strong> function below implements this, taking the shared data, shared lock and thread identifier as arguments.</p>
+<pre><code># task executed in a new thread
+def task(data, lock, identifier):
+    # perform task
+    for i in range(5):
+        # read or write
+        if random() &lt; 0.5:
+            read_subtask(data, lock, identifier)
+        else:
+            write_subtask(data, lock, identifier)
+</code></pre>
+<p>Next, in the main thread, we can create the shared data and the shared lock instances.</p>
+<pre><code>...
+# create shared data
+data = list()
+# create shared lock
+lock = Lock()</code></pre>
+<p>We can then create the threads and configure them to execute our task() function with the required arguments. This can be achieved in a list comprehension.</p>
+<pre><code>...
+# create worker threads
+threads = [Thread(target=task, args=(data, lock, i)) for i in range(10)]</code></pre>
+<p>The main thread can then start the threads, then block and wait for the new threads to terminate.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+thread.start()
+# wait for threads to terminate
+for thread in threads:
+thread.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of lock contention
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# read subtask
+def read_subtask(data, lock, identifier):
+    # acquire the lock
+    with lock:
+        # block
+        sleep(random())
+        # report value
+        print(f'.thread {identifier} read {data}')
+
+# write subtask
+def write_subtask(data, lock, identifier):
+    # acquire the lock
+    with lock:
+        # block
+        sleep(random())
+        # add value
+        data.append(identifier)
+        # report value
+        print(f'.thread {identifier} wrote to data')
+
+# task executed in a new thread
+def task(data, lock, identifier):
+    # perform task
+    for i in range(5):
+        # read or write
+        if random() &lt; 0.5:
+            read_subtask(data, lock, identifier)
+        else:
+            write_subtask(data, lock, identifier)
+
+# create shared data
+data = list()
+# create shared lock
+lock = Lock()
+# create worker threads
+threads = [Thread(target=task, args=(data, lock, i)) for i in range(10)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared data and shared lock.</p>
+<p>The ten new threads are then created and started, and the main thread blocks until they are complete.</p>
+<p>Each thread then executes the <strong>task()</strong> function and randomly executes the read or the write subtask.</p>
+<p>There is high contention for the lock as all ten threads require the lock in order to perform either subtask. This makes each thread's task execution slow, and the overall execution of the program slow as the threads spend most of their time waiting for access to the lock.</p>
+<p>A sample output from the program is listed below.</p>
+<p>Note, your results will differ given the use of random numbers. Try running the example a few times.</p>
+<p></p>
+<pre><code>.thread 0 wrote to data
+.thread 1 wrote to data
+.thread 1 read [0, 1]
+.thread 3 read [0, 1]
+.thread 4 wrote to data
+.thread 5 wrote to data
+.thread 5 wrote to data
+.thread 5 read [0, 1, 4, 5, 5]
+.thread 5 wrote to data
+.thread 9 wrote to data
+.thread 9 wrote to data
+.thread 9 wrote to data
+.thread 9 wrote to data
+.thread 3 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9]
+.thread 3 wrote to data
+.thread 3 wrote to data
+.thread 3 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3]
+.thread 8 wrote to data
+.thread 5 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8]
+.thread 0 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8]
+.thread 0 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8]
+.thread 1 wrote to data
+.thread 9 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1]
+.thread 4 wrote to data
+.thread 4 wrote to data
+.thread 4 wrote to data
+.thread 8 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4]
+.thread 8 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4]
+.thread 8 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4]
+.thread 8 wrote to data
+.thread 6 wrote to data
+.thread 6 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6]
+.thread 6 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6]
+.thread 2 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6]
+.thread 2 wrote to data
+.thread 2 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6, 2]
+.thread 2 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6, 2]
+.thread 2 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6, 2]
+.thread 6 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6, 2]
+.thread 6 wrote to data
+.thread 1 wrote to data
+.thread 7 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6, 2, 6, 1]
+.thread 7 wrote to data
+.thread 0 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6, 2, 6, 1, 7]
+.thread 0 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6, 2, 6, 1, 7]
+.thread 4 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6, 2, 6, 1, 7]
+.thread 7 wrote to data
+.thread 1 read [0, 1, 4, 5, 5, 5, 9, 9, 9, 9, 3, 3, 8, 1, 4, 4, 4, 8, 6, 2, 6, 1, 7, 7]
+.thread 7 wrote to data
+.thread 7 wrote to data</code></pre>
+<p>Next, let's explore how we might reduce lock contention by using lock splitting.</p>
+<h2>Example of Lock Splitting</h2>
+<p>Lock splitting can be implemented by replacing one lock with two or more locks.</p>
+<p>In this example, we have two clear responsibilities in the task executed by new threads, the read subtask and the write subtask, putting aside the contrived necessity to lock on a list for read and write operations.</p>
+<p>The example in the previous section suffered high lock contention as all ten threads competed for the same lock for each thread's five subtasks.</p>
+<p>We can split the single lock into two locks, one for read operations and one for write operations. This will reduce contention for all subtasks to lock contention on only read or write operations to the shared data.</p>
+<p>This can be achieved by creating a read lock and a write lock in the main thread, sharing them with the <strong>task()</strong> function and then having the task function choose to use the appropriate lock for each subtask.</p>
+<p>First, we can update the <strong>task()</strong> function to take two locks as arguments.</p>
+<pre><code># task executed in a new thread
+def task(data, read_lock, write_lock, identifier):
+	# ...
+</code></pre>
+<p>We can then use a separate lock for each subtask.</p>
+<p>For example:</p>
+<pre><code>...
+# read or write
+if random() &lt; 0.5:
+    read_subtask(data, read_lock, identifier)
+else:
+    write_subtask(data, write_lock, identifier)
+</code></pre>
+<p>The updated task() function with this change is listed below.</p>
+<pre><code># task executed in a new thread
+def task(data, read_lock, write_lock, identifier):
+    # perform task
+    for i in range(5):
+        # read or write
+        if random() &lt; 0.5:
+            read_subtask(data, read_lock, identifier)
+        else:
+            write_subtask(data, write_lock, identifier)
+</code></pre>
+<p>In the main thread, we can then create two locks, one for each subtask.</p>
+<pre><code>...
+# create shared locks
+read_lock = Lock()
+write_lock = Lock()
+</code></pre>
+<p>These locks can then be passed to each thread when configured to execute the task() function.</p>
+<pre><code>...
+# create worker threads
+threads = [Thread(target=task, args=(data, read_lock, write_lock, i)) for i in range(10)]
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of reducing lock contention with lock splitting
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# read subtask
+def read_subtask(data, lock, identifier):
+    # acquire the lock
+    with lock:
+        # block
+        sleep(random())
+        # report value
+        print(f'.thread {identifier} read {data}')
+
+# write subtask
+def write_subtask(data, lock, identifier):
+    # acquire the lock
+    with lock:
+        # block
+        sleep(random())
+        # add value
+        data.append(identifier)
+        # report value
+        print(f'.thread {identifier} wrote to data')
+
+# task executed in a new thread
+def task(data, read_lock, write_lock, identifier):
+    # perform task
+    for i in range(5):
+        # read or write
+        if random() &lt; 0.5:
+            read_subtask(data, read_lock, identifier)
+        else:
+            write_subtask(data, write_lock, identifier)
+
+# create shared data
+data = list()
+# create shared locks
+read_lock = Lock()
+write_lock = Lock()
+# create worker threads
+threads = [Thread(target=task, args=(data, read_lock, write_lock, i)) for i in range(10)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared data and the two shared locks.</p>
+<p>The ten threads are then created, configured and started, then the main thread blocks until the new threads terminate.</p>
+<p>Each thread then executes its task look five times and randomly performs a read or write operation.</p>
+<p>The task will use a separate lock for read operations from write operations. This means that only a subset of threads will contend for a lock based on the specific subtask being performed, rather than a single lock used to protect the shared data.</p>
+<p>A sample output from the program is listed below.</p>
+<p>Note, your results will differ given the use of random numbers. Try running the example a few times.</p>
+<p>This highlights an example of how to apply lock splitting to reduce lock contention.</p>
+<pre><code>.thread 1 read []
+.thread 2 read []
+.thread 0 wrote to data
+.thread 5 read [0]
+.thread 3 wrote to data
+.thread 5 read [0, 3]
+.thread 7 read [0, 3]
+.thread 4 wrote to data
+.thread 8 read [0, 3, 4]
+.thread 9 wrote to data
+.thread 8 read [0, 3, 4, 9]
+.thread 0 wrote to data
+.thread 2 read [0, 3, 4, 9, 0]
+.thread 6 read [0, 3, 4, 9, 0]
+.thread 6 read [0, 3, 4, 9, 0]
+.thread 5 wrote to data
+.thread 6 read [0, 3, 4, 9, 0, 5]
+.thread 5 wrote to data
+.thread 5 wrote to data
+.thread 1 read [0, 3, 4, 9, 0, 5, 5, 5]
+.thread 9 read [0, 3, 4, 9, 0, 5, 5, 5]
+.thread 0 wrote to data
+.thread 9 read [0, 3, 4, 9, 0, 5, 5, 5, 0]
+.thread 9 read [0, 3, 4, 9, 0, 5, 5, 5, 0]
+.thread 0 wrote to data
+.thread 7 wrote to data
+.thread 6 wrote to data
+.thread 9 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6]
+.thread 4 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6]
+.thread 8 wrote to data
+.thread 3 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8]
+.thread 3 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8]
+.thread 1 wrote to data
+.thread 1 wrote to data
+.thread 7 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8, 1, 1]
+.thread 6 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8, 1, 1]
+.thread 4 wrote to data
+.thread 3 wrote to data
+.thread 2 wrote to data
+.thread 1 wrote to data
+.thread 8 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8, 1, 1, 4, 3, 2, 1]
+.thread 7 wrote to data
+.thread 8 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8, 1, 1, 4, 3, 2, 1, 7]
+.thread 4 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8, 1, 1, 4, 3, 2, 1, 7]
+.thread 2 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8, 1, 1, 4, 3, 2, 1, 7]
+.thread 7 wrote to data
+.thread 0 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8, 1, 1, 4, 3, 2, 1, 7, 7]
+.thread 4 read [0, 3, 4, 9, 0, 5, 5, 5, 0, 0, 7, 6, 8, 1, 1, 4, 3, 2, 1, 7, 7]
+.thread 3 wrote to data
+.thread 2 wrote to data</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to reduce lock contention with lock splitting.</p>
 </main>
 </body>
 </html>

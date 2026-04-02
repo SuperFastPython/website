@@ -60,6 +60,647 @@ except:
 <p>This can be achieved by maintaining a dictionary mapping of <strong>Future</strong> objects returned from <strong>submit()</strong> to the data passed to the target task function.</p>
 <p>The data stored for each <strong>Future</strong> could be a single value or a list or tuple of arguments.</p>
 <p>For example:</p>
+<pre><code>...
+# map of futures to task data
+future_to_data = {}
+# submit a task
+future = executor.submit(work, data)
+# store the mapping of future to data
+future_to_data = data
+</code></pre>
+<p>We might also do this in a dictionary comprehension if we are calling the <strong>submit()</strong> function for each item in a collection.</p>
+<p>For example:</p>
+<pre><code>...
+# submit tasks and record a mapping of futures to task data
+futures_to_data = {executor.submit(work, item):item for item in items}
+</code></pre>
+<p>If we are calling different functions for different tasks, we might also store the function name in the same mapping.</p>
+<p>This provides a simple way to record the data submitted for each task to the thread pool.</p>
+<h3>How to Resubmit a Failed Task</h3>
+<p>Once we know that a task has failed and we have access to data for each submitted task, we can re-submit failed tasks.</p>
+<p>This can be as simple as calling the <strong>submit()</strong> function again with the same data.</p>
+<p>For example:</p>
+<pre><code>...
+# check of a task failed
+if future.exception():
+	# get the data for the task
+	data = future_to_data
+	# resubmit the task
+	retry = executor.submit(work, data)
+</code></pre>
+<p>We might be sure to also record the Future object for the retry, in case we want to retry a failed task again if it fails for a second time, and beyond.</p>
+<pre><code>...
+# record the retry
+future_to_data = data
+</code></pre>
+<p>Now that we know how to retry a failed task, let's look at some worked examples.</p>
+<h2>Example of Retrying Failed Tasks</h2>
+<p>Let's explore how we might retry tasks that fail in the thread pool.</p>
+<p>First, let's define a task that has a chance to fail.</p>
+<p>We can generate a random number between 0 and 1 using the <strong>random.random()</strong> function and if the number is below 0.3 (e.g. 30% of the time), then the function can raise an exception and fail.</p>
+<p>The function will take a unique identifier so we can see the success or failure and retry of each task.</p>
+<pre><code># task that sleeps for a moment and may fail with an exception
+def work(identifier):
+    # sleep for a moment
+    sleep(random())
+    # conditionally fail with a chance of 30 percent
+    if random() &lt;  0.3:
+        raise Exception(f'Something bad happened {identifier}')
+    return f'Completed {identifier}'
+</code></pre>
+<p>Next, we can define a thread pool with 10 workers and submit 10 tasks to the pool for execution.</p>
+<p>We will use a dictionary comprehension to create a mapping of <strong>Future</strong> objects for each task to the data submitted with each task, in this case, an integer value.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(10) as executor:
+    # submit ten tasks
+    futures_to_data = {executor.submit(work, i):i for i in range(10)}
+</code></pre>
+<p>So far so good.</p>
+<p>Next, we can monitor tasks as they are completed and check if they have failed.</p>
+<p>We can define a new dictionary that will record only those tasks that have been retried.</p>
+<pre><code>...
+# record of retried tasks
+retries = {}
+</code></pre>
+<p>We can then call the <strong>as_completed()</strong> function on the dictionary of <strong>Future</strong> objects, which will return the same objects in the order that they are completed.</p>
+<p>If the task fails, we will retrieve the data, resubmit the task, store the retry, and report the failure. Otherwise, if the task was successful, we report the success.</p>
+<pre><code># process work as it completes
+for future in as_completed(futures_to_data):
+    # check for a failure
+    if future.exception():
+        # get the associated data for the task
+        data = futures_to_data
+        # submit the task again
+        future = executor.submit(work, data)
+        # store so we can track the retries
+        retries = data
+        # report progress
+        print(f'Failure, retrying {data}')
+    else:
+        # report successful result
+        print(future.result())
+</code></pre>
+<p>That's all there is to retrying failed tasks.</p>
+<p>Next, we can report on the success or failure of the retries themselves.</p>
+<p>If the task fails for a second time, we report the failure and that we are giving up; otherwise, we report the success on the retry.</p>
+<pre><code>...
+# wait for retries
+print('\nRetries:')
+for future in as_completed(retries):
+    # check for a failure
+    if future.exception():
+        # get the associated data for the task
+        data = retries
+        # failure
+        print(f'Failure on retry: {data}, not trying again')
+    else:
+        # report successful result
+        print(future.result())
+</code></pre>
+<p>Tying this together, the complete example of retrying failed tasks for a second time in the <strong>ThreadPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of retrying a failed task a second time
+from random import random
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# task that sleeps for a moment and may fail with an exception
+def work(identifier):
+    # sleep for a moment
+    sleep(random())
+    # conditionally fail with a chance of 30 percent
+    if random() &lt;  0.3:
+        raise Exception(f'Something bad happened {identifier}')
+    return f'Completed {identifier}'
+
+# create a thread pool
+with ThreadPoolExecutor(10) as executor:
+    # submit ten tasks
+    futures_to_data = {executor.submit(work, i):i for i in range(10)}
+    # record of retried tasks
+    retries = {}
+    # process work as it completes
+    for future in as_completed(futures_to_data):
+        # check for a failure
+        if future.exception():
+            # get the associated data for the task
+            data = futures_to_data
+            # submit the task again
+            future = executor.submit(work, data)
+            # store so we can track the retries
+            retries = data
+            # report progress
+            print(f'Failure, retrying {data}')
+        else:
+            # report successful result
+            print(future.result())
+    # wait for retries
+    print('\nRetries:')
+    for future in as_completed(retries):
+        # check for a failure
+        if future.exception():
+            # get the associated data for the task
+            data = retries
+            # failure
+            print(f'Failure on retry: {data}, not trying again')
+        else:
+            # report successful result
+            print(future.result())
+</code></pre>
+<p>Running the example creates the thread pool and submits the ten tasks as per normal.</p>
+<p>The tasks are then processed in the order they are completed; we can see that five of the ten tasks failed on the first round and the remaining five completed successfully</p>
+<p>The five failures are resubmitted for a retry.</p>
+<p>The retried tasks are then processed as they are completed and we can see that three of the retried tasks completed successfully and two failed for a second time, after which we gave up.</p>
+<p><strong>Note</strong>: your specific results will differ given that we are using the <strong>random()</strong> function.</p>
+<pre><code>Failure, retrying 6
+Failure, retrying 1
+Completed 8
+Completed 7
+Completed 4
+Failure, retrying 0
+Failure, retrying 5
+Completed 3
+Failure, retrying 9
+Completed 2
+
+Retries:
+Failure on retry: 1, not trying again
+Completed 5
+Completed 0
+Failure on retry: 6, not trying again
+Completed 9
+</code></pre>
+<h2>Example of Repeatedly Retrying Failed Tasks</h2>
+<p>We may want to repeatedly retry tasks until they are ultimately successful.</p>
+<p>One approach to achieving this would be to keep track of the total number of submitted tasks, then count tasks as they complete successfully and continue submitting retries until the expected number of tasks are completed.</p>
+<p>Firstly, we can define the total number of tasks and the count of successfully completed tasks.</p>
+<pre><code>...
+# total tasks to execute
+TASKS = 20
+# counter for the total tasks that are complete
+completed = 0
+</code></pre>
+<p>We can then start the thread pool and submit the tasks as per normal, ensuring we create a dictionary mapping of <strong>Future</strong> objects to data submitted with each task.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(TASKS) as executor:
+    # submit the tasks into the pool
+    futures_to_data = {executor.submit(work, i):i for i in range(TASKS)}
+</code></pre>
+<p>Next, we need a consistent way of retrying a failed task.</p>
+<p>We can define a function named <strong>retry()</strong> that will take the <strong>Future</strong> that failed, the mapping of <strong>Future</strong> objects to data, and the thread pool. The function will retrieve the data for the <strong>Future</strong>, resubmit the task, then store the retry in the same mapping of <strong>Future</strong> objects to data.</p>
+<p>This function is listed below and contains much the same retry functionality we developed in the previous section.</p>
+<pre><code># retry a task that failed
+def retry(future, futures_to_data, executor):
+    # get the associated data for the task
+    data = futures_to_data
+    # submit the task again
+    retry = executor.submit(work, data)
+    # store so we can track the retries
+    futures_to_data = data
+    return data
+</code></pre>
+<p>We can then loop until the expected number of tasks have completed successfully.</p>
+<p>We can call <strong>as_completed()</strong> on the mapping of <strong>Future</strong> objects to data that will contain the original tasks and the retries.</p>
+<pre><code>...
+# spin, keep track of things until all tasks complete
+while completed &lt; TASKS:
+    # process work as it completes
+    for future in as_completed(futures_to_data):
+    	# ...</code></pre>
+<p>If the task fails, we can resubmit it by calling our <strong>retry()</strong> function. Whereas, if the task was completed successfully we can update the count of all successful tasks.</p>
+<p>Finally, we must remove each done task (successful or otherwise) from the mapping of <strong>Future</strong> objects to data to ensure we don't process it again on the next iteration.</p>
+<pre><code>...
+# check for a failure
+if future.exception():
+    # retry the task
+    data = retry(future, futures_to_data, executor)
+    # report the failure
+    print(f'Failure, retrying {data}')
+else:
+    # report successful result
+    print(future.result())
+    completed += 1
+# remove this future so we don't re-consider it
+futures_to_data.pop(future)
+</code></pre>
+<p>And that's it.</p>
+<p>We will now run until all tasks are completed successfully and only process tasks as they are completed, avoiding the reprocessing of tasks that are already done.</p>
+<p>The complete example of repeated retrying failed tasks in the thread pool is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of retrying a failed task until they succeed
+from random import random
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# task that sleeps for a moment and may fail with an exception
+def work(identifier):
+    # sleep for a moment
+    sleep(random())
+    # conditionally fail with a chance of 30 percent
+    if random() &lt;  0.3:
+        raise Exception(f'Something bad happened {identifier}')
+    return f'Completed {identifier}'
+
+# retry a task that failed
+def retry(future, futures_to_data, executor):
+    # get the associated data for the task
+    data = futures_to_data
+    # submit the task again
+    retry = executor.submit(work, data)
+    # store so we can track the retries
+    futures_to_data = data
+    return data
+
+# total tasks to execute
+TASKS = 20
+# counter for the total tasks that are complete
+completed = 0
+# create a thread pool
+with ThreadPoolExecutor(TASKS) as executor:
+    # submit the tasks into the pool
+    futures_to_data = {executor.submit(work, i):i for i in range(TASKS)}
+    # spin, keep track of things until all tasks complete
+    while completed &lt; TASKS:
+        # process work as it completes
+        for future in as_completed(futures_to_data):
+            # check for a failure
+            if future.exception():
+                # retry the task
+                data = retry(future, futures_to_data, executor)
+                # report the failure
+                print(f'Failure, retrying {data}')
+            else:
+                # report successful result
+                print(future.result())
+                completed += 1
+            # remove this future so we don't re-consider it
+            futures_to_data.pop(future)
+</code></pre>
+<p>Running the example creates the thread pool and submits the tasks as per normal.</p>
+<p>We then process the tasks as they are completed and report progress along the way.</p>
+<p>We can see that tasks start failing and are retried. Interestingly, we can see some tasks fail and retry a number of times, such as task 14 that failed 3 times before completing successfully.</p>
+<p><strong>Note</strong>: your specific results will differ given that we are using the <strong>random()</strong> function.</p>
+<pre><code>Failure, retrying 14
+Completed 2
+Completed 7
+Completed 11
+Failure, retrying 5
+Completed 4
+Failure, retrying 17
+Failure, retrying 13
+Completed 16
+Completed 6
+Failure, retrying 19
+Failure, retrying 1
+Failure, retrying 8
+Completed 10
+Completed 12
+Completed 15
+Failure, retrying 18
+Completed 0
+Completed 9
+Completed 3
+Failure, retrying 14
+Completed 13
+Failure, retrying 5
+Completed 19
+Completed 1
+Completed 8
+Completed 18
+Completed 17
+Failure, retrying 14
+Completed 5
+Completed 14
+</code></pre>
+<h2>Example of Retrying Failed Tasks Using a Callback Function</h2>
+<p>A natural place to consider retrying a failed task might be the done callback.</p>
+<p>Recall that we can register a callback function on a task's <strong>Future</strong> object by calling the <strong>add_done_callback()</strong> function with the function name. This function will be called when the task is done, successfully or otherwise.</p>
+<p>The callback function is provided with a reference to the <strong>Future</strong> object that was done via an argument; for example:</p>
+<pre><code># callback function
+def custom_callback(future)
+	# retry...
+
+# register a callback
+future = executor.submit(task, data)
+future.add_done_callback(custom_callback)
+</code></pre>
+<p>This approach has two problems.</p>
+<p>The first is that it is generally a bad practice for tasks to have knowledge of other tasks or of the thread pool. It breaks encapsulation; tasks should only know about themselves. Beyond a program design issue, it can lead to deadlocks if a task waits on the result of another task.</p>
+<p>The second reason is that it is possible for the thread pool to be shutdown while the callback for the final task is being executed. This can happen because technically, a task is complete once the target function returns, and if the shutdown operation is waiting on all tasks to complete before shutting down, then the callback will potentially be called after the shutdown has occurred.</p>
+<p>The problem with all of this is that you cannot submit tasks to the thread pool after it has shut down.</p>
+<p>This might sound esoteric, but it will happen pretty much every time, resulting in an exception.</p>
+<p>We can demonstrate this with an example.</p>
+<p>First, let's define a callback function that is just the <strong>retry()</strong> function from the previous example updated to access the dictionary and the thread pool via global variables and to take the future object for the task as an argument.</p>
+<pre><code># task done callback that will re-submit failed tasks
+def auto_retry(future):
+    global executor, futures_to_data
+    # check for a failure
+    if future.exception():
+        # get the associated data for the task
+        data = futures_to_data
+        # re-submit the task
+        retry = executor.submit(work, data)
+        # add to the map
+        futures_to_data = data
+        # add the callback
+        retry.add_done_callback(auto_retry)
+        # report the failure
+        print(f'Failure, retrying {data}')
+    else:
+        # report success
+        print(future.result())
+</code></pre>
+<p>Note, we are adding the callback to the retried task so that if the task fails again it will get retried automatically.</p>
+<p>We can then register this callback function with each <strong>Future</strong> object after we create it.</p>
+<pre><code>...
+# register callbacks
+for future in futures_to_data:
+    future.add_done_callback(auto_retry)
+</code></pre>
+<p>And that's it! The complete example is listed below.</p>
+<p>Recall, we expect it to not work, and to fail with an exception because we will be trying to submit retries after the thread pool is shutdown.</p>
+<pre><code># SuperFastPython.com
+# example of automatic retry via callback, that causes an exception
+from random import random
+from time import sleep
+from threading import Barrier
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# task that sleeps for a moment and may fail with an exception
+def work(identifier):
+    # sleep for a moment
+    sleep(random())
+    # conditionally fail with a chance of 30 percent
+    if random() &lt;  0.3:
+        raise Exception(f'Something bad happened {identifier}')
+    return f'Completed {identifier}'
+
+# task done callback that will re-submit failed tasks
+def auto_retry(future):
+    global executor, futures_to_data
+    # check for a failure
+    if future.exception():
+        # get the associated data for the task
+        data = futures_to_data
+        # re-submit the task
+        retry = executor.submit(work, data)
+        # add to the map
+        futures_to_data = data
+        # add the callback
+        retry.add_done_callback(auto_retry)
+        # report the failure
+        print(f'Failure, retrying {data}')
+    else:
+        # report success
+        print(future.result())
+
+# constant defining the total tasks to complete
+TASKS = 20
+# create a thread pool
+with ThreadPoolExecutor(TASKS) as executor:
+    # submit ten tasks
+    futures_to_data = {executor.submit(work, i):i for i in range(TASKS)}
+    # register callbacks
+    for future in futures_to_data:
+        future.add_done_callback(auto_retry)
+    # shutdown, will raise an exception for the last task
+</code></pre>
+<p>Running the example creates the thread pool and submits the tasks as per normal.</p>
+<p>Things start fine as tasks are completed, then eventually, as we try to submit a retry from the callback, it fails.</p>
+<p>This is because the pool has been shut down and will not take any further tasks, like retries submitted from the callback function.</p>
+<pre><code>...
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+    raise RuntimeError('cannot schedule new futures after shutdown')
+RuntimeError: cannot schedule new futures after shutdown
+</code></pre>
+<p>There are a number of ways to solve this problem.</p>
+<p>Central to the solution is the need to not call shutdown() on the thread pool until all tasks have completed successfully.</p>
+<p>The simplest way to achieve this is with a counter that records tasks as they are completed in <strong>auto_retry()</strong> and updating the main thread to check the count and not call shutdown until all tasks are successful.</p>
+<p>The callback function will be called by each worker thread in the thread pool and so may be executed concurrently. Therefore, it is a good practice to protect the update of the counter using a mutual exclusion lock. This is to ensure that the count is not left in an inconsistent state via a race condition.</p>
+<p>We can achieve this using the <strong>threading.Lock</strong> class and the context manager for the class.</p>
+<p>For example:</p>
+<pre><code>...
+# update the count of completed tasks
+with lock:
+    tasks_completed += 1
+</code></pre>
+<p>The complete example of automatically retrying failed tasks via a callback function is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of automatic retry via callback
+from random import random
+from time import sleep
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
+
+# task that sleeps for a moment and may fail with an exception
+def work(identifier):
+    # sleep for a moment
+    sleep(random())
+    # conditionally fail with a chance of 30 percent
+    if random() &lt;  0.3:
+        raise Exception(f'Something bad happened {identifier}')
+    return f'Completed {identifier}'
+
+# task done callback that will re-submit failed tasks
+def auto_retry(future):
+    global executor, futures_to_data, tasks_completed
+    # check for a failure
+    if future.exception():
+        # get the associated data for the task
+        data = futures_to_data
+        # re-submit the task
+        retry = executor.submit(work, data)
+        # add to the map
+        futures_to_data = data
+        # add the callback
+        retry.add_done_callback(auto_retry)
+        # report the failure
+        print(f'Failure, retrying {data}')
+    else:
+        # report success
+        print(future.result())
+        # update the count of completed tasks
+        with lock:
+            tasks_completed += 1
+
+# constant defining the total tasks to complete
+TASKS = 20
+# count of tasks that are completed
+tasks_completed = 0
+# lock protecting the count of completed tasks
+lock = Lock()
+# create a thread pool
+with ThreadPoolExecutor(TASKS) as executor:
+    # submit ten tasks
+    futures_to_data = {executor.submit(work, i):i for i in range(TASKS)}
+    # register callbacks
+    for future in futures_to_data:
+        future.add_done_callback(auto_retry)
+    # busy wait for all tasks to be completed successfully
+    while tasks_completed &lt; TASKS:
+        sleep(0.5)
+</code></pre>
+<p>Running the example creates the thread pool and submits the tasks as per normal.</p>
+<p>The callback function is registered on each Future object and then the main thread will loop until the expected number of tasks have completed successfully. This specific loop is called spinning or a busy-wait as the thread will run and do nothing until the condition is met. We have added a call to <strong>sleep()</strong> to make it less wasteful.</p>
+<p>This loop will ensure that the <strong>shutdown()</strong> function for the thread pool is not called automatically when the context manager block is exited, allowing tasks to be retried from the callback function.</p>
+<p>The callback function will then retry tasks as we did before; the important difference is that we now keep track of the number of tasks that complete successfully.</p>
+<pre><code>Completed 9
+Failure, retrying 11
+Completed 18
+Completed 13
+Completed 16
+Failure, retrying 17
+Completed 8
+Completed 12
+Completed 14
+Completed 15
+Completed 6
+Completed 0
+Completed 3
+Completed 10
+Completed 4
+Completed 19
+Failure, retrying 2
+Failure, retrying 1
+Completed 7
+Completed 11
+Failure, retrying 5
+Failure, retrying 2
+Failure, retrying 17
+Failure, retrying 2
+Completed 17
+Completed 1
+Failure, retrying 5
+Completed 5
+Completed 2
+</code></pre>
+<p>Although this works, it is a little ugly.</p>
+<p>Specifically, the spinning in the main thread waiting for all tasks to complete is wasteful.</p>
+<p>Ideally, we would use a countdown latch. This is a concurrency data structure that has a counter initialized to a specific number and will cause the main thread to block until the counter is zero. Each task that finishes would call the latch to subtract one from the counter.</p>
+<p>The benefit of this change is that the main thread would block until the condition is met (all tasks are completed), instead of using a busy wait loop.</p>
+<p>We could simulate this latch using a Barrier, another similar concurrency data structure. We could also update our example to use a conditional variable to achieve the same effect.</p>
+<p>This can be achieved using a <strong>threading.Condition</strong>.</p>
+<p>First, the main thread can wait on the condition variable by first acquiring a lock via the context manager, then calling the <strong>wait()</strong> function.</p>
+<pre><code>...
+# block, wait for all tasks to be completed successfully
+with condition:
+    condition.wait()
+</code></pre>
+<p>Then, the retry function can be updated to check if the number of completed tasks matches the total tasks that were submitted, and if so, acquire the lock on the condition and notify the main thread.</p>
+<pre><code>...
+# update the count of completed tasks
+with lock:
+    tasks_completed += 1
+    if tasks_completed &gt;= TASKS:
+        with condition:
+            condition.notify()
+</code></pre>
+<p>This achieves the same result but is more efficient as it avoids the main thread spinning and wasting resources.</p>
+<p>The complete example of automatically retrying tasks from the callback function is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of automatic retry via callback
+from random import random
+from time import sleep
+from threading import Lock
+from threading import Condition
+from concurrent.futures import ThreadPoolExecutor
+
+# task that sleeps for a moment and may fail with an exception
+def work(identifier):
+    # sleep for a moment
+    sleep(random())
+    # conditionally fail with a chance of 30 percent
+    if random() &lt;  0.3:
+        raise Exception(f'Something bad happened {identifier}')
+    return f'Completed {identifier}'
+
+# task done callback that will re-submit failed tasks
+def auto_retry(future):
+    global executor, futures_to_data, tasks_completed
+    # check for a failure
+    if future.exception():
+        # get the associated data for the task
+        data = futures_to_data
+        # re-submit the task
+        retry = executor.submit(work, data)
+        # add to the map
+        futures_to_data = data
+        # add the callback
+        retry.add_done_callback(auto_retry)
+        # report the failure
+        print(f'Failure, retrying {data}')
+    else:
+        # report success
+        print(future.result())
+        # update the count of completed tasks
+        with lock:
+            tasks_completed += 1
+            if tasks_completed &gt;= TASKS:
+                with condition:
+                    condition.notify()
+
+# constant defining the total tasks to complete
+TASKS = 20
+# count of tasks that are completed
+tasks_completed = 0
+# lock protecting the count of completed tasks
+lock = Lock()
+condition = Condition()
+# create a thread pool
+with ThreadPoolExecutor(TASKS) as executor:
+    # submit ten tasks
+    futures_to_data = {executor.submit(work, i):i for i in range(TASKS)}
+    # register callbacks
+    for future in futures_to_data:
+        future.add_done_callback(auto_retry)
+    # block, wait for all tasks to be completed successfully
+    with condition:
+        condition.wait()
+</code></pre>
+<p>Running the example creates the thread pool and submits the tasks as before.</p>
+<p>Tasks fail and are automatically submitted until all tasks are completed successfully, after which, the thread pool is shut down.</p>
+<pre><code>Completed 15
+Failure, retrying 16
+Failure, retrying 3
+Failure, retrying 0
+Completed 18
+Failure, retrying 10
+Failure, retrying 0
+Completed 8
+Completed 19
+Completed 14
+Failure, retrying 3
+Failure, retrying 4
+Completed 7
+Completed 16
+Failure, retrying 2
+Completed 6
+Completed 11
+Completed 2
+Completed 4
+Failure, retrying 10
+Completed 12
+Completed 3
+Failure, retrying 5
+Completed 9
+Completed 17
+Completed 1
+Completed 13
+Completed 0
+Failure, retrying 5
+Completed 5
+Completed 10
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to retry failed tasks in the <strong>ThreadPoolExecutor</strong>.</p>
 </main>
 </body>
 </html>

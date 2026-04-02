@@ -37,6 +37,319 @@
 <p>The lock protecting the data structure is split into multiple locks, each protecting a subset of the data in the data structure.</p>
 <blockquote><p>Lock splitting can sometimes be extended to partition locking on a variable-sized set of independent objects, in which case it is called lock striping.</p><cite>-- Page 237, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
 <p>For example, if a list was protected by a lock, then with lock striping, five locks could be used to protect the data within the list, each responsible for protecting one-fifth of the data from race conditions.</p>
+<blockquote><p>... the implementation of  uses an array of 16 locks, each of which guards 1/16 of the hash buckets; bucket N is guarded by lock N mod 16.</p><cite>-- Page 237, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>As such, each lock protects a "stripe" of data in the data structure.</p>
+<p>In turn, lock contention is reduced to about 1/N, where N is the number of locks used, if use of array indexes the data structure by the program is uniformly distributed.</p>
+<p>The downside of lock striping is that if the data structure itself requires a change, such as adding or removing items, then all locks protecting the data in the structure must be acquired before making a change. This can be more costly than using a single lock.</p>
+<blockquote><p>One of the downsides of lock striping is that locking the collection for exclusive access is more difficult and costly than with a single lock.</p><cite>-- Page 237, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>Now that we know what lock striping is, let's look at how we might implement it in Python.</p>
+<h2>How to Implement Lock Striping</h2>
+<p>Lock striping can be implemented using a list of locks.</p>
+<p>A list of locks can be created and used to protect a data structure that is accessed using an array index, such as a list. It could be used for a dict, but may require a custom implementation.</p>
+<p>Firstly, a list of locks can be created.</p>
+<p>The number of locks in the list is arbitrary. The more locks in the list, the less contention there will be for the data being protected, although the more memory required. At a worst case, you could have one lock per item in the data structure that is being protected.</p>
+<p>For example, we may choose 5 locks:</p>
+<pre><code>...
+# create shared locks
+locks = [Lock() for _ in range(5)]</code></pre>
+<p>A lock can then be chosen before interacting or updating the data structure.</p>
+<p>One approach would be to assign each lock to a subset of the data structure directly.</p>
+<p>If we had five locks, then each lock could protect 1/5 (one fifth) of the data in the structure. If the structure was a list with 100 items, then:</p>
+<ul><li>Lock 0 could protect indexes in the list from 0 to 19.</li><li>Lock 1 could protect indexes in the list from 20 to 39.</li><li>Lock 2 could protect indexes in the list from 40 to 59.</li><li>Lock 3 could protect indexes in the list from 60 to 79.</li><li>Lock 4 could protect indexes in the list from 80 to 99.</li></ul>
+<p>This would require a few if-statements.</p>
+<p>There's no need for each lock to protect contiguous blocks of array indexes.</p>
+<p>A simpler approach that is fast to calculate and less code is to use the <a href="https://en.wikipedia.org/wiki/Modulo_operation">modulo</a> of the array index to the number of locks.</p>
+<p>For example:</p>
+<ul><li>Lock_Index = Array_Index % Number_of_Locks</li></ul>
+<p>Recall, % is the modulo operator in Python.</p>
+<blockquote><p>The % (modulo) operator yields the remainder from the division of the first argument by the second.</p><cite>-- <a href="https://docs.python.org/3.3/reference/expressions.html#binary-arithmetic-operations">6.6. Binary arithmetic operations</a></cite></blockquote>
+<p>This will consistently map arbitrary array indexes to the same lock, although it requires that you know the array index you wish to interact with beforehand.</p>
+<p>In code, this would look as follows:</p>
+<pre><code>...
+# decide where to operate on the list
+index = ...
+# map the array index to a lock index
+lock_index = index % len(locks)
+# acquire the lock
+with locks:
+	# ...
+</code></pre>
+<p>With a list with a length of 100 and five locks, each lock would still protect about 1/5 (one fifth) of the array indexes, but they would be spread across the array instead of contiguous.</p>
+<p>For example:</p>
+<pre><code>Array Index	Lock Index
+0	0
+1	1
+2	2
+3	3
+4	4
+5	0
+6	1
+7	2
+8	3
+9	4
+10	0
+...
+</code></pre>
+<p>If the data structure itself requires changing such as adding or deleting an item, then all locks must be acquired before the structure can be changed.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire all locks
+for lock in locks:
+	lock.acquire()
+# change the data structure
+# ...
+</code></pre>
+<p>Now that we know how to implement lock striping, let's look at a worked example.</p>
+<h2>Example of Lock Contention</h2>
+<p>Before we develop an example of lock striping, let's develop an example of a lock protecting a data structure that suffers high contention.</p>
+<p>In this example, we will have a list with 20 items protected by a single lock. We will then have 20 threads that will attempt to acquire the lock, choose a random index in the array to modify, block for a moment, update the list at the chosen index and report progress.</p>
+<p>The single lock will suffer high contention as all 20 threads will all compete to acquire it in order to modify the list.</p>
+<p>First, we can define a function to operate on our list in a new thread.</p>
+<p>The function takes a unique integer identifier for each thread, the shared lock and the shared data structure as arguments.</p>
+<pre><code># operate on the list
+def task(identifier, lock, data_list):
+	# ...
+</code></pre>
+<p>Firstly, it attempts to acquire the shared lock protecting the list.</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# ...
+</code></pre>
+<p>Next, it randomly chooses an array index at which to operate between 0 and the last item in the list.</p>
+<pre><code>...
+# decide where to operate on the list
+index = randint(0, len(data_list)-1)</code></pre>
+<p>The thread then simulates computational effort by blocking for a random fraction of a second.</p>
+<pre><code>...
+# block for a moment
+sleep(random())</code></pre>
+<p>Finally, the list is updated at the chosen array index by incrementing the value, then the value is reported along with the chosen index and unique thread identifier.</p>
+<pre><code>...
+# update the list at that point
+data_list += 1
+# report
+print(f'.thread {identifier} updated index {index} to {data_list}')</code></pre>
+<p>Tying this together, the task() function implementing this is listed below.</p>
+<pre><code># operate on the list
+def task(identifier, lock, data_list):
+    # acquire the lock
+    with lock:
+        # decide where to operate on the list
+        index = randint(0, len(data_list)-1)
+        # block for a moment
+        sleep(random())
+        # update the list at that point
+        data_list += 1
+        # report
+        print(f'.thread {identifier} updated index {index} to {data_list}')
+</code></pre>
+<p>Next, in the main thread, we will create the shared lock and the shared list data structure initialized with a length of 20 and with zero values.</p>
+<pre><code>...
+# create shared lock
+lock = Lock()
+# create shared data
+data_list = [0 for _ in range(20)]</code></pre>
+<p>We will then create 20 threads configured to execute our <strong>task()</strong> function, each assigned a unique integer identifier. This can be achieved in a list comprehension.</p>
+<pre><code>...
+# create threads
+threads = [Thread(target=task, args=(i, lock, data_list)) for i in range(20)]</code></pre>
+<p>The main thread can then start these new threads, then block until they terminate.</p>
+<pre><code>...
+# start the threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Finally, the status of the shared list can be reported.</p>
+<pre><code>...
+# report the data
+print(data_list)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of lock contention for a list
+from random import randint
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# operate on the list
+def task(identifier, lock, data_list):
+    # acquire the lock
+    with lock:
+        # decide where to operate on the list
+        index = randint(0, len(data_list)-1)
+        # block for a moment
+        sleep(random())
+        # update the list at that point
+        data_list += 1
+        # report
+        print(f'.thread {identifier} updated index {index} to {data_list}')
+
+# create shared lock
+lock = Lock()
+# create shared data
+data_list = [0 for _ in range(20)]
+# create threads
+threads = [Thread(target=task, args=(i, lock, data_list)) for i in range(20)]
+# start the threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+# report the data
+print(data_list)
+</code></pre>
+<p>Running the example, first creates the shared lock and initializes the shared data structure.</p>
+<p>Next, the 20 new threads are configured and started and the main thread blocks until the threads terminate.</p>
+<p>Each thread attempts to acquire the lock protecting the list. Only one thread can acquire the lock at a time and the rest must wait, resulting in high lock contention.</p>
+<p>Once acquired, the thread will randomly choose an array index at which to operate, block for a moment, update the list and report the updated value and other details.</p>
+<p>A sample of output from the program is listed below. Your specific results will differ given the use of random numbers.</p>
+<p>The example takes about 10 seconds to complete on average, due in large part to the high contention for the single lock.</p>
+<pre><code>.thread 0 updated index 17 to 1
+.thread 1 updated index 12 to 1
+.thread 2 updated index 12 to 2
+.thread 3 updated index 5 to 1
+.thread 4 updated index 12 to 3
+.thread 5 updated index 2 to 1
+.thread 6 updated index 13 to 1
+.thread 7 updated index 5 to 2
+.thread 8 updated index 13 to 2
+.thread 9 updated index 12 to 4
+.thread 10 updated index 10 to 1
+.thread 11 updated index 10 to 2
+.thread 12 updated index 12 to 5
+.thread 13 updated index 2 to 2
+.thread 14 updated index 11 to 1
+.thread 15 updated index 4 to 1
+.thread 16 updated index 12 to 6
+.thread 17 updated index 13 to 3
+.thread 18 updated index 9 to 1
+.thread 19 updated index 8 to 1
+[0, 0, 2, 0, 1, 2, 0, 0, 1, 1, 2, 1, 6, 3, 0, 0, 0, 1, 0, 0]</code></pre>
+<p>Next, let's look at how we can reduce lock contention in this example using lock striping.</p>
+<h2>Example of Lock Striping</h2>
+<p>Lock striping can be used to reduce lock contention for items in a list.</p>
+<p>This can be achieved by creating an array of locks, each responsible for protecting a subset of the data structure. Each thread must first choose the area of the data structure on which it will operate, this is then consistently mapped to an appropriate lock, the lock is acquired and the thread can complete the task.</p>
+<p>This dramatically reduces lock contention as a function of the number of locks chosen to protect the data structure.</p>
+<p>We can demonstrate this lock striping approach by updating the example from the previous section.</p>
+<p>First, the <strong>task()</strong> function must be updated to take a list of locks as an argument instead of a single lock.</p>
+<pre><code>...
+# operate on the list
+def task(identifier, locks, data_list):
+	# ...
+</code></pre>
+<p>Next, the thread must choose the area of the array on which it intends to operate, in this case choose a random array index.</p>
+<pre><code>...
+# decide where to operate on the list
+index = randint(0, len(data_list)-1)</code></pre>
+<p>This is then mapped consistently to a lock using the modulo of the number of locks.</p>
+<pre><code>...
+# map the array index to a lock index
+lock_index = index % len(locks)</code></pre>
+<p>The lock can then be acquired and the thread can complete the task as before.</p>
+<pre><code>...
+# acquire the lock
+with locks:
+	# ...
+</code></pre>
+<p>The updated version of the task() function with these changes is listed below.</p>
+<pre><code># operate on the list
+def task(identifier, locks, data_list):
+    # decide where to operate on the list
+    index = randint(0, len(data_list)-1)
+    # map the array index to a lock index
+    lock_index = index % len(locks)
+    # acquire the lock
+    with locks:
+        # block for a moment
+        sleep(random())
+        # update the list at that point
+        data_list += 1
+        # report
+        print(f'.thread {identifier} updated index {index} to {data_list}')
+</code></pre>
+<p>The main thread can then create a list of locks to protect the data structure.</p>
+<p>In this case, we will use five locks to protect the 20 items in the list data structure, each lock protecting 4 array indexes.</p>
+<pre><code>...
+# create shared locks
+locks = [Lock() for _ in range(5)]</code></pre>
+<p>The locks are then passed to the task() function as each thread is created and configured.</p>
+<pre><code>...
+# create threads
+threads = [Thread(target=task, args=(i, locks, data_list)) for i in range(20)]</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of lock striping to reduce lock contention for a list
+from random import randint
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# operate on the list
+def task(identifier, locks, data_list):
+    # decide where to operate on the list
+    index = randint(0, len(data_list)-1)
+    # map the array index to a lock index
+    lock_index = index % len(locks)
+    # acquire the lock
+    with locks:
+        # block for a moment
+        sleep(random())
+        # update the list at that point
+        data_list += 1
+        # report
+        print(f'.thread {identifier} updated index {index} to {data_list}')
+
+# create shared locks
+locks = [Lock() for _ in range(5)]
+# create shared data
+data_list = [0 for _ in range(20)]
+# create threads
+threads = [Thread(target=task, args=(i, locks, data_list)) for i in range(20)]
+# start the threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+# report the data
+print(data_list)
+</code></pre>
+<p>Running the example, first creates the shared lock and initializes the shared data structure.</p>
+<p>Next, the 20 new threads are configured and started and the main thread blocks until the threads terminate.</p>
+<p>Each thread chooses an area of the array to work with, maps this to a lock, then attempts to acquire the lock, then completes its task.</p>
+<p>Contention is reduced from 20 threads fighting over one lock to 20 threads fighting over five locks. As such, lock contention is reduced by about 1/5 (one fifth) on average.</p>
+<p>The example takes about 3.5 seconds to complete on my system on average, down from over ten seconds when all threads were competing for one lock.</p>
+<p>A sample of output from the program is listed below. Your specific results will differ given the use of random numbers.</p>
+<pre><code>.thread 8 updated index 1 to 1
+.thread 14 updated index 1 to 2
+.thread 2 updated index 13 to 1
+.thread 3 updated index 15 to 1
+.thread 0 updated index 7 to 1
+.thread 1 updated index 9 to 1
+.thread 5 updated index 19 to 1
+.thread 11 updated index 7 to 2
+.thread 16 updated index 11 to 1
+.thread 6 updated index 10 to 1
+.thread 17 updated index 12 to 1
+.thread 18 updated index 11 to 2
+.thread 4 updated index 13 to 2
+.thread 19 updated index 16 to 1
+.thread 10 updated index 10 to 2
+.thread 15 updated index 15 to 2
+.thread 12 updated index 14 to 1
+.thread 7 updated index 3 to 1
+.thread 9 updated index 8 to 1
+.thread 13 updated index 18 to 1
+[0, 2, 0, 1, 0, 0, 0, 2, 1, 1, 2, 2, 1, 2, 1, 2, 1, 0, 1, 1]</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use lock striping to reduce lock contention.</p>
 </main>
 </body>
 </html>

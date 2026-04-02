@@ -299,6 +299,317 @@ if __name__ == '__main__':
 <p>We attempt to access the shape of the array.</p>
 <p>In this case, an <strong>AttributeError</strong> exception is raised, reporting that the hosted object has no attribute "<strong>shape</strong>".</p>
 <p>The error is misleading, but it is in fact attempting to execute a shape() method on the hosted object and has no concept of a "shape" attribute.</p>
+<pre><code>Array created on host: array([1., 1., 1., ..., 1., 1., 1.])
+Array sum: 100000000.0
+Traceback (most recent call last):
+  ...
+AttributeError: 'AutoProxy' object has no attribute 'shape'. Did you mean: 'reshape'?
+</code></pre>
+<h3>Example of Accessing Attribute via __getattr__() (failure)</h3>
+<p>Attributes on a Python object are retrieved via the <a href="https://docs.python.org/3/reference/datamodel.html#object.__getattr__"><strong>__getattr__()</strong> method</a>.</p>
+<p>Perhaps we can call this method on the hosted object and pass it the "shape" attribute as an argument.</p>
+<p>We can call a method directly on the hosted object via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.BaseProxy._callmethod"><strong><strong>_callmethod()</strong></strong> method</a> on the proxy object.</p>
+<p>For example:</p>
+<pre><code>...
+# access shape of hosted array
+print(data_proxy._callmethod('__getattr__', args=('shape',)))</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># access attribute of hosted numpy array
+from multiprocessing.managers import BaseManager
+from numpy import ones
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# protect the entry point
+if __name__ == '__main__':
+    # register a function for creating numpy arrays on the manager
+    CustomManager.register('shared_array', ones)
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the size of the numpy array
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.shared_array((n,))
+        print(f'Array created on host: {data_proxy}')
+        # confirm content
+        print(f'Array sum: {data_proxy.sum()}')
+        # access shape of hosted array
+        print(data_proxy._callmethod('__getattr__', args=('shape',)))
+</code></pre>
+<p>Running the example creates and starts the manager as before.</p>
+<p>The array is created and its contents are reported correctly.</p>
+<p>We attempt to access the shape of the array via the <strong>__getattr__()</strong> method.</p>
+<p>This fails with a <strong>RemoteError</strong> exception, highlighting that this method does not exist on the <strong>numpy.ndarray</strong>.</p>
+<pre><code>Array created on host: array([1., 1., 1., ..., 1., 1., 1.])
+Array sum: 100000000.0
+Traceback (most recent call last):
+  ...
+multiprocessing.managers.RemoteError:
+---------------------------------------------------------------------------
+Traceback (most recent call last):
+  File .../multiprocessing/managers.py", line 265, in serve_client
+    raise AttributeError(
+AttributeError: method '__getattr__' of &lt;class 'numpy.ndarray'&gt; object is not in exposed={'partition', 'dump', 'max', 'tofile', 'all', 'trace', 'newbyteorder', 'dumps', 'ravel', 'conjugate', 'take', 'resize', 'sort', 'diagonal', 'conj', 'argmax', 'argsort', 'itemset', 'searchsorted', 'tostring', 'cumsum', 'setfield', 'clip', 'std', 'sum', 'var', 'reshape', 'swapaxes', 'any', 'repeat', 'mean', 'view', 'astype', 'argpartition', 'round', 'argmin', 'choose', 'tobytes', 'ptp', 'byteswap', 'fill', 'tolist', 'cumprod', 'min', 'nonzero', 'prod', 'squeeze', 'transpose', 'setflags', 'copy', 'dot', 'put', 'item', 'flatten', 'getfield', 'compress'}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+KeyError: '__getattr__'
+---------------------------------------------------------------------------
+</code></pre>
+<h3>Example of Accessing Attribute via Wrapper Class</h3>
+<p>Another approach is to define a new class that wraps our numpy array.</p>
+<p>For example, we can define a class that creates the array when it is instantiated, then provides a method called <strong>attribute()</strong> to call the get <strong><a href="https://docs.python.org/3/library/functions.html#getattr">getattr()</a></strong> built-in function on the array.</p>
+<p>A downside of this approach is that any methods we want to call on the numpy array directly will need to be passed on from the custom object to the internal numpy array. One approach is to use a direct wrapper method.</p>
+<p>For example:</p>
+<pre><code># helper wrapping a numpy array
+class ArrayHelper():
+    def __init__(self, dim):
+        self.array = ones(dim)
+
+    # access attributes on the numpy array
+    def attribute(self, attr):
+        return getattr(self.array, attr)
+
+    # call functions on the numpy array
+    def sum(self):
+        return self.array.sum()
+</code></pre>
+<p>We can then register the custom class with our custom manager class.</p>
+<pre><code>...
+# register the python class with the custom manager
+CustomManager.register('ArrayHelper', ArrayHelper)</code></pre>
+<p>Finally, we can then call the <strong>attribute()</strong> method on our custom class directly and pass it the name of the attribute on the numpy array we wish to access.</p>
+<pre><code>...
+# access shape of hosted array
+print(data_proxy.attribute('shape'))</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># access attribute of hosted numpy array
+from multiprocessing.managers import BaseManager
+from numpy import ones
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# helper wrapping a numpy array
+class ArrayHelper():
+    def __init__(self, dim):
+        self.array = ones(dim)
+
+    # access attributes on the numpy array
+    def attribute(self, attr):
+        return getattr(self.array, attr)
+
+    # call functions on the numpy array
+    def sum(self):
+        return self.array.sum()
+
+# protect the entry point
+if __name__ == '__main__':
+    # register the python class with the custom manager
+    CustomManager.register('ArrayHelper', ArrayHelper)
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the size of the numpy array
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.ArrayHelper((n,))
+        print(f'Array created on host: {data_proxy}')
+        # confirm content
+        print(f'Array sum: {data_proxy.sum()}')
+        # access shape of hosted array
+        print(data_proxy.attribute('shape'))
+</code></pre>
+<p>Running the example creates and starts the manager as before.</p>
+<p>The array is created and its contents are reported correctly.</p>
+<p>Finally, the shape attribute is accessed via the helper method on the custom object. The shape is returned and reported correctly.</p>
+<p>Although this approach achieves the desired effect, it requires using an alternate API on the wrapper object, rather than the <strong>ndarray</strong> API directly.</p>
+<pre><code>Array created on host: &lt;__mp_main__.ArrayHelper object at 0x10b6835e0&gt;
+Array sum: 100000000.0
+(100000000,)
+</code></pre>
+<p>There may be even better solutions to exposing attributes on the hosted array, such as defining a custom Proxy object that supports attributes on hosted objects.</p>
+<h2>Example Using Array Indices on Hosted Numpy Array</h2>
+<p>Another limitation of a hosted numpy array is that we cannot easily access array values via array indices.</p>
+<p>In this section, we will explore how to access data in a hosted numpy array.</p>
+<h3>Example of Accessing Numpy Data Directly (failure)</h3>
+<p>The proxy objects do not support the <strong>[:]</strong> array syntax.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>The example below creates a hosted numpy array as before. It then attempts to access the first 10 values of the hosted array via the array index syntax on the proxy object.</p>
+<pre><code>...
+# access data via array index
+print(data_proxy[:10])</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># access data via array index in hosted numpy array
+from multiprocessing.managers import BaseManager
+from numpy import ones
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# protect the entry point
+if __name__ == '__main__':
+    # register a function for creating numpy arrays on the manager
+    CustomManager.register('shared_array', ones)
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the size of the numpy array
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.shared_array((n,))
+        print(f'Array created on host: {data_proxy}')
+        # confirm content
+        print(f'Array sum: {data_proxy.sum()}')
+        # access data via array index
+        print(data_proxy[:10])
+</code></pre>
+<p>Running the example creates and starts the manager as before.</p>
+<p>The array is created and its contents are reported correctly.</p>
+<p>Next, we try to retrieve a copy of the first 10 values in the array using the array syntax with a slice.</p>
+<p>This fails with a TypeError exception, highlighting that the proxy object does not support the subscribable syntax for the hosted object.</p>
+<pre><code>Array created on host: array([1., 1., 1., ..., 1., 1., 1.])
+Array sum: 100000000.0
+Traceback (most recent call last):
+  ...
+TypeError: 'AutoProxy' object is not subscriptable
+</code></pre>
+<h3>Example of Accessing Numpy Data via __getitem__() (failure)</h3>
+<p>We can try and work around this error.</p>
+<p>We can attempt to call the <a href="https://docs.python.org/3/reference/datamodel.html#object.__getitem__"><strong>__getitem__()</strong> method</a> on the hosted object and pass it a slice object.</p>
+<p>The <strong>_callmethod()</strong> can be called on the proxy object and passed the name of the "<strong>__getitem__</strong>" method along with a slice object as an argument.</p>
+<p>Recall, we can construct a slice directly via the <a href="https://docs.python.org/3/library/functions.html#slice"><strong>slice()</strong> built-in function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# access data via array index
+print(data_proxy._callmethod('__getitem__', slice(0,10)))</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># access data via array index in hosted numpy array
+from multiprocessing.managers import BaseManager
+from numpy import ones
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# protect the entry point
+if __name__ == '__main__':
+    # register a function for creating numpy arrays on the manager
+    CustomManager.register('shared_array', ones)
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the size of the numpy array
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.shared_array((n,))
+        print(f'Array created on host: {data_proxy}')
+        # confirm content
+        print(f'Array sum: {data_proxy.sum()}')
+        # access data via array index
+        print(data_proxy._callmethod('__getitem__', slice(0,10)))
+</code></pre>
+<p>Running the example creates and starts the manager as before.</p>
+<p>The array is created and its contents are reported correctly.</p>
+<p>Next, the <strong>__getitem__()</strong> is called on the hosted array with the given slice.</p>
+<p>This fails with a <strong>RemoteError</strong> exception suggesting that the <strong>__getitem__()</strong> is not available on the hosted object.</p>
+<pre><code>Array created on host: array([1., 1., 1., ..., 1., 1., 1.])
+Array sum: 100000000.0
+Traceback (most recent call last):
+  ...
+multiprocessing.managers.RemoteError:
+---------------------------------------------------------------------------
+Traceback (most recent call last):
+  File ".../multiprocessing/managers.py", line 265, in serve_client
+    raise AttributeError(
+AttributeError: method '__getitem__' of &lt;class 'numpy.ndarray'&gt; object is not in exposed={'view', 'trace', 'choose', 'tofile', 'diagonal', 'put', 'dot', 'transpose', 'all', 'copy', 'ravel', 'std', 'tolist', 'dumps', 'newbyteorder', 'getfield', 'max', 'mean', 'argmin', 'round', 'byteswap', 'setflags', 'take', 'argmax', 'argpartition', 'clip', 'repeat', 'tobytes', 'fill', 'searchsorted', 'resize', 'var', 'reshape', 'any', 'partition', 'nonzero', 'cumsum', 'cumprod', 'min', 'conjugate', 'conj', 'itemset', 'setfield', 'argsort', 'sort', 'ptp', 'compress', 'prod', 'squeeze', 'item', 'tostring', 'dump', 'sum', 'swapaxes', 'astype', 'flatten'}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+KeyError: '__getitem__'
+---------------------------------------------------------------------------
+</code></pre>
+<h3>Example of Accessing Numpy Data With Wrapper Class</h3>
+<p>We can solve this issue as we did with the need to access attributes on the hosted object.</p>
+<p>That is, we can define a custom class that wraps the array and provide a method that offers the desired capability.</p>
+<p>In this case, we can define a method called <strong>getdata()</strong> that takes a slice argument and returns data at that slice.</p>
+<p>For example:</p>
+<pre><code># helper wrapping a numpy array
+class ArrayHelper():
+    def __init__(self, dim):
+        self.array = ones(dim)
+
+    # access array data by slice
+    def getdata(self, array_slice):
+        return self.array
+
+    # call functions on the numpy array
+    def sum(self):
+        return self.array.sum()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># access data via array index in hosted numpy array
+from multiprocessing.managers import BaseManager
+from numpy import ones
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# helper wrapping a numpy array
+class ArrayHelper():
+    def __init__(self, dim):
+        self.array = ones(dim)
+
+    # access array data by slice
+    def getdata(self, array_slice):
+        return self.array
+
+    # call functions on the numpy array
+    def sum(self):
+        return self.array.sum()
+
+# protect the entry point
+if __name__ == '__main__':
+    # register the a python class with the custom manager
+    CustomManager.register('ArrayHelper', ArrayHelper)
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the size of the numpy array
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.ArrayHelper((n,))
+        print(f'Array created on host: {data_proxy}')
+        # confirm content
+        print(f'Array sum: {data_proxy.sum()}')
+        # access data in the array
+        print(data_proxy.getdata(slice(0,10)))
+</code></pre>
+<p>Running the example creates and starts the manager as before.</p>
+<p>The array is created and its contents are reported correctly.</p>
+<p>Finally, the custom <strong>getdata()</strong> method is accessed on the hosted object. This returns a copy of the data at the given slice, which is a sub-array that contains the first 10 values.</p>
+<pre><code>Array created on host: &lt;__mp_main__.ArrayHelper object at 0x10945f640&gt;
+Array sum: 100000000.0
+[1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+</code></pre>
+<h2>Recommendations</h2>
+<p>Hosting a numpy array and working across multiple processes via proxy objects is efficient.</p>
+<p>We do not need to copy the array from process to process, which saves a lot of time.</p>
+<p>Nevertheless, the functionality on the hosted array is limited via the proxy object. This includes accessing attributes on the array and data via array indexes.</p>
+<p>A compromise might be to clearly define the use cases for accessing and using the array across the processes, then define a custom class to wrap the array and perform the desired operations.</p>
+<p>This may also allow the use of mutex locks to ensure changes to the hosted array are also process-safe.</p>
+<h2>Takeaways</h2>
+<p>You now know how to share an array between processes using a manager.</p>
 </main>
 </body>
 </html>

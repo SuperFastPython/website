@@ -205,6 +205,70 @@ Line #      Hits         Time  Per Hit   % Time  Line Contents
 <p>This is a CPU-bound task that will block the asyncio event loop for the duration.</p>
 <p>It is also a target coroutine with a single line, which makes things challenging for the <strong>line_profiler</strong> that can only report at the level of lines.</p>
 <p>We will annotate this coroutine so that we can profile it, pretending we don't know the cause of the issue.</p>
+<pre><code># long running task
+@profile
+async def work():
+    # block the event loop for a long time
+    data = [math.sqrt(i) for i in range(1, 100000000)]
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a program that calls a function repeatedly
+import math
+import asyncio
+
+# long running task
+@profile
+async def work():
+    # block the event loop for a long time
+    data = [math.sqrt(i) for i in range(1, 100000000)]
+
+# main program
+async def main():
+    # report a message
+    print('Main is running')
+    # create the task
+    task = asyncio.create_task(work())
+    # await our task
+    await task
+    # report a message
+    print('Main is done.')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, we can run our program via the <strong>kernprof</strong> custom script to collect profile information.</p>
+<pre><code>kernprof -l program2.py</code></pre>
+<p>This runs the program and stores the results in a binary file <strong>program2.py.lprof</strong>.</p>
+<pre><code>Main is running
+Main is done.
+Wrote profile results to program2.py.lprof
+Inspect results with:
+python3 -m line_profiler -rmt "program2.py.lprof"
+</code></pre>
+<p>We can then inspect a report of the collected profile statistics.</p>
+<pre><code>python -m line_profiler program2.py.lprof</code></pre>
+<p>This produces a report.</p>
+<p>We can see each line of our target function on the right-hand side.</p>
+<p>We can also see the number of times each line of the function was executed (Hits), which was once, and the wall clock time spent executing each line.</p>
+<p>Given that the task within our target function is occurring on a single line within a list comprehension, we cannot see more detail than the line level in the profile report.</p>
+<p>This highlights the limitation of the <strong>line_profiler</strong> module, that it does allow a function or coroutine to be targeted for profiling, but is limited to reporting profile information at the line level.</p>
+<p>Here, are not given more detail about the function (or functions) within the list comprehension which is slow. We would have to use the <a href="https://docs.python.org/3/library/profile.html"><strong>cProfile</strong> tool</a> to get more information.</p>
+<pre><code>Timer unit: 1e-06 s
+
+Total time: 20.5964 s
+File: test2.py
+Function: work at line 7
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+     7                                           @profile
+     8                                           async def work():
+     9                                               # block the event loop for a long time
+    10         1   20596383.0    2e+07    100.0      data = [math.sqrt(i) for i in range(1, 100000000)]
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use the line_profiler module to profile targeted coroutines in asyncio.</p>
 </main>
 </body>
 </html>
