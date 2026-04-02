@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Task That Cancels Itself – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Task That Cancels Itself</h1>
+<div class="post-meta">December 28, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can develop a task that cancels itself by first getting access to the <strong>asyncio.Task</strong> instance using <strong>asyncio.current_task()</strong>, then calling the <strong>cancel()</strong> method.</p>
+<p>In this tutorial, you will discover how an <strong>asyncio task can cancel itself</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>What is Asyncio Task Cancellation?</h2>
+<p>Asyncio tasks can be canceled.</p>
+<p>This can be achieved by calling the <strong>cancel()</strong> method on the <strong>asyncio.Task</strong>. This will request that the task be canceled as soon as possible and return <strong>True</strong> if the request was successful or <strong>False</strong> if it was not, e.g. the task is already done.</p>
+<blockquote>
+<p>Request the Task to be cancelled. This arranges for a CancelledError exception to be thrown into the wrapped coroutine on the next cycle of the event loop.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+if task.cancel():
+	# request successful
+</code></pre>
+<p>The next time that the target task that was canceled resumes, a <strong>CancelledError</strong> exception will be raised.</p>
+<p>This exception will bubble up to the top level of the task and cause it to stop running.</p>
+<p>You can learn more about the mechanics of cancellation a task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<p>You can also learn more about task cancellation best practices in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-cancellation-best-practices/">Asyncio Task Cancellation Best Practices</a></li>
+</ul>
+<h2>Task Needs to Cancel Itself</h2>
+<p>Sometimes we may need a task to cancel itself.</p>
+<p>This may be for many reasons.</p>
+<p>Most commonly, some exceptional events may have occurred. Instead of propagating the exception we want the task to be canceled, and importantly, to have the "<em>cancelled</em>" state when inspected externally.</p>
+<p>Alternatively, a complex task may catch and handle a <strong>CancelledError</strong> exception, then not want to propagate the <strong>CancelledError</strong> until the next time it resumes.</p>
+<p><strong>Can a task cancel itself?</strong></p>
+<p>How can we implement a task that cancels itself?</p>
+<h2>Asyncio Tasks Can Cancel Itself</h2>
+<p>An asyncio task can cancel itself.</p>
+<p>This requires that the task has or retrieves a reference to its own <strong>asyncio.Task</strong> instance then calls the <strong>cancel()</strong> method.</p>
+<p>The next time the task is suspended, a <strong>CancelledError</strong> will be raised.</p>
+<p>If the task does not suspend, then a <strong>CancelledError</strong> will be raised when it terminates.</p>
+<p>Any subtasks of the current task will also be canceled automatically, as long as they are being awaited by the task that canceled itself.</p>
+<p>A task can get access to its own <strong>asyncio.Task</strong> instance via the <strong>asyncio.current_task()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# get the current task
+task = asyncio.current_task()</code></pre>
+<p>You can learn more about getting the current task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-current-task/">How to Get the Current Asyncio Task in Python</a></li>
+</ul>
+<p>We can then cancel the task.</p>
+<pre><code>...
+# cancel the current task
+task.cancel()</code></pre>
+<p>Or, in one line:</p>
+<pre><code>...
+# cancel the current task
+asyncio.current_task().cancel()</code></pre>
+<p>And that's all there is to it.</p>
+<p>Next, let's look at some examples of tasks canceling themselves.</p>
+<h2>Example of Asyncio Task Canceling Itself</h2>
+<p>We can explore an example of a task that cancels itself which takes effect the next time it suspends.</p>
+<p>In this example, we will create a task and await it in the main coroutine. The task will report a message, sleep, and then cancel itself. It will then sleep again which will cause the <strong>CancelledError</strong> exception to be propagated and observed in the main coroutine.</p>
+<p>Firstly, we can define the task that cancels itself.</p>
+<p>The task reports a message, sleeps, cancels itself, sleeps again, and then reports a final message.</p>
+<p>The <strong>work()</strong> coroutine below implements this.</p>
+<pre><code># task that take a long time
+async def work():
+    # report a message
+    print('Task is starting')
+    # block a moment
+    await asyncio.sleep(0.5)
+    # task cancels itself
+    asyncio.current_task().cancel()
+    # block a moment
+    await asyncio.sleep(0.5)
+    # report a message
+    print('Task is done')
+</code></pre>
+<p>We don't expect the final message to be reported as the <strong>CancelledError</strong> will be raised and propagate on the second sleep.</p>
+<p>Next, the <strong>main()</strong> coroutine can be defined that creates the <strong>work()</strong> task in the background.</p>
+<p>It then awaits it within a try-except block and checks for a <strong>CancelledError</strong> exception.</p>
+<pre><code># main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # await the task
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio task canceling itself
+import asyncio
+
+# task that take a long time
+async def work():
+    # report a message
+    print('Task is starting')
+    # block a moment
+    await asyncio.sleep(0.5)
+    # task cancels itself
+    asyncio.current_task().cancel()
+    # block a moment
+    await asyncio.sleep(0.5)
+    # report a message
+    print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # await the task
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine creates and runs the <strong>work()</strong> coroutine in the background, and then awaits it.</p>
+<p>The <strong>work()</strong> coroutine runs and reports a message then suspends with a sleep.</p>
+<p>The <strong>work()</strong> coroutine resumes and cancels itself. It then suspends again with a second sleep.</p>
+<p>The <strong>CancelledError</strong> is raised and bubbles up, terminating the <strong>work()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine resumes and handles the <strong>CancelledError</strong> reporting a cancellation message, and then reports the final message.</p>
+<p>This highlights how a task can cancel itself and how the <strong>CancelledError</strong> is not raised until the next time the task is suspended.</p>
+<pre><code>Task is starting
+Main saw the task cancel
+Main is done</code></pre>
+<h2>Example of Task Canceling Itself on Termination</h2>
+<p>We can explore an example of a task that cancels itself that takes effect when the task is terminated.</p>
+<p>In this case, we will update the above example so that it does not explicitly sleep after canceling itself.</p>
+<p>The updated <strong>work()</strong> coroutine with this change is listed below.</p>
+<pre><code># task that take a long time
+async def work():
+    # report a message
+    print('Task is starting')
+    # task cancels itself
+    asyncio.current_task().cancel()
+    # report a message
+    print('Task is done')
+</code></pre>
+<p>This will prevent the <strong>CancelledError</strong> from rising in the <strong>work()</strong> coroutine while running.</p>
+<p>Instead, the <strong>CancelledError</strong> will propagate after the <strong>work()</strong> coroutine terminates.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio task canceling itself on termination
+import asyncio
+
+# task that take a long time
+async def work():
+    # report a message
+    print('Task is starting')
+    # task cancels itself
+    asyncio.current_task().cancel()
+    # report a message
+    print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # await the task
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine creates and runs the <strong>work()</strong> coroutine in the background, and then awaits it.</p>
+<p>The <strong>work()</strong> coroutine runs and reports a message then suspends with a sleep.</p>
+<p>The <strong>work()</strong> coroutine resumes and cancels itself. It then reports a second message and then terminates.</p>
+<p>Once the <strong>work()</strong> coroutine is done, it raises a <strong>CancelledError</strong> exception, which propagates up to the parent task.</p>
+<p>The <strong>main()</strong> coroutine resumes and handles the <strong>CancelledError</strong> reporting a cancellation message, and then reports the final message.</p>
+<p>This highlights how a task can cancel itself and the <strong>CancelledError</strong> exception is not propagated until it terminates.</p>
+<pre><code>Task is starting
+Task is done
+Main saw the task cancel
+Main is done</code></pre>
+<h2>Example of Task With Subtask Canceling Itself</h2>
+<p>We can explore an example of a task that cancels itself and also cancels a subtask.</p>
+<p>In this case, we will update the above example so that the <strong>work()</strong> coroutine creates a long-running coroutine to run in the background.</p>
+<p>It will then cancel itself and sleep, allowing the <strong>CancelledError</strong> to be raised and propagate, terminating itself and its subtask.</p>
+<p>Firstly, we can define the subtask. This task will sleep for 10 seconds and handles the <strong>CancelledError</strong> exception in order to report a message, so we can see when it is canceled, then re-raise the <strong>CancelledError</strong> exception.</p>
+<p>The <strong>work2()</strong> coroutine below implements this.</p>
+<pre><code># task that take a long time
+async def work2():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        # report a normal message
+        print('Subtask sleep completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Subtask is cancelled')
+        # re-raise the cancellation
+        raise
+</code></pre>
+<p>Next, we can update the <strong>work()</strong> coroutine to create and issue the <strong>work2()</strong> coroutine in the background.</p>
+<p>It will then await the <strong>work2()</strong> task after canceling itself, allowing the <strong>CancelledError</strong> to propagate down to the subtask.</p>
+<pre><code># task that take a long time
+async def work():
+    # report a message
+    print('Task is starting')
+    # issue a long running task
+    task = asyncio.create_task(work2())
+    # block a moment
+    await asyncio.sleep(0.5)
+    # task cancels itself
+    asyncio.current_task().cancel()
+    # wait for the child task to complete
+    await task
+    # report a message
+    print('Task is done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio task with a subtask canceling itself
+import asyncio
+
+# task that take a long time
+async def work2():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        # report a normal message
+        print('Subtask sleep completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Subtask is cancelled')
+        # re-raise the cancellation
+        raise
+
+# task that take a long time
+async def work():
+    # report a message
+    print('Task is starting')
+    # issue a long running task
+    task = asyncio.create_task(work2())
+    # block a moment
+    await asyncio.sleep(0.5)
+    # task cancels itself
+    asyncio.current_task().cancel()
+    # wait for the child task to complete
+    await task
+    # report a message
+    print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # await the task
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine creates and runs the <strong>work()</strong> coroutine in the background, and then awaits it.</p>
+<p>The <strong>work()</strong> coroutine runs and reports a message. It then creates and schedules the <strong>work2()</strong> coroutine before suspending with a sleep.</p>
+<p>The <strong>work2()</strong> coroutine runs and suspends with a sleep.</p>
+<p>The <strong>CancelledError</strong> first propagates down and cancels the awaited subtask. The <strong>CancelledError</strong> exception is raised in the <strong>work2()</strong> coroutine, which is handled, reporting a message, then re-raised.</p>
+<p>The <strong>CancelledError</strong> exception bubbles up terminating the <strong>work()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine resumes and handles the <strong>CancelledError</strong> reporting a cancellation message, and then reports the final message.</p>
+<p>This highlights how a task can cancel itself and cancel its subtasks if the subtask is explicitly awaited after the request to self-cancel.</p>
+<p>Note, if we did not await <strong>work2()</strong> in <strong>work()</strong> and instead left it to run in the background, then it would be free to resume or terminate (be canceled) when the event loop is terminated.</p>
+<pre><code>Task is starting
+Subtask is cancelled
+Main saw the task cancel
+Main is done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how an asyncio task can cancel itself in Python.</p>
+</main>
+</body>
+</html>

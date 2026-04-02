@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fix FileNotFoundError With Multiprocessing in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Fix FileNotFoundError With Multiprocessing in Python</h1>
+<div class="post-meta">May 26, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You may get a <strong>FileNotFoundError</strong> when <strong>sharing concurrency primitives</strong> with child processes.</p>
+<p>In this tutorial you will discover the preconditions when getting a <strong>FileNotFoundError</strong> when using multiprocessing in Python and how to fix this error in your programs.</p>
+<p>Let's get started.</p>
+<h2>FileNotFoundError With New Process</h2>
+<p>It is common to get a <strong><a href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError">FileNotFoundError</a></strong> when sharing a concurrency primitive object with a <a href="../multiprocessing-in-python/">child process</a>.</p>
+<p>This error is most common on MacOS and Windows.</p>
+<p>This error is well understood, repeatable and there are fixes we can use.</p>
+<p>Before we dive into understanding and fixing this error, let's look at a worked example that recreates it.</p>
+<p>The example below runs a custom function named <strong>task()</strong> in a child process. The function takes a mutex lock, then acquires the lock and blocks for one second. The main process starts first, creates the shared lock, then configures the child process to execute the <strong>task()</strong> function by passing the lock as an argument.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a common error when using processes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# executed in a new thread
+def task(lock):
+    # acquire the lock
+    with lock:
+        # block for a moment
+        sleep(1)
+
+# entry point
+if __name__ == '__main__':
+    # create a shared lock
+    lock = Lock()
+    # create a process that uses the lock
+    process = Process(target=task, args=(lock,))
+    # start the process
+    process.start()
+</code></pre>
+<p>Running the example on MacOS or Windows results in the error.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+FileNotFoundError: [Errno 2] No such file or directory
+</code></pre>
+<p>We can create the same error on other platforms, like Linux.</p>
+<p>This can be achieved by configuring the program to use the '<strong>spawn</strong>' method when creating the child process, the default on MacOS and Windows.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of a common error when using processes
+from time import sleep
+from multiprocessing import set_start_method
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# executed in a new thread
+def task(lock):
+    # acquire the lock
+    with lock:
+        # block for a moment
+        sleep(1)
+
+# entry point
+if __name__ == '__main__':
+    # set the spawn start method
+    set_start_method('spawn')
+    # create a shared lock
+    lock = Lock()
+    # create a process that uses the lock
+    process = Process(target=task, args=(lock,))
+    # start the process
+    process.start()
+</code></pre>
+<p>Running the example on any platform, e.g. Linux, Windows, or MacOS, results in the error.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+FileNotFoundError: [Errno 2] No such file or directory
+</code></pre>
+<p><strong>What are the preconditions for this error to occur?</strong></p>
+<h2>Cause of FileNotFoundError With New Process</h2>
+<p>This error is known and has been reported, for example:</p>
+<ul><li><a href="https://bugs.python.org/issue40106">multiprocessor spawn</a></li><li><a href="https://bugs.python.org/issue28965">Multiprocessing spawn/forkserver fails to pass Queues</a></li></ul>
+<p>It is sometimes reported as being specific to MacOS or to a specific concurrency primitive.</p>
+<p>Nevertheless, there are three elements or pre-conditions that must be present for this error to occur.</p>
+<p>They are:</p>
+<ol><li>Use the 'spawn' start method to create new processes.</li><li>Share a concurrent primitive with one or more processes.</li><li>Main process exits before the child process starts up fully.</li></ol>
+<p>Let's take a closer look at each element in turn.</p>
+<h3>Precondition 1: Spawn Start Method</h3>
+<p>The error requires that you are using the '<strong>spawn</strong>' start method.</p>
+<p>Recall, the start method is the technique used by your system to start new child processes.</p>
+<p>It may be '<strong>fork</strong>' or '<strong>spawn</strong>', or sometimes '<strong>forkserver</strong>'.</p>
+<p>For the error to occur, you must be using the '<strong>spawn</strong>' start method. This is the default start method for creating child processes on MacOS and Windows.</p>
+<blockquote><p>spawn: Available on Unix and Windows. The default on Windows and macOS.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>You can check the child process start method you are using via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.get_start_method"><strong>multiprocessing.get_start_method()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of checking the start method
+from multiprocessing import get_start_method
+# get the start method
+method = get_start_method()
+# report the start method
+print(method)
+</code></pre>
+<p>Running the example reports the current start method used for creating child processes.</p>
+<pre><code>spawn</code></pre>
+<h3>Precondition 2: Share Concurrency Primitive</h3>
+<p>The error requires that you share a concurrency primitive between the main process and one or more child processes.</p>
+<p>Recall that the main process is the default or first process started to run your program.</p>
+<p>Also, recall that concurrency primitives are those objects used to synchronization or coordinate behavior between processes, such as:</p>
+<ul><li>Lock via the <strong>multiprocessing.Lock</strong> class.</li><li>RLock via the <strong>multiprocessing.RLock</strong> class.</li><li>Semaphore via the <strong>multiprocessing.Semaphore</strong> class.</li><li>Event via the <strong>multiprocessing.Event</strong> class.</li><li>Condition via the <strong>multiprocessing.Condition</strong> class.</li><li>Barrier via the <strong>multiprocessing.Barrier</strong> class.</li></ul>
+<h3>Precondition 3: Main Process Ends Early</h3>
+<p>The error requires that the main process finishes before the child process (or child processes) have had time to start-up completely.</p>
+<p>This typically involves the main process having no further instructions to execute after starting the child process or processes.</p>
+<p>This causes the error because the main process will terminate too soon and attempt to clean-up or garbage collect objects that are no longer needed, such as the shared concurrency primitive. Then, when the child process starts and attempts to use the concurrency primitive, it gets an error.</p>
+<p>We get a <strong>FileNotFoundError</strong> because under the covers, processes coordinate with each other via files on the hard drive.</p>
+<p>Now that we know the preconditions for the error, let's look at how we might fix the error.</p>
+<h2>How to Fix FileNotFoundError With New Process</h2>
+<p>There are two ways we might fix the error.</p>
+<p>The they:</p>
+<ol><li>Change start method.</li><li>Block the main process.</li></ol>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Change Start Method</h3>
+<p>We can fix the error by changing the start method to '<strong>fork</strong>', if on Windows or MacOS.</p>
+<p>This can be achieved via the <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.set_start_method">multiprocessing.set_start_method()</a></strong> which must be called before creating a child process.</p>
+<p>For example:</p>
+<pre><code>...
+# change start method
+set_start_method('fork')</code></pre>
+<p>This method may not be available on all platforms, e.g. it may not be available on windows.</p>
+<p>The complete example with this fix is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of fix for common error with processes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+from multiprocessing import set_start_method
+
+# executed in a new thread
+def task(lock):
+    # acquire the lock
+    with lock:
+        # block for a moment
+        sleep(1)
+
+# entry point
+if __name__ == '__main__':
+    # change start method
+    set_start_method('fork')
+    # create a shared lock
+    lock = Lock()
+    # create a process that uses the lock
+    process = Process(target=task, args=(lock,))
+    # start the process
+    process.start()
+</code></pre>
+<h3>Block Main Process</h3>
+<p>We can fix the error by blocking the main process long enough to allow the child processes to start-up and run.</p>
+<p>This could be achieved with a call to <strong><a href="https://docs.python.org/3/library/time.html">time.sleep()</a></strong>, although how long is long enough to sleep?</p>
+<p>A preferred approach is to block the main process by waiting for the child process to terminate. This can be achieved via the <strong>Process.join()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# block main process
+process.join()</code></pre>
+<p>The complete example with this fix is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of fix for common error with processes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# executed in a new thread
+def task(lock):
+    # acquire the lock
+    with lock:
+        # block for a moment
+        sleep(1)
+
+# entry point
+if __name__ == '__main__':
+    # create a shared lock
+    lock = Lock()
+    # create a process that uses the lock
+    process = Process(target=task, args=(lock,))
+    # start the process
+    process.start()
+    # block main process
+    process.join()
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know the preconditions for getting <strong>FileNotFoundError</strong> when using multiprocessing in Python, and how to fix the error.</p>
+</main>
+</body>
+</html>

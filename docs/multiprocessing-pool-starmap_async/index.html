@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool.starmap_async() in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool.starmap_async() in Python</h1>
+<div class="post-meta">July 14, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can map a function that takes <strong>multiple arguments</strong> to tasks in the <strong>process pool</strong> asynchronously via the <strong><a href="../multiprocessing-pool-python/">Pool</a> starmap_async()</strong> function.</p>
+<p>In this tutorial you will discover how to <strong>issue tasks asynchronously to the process pool</strong> that take multiple arguments in Python.</p>
+<p>Let's get started.</p>
+<h2>Problem with Pool.starmap()</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The built-in <strong>map()</strong> function allows you to apply a function to each item in an iterable. A problem with this function is that it converts the provided iterable of items into a list and submits all items as tasks to the process pool then blocks until all tasks are complete.</p>
+<p>It yields one result returned from the given target function called with one item from a given iterable. It is common to call <strong><a href="https://docs.python.org/3/library/functions.html#map">map()</a></strong> and iterate the results in a for-loop.</p>
+<p>The process pool provides a version of the <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.map">map()</a></strong> function called <strong>Pool.starmap()</strong> that will call a target function that is called for each item in the provided iterable in parallel. Like the built-in <strong>map()</strong> function, it supports multiple arguments for the target function.</p>
+<p>The problem with the <strong>Pool.starmap()</strong> function is that it blocks until all tasks are completed. The caller must wait until all of the issued function calls on the provided iterable return.</p>
+<p>The <strong>Pool.starmap_async()</strong> function provides a way to workaround this limitation.</p>
+<h2>How to Use Pool.starmap_async()</h2>
+<p>The process pool provides an asynchronous version of the <strong>starmap()</strong> function via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.starmap_async"><strong>Pool.starmap_async()</strong> function</a>.</p>
+<p>The <strong>starmap_async()</strong> function does not block while the function is applied to each item in the iterable, instead it returns a <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult"><strong>AsyncResult</strong> object</a> from which the results may be accessed.</p>
+<blockquote><p>A combination of starmap() and map_async() that iterates over iterables and calls func with the iterables unpacked. Returns a result object.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Like the <strong>starmap()</strong> function, the <strong>Pool.starmap_async() </strong>function allows the target task function to receive multiple arguments.</p>
+<p>For example, we may have an iterable in which each item in the iterable is an iterable of arguments for each function call.</p>
+<p>We might have a target task function that takes two arguments.</p>
+<pre><code># target task function
+def task(arg1, arg2):
+	# ...
+</code></pre>
+<p>We may then define an iterable that contains 3 items and will result in 3 calls to the target task function.</p>
+<pre><code>...
+# define an iterable
+items = [(1,2), (3,4), (5,6)]</code></pre>
+<p>Each item in the iterable is a tuple that contains two items, for the two arguments to the target task function.</p>
+<p>We can issue this to the process pool using the <strong>starmap_async()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.starmap_async(task, items)</code></pre>
+<p>This will result in three tasks in the process pool, each calling the target <strong>task()</strong> function with two arguments:</p>
+<ul><li><strong>task(1,2)</strong></li><li><strong>task(3,4)</strong></li><li><strong>task(5,6)</strong></li></ul>
+<p>Like the <strong>Pool.map()</strong> function the <strong>Pool.starmap_async()</strong> allows us to issue tasks in chunks to the process pool. That is, we can group a fixed number of items from the input iterable and issue them as one task to be executed by a child worker process.</p>
+<p>This can make completing a large number of tasks in a very long iterable more efficient as arguments and return values from the target task function can be transmitted in batches with less computational overhead.</p>
+<p>This can be achieved via the "<strong>chunksize</strong>" argument to <strong>starmap_async()</strong>.</p>
+<blockquote><p>The chunksize argument is the same as the one used by the map() method. For very long iterables using a large value for chunksize can make the job complete much faster than using the default value of 1.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.starmap_async(task, items, chunksize=10)</code></pre>
+<p>Because <strong>starmap_async()</strong> does not block, it allows the caller to continue and retrieve the result when needed.</p>
+<p>The result is an iterable of return values which can be accessed via the <strong>get()</strong> function on the <strong>AsyncResult</strong> object.</p>
+<p>For example:</p>
+<pre><code>...
+# iterate over return values
+for value in result.get():
+	# ...
+</code></pre>
+<p>A callback function can be called automatically if the task was successful, e.g. no error or exception.</p>
+<p>The callback function must take one argument, which is the iterable of return values from the target task function.</p>
+<p>The function is specified via the "<strong>callback</strong>" argument to the <strong>starmap_async()</strong> function.</p>
+<p>For example:</p>
+<pre><code># callback function
+def custom_callback(result_iterable):
+	# iterate results
+	for result in result_iterable:
+		print(f'Got result: {result}')
+
+...
+# issue a task asynchronously to the process pool with a callback
+result = pool.starmap_async(task, callback=custom_callback)
+</code></pre>
+<p>Similarly, an error callback function can be specified via the "<strong>error_callback</strong>" argument that is called only when an unexpected error or exception is raised.</p>
+<p>The error callback function must take one argument, which is the instance of the error or exception that was raised.</p>
+<p>For example:</p>
+<pre><code># error callback function
+def custom_error_callback(error):
+	print(f'Got error: {error}')
+
+...
+# issue a task asynchronously to the process pool with an error callback
+result = pool.starmap_async(task, error_callback=custom_error_callback)
+</code></pre>
+<p>Next, let's take a closer look at how the <strong>starmap() </strong>function compares to other functions on the process pool.</p>
+<h3>Difference Between starmap_async() and starmap()</h3>
+<p>How does the <strong>Pool.starmap_async()</strong> function compare to the <strong>Pool.starmap()</strong> for issuing tasks to the process pool?</p>
+<p>Both the <strong>starmap_async()</strong> and <strong>starmap()</strong> may be used to issue tasks that call a function in the process pool with more than one argument.</p>
+<p>The following summarizes the key differences between these two functions:</p>
+<ol><li>The <strong>starmap_async()</strong> function does not block, whereas the <strong>starmap()</strong> function blocks.</li><li>The <strong>starmap_async()</strong> function returns an AsyncResult, whereas the <strong>starmap()</strong> function returns an iterable of return values from the target function</li><li>The <strong>starmap_async()</strong> function can execute callback functions on return values and errors, whereas the <strong>starmap() </strong>function does not support callback functions.</li></ol>
+<p>The <strong>starmap_async()</strong> function should be used for issuing target task functions to the process pool where the caller cannot or must not block while the task is executing.</p>
+<p>The <strong>starmap()</strong> function should be used for issuing target task functions to the process pool where the caller can or must block until all function calls are complete.</p>
+<p>Now that we know how to use the <strong>starmap()</strong> function to execute tasks in the process pool, let's look at some worked examples.</p>
+<h2>Example of starmap_async()</h2>
+<p>We can explore how to use the <strong>starmap_async()</strong> function with the process pool.</p>
+<p>In this example, we can define a target task function that takes two arguments, reports the values then returns the values that were passed in. We can then call this function for each integer between 0 and 9 using the process pool <strong>starmap_async()</strong>.</p>
+<p>This will apply the function to each integer in parallel using as many cores as are available in the system.</p>
+<p>Firstly, we can define the target task function.</p>
+<p>The function takes an integer identifier and floating point value. It reports the values, then blocks for a fraction of a second to simulate computational effort, then returns the values that were provided as arguments.</p>
+<p>The task() function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+</code></pre>
+<p>We can then create and configure a process pool.</p>
+<p>We will use the context manager interface to ensure the pool is shutdown automatically once we are finished with it.</p>
+<p>If you are new to the context manager interface of the process pool, you can learn more in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>We can then define an iterable that provides the arguments to the <strong>task()</strong> function. The iterable will be a list of tuples, where each tuple will contain an integer value and randomly generated floating point value between 0 and 1.</p>
+<p>This can be prepared in a list comprehension.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, random()) for i in range(10)]</code></pre>
+<p>We can then call the <strong>starmap()</strong> function on the process pool to apply our <strong>task()</strong> function to each tuple of arguments in the prepared list.</p>
+<p>This will return immediately with an <strong>AsyncResult</strong> object.</p>
+<pre><code>...
+# issues tasks to process pool
+result = pool.starmap_async(task, items)</code></pre>
+<p>We will then iterate over the iterable of results accessible via the <strong>get()</strong> function on the <strong>AsyncResult</strong> object.</p>
+<p>This can be achieved via a for-loop.</p>
+<pre><code>...
+# iterate results
+for result in result.get():
+    print(f'Got result: {result}', flush=True)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of parallel starmap_async() with the process pool
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(10)]
+        # issues tasks to process pool
+        result = pool.starmap_async(task, items)
+        # iterate results
+        for result in result.get():
+            print(f'Got result: {result}', flush=True)
+    # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the process pool with a default configuration.</p>
+<p>It will have one child worker process for each logical CPU in your system.</p>
+<p>The list of function arguments is then prepared, then the <strong>starmap_async()</strong> function is then called for the target function and the list of arguments.</p>
+<p>This issues 10 calls to the <strong>task()</strong> function, one for each tuple of arguments. A <strong>AsyncResult</strong> object is returned immediately, and the main process is free to continue on.</p>
+<p>Each call to the task function reports the arguments as a message, blocks, then returns a tuple of the arguments.</p>
+<p>The main process then accesses the iterable of return values via the <strong>AsyncResult</strong>. It iterates over the values returned from the calls to the <strong>task()</strong> function and reports the generated values, matching those generated in each child process.</p>
+<p>Importantly, all <strong>task()</strong> function calls are issued and executed before the iterator of results is made available via the <strong>AsyncResult</strong> instance. We cannot iterate over results as they are completed by the caller.</p>
+<pre><code>Task 0 executing with 0.04858687961908725
+Task 1 executing with 0.8660633005744954
+Task 2 executing with 0.29229441676119794
+Task 3 executing with 0.30829421674756163
+Task 4 executing with 0.04643637303763071
+Task 5 executing with 0.5717794864804547
+Task 6 executing with 0.8129779908301857
+Task 7 executing with 0.5574933281142
+Task 8 executing with 0.5505255197961183
+Task 9 executing with 0.8470605835868059
+Got result: (0, 0.04858687961908725)
+Got result: (1, 0.8660633005744954)
+Got result: (2, 0.29229441676119794)
+Got result: (3, 0.30829421674756163)
+Got result: (4, 0.04643637303763071)
+Got result: (5, 0.5717794864804547)
+Got result: (6, 0.8129779908301857)
+Got result: (7, 0.5574933281142)
+Got result: (8, 0.5505255197961183)
+Got result: (9, 0.8470605835868059)
+</code></pre>
+<p>Next, let's look at an example where we might call <strong>starmap_async()</strong> for a function with no return value.</p>
+<h2>Example of starmap_async with No Return Value</h2>
+<p>We can explore using the <strong>starmap_async()</strong> function to call a function for each tuple in an iterable that does not have a return value.</p>
+<p>This means that we are not interested in the iterable of results returned by the call to <strong>starmap_async()</strong> and instead are only interested that all issued tasks get executed.</p>
+<p>This can be achieved by updating the previous example so that the <strong>task()</strong> function does not return a value.</p>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+</code></pre>
+<p>Then, in the main process, we can call <strong>starmap_async()</strong> with our <strong>task()</strong> function and the list of tuples, as before.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, random()) for i in range(10)]
+# issues tasks to process pool
+result = pool.starmap_async(task, items)</code></pre>
+<p>Importantly, because the call to <strong>starmap_async()</strong> does not block, we need to wait for the issued tasks to complete.</p>
+<p>If we do not wait for the tasks to complete, we will exit the context manager for the process pool which will terminate the worker processes and stop the tasks.</p>
+<p>This can be achieved by calling the <strong>wait()</strong> function on the <strong>AsyncResult</strong> object.</p>
+<pre><code>...
+# wait for tasks to complete
+result.wait()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of parallel starmap_async() with the process pool and no return values
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(10)]
+        # issues tasks to process pool
+        result = pool.starmap_async(task, items)
+        # wait for tasks to complete
+        result.wait()
+    # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the process pool with a default configuration.</p>
+<p>The <strong>starmap_async()</strong> function is then called for each tuple of arguments in the list. This issues 10 calls to the <strong>task()</strong> function.</p>
+<p>A <strong>AsyncResult</strong> object is returned immediately, and the main process is free to continue on.</p>
+<p>Each call to the task function reports a message, then blocks for a moment.</p>
+<p>The main process waits on the <strong>AsyncResult</strong> object, blocking until all calls to the <strong>task()</strong> function are complete.</p>
+<p>The tasks finish, and the <strong>wait()</strong> function returns and the main process is free to carry on.</p>
+<pre><code>Task 0 executing with 0.006606991782238114
+Task 1 executing with 0.6719397377154739
+Task 2 executing with 0.6406317070314566
+Task 3 executing with 0.696648214806934
+Task 4 executing with 0.06816605478594484
+Task 5 executing with 0.37397804024123604
+Task 6 executing with 0.42344652631037527
+Task 7 executing with 0.007119523670944039
+Task 8 executing with 0.8025552512742259
+Task 9 executing with 0.7773457061021367</code></pre>
+<p>Next, let's look at issuing many tasks over multiple calls, then wait for all tasks in the process pool to complete.</p>
+<h2>Example of starmap_async And Wait For All Tasks To Complete</h2>
+<p>We can explore how to issue many tasks to the process pool via <strong>starmap_async()</strong>, and wait for all issued tasks to complete.</p>
+<p>This could be achieved by calling <strong>starmap_async()</strong> multiple times, and calling the <strong>wait()</strong> function <strong>AsyncResult</strong> object after each call.</p>
+<p>An alternate approach is to call <strong>starmap_async()</strong> multiple times, then wait on the process pool itself for all issued tasks to complete.</p>
+<p>In this example, we can update the previous example to call the <strong>starmap_async()</strong> function twice and ignore the <strong>AsyncResult</strong> objects that are returned.</p>
+<pre><code>...
+# prepare arguments
+items1 = [(i, random()) for i in range(10)]
+# issues tasks to process pool
+_ = pool.starmap_async(task, items1)
+# prepare arguments
+items2 = [(i, random()) for i in range(11, 20)]
+# issues tasks to process pool
+_ = pool.starmap_async(task, items2)</code></pre>
+<p>We can then explicitly close the process pool to prevent additional tasks being submitted to the pool, then call the <strong>join()</strong> function to wait for all issued tasks to complete.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait for all tasks to complete and processes to close
+pool.join()</code></pre>
+<p>You can learn more about joining the process pool in the tutorial:</p>
+<ul><li><a href="../join-a-multiprocessing-pool-in-python/">Join a Process Pool in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of parallel starmap_async() with the process pool and wait for tasks to complete
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items1 = [(i, random()) for i in range(10)]
+        # issues tasks to process pool
+        _ = pool.starmap_async(task, items1)
+        # prepare arguments
+        items2 = [(i, random()) for i in range(11, 20)]
+        # issues tasks to process pool
+        _ = pool.starmap_async(task, items2)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete and processes to close
+        pool.join()
+    # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the process pool with a default configuration.</p>
+<p>The <strong>starmap_async()</strong> function is then called for the first list of tuples. This issues 10 calls to the <strong>task()</strong> function, one for each tuple in the list.</p>
+<p>The <strong>starmap_async()</strong> function is then called again for a different list of tuple arguments, issuing 10 more calls to the <strong>task()</strong> function.</p>
+<p>Both calls return immediately, and the <strong>AsyncResult</strong> object returned is ignored.</p>
+<p>Each call to the task function reports a message, then blocks for a moment.</p>
+<p>The main process then closes the process pool, preventing any additional tasks from being issued. It then joins the process pool, blocking until all issued tasks are completed.</p>
+<p>The tasks finish, and the <strong>join()</strong> function returns and the main process is free to carry on.</p>
+<pre><code>Task 0 executing with 0.7775901642489408
+Task 1 executing with 0.4611633388999593
+Task 2 executing with 0.8437736627316834
+Task 3 executing with 0.8854986246277919
+Task 4 executing with 0.028456490572653426
+Task 5 executing with 0.9359308610071692
+Task 6 executing with 0.014212311146263312
+Task 7 executing with 0.7942811715252199
+Task 8 executing with 0.8411986243212594
+Task 9 executing with 0.7271159611159674
+Task 11 executing with 0.04125757747179182
+Task 12 executing with 0.47726164472299637
+Task 13 executing with 0.6968279555266779
+Task 14 executing with 0.04007928715583686
+Task 15 executing with 0.7486045325597867
+Task 16 executing with 0.6202094282124178
+Task 17 executing with 0.2718389522903977
+Task 18 executing with 0.20806899624428443
+Task 19 executing with 0.9747310063333213
+</code></pre>
+<p>Next, let's look at issuing tasks and handle each return value with a callback function.</p>
+<h2>Example of starmap_async() with a Callback Function</h2>
+<p>We can issue tasks to the process pool that return a value and specify a callback function to handle each returned value.</p>
+<p>This can be achieved via the "<strong>callback</strong>" argument to the <strong>starmap_async()</strong> function.</p>
+<p>In this example, we can update the above example so that the <strong>task()</strong> function returns a tuple of the arguments that were provided. We can then define a function to handle the return value, in this case to simply report the values.</p>
+<p>Firstly, we can define the function to call to handle the value returned from the function.</p>
+<p>The <strong>custom_callback()</strong> below implements this, taking one argument which is the value returned from the target task function.</p>
+<pre><code># custom callback function
+def custom_callback(result):
+    print(f'Callback got values: {result}')
+</code></pre>
+<p>Next, we can update the task function to return a tuple containing the arguments.</p>
+<p>The updated <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+</code></pre>
+<p>Finally, we can update the call to <strong>starmap_async()</strong> to specify the callback function via the "<strong>callback</strong>" argument, giving the name of our custom function.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, random()) for i in range(10)]
+# issues tasks to process pool
+_ = pool.starmap_async(task, items, callback=custom_callback)</code></pre>
+<p>The main process will then close the process pool and wait for all issued tasks to complete.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait for all tasks to complete and processes to close
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of parallel starmap_async() with the process pool and a callback function
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# custom callback function
+def custom_callback(result):
+    print(f'Callback got values: {result}')
+
+# task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(10)]
+        # issues tasks to process pool
+        _ = pool.starmap_async(task, items, callback=custom_callback)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete and processes to close
+        pool.join()
+</code></pre>
+<p>Running the example first creates and configures the process pool.</p>
+<p>The <strong>starmap_async()</strong> function is then called for the range and a return callback function. This issues ten calls to the <strong>task()</strong> function, one for each tuple in the prepared list.</p>
+<p>The main process then closes the process pool and blocks until all tasks complete and all processes in the process pool close.</p>
+<p>Each call to the task function reports a message, blocks for a moment, then returns a tuple of values.</p>
+<p>When all <strong>task()</strong> functions are finished, the callback function is called, provided with the iterable of return values.</p>
+<p>The iterable is printed directly, showing all return values at once.</p>
+<p>Finally, the worker processes are closed and the main process continues on.</p>
+<pre><code>Task 0 executing with 0.41262763526462787
+Task 1 executing with 0.5647592159687416
+Task 2 executing with 0.8327049315109151
+Task 3 executing with 0.9140524318291349
+Task 4 executing with 0.8699088278461099
+Task 5 executing with 0.9899772955673786
+Task 6 executing with 0.27086990809541145
+Task 7 executing with 0.6572422519829662
+Task 8 executing with 0.06981878272942554
+Task 9 executing with 0.5817534685800275
+Callback got values: [(0, 0.41262763526462787), (1, 0.5647592159687416), (2, 0.8327049315109151), (3, 0.9140524318291349), (4, 0.8699088278461099), (5, 0.9899772955673786), (6, 0.27086990809541145), (7, 0.6572422519829662), (8, 0.06981878272942554), (9, 0.5817534685800275)]</code></pre>
+<p>Next, let's look at an example of issuing tasks to the pool with an error callback function.</p>
+<h2>Example of starmap_async() with an Error Callback Function</h2>
+<p>We can issue tasks to the process pool that may raise an unhandled exception and specify an error callback function to handle the exception.</p>
+<p>This can be achieved via the "<strong>error_callback</strong>" argument.</p>
+<p>In this example, we can update the above example so that the <strong>task()</strong> function raises an exception for one specific argument. We can then define a function to handle the raised example, in this case to simply report the details of the exception.</p>
+<p>Firstly, we can define the function to call to handle an exception raised by the function.</p>
+<p>The <strong>custom_error_callback()</strong> below implements this, taking one argument which is the exception raised by the target task function.</p>
+<pre><code># custom error callback function
+def custom_error_callback(error):
+    print(f'Got an error: {error}')
+</code></pre>
+<p>Next, we can update the <strong>task()</strong> function so that it raises an exception conditionally for one argument, e.g. an identifier of 5.</p>
+<pre><code># task executed in a worker process
+def task(identifier, value):
+    # conditionally raise an error
+    if identifier == 5:
+        raise Exception('Something bad happened')
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+</code></pre>
+<p>Finally, we can update the call to <strong>starmap_async()</strong> to specify the error callback function via the "<strong>custom_error_callback</strong>" argument, giving the name of our custom function.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, random()) for i in range(10)]
+# issues tasks to process pool
+_ = pool.starmap_async(task, items, error_callback=custom_error_callback)</code></pre>
+<p>The main process then closes the process pool and waits for all tasks to complete.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait for all tasks to complete and processes to close
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of parallel starmap_async() with the process pool and an error callback function
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# custom error callback function
+def custom_error_callback(error):
+    print(f'Got an error: {error}')
+
+# task executed in a worker process
+def task(identifier, value):
+    # conditionally raise an error
+    if identifier == 5:
+        raise Exception('Something bad happened')
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(10)]
+        # issues tasks to process pool
+        _ = pool.starmap_async(task, items, error_callback=custom_error_callback)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete and processes to close
+        pool.join()
+</code></pre>
+<p>Running the example first creates and configures the process pool.</p>
+<p>The <strong>starmap_async()</strong> function is then called for the list of tuples and an error callback function. This issues ten calls to the task() function, one for each tuple in the list.</p>
+<p>An <strong>AsyncResult</strong> object is returned immediately and is ignored, and the main process is free to continue on.</p>
+<p>The main process then closes the process pool and blocks waiting for all issued tasks to complete.</p>
+<p>Each call to the task function reports a message, then blocks for a moment. The task that receives the identifier value of 5 as an argument raises an exception.</p>
+<p>All tasks finish executing and the exception callback function is called with the raised exception, reporting a message.</p>
+<p>All worker processes are closed and the main process is free to continue on.</p>
+<pre><code>Task 0 executing with 0.32137576941737844
+Task 1 executing with 0.2703458381403999
+Task 2 executing with 0.2363588917185917
+Task 3 executing with 0.8623534534517294
+Task 4 executing with 0.7409736574146876
+Task 6 executing with 0.5914949142738242
+Task 7 executing with 0.49987113535632166
+Task 8 executing with 0.6536687540199568
+Task 9 executing with 0.2965858295185979
+Got an error: Something bad happened</code></pre>
+<p>Next, let's look at an example of issuing tasks to the pool and accessing the results, where one task may raise an exception.</p>
+<h2>Example of starmap_async() with an Exception</h2>
+<p>As we saw in the previous example, it is possible for the target function to raise an exception.</p>
+<p>If this occurs in just one call to the target function, it will prevent all return values from being accessed.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>Firstly, we can update the <strong>task()</strong> function to conditionally raise an exception, in this case if the identifier argument to the function is equal to five, e.g. the same as in the previous example.</p>
+<pre><code>...
+# conditionally raise an error
+if identifier == 5:
+    raise Exception('Something bad happened')
+</code></pre>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task executed in a worker process
+def task(identifier, value):
+    # conditionally raise an error
+    if identifier == 5:
+        raise Exception('Something bad happened')
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+</code></pre>
+<p>We can then call <strong>starmap_async()</strong> to call the <strong>task()</strong> function for each tuple in the list.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, random()) for i in range(10)]
+# issues tasks to process pool
+result = pool.starmap_async(task, items)</code></pre>
+<p>We can then get the iterable of return values.</p>
+<pre><code>...
+values = result.get()</code></pre>
+<p>This may raise an exception if one of the calls failed, so we must protect the call with a try-except pattern.</p>
+<pre><code>...
+# get the return values
+try:
+    values = result.get()
+except Exception as e:
+    print(f'Failed with: {e}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of parallel starmap_async() with the process pool and handle an exception
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, value):
+    # conditionally raise an error
+    if identifier == 5:
+        raise Exception('Something bad happened')
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(10)]
+        # issues tasks to process pool
+        result = pool.starmap_async(task, items)
+        # get the return values
+        try:
+            values = result.get()
+        except Exception as e:
+            print(f'Failed with: {e}')
+</code></pre>
+<p>Running the example first creates and configures the process pool.</p>
+<p>The <strong>starmap_async()</strong> function is then called for each tuple in the list. This issues 10 calls to the <strong>task()</strong> function.</p>
+<p>An <strong>AsyncResult</strong> object is returned immediately, and the main process is free to continue on.</p>
+<p>The main process then blocks, attempting to get the iterable of return values from the <strong>AsyncResult</strong> object.</p>
+<p>Each call to the task function reports a message, then blocks for a moment, then returns a tuple. The task that receives the value of 5 as an argument raises an exception.</p>
+<p>All tasks complete.</p>
+<p>The exception is then re-raised in the main process, handled and a message is reported. The iterable cannot be looped and no return values are reported.</p>
+<p>The process pool is then closed automatically by the context manager.</p>
+<p>This highlights that a failure in one task can prevent the results from all tasks from being accessed.</p>
+<pre><code>Task 0 executing with 0.5221601941516373
+Task 1 executing with 0.31370263368668594
+Task 2 executing with 0.6319152637731589
+Task 3 executing with 0.5996534898921915
+Task 4 executing with 0.30235628455388386
+Task 6 executing with 0.5992044450848245
+Task 7 executing with 0.21668081008564
+Task 8 executing with 0.2881390911951681
+Task 9 executing with 0.6274888670358355
+Failed with: Something bad happened</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to issue tasks asynchronously to the process pool that take multiple arguments in Python.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread-Safe Write to File in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread-Safe Write to File in Python</h1>
+<div class="post-meta">April 5, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can <strong>write to file in a thread-safe manner</strong> using a mutex lock via the <strong>threading.Lock</strong> class.</p>
+<p>In this tutorial you will discover how to write thread-safe to a file from many threads.</p>
+<p>Let's get started.</p>
+<h2>Need to Append File From Multiple Threads</h2>
+<p>A thread is a <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread of execution</a> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming, we may need to write to a file from multiple threads.</p>
+<p><strong>Is writing to a file thread-safe? If not, how can we make appending a file from multiple threads thread-safe?</strong></p>
+<h2>Writing to File is Not Thread-Safe</h2>
+<p>Writing to a file means opening a file path and writing or appending data to the file.</p>
+<p>A file can be opened with the built-in <a href="https://docs.python.org/3/library/functions.html#open"><strong>open()</strong> function</a> specifying the file path and open mode such as '<strong>w</strong>' for writing text or '<strong>a</strong>' for appending text. Once open, data can be written via the <strong>write()</strong> or <strong>writelines()</strong> functions.</p>
+<p>A best practice is to open a file using the context manager interface so that the file is closed automatically once any writing operations are finished.</p>
+<p>For example:</p>
+<pre><code>...
+# open file for appending
+with open('path/to/file.txt', 'a') as file:
+	# write text to data
+	file.write('Test')
+</code></pre>
+<p>Writing to the same file from multiple threads concurrently is not thread safe and may result in a race condition.</p>
+<p>Thread-safe means that writing or appending to the same file from more than one thread may result in a race condition.</p>
+<p>The result of a race condition while writing or appending to a file may be that the data written to the file is overwritten or corrupted, resulting in data loss.</p>
+<p>Now that we know that writing to a file is not thread-safe, let's look at how we can make it thread-safe.</p>
+<h2>How to Thread-Safe Write to File</h2>
+<p>Writing to a file can be made thread-safe by using a mutual exclusion (mutex) lock.</p>
+<p>Any code that opens and writes to the file, or appends to the file can be treated as a critical section of code subject to race conditions.</p>
+<p>This code can be protected from race conditions by requiring that the accessing thread first acquire a mutex lock before executing the critical section.</p>
+<p>A mutex lock can only be acquired by one thread at a time, and once acquired prevents any other thread acquiring it until the lock is released.</p>
+<p>This means that only a single thread will be able to write to the file at a time, making writing to file thread safe.</p>
+<p>This can be achieved using the <strong>threading.Lock</strong> class.</p>
+<p>First, a lock can be created and shared among all code that needs to access the same file.</p>
+<pre><code>...
+# create a lock
+lock = threading.Lock()</code></pre>
+<p>Once created, a thread can then acquire the lock before writing to file by calling the <strong>acquire()</strong> function. Once writing to the file is finished, the lock can be released by calling the <strong>release()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+# open file for appending
+with open('path/to/file.txt', 'a') as file:
+	# write text to data
+	file.write('Test')
+# release the lock
+lock.release()
+</code></pre>
+<p>Like opening the file, the context manager interface can be used to ensure that the lock is always released after the block enclosed code is exited.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# open file for appending
+	with open('path/to/file.txt', 'a') as file:
+		# write text to data
+		file.write('Test')</code></pre>
+<p>If a thread attempts to acquire the lock while it has already been acquired, then it must block or wait until the lock is released. This waiting is performed automatically by the thread when attempting to acquire the lock, no additional code is required.</p>
+<p>You can learn more about protecting critical sections with mutex locks in this tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>Next, let's look at some worked examples.</p>
+<h2>Example of Thread-Unsafe Write to File</h2>
+<p>Before we look at how to make writing to a file thread-safe, let's look at how it is not thread-safe.</p>
+<p>We can develop an example that demonstrates that appending to a file from many threads is not thread safe and results in data loss.</p>
+<p>In this example we will create 1,000 threads each of which will generate 1,000 random numbers between 0 and 1 and write them as a line of text to the same file.</p>
+<p>There are a few ways to structure this program, for example:</p>
+<ul><li>Each thread opens the file each time a line of text needs to be written.</li><li>Each thread opens the file once and writes each line as generated.</li><li>The application opens the file once and each thread writes using the same file handle.</li></ul>
+<p>The specific approach taken really depends on the details of the application.</p>
+<p>In this case, we will open the file once in the application and have all threads write to the file using the same file handle. This is really aggressive and it is easy to show the race condition when many threads write to the same file.</p>
+<p>First, we can define a task function to be executed by each thread.</p>
+<p>The function will take a unique integer to identify the thread and the file handle as arguments. The task will loop for 1,000 iterations and each iteration it will generate a random number using <strong>random.random()</strong> and then write this number as part of a line of text to the file.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task for worker threads
+def task(number, file):
+    # task loop
+    for i in range(1000):
+        # generate random number between 0 and 1
+        value = random()
+        # write to the file
+        file.write(f'Thread {number} got {value}.\n')
+</code></pre>
+<p>Next, in the main thread, we can open the file for appending.</p>
+<p>Note, we will write to a file named "<strong>output.txt</strong>" in the current working directory. This is the same directory in which your Python script for the program is located.</p>
+<pre><code>...
+# defile the shared file path
+filepath = 'output.txt'
+# open the file
+file = open(filepath, 'a')</code></pre>
+<p>We can then create 1,000 new threads configured to call the <strong>task()</strong> function each with a unique integer identifier and the shared file handle.</p>
+<p>This can be done in a list comprehension.</p>
+<pre><code>...
+# configure many threads
+threads = [Thread(target=task, args=(i,file)) for i in range(1000)]</code></pre>
+<p>The main thread can then start all threads by calling the <strong>start()</strong> method and then wait until all threads have terminated by calling the <strong>join() </strong>method.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Finally, the main thread will close the file.</p>
+<pre><code>...
+# close the file
+file.close()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of writing to a file is not thread-safe
+from random import random
+from time import sleep
+from threading import Thread
+
+# task for worker threads
+def task(number, file):
+    # task loop
+    for i in range(1000):
+        # generate random number between 0 and 1
+        value = random()
+        # write to the file
+        file.write(f'Thread {number} got {value}.\n')
+
+# defile the shared file path
+filepath = 'output.txt'
+# open the file
+file = open(filepath, 'a')
+# configure many threads
+threads = [Thread(target=task, args=(i,file)) for i in range(1000)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+# close the file
+file.close()
+</code></pre>
+<p>Running the example first opens the file for appending.</p>
+<p>Next, 1,000 threads are created and started, then the main thread blocks until all tasks are complete.</p>
+<p>Each thread loops and writes 1,000 lines to the file.</p>
+<p>All tasks complete and the file is closed.</p>
+<p>The expectation is that the file contains 1,000,000 lines, with 1,000 lines written by each thread.</p>
+<p>We can check this by opening the file in a text editor and inspect the contents.</p>
+<pre><code>Thread 0 got 0.11577738406435278.
+Thread 0 got 0.09757771957904438.
+Thread 0 got 0.5200579840159526.
+Thread 0 got 0.5369696807463148.
+Thread 0 got 0.5260154027798022.
+Thread 0 got 0.4863295793428698.
+Thread 0 got 0.36290927042061494.
+Thread 0 got 0.8170862775710401.
+Thread 0 got 0.5448456180398039.
+Thread 0 got 0.48267153945021646.
+...</code></pre>
+<p>Type the following command on a POSIX operating system (e.g. Linux or MacOS) to report the total lines in the file.</p>
+<pre><code>cat output.txt | wc -l</code></pre>
+<p>In this case, we can see that the file contains fewer than the expected number of lines.</p>
+<p>Data was lost. This highlights that having multiple threads appending to the same file (using the same file handle) is not thread safe.</p>
+<pre><code>993495</code></pre>
+<p>Delete the file and run the program again.</p>
+<p>You will likely see a different number of lines each time the code is run, due to the unpredictable nature of the race condition.</p>
+<pre><code>998346</code></pre>
+<p>Next, let's look at how we can make writing to the file thread-safe.</p>
+<h2>Example of Thread-Safe Write to File</h2>
+<p>We can write or append a file in a thread-safe manner using a mutex lock.</p>
+<p>The example in the previous section can be updated to be thread-safe by requiring that each thread first acquires a lock prior to writing to the file.</p>
+<p>This can be achieved by passing the lock to the task function as an argument and then acquiring the lock prior to each call to <strong>write()</strong> on the shared file handle.</p>
+<p>The updated version of the <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task for worker threads
+def task(number, file, lock):
+    # task loop
+    for i in range(1000):
+        # generate random number between 0 and 1
+        value = random()
+        # write to the file
+        with lock:
+            file.write(f'Thread {number} got {value}.\n')
+</code></pre>
+<p>In the main thread, we can then create the shared lock instance.</p>
+<pre><code>...
+# create the shared lock
+lock = Lock()</code></pre>
+<p>The lock can then be passed to each thread as an argument to the <strong>task()</strong> function.</p>
+<pre><code>...
+# configure many threads
+threads = [Thread(target=task, args=(i,file,lock)) for i in range(1000)]</code></pre>
+<p>Tying this together, the complete example of thread-safe writing to a file is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-safe writing to a file
+from random import random
+from threading import Thread
+from threading import Lock
+
+# task for worker threads
+def task(number, file, lock):
+    # task loop
+    for i in range(1000):
+        # generate random number between 0 and 1
+        value = random()
+        # write to the file
+        with lock:
+            file.write(f'Thread {number} got {value}.\n')
+
+# create the shared lock
+lock = Lock()
+# defile the shared file path
+filepath = 'output.txt'
+# open the file
+file = open(filepath, 'a')
+# configure many threads
+threads = [Thread(target=task, args=(i,file,lock)) for i in range(1000)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+# close the file
+file.close()
+</code></pre>
+<p>Running the example first creates the shared lock and the shared file handle.</p>
+<p>The new threads are created and configured to execute the <strong>task()</strong> function, receiving the shared file handle and lock as arguments.</p>
+<p>The main thread starts the threads and then waits for the tasks to complete.</p>
+<p>Each thread loops 1,000 times, each iteration generating a random number, acquiring the lock, and writing a line to the file. If the lock is already acquired, then the thread will wait until the lock is available.</p>
+<p>This adds some delay to the program, increasing the run time.</p>
+<p>Open the output.txt file in a text file and inspect the contents.</p>
+<pre><code>Thread 0 got 0.22420494281917025.
+Thread 0 got 0.21289722108152498.
+Thread 0 got 0.8053214755874063.
+Thread 0 got 0.19071164153864895.
+Thread 0 got 0.5812611973492516.
+Thread 0 got 0.47701010872803906.
+Thread 0 got 0.6587265088322402.
+Thread 0 got 0.2080983771931354.
+Thread 0 got 0.8302360563792428.
+Thread 0 got 0.678505225691399.
+...</code></pre>
+<p>Review the total number of entries in the file.</p>
+<p>There will be 1,000,000 lines in the file. The race condition has been avoided as each thread now writes to the same file in a thread-safe manner.</p>
+<p>Importantly, 1,000,000 lines are written to the file every time the program is run, making it consistent.</p>
+<pre><code>1000000</code></pre>
+<p>Note, the random numbers written to file will differ each time the program is run.</p>
+<p>Acquiring the lock is a bottleneck in the code, increasing the overall running time of the program.</p>
+<p>An alternate approach would be for each thread to acquire the lock at the beginning of the task, then generate and write all random numbers.</p>
+<p>This would acquire the lock be acquired 1,000 times, once for each thread, rather than 1,000,000 times, once for each write to the file.</p>
+<p>For example, an updated version of the <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task for worker threads
+def task(number, file, lock):
+    # acquire the lock
+    with lock:
+        # task loop
+        for i in range(1000):
+            # generate random number between 0 and 1
+            value = random()
+            # write to file
+            file.write(f'Thread {number} got {value}.\n')
+</code></pre>
+<p>Next, let's look at how we might write safely to a file using a dedicated thread.</p>
+<h2>Example of Safe Dedicated File Writing Thread</h2>
+<p>Another approach to writing to a file in a thread-safe manner is to use a dedicated file writing thread.</p>
+<p>If only a single thread is responsible for writing to the file, then all file writing will be thread-safe.</p>
+<p>This can be achieved by creating a new thread that loops for the duration of the program reading lines from other threads and writing them to the file. Worker threads can communicate to the file writer thread using a thread-safe queue data structure. Workers will put messages on the queue and the file writer thread will get messages from the queue and write them to file.</p>
+<p>First, we can write a function to be executed by the single file writer thread.</p>
+<p>The function will take the path to the file and the queue instance as arguments.</p>
+<p>First, the file will be opened using the context manager. Then the task will loop forever. Each iteration it will retrieve a line of text from the queue by calling <strong>get()</strong>, write it to file, flush the contents of the file buffer (writing text is buffered), then mark the task as done.</p>
+<p>Flushing content after each write is computationally expensive, but ensures that if the file is closed, such as by the Python process, that no content will be waiting to be written.</p>
+<p>The <strong>file_writer()</strong> function that implements this is listed below.</p>
+<pre><code># dedicated file writing task
+def file_writer(filepath, queue):
+    # open the file
+    with open(filepath, 'w') as file:
+        # run forever
+        while True:
+            # get a line of text from the queue
+            line = queue.get()
+            # write it to file
+            file.write(line)
+            # flush the buffer
+            file.flush()
+            # mark the unit of work complete
+            queue.task_done()
+</code></pre>
+<p>Next, we can update the <strong>task()</strong> function executed by the worker threads.</p>
+<p>The function must receive the queue as an argument, and then add lines to the queue each iteration by calling the <strong>put()</strong> function.</p>
+<p>The updated <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task for worker threads
+def task(number, queue):
+    # task loop
+    for i in range(1000):
+        # generate random number between 0 and 1
+        value = random()
+        # put the result in the queue
+        queue.put(f'Thread {number} got {value}.\n')
+</code></pre>
+<p>Next, in the main thread, we can create the shared queue.</p>
+<p>This will be an instance of the <a href="https://docs.python.org/3/library/queue.html"><strong>queue.Queue</strong> class</a>. This is a thread-safe implementation of the queue data structure that allows multiple threads to call <strong>get()</strong> and <strong>put()</strong> without race conditions.</p>
+<p>Importantly, the <strong>get()</strong> function will block until new work arrives on the queue. This is helpful, as it means that our file writer thread will wait patiently and not consume resources while waiting for lines of text to print.</p>
+<pre><code>...
+# create the shared queue
+queue = Queue()</code></pre>
+<p>Next, we can create and start a new thread to execute our <strong>file_writer()</strong> function.</p>
+<p>Importantly, this new thread will be marked as a daemon thread, which is a background task. This means that the Python process can exit while this thread is still running.</p>
+<pre><code>...
+# defile the shared file path
+filepath = 'output.txt'
+# create and start the file writer thread
+writer_thread = Thread(target=file_writer, args=(filepath,queue), daemon=True)
+writer_thread.start()
+</code></pre>
+<p>We can then create and configure the worker threads, passing the instance of the shared queue.</p>
+<pre><code>...
+# configure worker threads
+threads = [Thread(target=task, args=(i,queue)) for i in range(1000)]</code></pre>
+<p>Finally, after the worker threads have terminated, the main thread can wait on the queue for all submitted tasks to be processed.</p>
+<p>This can be achieved by calling the <a href="../join-a-thread-in-python/"><strong>join()</strong> function</a>.</p>
+<pre><code>...
+# wait for all tasks in the queue to be processed
+queue.join()</code></pre>
+<p>Each call to <strong>put()</strong> by worker threads will increment a counter within the queue and each subsequent call to <strong>task_done()</strong> by the printer thread will decrement the counter, indicating that the unit of worker was processed completely.</p>
+<p>After the worker threads have terminated, there are no more lines to add to the queue. Therefore, once the queue's internal counter reaches zero, we know that all work has been processed.</p>
+<p>The <strong>join()</strong> function will block until all submitted work on the queue has been processed.</p>
+<p>Tying this together, the complete example of writing to file in thread-safe manner using a dedicated thread and a queue is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-safe writing to a file with a dedicated writer thread
+from random import random
+from threading import Thread
+from queue import Queue
+
+# dedicated file writing task
+def file_writer(filepath, queue):
+    # open the file
+    with open(filepath, 'w') as file:
+        # run forever
+        while True:
+            # get a line of text from the queue
+            line = queue.get()
+            # write it to file
+            file.write(line)
+            # flush the buffer
+            file.flush()
+            # mark the unit of work complete
+            queue.task_done()
+
+# task for worker threads
+def task(number, queue):
+    # task loop
+    for i in range(1000):
+        # generate random number between 0 and 1
+        value = random()
+        # put the result in the queue
+        queue.put(f'Thread {number} got {value}.\n')
+
+# create the shared queue
+queue = Queue()
+# defile the shared file path
+filepath = 'output.txt'
+# create and start the file writer thread
+writer_thread = Thread(target=file_writer, args=(filepath,queue), daemon=True)
+writer_thread.start()
+# configure worker threads
+threads = [Thread(target=task, args=(i,queue)) for i in range(1000)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+# wait for all tasks in the queue to be processed
+queue.join()
+</code></pre>
+<p>Running the example first creates the shared queue.</p>
+<p>Next, the file writer thread is created and configured to execute our <strong>file_writer()</strong> function as a <a href="../daemon-threads-in-python/">background daemon thread</a>. It is started and runs forever, reading items from the shared queue and writing them to file.</p>
+<p>The worker threads are started and passed an instance of the shared queue. Each thread iterates 1,000 times, generating numbers and writing lines to the shared queue.</p>
+<p>The main thread waits for all worker threads to complete. It then blocks on the shared queue until all submitted lines have been written to file.</p>
+<p>The main thread terminates, which then terminates the background daemon thread, forcefully closing the open file.</p>
+<p>Open the <strong>output.txt</strong> file in a text editor and review the contents</p>
+<pre><code>Thread 0 got 0.14775478937834163.
+Thread 0 got 0.09069478905986883.
+Thread 0 got 0.9265023972899946.
+Thread 0 got 0.8192999500888586.
+Thread 0 got 0.042930675313449296.
+Thread 0 got 0.9344168225488523.
+Thread 0 got 0.6227562426387442.
+Thread 0 got 0.1159773782005542.
+Thread 0 got 0.8186760081390562.
+Thread 0 got 0.2684847766800359.
+...</code></pre>
+<p>Inspect the total number of lines in the file.</p>
+<p>We can see that it has the expected 1,000,000 lines. Importantly, it will have the same number of lines each time the program is run as there is no race condition in writing to file.</p>
+<pre><code>1000000</code></pre>
+<p>The way we handle closing the file is a little rough.</p>
+<p>It is better to actually close the file as part of normal operation of the program.</p>
+<p>This can be achieved by updating the <strong>file_writer()</strong> function. We can check for a special message, and if received, mark it as processed and return from the function, which will terminate the file writer thread. The value None is an object that we can use as the special message.</p>
+<p>For example:</p>
+<pre><code>...
+# check if we are done
+if line is None:
+    # exit the loop
+    break
+</code></pre>
+<p>After the loop is exited, the file is closed and we can mark the final message put on the queue as processed.</p>
+<pre><code>...
+# mark the exit signal as processed, after the file was closed
+queue.task_done()</code></pre>
+<p>The updated <strong>file_writer()</strong> function with these changes is listed below.</p>
+<pre><code># dedicated file writing task
+def file_writer(filepath, queue):
+    # open the file
+    with open(filepath, 'w') as file:
+        # run until the event is set
+        while True:
+            # get a line of text from the queue
+            line = queue.get()
+            # check if we are done
+            if line is None:
+                # exit the loop
+                break
+            # write it to file
+            file.write(line)
+            # flush the buffer
+            file.flush()
+            # mark the unit of work complete
+            queue.task_done()
+    # mark the exit signal as processed, after the file was closed
+    queue.task_done()
+</code></pre>
+<p>In the main thread, once all worker threads are finished, we can then signal that no more messages are expected by calling <strong>put()</strong> on the queue and passing the value <strong>None</strong>.</p>
+<pre><code>...
+# signal the file writer thread that we are done
+queue.put(None)</code></pre>
+<p>This will signal to the file writer thread that no further messages are expected and to terminate.</p>
+<p>The main thread can then join the queue and wait for the file writer thread to process all messages, including the signal to terminate.</p>
+<pre><code>...
+# wait for all tasks in the queue to be processed
+queue.join()</code></pre>
+<p>Tying this together, the complete example with these improvements is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-safe writing to a file with a dedicated writer thread
+from random import random
+from threading import Thread
+from queue import Queue
+
+# dedicated file writing task
+def file_writer(filepath, queue):
+    # open the file
+    with open(filepath, 'w') as file:
+        # run until the event is set
+        while True:
+            # get a line of text from the queue
+            line = queue.get()
+            # check if we are done
+            if line is None:
+                # exit the loop
+                break
+            # write it to file
+            file.write(line)
+            # flush the buffer
+            file.flush()
+            # mark the unit of work complete
+            queue.task_done()
+    # mark the exit signal as processed, after the file was closed
+    queue.task_done()
+
+# task for worker threads
+def task(number, queue):
+    # task loop
+    for i in range(1000):
+        # generate random number between 0 and 1
+        value = random()
+        # put the result in the queue
+        queue.put(f'Thread {number} got {value}.\n')
+
+# create the shared queue
+queue = Queue()
+# defile the shared file path
+filepath = 'output.txt'
+# create and start the file writer thread
+writer_thread = Thread(target=file_writer, args=(filepath,queue), daemon=True)
+writer_thread.start()
+# configure worker threads
+threads = [Thread(target=task, args=(i,queue)) for i in range(1000)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+# signal the file writer thread that we are done
+queue.put(None)
+# wait for all tasks in the queue to be processed
+queue.join()
+</code></pre>
+<p>Running the example produces the same thread-safe writing to the file.</p>
+<p>Importantly, we are confident that the file is closed correctly as part of the normal execution of the program.</p>
+<h2>Takeaways</h2>
+<p>You now know how to write to a file from multiple threads in a thread-safe manner.</p>
+</main>
+</body>
+</html>

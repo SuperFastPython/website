@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Is the ThreadPoolExecutor Thread-Safe – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Is the ThreadPoolExecutor Thread-Safe</h1>
+<div class="post-meta">November 23, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You must consider thread safety when <a href="../threadpoolexecutor-in-python/">using the <strong>ThreadPoolExecutor</strong></a>.</p>
+<p>In this tutorial, you will discover how to handle thread-safety when using the <meta/><code>ThreadPoolExecutor</code> class in Python.</p>
+<p>Let's get started.</p>
+<h2 id="threadpoolexecutor-thread-safety">ThreadPoolExecutor Thread-Safety</h2>
+<p>The <code>ThreadPoolExecutor</code> provides a flexible way to execute ad hoc tasks using a pool of worker threads.</p>
+<p>You can submit tasks to the thread pool by calling the <code>submit()</code> function and passing in the name of the function you wish to execute on another thread. </p>
+<p>Calling the <meta/><code>submit()</code> function will return a <code>Future</code> object that allows you to check on the status of the task and get the result from the task once it completes.</p>
+<p>Although the <meta/><code>ThreadPoolExecutor</code> uses threads internally, you do not need to work with threads directly in order to execute tasks and get results.</p>
+<p>Nevertheless, when accessing resources or critical sections, thread-safety may be a concern.</p>
+<h2 id="using-the-threadpoolexecutor-requires-thread-safety">Using the ThreadPoolExecutor Requires Thread-Safety</h2>
+<p>Using the <meta/><code>ThreadPoolExecutor</code> does require some consideration of thread safety.</p>
+<h3 id="what-is-thread-safety">What Is Thread Safety?</h3>
+<p><a href="https://en.wikipedia.org/wiki/Thread_safety">Thread-safety</a> refers to programs that follow good practice when using threads.</p>
+<p>Specifically, it refers to protecting critical sections of code from access by multiple threads in parallel.</p>
+<p>A critical section in code refers generally to state or resources that will become corrupt or result in unexpected behavior if they are modified or used by multiple threads of execution at the same time.</p>
+<p>This could be something as simple as a counter to reading and writing to a file or network connection, to more complex application-specific cases.</p>
+<h3 id="how-to-make-critical-sections-thread-safe">How to Make Critical Sections Thread-Safe?</h3>
+<p>Access to critical sections of code can be made thread safe by using synchronization primitives.</p>
+<p>Perhaps the simplest example is the lock, also called mutual exclusion lock or mutex.</p>
+<p>A lock must be acquired before a critical section can be executed, after which the lock is then released.</p>
+<p>Only one thread at a time can obtain the lock. Any threads that attempt to acquire the lock while another thread possesses it must wait for the lock to become available. This waiting is managed automatically within the lock internally.</p>
+<p>For example:</p>
+<pre><code>...
+# example of protecting a critical section with a lock
+lock = Lock()
+# ...
+# acquire the lock
+lock.acquire()
+# critical section...
+# release the lock
+lock.release()
+</code></pre>
+<p>This shows that execution of a critical section can be made mutually exclusive among threads.</p>
+<h3 id="what-about-the-gil">What About the GIL?</h3>
+<p>Python threads, including those in the <meta/><code>ThreadPoolExecutor</code>, are subject to the <a href="https://en.wikipedia.org/wiki/Global_interpreter_lock">global interpreter lock</a> (GIL).</p>
+<p>The GIL is a programming pattern in the reference Python interpreter (e.g. CPython, the version of Python you download from python.org). It is a lock in the sense that it uses synchronization to ensure that only one thread of execution can execute instructions at a time within a Python process.</p>
+<p>This means that although we may have multiple threads in a <meta/><code>ThreadPoolExecutor</code> or multiple instances of the Thread class, only instructions from one thread can execute at a time in a Python process.</p>
+<p>Even though instructions from only one thread of execution are performed at a time within a Python interpreter, we may still encounter thread safety concerns and therefore must protect critical sections of code.</p>
+<p>The reason is that a given line of code may be composed of multiple instructions in the Python interpreter.</p>
+<p>As such, a given thread executing a line of code composed of multiple instructions may context switch in the middle of the line, likely leaving the data in an inconsistent state.</p>
+<p>You may recall that a context switch involves the operating system halting the execution and storing the state of one thread, and restoring the state and continuing the execution of another thread. This is performed automatically by the operating system and is central to how modern operating systems achieve multitasking, so-called <a href="https://en.wikipedia.org/wiki/Preemption_(computing)">preemptive multitasking</a>.</p>
+<p>The most common example of this type of thread safety concern is the incrementing of an integer, written as:</p>
+<pre><code>...
+# increment an integer
+counter += 1
+</code></pre>
+<p>This is at least two instructions, though likely more. The first instruction involves reading the value of the counter variable and the second involves adding one to the value.</p>
+<p>If a context switch is performed after reading the value but before adding one, then the value of the counter will be inconsistent. This is called a race condition, a specific type of thread-safety concern.</p>
+<p>Adding a lock to operations that involve the counter would make the operations "atomic" to concurrent thread execution, and therefore thread safe.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+# increment an integer
+counter += 1
+# release the lock
+lock.release()
+</code></pre>
+<h2 id="threadpoolexecutor-thread-safety">ThreadPoolExecutor Thread-Safety</h2>
+<p>We can see that although the worker threads in the ThreadPoolExecutor are subject to the GIL, we must still be concerned with thread-safety.</p>
+<p>The two main examples of where thread-safety may be a concern are:</p>
+<ul><li>Arguments passed to target task functions.</li><li>Access to global state.</li></ul>
+<h3 id="thread-safe-arguments">Thread-Safe Arguments</h3>
+<p>Any data that you pass into your target task function must be treated with thread-safety in mind.</p>
+<p>This may apply to data such as a list or dictionary that may be passed to all target task functions, each of which in turn may concurrently add or remove items from the collection.</p>
+<p>This may also apply to resources such as open connections to a file, database, or remote server that may be read from or written to concurrent my multiple target task functions.</p>
+<h3 id="thread-safe-global-state">Thread-Safe Global State</h3>
+<p>Using non-local variables (e.g. global variables) within target task functions executed by a ThreadPoolExecutor is probably a bad idea to begin with.</p>
+<p>This is because it breaks encapsulation, making code harder to read and test. Instead, it may be a better design to pass in required data via the function arguments.</p>
+<p>Nevertheless, if your target task function makes use of global state, then this may need to be treated with thread-safety in mind.</p>
+<p>This might be something application specific, such as a variable or an object, or a shared connection. A common example might be a handle for logging, such as each task logging to standard out or to a file.</p>
+<p>Additionally, if you are using a done callback function registered on the <code>Future</code> objects via the <code>add_done_callback()</code> function, then this may be another place that may be using global variables.</p>
+<p>Now that we are familiar with thread-safety concerns when using the <meta/><code>ThreadPoolExecutor</code>, let's look at a worked example.</p>
+<h2 id="example-of-threadpoolexecutor-thread-safety">Example of ThreadPoolExecutor Thread-Safety</h2>
+<p>Let's explore an example of using the <code>ThreadPoolExecutor</code> that highlights the need for thread safety.</p>
+<h3 id="example-of-thread-unsafe-threadpoolexecutor">Example of Thread Unsafe ThreadPoolExecutor</h3>
+<p>Perhaps the most common example of the need for thread safety when using the <meta/><code>ThreadPoolExecutor</code> is in multiple threads accessing the same global state.</p>
+<p>We can demonstrate this with an integer at global state that is being updated concurrently by two worker threads.</p>
+<p>First, let's define an integer that holds a balance.</p>
+<pre><code>...
+# some global state
+balance = 0
+</code></pre>
+<p>Next, we can define a target task function that adds values to this variable.</p>
+<pre><code># target task function that adds to the balance
+def add_to_balance():
+    global balance
+    # add to the balance
+    for _ in range(1000000):
+        balance += 100
+</code></pre>
+<p>We can then define a separate task function that subtracts values from this variable.</p>
+<pre><code># target task function that subtracts from the balance
+def subtract_to_balance():
+    global balance
+    # subtract from the balance
+    for _ in range(1000000):
+        balance -= 100
+</code></pre>
+<p>Finally, we can create a thread pool with two worker threads and submit one task for each target function.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(2) as executor:
+    # task for adding to the balance
+    _ = executor.submit(add_to_balance)
+    # task for subtracting from the balance
+    _ = executor.submit(subtract_to_balance)
+    # wait for all tasks to complete ...
+</code></pre>
+<p>After both threads are completed, we can report the balance.</p>
+<p>We would expect the value to be zero as we have the same number of additions as subtractions.</p>
+<pre><code>...
+# check the status of the list
+print(f'Balance: {balance}')
+</code></pre>
+<p>Tying this together, the complete example of thread unsafe usage of the <meta/><code>ThreadPoolExecutor</code> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread unsafe access to global state with the thread pool
+from concurrent.futures import ThreadPoolExecutor
+
+# target task function that adds to the balance
+def add_to_balance():
+    global balance
+    # add to the balance
+    for _ in range(1000000):
+        balance += 100
+
+# target task function that subtracts from the balance
+def subtract_to_balance():
+    global balance
+    # subtract from the balance
+    for _ in range(1000000):
+        balance -= 100
+
+# some global state
+balance = 0
+# create the thread pool
+with ThreadPoolExecutor(2) as executor:
+    # task for adding to the balance
+    _ = executor.submit(add_to_balance)
+    # task for subtracting from the balance
+    _ = executor.submit(subtract_to_balance)
+    # wait for all tasks to complete ...
+# check the status of the list
+print(f'Balance: {balance}')
+</code></pre>
+<p>Running the example creates the thread pool and submits the single addition task and the single subtraction task, then reports the balance that ends.</p>
+<p>In this case, the balance is not the zero value we expected. Instead, a race condition occurred between the concurrent updates to the balance variable.</p>
+<p>Note: you will get a different value of the balance variable each time you run the code.</p>
+<pre><code>Balance: 43751600</code></pre>
+<p>Next, let's look at how we might update the example to be thread safe.</p>
+<h3 id="example-of-thread-safe-threadpoolexecutor">Example of Thread Safe ThreadPoolExecutor</h3>
+<p>The thread unsafe example from the previous section can be updated to be thread safe with relatively little change.</p>
+<p>The first step is to create a <code>threading.Lock</code> instance.</p>
+<pre><code>...
+# create the lock
+lock = Lock()
+</code></pre>
+<p>We can then pass this lock to both target task functions as an argument, then update the change to the global state, the critical section, to be protected by a lock.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+# update the balance
+balance += 100
+# release the lock
+lock.release()
+</code></pre>
+<p>A simpler and more robust approach is to use the context manager for the lock; for example:</p>
+<pre><code>...
+# update the balance
+with lock:
+    balance += 100
+</code></pre>
+<p>Tying this together, the complete example of the thread safe version of updating global state from the <code>ThreadPoolExecutor</code> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread safe access to global state with the thread pool
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
+
+# target task function that adds to the balance
+def add_to_balance(lock):
+    global balance
+    # add to the balance
+    for _ in range(1000000):
+        with lock:
+            balance += 100
+
+# target task function that subtracts from the balance
+def subtract_to_balance(lock):
+    global balance
+    # subtract from the balance
+    for _ in range(1000000):
+        with lock:
+            balance -= 100
+
+# create the lock
+lock = Lock()
+# some global state
+balance = 0
+# create the thread pool
+with ThreadPoolExecutor(2) as executor:
+    # task for adding to the balance
+    _ = executor.submit(add_to_balance, lock)
+    # task for subtracting from the balance
+    _ = executor.submit(subtract_to_balance, lock)
+    # wait for all tasks to complete ...
+# check the status of the list
+print(f'Balance: {balance}')
+</code></pre>
+<p>Running the example creates the thread pool and executes the two tasks as before.</p>
+<p>This time, the final balance will always be zero, given that all code that changes the balance is protected by the lock, ensuring mutually exclusive execution.</p>
+<pre><code>Balance: 0</code></pre>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to handle thread safety when working with the <meta/><code>ThreadPoolExecutor</code>.</p>
+<p><strong>Do you have any questions about </strong><code>ThreadPoolExecutor</code><strong> thread-safety?</strong><br/>Ask your questions in the comments below and I will do my best to answer.</p>
+<p><a href="https://www.reddit.com/r/Python/comments/r0ksfj/is_the_threadpoolexecutor_threadsafe/">Join the discussion on reddit</a>.</p>
+</main>
+</body>
+</html>

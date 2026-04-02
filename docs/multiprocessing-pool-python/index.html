@@ -1,0 +1,3042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python Multiprocessing Pool: The Complete Guide – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Python Multiprocessing Pool: The Complete Guide</h1>
+<div class="post-meta">August 25, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>The <strong>Python Multiprocessing Pool</strong> provides reusable worker processes in Python.</p>
+<p>The Pool is a lesser-known class that is a part of the Python standard library. It offers easy-to-use pools of child worker processes and is ideal for parallelizing loops of CPU-bound tasks and for executing tasks asynchronously.</p>
+<p>This book-length guide provides a detailed and comprehensive walkthrough of the <strong>Python Multiprocessing Pool API</strong>.</p>
+<p>Some tips:</p>
+<ol>
+<li>You may want to bookmark this guide and read it over a few sittings.</li>
+<li>You can <a href="../zips/superfastpython-pool-guide.zip">download a zip</a> of all code used in this guide.</li>
+<li>You can get help, ask a question in the comments or <a href="../contact/">email me</a>.</li>
+<li>You can jump to the topics that interest you via the table of contents (below).</li>
+</ol>
+<p>Let's dive in.</p>
+<figure><img alt="Python Multiprocessing Pool: The Complete Guide" loading="lazy" src="../pics/Pool-Guide.png"/><figcaption>Python Multiprocessing Pool: The Complete Guide</figcaption></figure>
+<h2>Python Processes and the Need for Process Pools</h2>
+<p>So, what are processes and why do we care about process pools?</p>
+<h3>What Are Python Processes</h3>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> refers to a computer program.</p>
+<p>Every Python program is a process and has one thread called the <a href="../main-thread/">main thread</a> used to execute your program instructions. Each process is, in fact, one instance of the Python interpreter that executes Python instructions (Python byte-code), which is a slightly lower level than the code you type into your Python program.</p>
+<p>Sometimes we may need to create new processes to run additional tasks concurrently.</p>
+<p>Python provides real system-level processes via the <strong>Process</strong> class in the <a href="https://docs.python.org/3/library/multiprocessing.html"><strong>multiprocessing</strong> module</a>.</p>
+<p>The underlying operating system controls how new processes are created. On some systems, that may require spawning a new process, and on others, it may require that the process is forked. The operating-specific method used for creating new processes in Python is not something we need to worry about as it is managed by your installed Python interpreter.</p>
+<p>A task can be run in a new process by creating an instance of the <strong>Process</strong> class and specifying the function to run in the new process via the "<strong>target</strong>" argument.</p>
+<pre><code>...
+# define a task to run in a new process
+p = Process(target=task)</code></pre>
+<p>Once the process is created, it must be started by calling the <strong>start()</strong> method.</p>
+<pre><code>...
+# start the task in a new process
+p.start()</code></pre>
+<p>We can then wait around for the task to complete by joining the process; for example:</p>
+<pre><code>...
+# wait for the task to complete
+p.join()</code></pre>
+<p>Whenever we create new processes, we must protect the entry point of the program.</p>
+<pre><code># entry point for the program
+if __name__ == '__main__':
+	# do things...
+</code></pre>
+<p>Tying this together, the complete example of creating a <strong>Process</strong> to run an ad hoc task function is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of running a function in a new process
+from multiprocessing import Process
+
+# a task to execute in another process
+def task():
+    print('This is another process', flush=True)
+
+# entry point for the program
+if __name__ == '__main__':
+    # define a task to run in a new process
+    p = Process(target=task)
+    # start the task in a new process
+    p.start()
+    # wait for the task to complete
+    p.join()
+</code></pre>
+<p>This is useful for running one-off ad hoc tasks in a separate process, although it becomes cumbersome when you have many tasks to run.</p>
+<p>Each process that is created requires the application of resources (e.g. an instance of the Python interpreter and a memory for the process's main thread's stack space). The computational costs for setting up processes can become expensive if we are creating and destroying many processes over and over for ad hoc tasks.</p>
+<p>Instead, we would prefer to keep worker processes around for reuse if we expect to run many ad hoc tasks throughout our program.</p>
+<p>This can be achieved using a process pool.</p>
+<h3>What Is a Process Pool</h3>
+<p>A process pool is a programming pattern for automatically managing a pool of worker processes.</p>
+<p>The pool is responsible for a fixed number of processes.</p>
+<ul>
+<li>It controls when they are created, such as when they are needed.</li>
+<li>It also controls what they should do when they are not being used, such as making them wait without consuming computational resources.</li>
+</ul>
+<p>The pool can provide a generic interface for executing ad hoc tasks with a variable number of arguments, much like the target property on the Process object, but does not require that we choose a process to run the task, start the process, or wait for the task to complete.</p>
+<p>Python provides a process pool via the <strong>multiprocessing.Pool</strong> class.</p>
+<h3>Multiprocessing Pools in Python</h3>
+<p>The <a href="../multiprocessing-pool-class/"><strong>multiprocessing.pool.Pool</strong> class</a> provides a process pool in Python.</p>
+<p>The <strong>multiprocessing.pool.Pool</strong> class can also be accessed by the alias <strong>multiprocessing.Pool</strong>. They can be used interchangeably. </p>
+<p>It allows tasks to be submitted as functions to the process pool to be executed concurrently.</p>
+<blockquote>
+<p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">MULTIPROCESSING — PROCESS-BASED PARALLELISM</a></cite></blockquote>
+<p>To use the process pool, we must first create and configure an instance of the class.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool
+pool = multiprocessing.pool.Pool(...)</code></pre>
+<p>Once configured, tasks can be submitted to the pool for execution using blocking and asynchronous versions of <strong>apply()</strong> and <strong>map()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# issues tasks for execution
+results = pool.map(task, items)</code></pre>
+<p>Once we have finished with the process pool, it can be closed and resources used by the pool can be released.</p>
+<p>For example:</p>
+<pre><code>...
+# close the process pool
+pool.close()</code></pre>
+<p>Now that we have a high-level idea about the Python process pool, let's take a look at the life-cycle of the <strong>multiprocessing.pool.Pool</strong> class.</p>
+<h2>Life-Cycle of the multiprocessing.Pool</h2>
+<p>The <strong>multiprocessing.Pool</strong> provides a pool of generic worker processes.</p>
+<p>It was designed to be easy and straightforward to use.</p>
+<p>There are four main steps in the life-cycle of using the <strong>multiprocessing.Pool</strong> class, they are: create, submit, wait, and shutdown.</p>
+<ol>
+<li><strong>Create</strong>: Create the process pool by calling the constructor multiprocessing.Pool().</li>
+<li><strong>Submit</strong>: Submit tasks synchronously or asynchronously.
+<ol>
+<li>2a. Submit Tasks Synchronously</li>
+<li>2b. Submit Tasks Asynchronously</li>
+</ol>
+</li>
+<li><strong>Wait</strong>: Wait and get results as tasks complete (optional).
+<ol>
+<li>3a. Wait on AsyncResult objects to Complete</li>
+<li>3b. Wait on AsyncResult objects for Result</li>
+</ol>
+</li>
+<li><strong>Shutdown</strong>: Shutdown the process pool by calling shutdown().
+<ol>
+<li>4a. Shutdown Automatically with the Context Manager</li>
+</ol>
+</li>
+</ol>
+<p>The following figure helps to picture the life-cycle of the <strong>multiprocessing.Pool</strong> class.</p>
+<figure><img alt="Multiprocessing-Pool-Life-Cycle" loading="lazy" src="../pics/Multiprocessing-Pool-Life-Cycle.png"/><figcaption>Multiprocessing-Pool-Life-Cycle</figcaption></figure>
+<p>Let's take a closer look at each life-cycle step in turn.</p>
+<h3>Step 1. Create the Process Pool</h3>
+<p>First, a <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool">multiprocessing.Pool</a></strong> instance must be created.</p>
+<p>When an instance of a <strong>multiprocessing.Pool</strong> is created it may be configured.</p>
+<p>The process pool can be configured by specifying arguments to the <strong>multiprocessing.Pool</strong> class constructor.</p>
+<p>The arguments to the constructor are as follows:</p>
+<ul>
+<li><strong>processes</strong>: Maximum number of worker processes to use in the pool.</li>
+<li><strong>initializer</strong>: Function executed after each worker process is created.</li>
+<li><strong>initargs</strong>: Arguments to the worker process initialization function.</li>
+<li><strong>maxtasksperchild</strong>: Limit the maximum number of tasks executed by each worker process.</li>
+<li><strong>context</strong>: Configure the multiprocessing context such as the process start method.</li>
+</ul>
+<p>Perhaps the most important argument is "<strong>processes</strong>" that specifies the number of worker child processes in the process pool.</p>
+<p>By default the <strong>multiprocessing.Pool</strong> class constructor does not take any arguments.</p>
+<p>For example:</p>
+<pre><code>...
+# create a default process pool
+pool = multiprocessing.Pool()</code></pre>
+<p>This will create a process pool that will use a number of worker processes that matches the number of logical CPU cores in your system.</p>
+<p>We will learn more about how to configure the pool in later sections.</p>
+<p>If you can't wait, you can learn more about how to configure the process pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-configure/">How to Configure the Multiprocessing Pool in Python</a></li>
+</ul>
+<p>Next, let's look at how we might issue tasks to the process pool.</p>
+<h3>Step 2. Submit Tasks to the Process Pool</h3>
+<p>Once the <strong>multiprocessing.Pool</strong> has been created, you can submit tasks execution.</p>
+<p>As discussed, there are two main approaches for submitting tasks to the process pool, they are:</p>
+<ol>
+<li>Issue tasks synchronously.</li>
+<li>Issue tasks asynchronously.</li>
+</ol>
+<p>Let's take a closer look at each approach in turn.</p>
+<h4>Step 2a. Issue Tasks Synchronously</h4>
+<p>Issuing tasks synchronously means that the caller will block until the issued task or tasks have completed.</p>
+<p>Blocking calls to the process pool include <strong>apply()</strong>, <strong>map()</strong>, and <strong>starmap()</strong>.</p>
+<p>We can issue one-off tasks to the process pool using the <strong>apply()</strong> function.</p>
+<p>The <strong>apply()</strong> function takes the name of the function to execute by a worker process. The call will block until the function is executed by a worker process, after which time it will return.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task to the process pool
+pool.apply(task)</code></pre>
+<p>The process pool provides a parallel version of the built-in <strong>map()</strong> function for issuing tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates return values from the issued tasks
+for result in map(task, items):
+    # ...
+</code></pre>
+<p>The <strong>starmap()</strong> function is the same as the parallel version of the <strong>map()</strong> function, except that it allows each function call to take multiple arguments. Specifically, it takes an iterable where each item is an iterable of arguments for the target function.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates return values from the issued tasks
+for result in starmap(task, items):
+    # ...
+</code></pre>
+<p>We will look more closely at how to issue tasks in later sections.</p>
+<h4>Step 2b. Issue Tasks Asynchronously</h4>
+<p>Issuing tasks asynchronously to the process pool means that the caller will not block, allowing the caller to continue on with other work while the tasks are executing.</p>
+<p>The non-blocking calls to issue tasks to the process pool return immediately and provide a hook or mechanism to check the status of the tasks and get the results later. The caller can issue tasks and carry on with the program.</p>
+<p>Non-blocking calls to the process pool include <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async()</strong>.</p>
+<p>The <strong>imap()</strong> and <strong>imap_unordered()</strong> are interesting. They return immediately, so they are technically non-blocking calls. The iterable that is returned will yield return values as tasks are completed. This means traversing the iterable will block.</p>
+<p>The <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async() </strong>functions are asynchronous versions of the <strong>apply()</strong>, <strong>map()</strong>, and <strong>starmap()</strong> functions described above.</p>
+<p>They all return an <strong>AsyncResult</strong> object immediately that provides a handle on the issued task or tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the process pool asynchronously
+result = map_async(task, items)</code></pre>
+<p>The <strong>imap()</strong> function takes the name of a target function and an iterable like the <strong>map()</strong> function.</p>
+<p>The difference is that the imap() function is more lazy in two ways:</p>
+<ul>
+<li><strong>imap()</strong> issues multiple tasks to the process pool one-by-one, instead of all at once like <strong>map()</strong>.</li>
+<li><strong>imap()</strong> returns an iterable that yields results one-by-one as tasks are completed, rather than one-by-one after all tasks have completed like <strong>map()</strong>.</li>
+</ul>
+<p>For example:</p>
+<pre><code>...
+# iterates results as tasks are completed in order
+for result in imap(task, items):
+    # ...
+</code></pre>
+<p>The <strong>imap_unordered()</strong> is the same as <strong>imap()</strong>, except that the returned iterable will yield return values in the order that tasks are completed (e.g. out of order).</p>
+<p>For example:</p>
+<pre><code>...
+# iterates results as tasks are completed, in the order they are completed
+for result in imap_unordered(task, items):
+    # ...
+</code></pre>
+<p>You can learn more about how to issue tasks to the process pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-issue-tasks/">Multiprocessing Pool apply() vs map() vs imap() vs starmap()</a></li>
+</ul>
+<p>Now that we know how to issue tasks to the process pool, let's take a closer look at waiting for tasks to complete or getting results.</p>
+<p></p>
+<h3>Step 3. Wait for Tasks to Complete (Optional)</h3>
+<p>An <strong>AsyncResult</strong> object is returned when issuing tasks to <strong>multiprocessing.Pool</strong> the process pool asynchronously.</p>
+<p>This can be achieved via any of the following methods on the process pool:</p>
+<ul>
+<li><strong>Pool.apply_async()</strong> to issue one task.</li>
+<li><strong>Pool.map_async()</strong> to issue multiple tasks.</li>
+<li><strong>Pool.starmap_async()</strong> to issue multiple tasks that take multiple arguments.</li>
+</ul>
+<p>A <strong>AsyncResult</strong> provides a handle on one or more issued tasks.</p>
+<p>It allows the caller to check on the status of the issued tasks, to wait for the tasks to complete, and to get the results once tasks are completed.</p>
+<p>We do not need to use the returned <strong>AsyncResult</strong>, such as if issued tasks do not return values and we are not concerned with when the tasks complete or whether they are completed successfully.</p>
+<p>That is why this step in the life-cycle is optional.</p>
+<p>Nevertheless, there are two main ways we can use an <strong>AsyncResult</strong> to wait, they are:</p>
+<ul>
+<li>Wait for issued tasks to complete.</li>
+<li>Wait for a result from issued tasks.</li>
+</ul>
+<p>Let's take a closer look at each approach in turn.</p>
+<h4>3a. Wait on AsyncResult objects to Complete</h4>
+<p>We can wait for all tasks to complete via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.wait"><strong>AsyncResult.wait()</strong> function</a>.</p>
+<p>This will block until all issued tasks are completed.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for issued task to complete
+result.wait()</code></pre>
+<p>If the tasks have already completed, then the <strong>wait()</strong> function will return immediately.</p>
+<p>A "<strong>timeout</strong>" argument can be specified to set a limit in seconds for how long the caller is willing to wait.</p>
+<p>If the timeout expires before the tasks are complete, the <strong>wait()</strong> function will return.</p>
+<p>When using a timeout, the <strong>wait()</strong> function does not give an indication that it returned because tasks completed or because the timeout elapsed. Therefore, we can check if the tasks completed via the <strong>ready()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for issued task to complete with a timeout
+result.wait(timeout=10)
+# check if the tasks are all done
+if result.ready()
+    print('All Done')
+    ...
+else :
+    print('Not Done Yet')
+    ...
+</code></pre>
+<h4>3b. Wait on AsyncResult objects for Result</h4>
+<p>We can get the result of an issued task by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.get"><strong>AsyncResult.get()</strong> function</a>.</p>
+<p>This will return the result of the specific function called to issue the task.</p>
+<ul>
+<li><strong>apply_async()</strong>: Returns the return value of the target function.</li>
+<li><strong>map_async()</strong>: Returns an iterable over the return values of the target function.</li>
+<li><strong>starmap_async()</strong>: Returns an iterable over the return values of the target function.</li>
+</ul>
+<p>For example:</p>
+<pre><code>...
+# get the result of the task or tasks
+value = result.get()</code></pre>
+<p>If the issued tasks have not yet completed, then <strong>get()</strong> will block until the tasks are finished.</p>
+<p>If an issued task raises an exception, the exception will be re-raised once the issued tasks are completed.</p>
+<p>We may need to handle this case explicitly if we expect a task to raise an exception on failure.</p>
+<p>A "<strong>timeout</strong>" argument can be specified. If the tasks are still running and do not complete within the specified number of seconds, a <strong>multiprocessing.TimeoutError</strong> is raised.</p>
+<p>You can learn more about the AsyncResult object in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-asyncresult/">Multiprocessing Pool AsyncResult in Python</a></li>
+</ul>
+<p>Next, let's look at how we might shutdown the process pool once we are finished with it.</p>
+<h3>Step 4. Shutdown the Process Pool</h3>
+<p>The <strong>multiprocessing.Pool</strong> can be closed once we have no further tasks to issue.</p>
+<p>There are two ways to shutdown the process pool.</p>
+<p>They are:</p>
+<ul>
+<li>Call <strong>Pool.close()</strong>.</li>
+<li>Call <strong>Pool.terminate()</strong>.</li>
+</ul>
+<p>The <strong>close()</strong> function will return immediately and the pool will not take any further tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# close the process pool
+pool.close()</code></pre>
+<p>Alternatively, we may want to forcefully terminate all child worker processes, regardless of whether they are executing tasks or not.</p>
+<p>This can be achieved via the <strong>terminate()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# forcefully close all worker processes
+pool.terminate()</code></pre>
+<p>We may want to then wait for all tasks in the pool to finish.</p>
+<p>This can be achieved by calling the <strong>join()</strong> function on the pool.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all issued tasks to complete
+pool.join()</code></pre>
+<p>You can learn more about shutting down the <strong>multiprocessing.Pool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../shutdown-the-multiprocessing-pool-in-python/">Shutdown the Multiprocessing Pool in Python</a></li>
+</ul>
+<p>An alternate approach is to shutdown the process pool automatically with the context manager interface.</p>
+<h4>Step 4a. Multiprocessing Pool Context Manager</h4>
+<p>A context manager is an interface on Python objects for defining a new run context.</p>
+<p>Python provides a context manager interface on the process pool.</p>
+<p>This achieves a similar outcome to using a try-except-finally pattern, with less code.</p>
+<p>Specifically, it is more like a try-finally pattern, where any exception handling must be added and occur within the code block itself.</p>
+<p>For example:</p>
+<pre><code>...
+# create and configure the process pool
+with multiprocessing.Pool() as pool:
+    # issue tasks to the pool
+    # ...
+# close the pool automatically
+</code></pre>
+<p>There is an important difference with the try-finally block.</p>
+<p>If we look at the <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/pool.py#L735">source code for the <strong>multiprocessing.Pool</strong> class</a>, we can see that the <strong>__exit__()</strong> method calls the <strong>terminate()</strong> method on the process pool when exiting the context manager block.</p>
+<p>This means that the pool is forcefully closed once the context manager block is exited. It ensures that the resources of the process pool are released before continuing on, but does not ensure that tasks that have already been issued are completed first.</p>
+<p>You can learn more about the context manager interface for the <strong>multiprocessing.Pool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-context-manager/">Multiprocessing Pool Context Manager</a></li>
+</ul>
+<h2>Multiprocessing Pool Example</h2>
+<p>In this section, we will look at a more complete example of using the <strong>multiprocessing.Pool</strong>.</p>
+<p>Consider a situation where we might want to check if a word is known to the program or not, e.g. whether it is in a dictionary of known words.</p>
+<p>If the word is known, that is fine, but if not, we might want to take action for the user, perhaps underline it in read like an automatic spell check.</p>
+<p>One approach to implementing this feature would be to load a dictionary of known words and create a hash of each word. We can then hash new words and check if they exist in the set of known hashed words or not.</p>
+<p>This is a good problem to explore with the multiprocessing.Pool as hashing words can be relatively slow, especially for large dictionaries of hundreds of thousands or millions of known words.</p>
+<p>First, let's develop a serial (non-concurrent) version of the program.</p>
+<h3>Hash a Dictionary of Words One-By-One</h3>
+<p>The first step is to select a dictionary of words to use.</p>
+<p>On Unix systems, like MacOS and Linux, we have a dictionary already installed, called Unix Words.</p>
+<p>It is located in one of the following locations:</p>
+<ul>
+<li>/usr/share/dict/words</li>
+<li>/usr/dict/words</li>
+</ul>
+<p>On my system it is located in ‘<strong>/usr/share/dict/words</strong>‘ and contains 235,886 words calculated using the command:</p>
+<pre><code>cat /usr/share/dict/words | wc -l</code></pre>
+<p>We can use this dictionary of words.</p>
+<p>Alternatively, if we are on windows or wish to have a larger dictionary, we can download one of many free lists of words online.</p>
+<p>For example, you can download a list of one million English words from here:</p>
+<ul>
+<li><a href="../zips/1m_words.txt.zip">One Million English Words (1m_words.txt.zip)</a></li>
+</ul>
+<p>Download this file and unzip the archive to your current working directory with the filename "<strong>1m_words.txt</strong>".</p>
+<p>Looking in the file, we can see that indeed we have a long list of words, one per line.</p>
+<pre><code>aaccf
+aalders
+aaren
+aarika
+aaron
+aartjan
+aasen
+ab
+abacus
+abadines
+abagael
+abagail
+abahri
+abasolo
+abazari
+...</code></pre>
+<p>First, we need to load the list of words into memory.</p>
+<p>This can be achieved by first opening the file, then calling the <strong>readlines()</strong> function that will automatically read ASCII lines of text into a list.</p>
+<p>The <strong>load_words()</strong> function below takes a path to the text file and returns a list of words loaded from the file.</p>
+<pre><code># load a file of words
+def load_words(path):
+    # open the file
+    with open(path, encoding='utf-8') as file:
+        # read all data as lines
+        return file.readlines()
+</code></pre>
+<p>Next, we need to hash each word.</p>
+<p>We will intentionally select a slow hash function in this example, specifically the SHA512 algorithm.</p>
+<p>This is available in Python via the <strong>hashlib.sha512()</strong> function.</p>
+<p>You can learn more about the hashlib module here:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/hashlib.html">hashlib — Secure hashes and message digests</a></li>
+</ul>
+<p>First, we can create an instance of the hashing object by calling the <strong>sha512()</strong> function.</p>
+<pre><code>...
+# create the hash object
+hash_object = sha512()</code></pre>
+<p>Next, we can convert a given word to bytes and then hash it using the hash function.</p>
+<pre><code>...
+# convert the string to bytes
+byte_data = word.encode('utf-8')
+# hash the word
+hash_object.update(byte_data)
+</code></pre>
+<p>Finally, we can get a <a href="https://en.wikipedia.org/wiki/Hexadecimal">hex string representation</a> of the hash for the word by calling the <strong>hashlib.hexdigest()</strong> function.</p>
+<pre><code>...
+# get the hex hash of the word
+h = hash_object.hexdigest()</code></pre>
+<p>Tying this together, the <strong>hash_word()</strong> function below takes a word and returns a hex hash code of the word.</p>
+<pre><code># hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+</code></pre>
+<p>That's about all there is to it.</p>
+<p>We can define a function that will drive the program, first loading the list of words by calling our <strong>load_words()</strong> then creating a set of hashes of known words by calling our <strong>hash_word()</strong> for each loaded word.</p>
+<p>The <strong>main()</strong> function below implements this.</p>
+<pre><code># entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # hash all known words
+    known_words = {hash_word(word) for word in words}
+    print(f'Done, with {len(known_words)} hashes')
+</code></pre>
+<p>Tying this all together, the complete example of loading a dictionary of words and creating a set of known word hashes is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of hashing a word list serially
+from hashlib import sha512
+
+# hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+
+# load a file of words
+def load_words(path):
+    # open the file
+    with open(path, encoding='utf-8') as file:
+        # read all data as lines
+        return file.readlines()
+
+# entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # hash all known words
+    known_words = {hash_word(word) for word in words}
+    print(f'Done, with {len(known_words)} hashes')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, first loads the file and reports that a total of 1,049,938 words were loaded.</p>
+<p>The list of words is then hashed and the hashes are stored in a set.</p>
+<p>The program reports that a total of 979,250 hashes were stored, suggesting thousands of duplicates in the dictionary.</p>
+<p>The program takes about 1.6 seconds to run on a modern system.</p>
+<p>How long does the example take to run on your system?<br/>Let me know in the comments below.</p>
+<pre><code>Loaded 1049938 words from 1m_words.txt
+Done, with 979250 hashes</code></pre>
+<p>Next, we can update the program to hash the words in parallel.</p>
+<h3>Hash a Dictionary of Words Concurrently with map()</h3>
+<p>Hashing words is relatively slow, but even so, hashing nearly one million words takes under two seconds.</p>
+<p>Nevertheless, we can accelerate the process by making use of all CPUs in the system and hashing the words concurrently.</p>
+<p>This can be achieved using the <strong>multiprocessing.Pool</strong>.</p>
+<p>Firstly, we can create the process pool and specify the number of concurrent processes to run. I recommend configuring the pool to match the number of physical CPU cores in your system.</p>
+<p>I have four cores, so the example will use four cores, but update it for the number of cores you have available.</p>
+<pre><code>...
+# create the process pool
+with Pool(4) as pool:
+    # ...
+</code></pre>
+<p>Next, we need to submit the tasks to the process pool, that is, the hashing of each word.</p>
+<p>Because the task is simply applying a function for each item in a list, we can use the <strong>map()</strong> function directly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a set of word hashes
+known_words = set(pool.map(hash_word, words))</code></pre>
+<p>And that's it.</p>
+<p>For example, the updated version of the <strong>main()</strong> function to hash words concurrently is listed below.</p>
+<pre><code># entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # create the process pool
+    with Pool(4) as pool:
+        # create a set of word hashes
+        known_words = set(pool.map(hash_word, words))
+    print(f'Done, with {len(known_words)} hashes')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of hashing a word list in parallel with a process pool
+from math import ceil
+from hashlib import sha512
+from multiprocessing import Pool
+
+# hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+
+# load a file of words
+def load_words(path):
+    # open the file
+    with open(path) as file:
+        # read all data as lines
+        return file.readlines()
+
+# entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # create the process pool
+    with Pool(4) as pool:
+        # create a set of word hashes
+        known_words = set(pool.map(hash_word, words))
+    print(f'Done, with {len(known_words)} hashes')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example loads the words as before then applies the <strong>hash_word()</strong> function to each word in the loaded list as before, except this time the functions are executed in parallel using the process pool.</p>
+<p>This concurrent version does offer a minor speedup, taking about 1.1 seconds on my system, compared to 1.6 seconds for the serial version.</p>
+<p>That is about 0.6 seconds faster or a 1.55x speed-up.</p>
+<pre><code>Loaded 1049938 words from 1m_words.txt
+Done, with 979250 hashes</code></pre>
+<h2>How to Configure the Multiprocessing Pool</h2>
+<p>The process pool can be configured by specifying arguments to the <strong>multiprocessing.pool.Pool</strong> class constructor.</p>
+<p>The arguments to the constructor are as follows:</p>
+<ul>
+<li><strong>processes</strong>: Maximum number of worker processes to use in the pool.</li>
+<li><strong>initializer</strong>: Function executed after each worker process is created.</li>
+<li><strong>initargs</strong>: Arguments to the worker process initialization function.</li>
+<li><strong>maxtasksperchild</strong>: Limit the maximum number of tasks executed by each worker process.</li>
+<li><strong>context</strong>: Configure the multiprocessing context such as the process start method.</li>
+</ul>
+<p>By default the <strong>multiprocessing.pool.Pool</strong> class constructor does not take any arguments.</p>
+<p>For example:</p>
+<pre><code>...
+# create a default process pool
+pool = multiprocessing.pool.Pool()</code></pre>
+<p>This will create a process pool that will use a number of worker processes that matches the number of logical CPU cores in your system.</p>
+<p>It will not call a function that initializes the worker processes when they are created.</p>
+<p>Each worker process will be able to execute an unlimited number of tasks within the pool.</p>
+<p>Finally, the default multiprocessing context will be used, along with the currently configured or default start method for the system.</p>
+<p>Now that we know what configuration the process pool takes, let's look at how we might configure each aspect of the process pool.</p>
+<h3>How to Configure the Number of Worker Processes</h3>
+<p>We can configure the number of worker processes in the <strong>multiprocessing.pool.Pool</strong> by setting the "<strong>processes</strong>" argument in the constructor.</p>
+<blockquote>
+<p>processes is the number of worker processes to use. If processes is None then the number returned by os.cpu_count() is used.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can set the "<strong>processes</strong>" argument to specify the number of child processes to create and use as workers in the process pool.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool with 4 workers
+pool = multiprocessing.pool.Pool(processes=4)</code></pre>
+<p>The "<strong>processes</strong>" argument is the first argument in the constructor and does not need to be specified by name to be set, for example:</p>
+<pre><code>...
+# create a process pool with 4 workers
+pool = multiprocessing.pool.Pool(4)</code></pre>
+<p>If we are using the context manager to create the process pool so that it is automatically shutdown, then you can configure the number of processes in the same manner.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool with 4 workers
+with multiprocessing.pool.Pool(4):
+    # ...
+</code></pre>
+<p>You can learn more about how to configure the number of worker processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-num-workers/">Process Pool Number of Workers in Python</a></li>
+</ul>
+<p>Next, let's look at how we might configure the worker process initialization function.</p>
+<h3>How to Configure the Initialization Function</h3>
+<p>We can configure worker processes in the process pool to execute an initialization function prior to executing tasks.</p>
+<p>This can be achieved by setting the "<strong>initializer</strong>" argument when configuring the process pool via the class constructor.</p>
+<p>The "<strong>initializer</strong>" argument can be set to the name of a function that will be called to initialize the worker processes.</p>
+<blockquote>
+<p>If initializer is not None then each worker process will call initializer(*initargs) when it starts.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code># worker process initialization function
+def worker_init():
+    # ...
+
+...
+# create a process pool and initialize workers
+pool = multiprocessing.pool.Pool(initializer=worker_init)
+</code></pre>
+<p>If our worker process initialization function takes arguments, they can be specified to the process pool constructor via the "<strong>initargs</strong>" argument, which takes an ordered list or tuple of arguments for the custom initialization function.</p>
+<p>For example:</p>
+<pre><code># worker process initialization function
+def worker_init(arg1, arg2, arg3):
+    # ...
+
+...
+# create a process pool and initialize workers
+pool = multiprocessing.pool.Pool(initializer=worker_init, initargs=(arg1, arg2, arg3))
+</code></pre>
+<p>You can learn more about how to initialize worker processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-initializer/">Process Pool Initializer in Python</a></li>
+</ul>
+<p>Next, let's look at how we might configure the maximum tasks per child worker process.</p>
+<h3>How to Configure the Max Tasks Per Child</h3>
+<p>We can limit the maximum number of tasks completed by each child process in the process pool by setting the "<strong>maxtasksperchild</strong>" argument in the <strong>multiprocessing.pool.Pool</strong> class constructor when configuring a new process pool.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process loop and limit the number of tasks in each worker
+pool = multiprocessing.pool.Pool(maxtasksperchild=5)</code></pre>
+<p>The maxtasksperchild takes a positive integer number of tasks that may be completed by a child worker process, after which the process will be terminated and a new child worker process will be created to replace it.</p>
+<blockquote>
+<p>maxtasksperchild is the number of tasks a worker process can complete before it will exit and be replaced with a fresh worker process, to enable unused resources to be freed.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>By default the maxtasksperchild argument is set to None, which means each child worker process will run for the lifetime of the process pool.</p>
+<blockquote>
+<p>The default maxtasksperchild is None, which means worker processes will live as long as the pool.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>You can learn more about configuring the max tasks per worker process in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-max-tasks-per-child-in-python/">Process Pool Max Tasks Per Child in Python</a></li>
+</ul>
+<p>Next, let's look at how we might configure the multiprocess context for the pool.</p>
+<h3>How to Configure the Context</h3>
+<p>We can set the context for the process pool via the "<strong>context</strong>" argument to the <strong>multiprocessing.pool.Pool</strong> class constructor.</p>
+<blockquote>
+<p>context can be used to specify the context used for starting the worker processes.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The "<strong>context</strong>" is an instance of a multiprocessing context configured with a start method, created via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.get_context"><strong>multiprocessing.get_context()</strong> function</a>.</p>
+<p>By default, "<strong>context</strong>" is <strong>None</strong>, which uses the current default context and start method configured for the application.</p>
+<p>A start method is the technique used to start child processes in Python.</p>
+<p>There are three start methods, they are:</p>
+<ul>
+<li><strong>spawn</strong>: start a new Python process.</li>
+<li><strong>fork</strong>: copy a Python process from an existing process.</li>
+<li><strong>forkserver</strong>: new process from which future forked processes will be copied.</li>
+</ul>
+<p>Multiprocessing contexts provide a more flexible way to manage process start methods directly within a program, and may be a preferred approach to changing start methods in general, especially within a Python library.</p>
+<p>A new context can be created with a given start method and passed to the process pool.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process context
+ctx = multiprocessing.get_context('fork')
+# create a process pool with a given context
+pool = multiprocessing.pool.Pool(context=ctx)</code></pre>
+<p>You can learn more about configuring the context for the process pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-context/">Configure the Process Pool Context</a></li>
+</ul>
+<h2>Multiprocessing Pool Issue Tasks</h2>
+<p>In this section, we will take a closer look at the different ways we can issue tasks to the multiprocessing pool.</p>
+<p>The pool provides 8 ways to issue tasks to workers in the process pool.</p>
+<p>They are:</p>
+<ul>
+<li><strong>Pool.apply()</strong></li>
+<li><strong>Pool.apply_async()</strong></li>
+<li><strong>Pool.map()</strong></li>
+<li><strong>Pool.map_async()</strong></li>
+<li><strong>Pool.imap()</strong></li>
+<li><strong>Pool.imap_unordered()</strong></li>
+<li><strong>Pool.starmap()</strong></li>
+<li><strong>Pool.starmap_async()</strong></li>
+</ul>
+<p>Let's take a closer and brief look at each approach in turn.</p>
+<h3>How to Use Pool.apply()</h3>
+<p>We can issue one-off tasks to the process pool using the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.apply"><strong>apply()</strong> function</a>.</p>
+<p>The <strong>apply()</strong> function takes the name of the function to execute by a worker process. The call will block until the function is executed by a worker process, after which time it will return.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task to the process pool
+pool.apply(task)</code></pre>
+<p>The <a href="https://docs.python.org/2/library/functions.html#apply"><strong>Pool.apply()</strong> function</a> is a parallel version of the now deprecated built-in <strong>apply()</strong> function.</p>
+<p>In summary, the capabilities of the <strong>apply()</strong> method are as follows:</p>
+<ul>
+<li>Issues a single task to the process pool.</li>
+<li>Supports multiple arguments to the target function.</li>
+<li>Blocks until the call to the target function is complete.</li>
+</ul>
+<p>You can learn more about the <strong>apply()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-apply/">Multiprocessing Pool.apply() in Python</a></li>
+</ul>
+<h3>How to Use Pool.apply_async()</h3>
+<p>We can issue asynchronous one-off tasks to the process pool using the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.apply_async"><strong>apply_async()</strong> function</a>.</p>
+<p>Asynchronous means that the call to the process pool does not block, allowing the caller that issued the task to carry on.</p>
+<p>The <strong>apply_async()</strong> function takes the name of the function to execute in a worker process and returns immediately with a <strong>AsyncResult</strong> object for the task.</p>
+<p>It supports a callback function for the result and an error callback function if an error is raised.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task asynchronously to the process pool
+result = pool.apply_async(task)</code></pre>
+<p>Later the status of the issued task may be checked or retrieved.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from the issued task
+value = result.get()</code></pre>
+<p>In summary, the capabilities of the <strong>apply_async()</strong> method are as follows:</p>
+<ul>
+<li>Issues a single task to the process pool.</li>
+<li>Supports multiple arguments to the target function.</li>
+<li>Does not block, instead returns a <strong>AsyncResult</strong>.</li>
+<li>Supports callback for the return value and any raised errors.</li>
+</ul>
+<p>You can learn more about the <strong>apply_async()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-apply_async/">Multiprocessing Pool.apply_async() in Python</a></li>
+</ul>
+<h3>How to Use Pool.map()</h3>
+<p>The process pool provides a parallel version of the built-in <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.map"><strong>map()</strong> function</a> for issuing tasks.</p>
+<p>The <strong>map()</strong> function takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable. It returns an iterable over the return values from each call to the target function.</p>
+<p>The iterable is first traversed and all tasks are issued at once. A chunksize can be specified to split the tasks into groups which may be sent to each worker process to be executed in batch.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates return values from the issued tasks
+for result in pool.map(task, items):
+    # ...
+</code></pre>
+<p>The <strong>Pool.map()</strong> function is a parallel version of the <a href="https://docs.python.org/3/library/functions.html#map">built-in <strong>map()</strong> function</a>.</p>
+<p>In summary, the capabilities of the map() method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the process pool all at once.</li>
+<li>Returns an iterable over return values.</li>
+<li>Supports a single argument to the target function.</li>
+<li>Blocks until all issued tasks are completed.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+</ul>
+<p>You can learn more about the <strong>map()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-map/">Multiprocessing Pool.map() in Python</a></li>
+</ul>
+<h3>How to Use Pool.map_async()</h3>
+<p>The process pool provides an asynchronous version of the built-in <strong>map()</strong> function for issuing tasks called <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.map_async"><strong>map_async()</strong> function</a>.</p>
+<p>The <strong>map_async()</strong> function takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable. It does not block and returns immediately with an <strong>AsyncResult</strong> that may be used to access the results.</p>
+<p>The iterable is first traversed and all tasks are issued at once. A chunksize can be specified to split the tasks into groups which may be sent to each worker process to be executed in batch. It supports a callback function for the result and an error callback function if an error is raised.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the process pool asynchronously
+result = pool.map_async(task, items)</code></pre>
+<p>Later the status of the tasks can be checked and the return values from each call to the target function may be iterated.</p>
+<p>For example:</p>
+<pre><code>...
+# iterate over return values from the issued tasks
+for value in result.get():
+    # ...
+</code></pre>
+<p>In summary, the capabilities of the <strong>map_async()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the process pool all at once.</li>
+<li>Supports a single argument to the target function.</li>
+<li>Does not not block, instead returns a <strong>AsyncResult</strong> for accessing results later.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+<li>Supports callback for the return value and any raised errors.</li>
+</ul>
+<p>You can learn more about the <strong>map_async()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li>
+</ul>
+<h3>How to Use Pool.imap()</h3>
+<p>We can issue tasks to the process pool one-by-one via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.imap"><strong>imap()</strong> function</a>.</p>
+<p>The <strong>imap()</strong> function takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable.</p>
+<p>It returns an iterable over the return values from each call to the target function. The iterable will yield return values as tasks are completed, in the order that tasks were issued.</p>
+<p>The <strong>imap()</strong> function is lazy in that it traverses the provided iterable and issues tasks to the process pool one by one as space becomes available in the process pool. A chunksize can be specified to split the tasks into groups which may be sent to each worker process to be executed in batch.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates results as tasks are completed in order
+for result in pool.imap(task, items):
+    # ...
+</code></pre>
+<p>The <a href="https://docs.python.org/2/library/itertools.html#itertools.imap"><strong>Pool.imap()</strong> function</a> is a parallel version of the now deprecated <strong>itertools.imap()</strong> function.</p>
+<p>In summary, the capabilities of the <strong>imap()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the process pool, one-by-one.</li>
+<li>Returns an iterable over return values.</li>
+<li>Supports a single argument to the target function.</li>
+<li>Blocks until each task is completed in order they were issued.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+</ul>
+<p>You can learn more about the <strong>imap()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-imap/">Multiprocessing Pool.imap() in Python</a></li>
+</ul>
+<h3>How to Use Pool.imap_unordered()</h3>
+<p>We can issue tasks to the process pool one-by-one via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.imap_unordered"><strong>imap_unordered()</strong> function</a>.</p>
+<p>The <strong>imap_unordered()</strong> function takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable.</p>
+<p>It returns an iterable over the return values from each call to the target function. The iterable will yield return values as tasks are completed, in the order that tasks were completed, not the order they were issued.</p>
+<p>The <strong>imap_unordered()</strong> function is lazy in that it traverses the provided iterable and issues tasks to the process pool one by one as space becomes available in the process pool. A chunksize can be specified to split the tasks into groups which may be sent to each worker process to be executed in batch.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates results as tasks are completed, in the order they are completed
+for result in pool.imap_unordered(task, items):
+    # ...
+</code></pre>
+<p>In summary, the capabilities of the <strong>imap_unordered()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the process pool, one-by-one.</li>
+<li>Returns an iterable over return values.</li>
+<li>Supports a single argument to the target function.</li>
+<li>Blocks until each task is completed in the order they are completed.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+</ul>
+<p>You can learn more about the <strong>imap_unordered()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-imap_unordered/">Multiprocessing Pool.imap_unordered() in Python</a></li>
+</ul>
+<h3>How to Use Pool.starmap()</h3>
+<p>We can issue multiple tasks to the process pool using the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.starmap"><strong>starmap()</strong> function</a>.</p>
+<p>The <strong>starmap()</strong> function takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable. Each item in the iterable may itself be an iterable, allowing multiple arguments to be provided to the target function.</p>
+<p>It returns an iterable over the return values from each call to the target function. The iterable is first traversed and all tasks are issued at once. A chunksize can be specified to split the tasks into groups which may be sent to each worker process to be executed in batch.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates return values from the issued tasks
+for result in pool.starmap(task, items):
+    # ...
+</code></pre>
+<p>The <strong>Pool.starmap()</strong> function is a parallel version of the <a href="https://docs.python.org/3/library/itertools.html#itertools.starmap"><strong>itertools.starmap()</strong> function</a>.</p>
+<p>In summary, the capabilities of the <strong>starmap()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the process pool all at once.</li>
+<li>Returns an iterable over return values.</li>
+<li>Supports multiple arguments to the target function.</li>
+<li>Blocks until all issued tasks are completed.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+</ul>
+<p>You can learn more about the <strong>starmap()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-starmap/">Multiprocessing Pool.starmap() in Python</a></li>
+</ul>
+<h3>How to Use Pool.starmap_async()</h3>
+<p>We can issue multiple tasks asynchronously to the process pool using the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.starmap_async"><strong>starmap_async()</strong> function</a>.</p>
+<p>The <strong>starmap_async()</strong> function takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable. Each item in the iterable may itself be an iterable, allowing multiple arguments to be provided to the target function.</p>
+<p>It does not block and returns immediately with an <strong>AsyncResult</strong> that may be used to access the results.</p>
+<p>The iterable is first traversed and all tasks are issued at once. A chunksize can be specified to split the tasks into groups which may be sent to each worker process to be executed in batch. It supports a callback function for the result and an error callback function if an error is raised.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the process pool asynchronously
+result = pool.starmap_async(task, items)</code></pre>
+<p>Later the status of the tasks can be checked and the return values from each call to the target function may be iterated.</p>
+<p>For example:</p>
+<pre><code>...
+# iterate over return values from the issued tasks
+for value in result.get():
+    # ...
+</code></pre>
+<p>In summary, the capabilities of the <strong>starmap_async()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the process pool all at once.</li>
+<li>Supports multiple arguments to the target function.</li>
+<li>Does not not block, instead returns a <strong>AsyncResult</strong> for accessing results later.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+<li>Supports callback for the return value and any raised errors.</li>
+</ul>
+<p>You can learn more about the <strong>starmap_async()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-starmap_async/">Multiprocessing Pool.starmap_async() in Python</a></li>
+</ul>
+<h3>How To Choose The Method</h3>
+<p>There are so many methods to issue tasks to the process pool, how do you choose?</p>
+<p>Some properties we may consider when comparing functions used to issue tasks to the process pool include:</p>
+<ul>
+<li>The number of tasks we may wish to issue at once.</li>
+<li>Whether the function call to issue tasks is blocking or not.</li>
+<li>Whether all of the tasks are issued at once or one-by-one</li>
+<li>Whether the call supports zero, one, or multiple arguments to the target function.</li>
+<li>Whether results are returned in order or not.</li>
+<li>Whether the call supports callback functions or not.</li>
+</ul>
+<p>The table below summarizes each of these properties and whether they are supported by each call to the process pool.</p>
+<p>A YES (green) cell in the table does not mean "good". It means that the function call has a given property which may or may not be useful or required for your specific use case.</p>
+<figure><img alt="Table Comparison of Issuing Tasks to the Process Pool" loading="lazy" src="../pics/Table-Comparison-of-Issuing-Tasks-to-the-Process-Pool-1024x217.png"/><figcaption>Table Comparison of Issuing Tasks to the Process Pool</figcaption></figure>
+<p>You can learn more about how to choose a method for issuing tasks to the multiprocessing pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-issue-tasks/">Multiprocessing Pool apply() vs map() vs imap() vs starmap()</a></li>
+</ul>
+<h2>How to Use AsyncResult in Detail</h2>
+<p>An <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult"><strong>multiprocessing.pool.AsyncResult</strong> object</a> is returned when issuing tasks to <strong>multiprocessing.pool.Pool</strong> the process pool asynchronously.</p>
+<p>This can be achieved via any of the following methods on the process pool:</p>
+<ul>
+<li><strong>Pool.apply_async()</strong> to issue one task.</li>
+<li><strong>Pool.map_async()</strong> to issue multiple tasks.</li>
+<li><strong>Pool.starmap_async()</strong> to issue multiple tasks that take multiple arguments.</li>
+</ul>
+<p>An <strong>AsyncResult</strong> object provides a handle on one or more issued tasks.</p>
+<p>It allows the caller to check on the status of the issued tasks, to wait for the tasks to complete, and to get the results once tasks are completed.</p>
+<h3>How to Get an AsyncResult Object</h3>
+<p>The <strong>AsyncResult</strong> class is straightforward to use.</p>
+<p>First, you must get an <strong>AsyncResult</strong> object by issuing one or more tasks to the process pool using any of the <strong>apply_async()</strong>, <strong>map_async()</strong>, or <strong>starmap_async()</strong> functions.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task to the process pool
+result = pool.apply_async(...)</code></pre>
+<p>Once you have an <strong>AsyncResult</strong> object, you can use it to query the status and get results from the task.</p>
+<h3>How to Get a Result</h3>
+<p>We can get the result of an issued task by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.get"><strong>AsyncResult.get()</strong> function</a>.</p>
+<blockquote>
+<p>Return the result when it arrives.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This will return the result of the specific function called to issue the task.</p>
+<ul>
+<li><strong>apply_async()</strong>: Returns the return value of the target function.</li>
+<li><strong>map_async()</strong>: Returns an iterable over the return values of the target function.</li>
+<li><strong>starmap_async()</strong>: Returns an iterable over the return values of the target function.</li>
+</ul>
+<p>For example:</p>
+<pre><code>...
+# get the result of the task or tasks
+value = result.get()</code></pre>
+<p>If the issued tasks have not yet completed, then <strong>get()</strong> will block until the tasks are finished.</p>
+<p>A "<strong>timeout</strong>" argument can be specified. If the tasks are still running and do not complete within the specified number of seconds, a <strong>multiprocessing.TimeoutError</strong> is raised.</p>
+<blockquote>
+<p>If timeout is not None and the result does not arrive within timeout seconds then multiprocessing.TimeoutError is raised.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+try:
+    # get the task result with a timeout
+    value = result.get(timeout=10)
+except multiprocessing.TimeoutError as e:
+    # ...
+</code></pre>
+<p>If an issued task raises an exception, the exception will be re-raised once the issued tasks are completed.</p>
+<p>We may need to handle this case explicitly if we expect a task to raise an exception on failure.</p>
+<blockquote>
+<p>If the remote call raised an exception then that exception will be re-raised by get().</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+try:
+    # get the task result that might raise an exception
+    value = result.get()
+except Exception as e:
+    # ...
+</code></pre>
+<h3>How to Wait For Completion</h3>
+<p>We can wait for all tasks to complete via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.wait"><strong>AsyncResult.wait()</strong> function</a>.</p>
+<p>This will block until all issued tasks are completed.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for issued task to complete
+result.wait()</code></pre>
+<p>If the tasks have already completed, then the <strong>wait()</strong> function will return immediately.</p>
+<p>A "<strong>timeout</strong>" argument can be specified to set a limit in seconds for how long the caller is willing to wait.</p>
+<blockquote>
+<p>Wait until the result is available or until timeout seconds pass.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>If the timeout expires before the tasks are complete, the <strong>wait()</strong> function will return.</p>
+<p>When using a timeout, the <strong>wait()</strong> function does not give an indication that it returned because tasks completed or because the timeout elapsed. Therefore, we can check if the tasks completed via the <strong>ready()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for issued task to complete with a timeout
+result.wait(timeout=10)
+# check if the tasks are all done
+if result.ready()
+    print('All Done')
+    ...
+else :
+    print('Not Done Yet')
+    ...
+</code></pre>
+<h3>How to Check if Tasks Are Completed</h3>
+<p>We can check if the issued tasks are completed via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.ready"><strong>AsyncResult.ready()</strong> function</a>.</p>
+<blockquote>
+<p>Return whether the call has completed.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>It returns <strong>True</strong> if the tasks have completed, successfully or otherwise, or <strong>False</strong> if the tasks are still running.</p>
+<p>For example:</p>
+<pre><code>...
+# check if tasks are still running
+if result.ready():
+    print('Tasks are done')
+else:
+    print('Tasks are not done')
+</code></pre>
+<h3>How to Check if Tasks Were Successful</h3>
+<p>We can check if the issued tasks completed successfully via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.successful"><strong>AsyncResult.successful()</strong> function</a>.</p>
+<p>Issued tasks are successful if no tasks raised an exception.</p>
+<p>If at least one issued task raised an exception, then the call was not successful and the <strong>successful()</strong> function will return <strong>False</strong>.</p>
+<p>This function should be called after it is known that the tasks have completed, e.g. <strong>ready()</strong> returns True.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the tasks have completed
+if result.ready():
+    # check if the tasks were successful
+    if result.successful():
+        print('Successful')
+    else:
+        print('Unsuccessful')
+</code></pre>
+<p>If the issued tasks are still running, a <strong>ValueError</strong> is raised.</p>
+<blockquote>
+<p>Return whether the call completed without raising an exception. Will raise ValueError if the result is not ready.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+try:
+    # check if the tasks were successful
+    if result.successful():
+        print('Successful')
+except ValueError as e:
+    print('Tasks still running')
+</code></pre>
+<p>You can learn more about how to use an <strong>AsyncResult</strong> object in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-asyncresult/">Multiprocessing Pool AsyncResult in Python</a></li>
+</ul>
+<p>Next, let’s take a look at how to use callback functions with asynchronous tasks.</p>
+<h2>Multiprocessing Pool Callback Functions</h2>
+<p>The <strong>multiprocessing.Pool</strong> supports custom callback functions.</p>
+<p>Callback functions are called in two situations:</p>
+<ol>
+<li>With the results of a task.</li>
+<li>When an error is raised in a task.</li>
+</ol>
+<p>Let’s take a closer look at each in turn.</p>
+<h3>How to Configure a Callback Function</h3>
+<p>Result callbacks are supported in the process pool when issuing tasks asynchronously with any of the following functions:</p>
+<ul>
+<li><strong>apply_async()</strong>: For issuing a single task asynchronously.</li>
+<li><strong>map_async()</strong>: For issuing multiple tasks with a single argument asynchronously.</li>
+<li><strong>starmap_async()</strong>: For issuing multiple tasks with multiple arguments asynchronously.</li>
+</ul>
+<p>A result callback can be specified via the "<strong>callback</strong>" argument.</p>
+<p>The argument specifies the name of a custom function to call with the result of asynchronous task or tasks.</p>
+<p>Note, a configured callback function will be called, even if your task function does not have a return value. In that case, a default return value of <strong>None</strong> will be passed as an argument to the callback function.</p>
+<p>The function may have any name you like, as long as it does not conflict with a function name already in use.</p>
+<blockquote>
+<p>If callback is specified then it should be a callable which accepts a single argument. When the result becomes ready callback is applied to it</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example, if <strong>apply_async()</strong> is configured with a callback, then the callback function will be called with the return value of the task function that was executed.</p>
+<pre><code># result callback function
+def result_callback(result):
+	print(result, flush=True)
+
+...
+# issue a single task
+result = apply_async(..., callback=result_callback)
+</code></pre>
+<p>Alternatively, if <strong>map_async()</strong> or <strong>starmap_async()</strong> are configured with a callback, then the callback function will be called with an iterable of return values from all tasks issued to the process pool.</p>
+<pre><code># result callback function
+def result_callback(result):
+	# iterate all results
+	for value in result:
+		print(value, flush=True)
+
+...
+# issue a single task
+result = map_async(..., callback=result_callback)
+</code></pre>
+<p>Result callbacks should be used to perform a quick action with the result or results of issued tasks from the process pool.</p>
+<p>They should not block or execute for an extended period as they will occupy the resources of the process pool while running.</p>
+<blockquote>
+<p>Callbacks should complete immediately since otherwise the thread which handles the results will get blocked.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<h3>How to Configure an Error Callback Function</h3>
+<p>Error callbacks are supported in the process pool when issuing tasks asynchronously with any of the following functions:</p>
+<ul>
+<li><strong>apply_async()</strong>: For issuing a single task asynchronously.</li>
+<li><strong>map_async()</strong>: For issuing multiple tasks with a single argument asynchronously.</li>
+<li><strong>starmap_async()</strong>: For issuing multiple tasks with multiple arguments asynchronously.</li>
+</ul>
+<p>An error callback can be specified via the "<strong>error_callback</strong>" argument.</p>
+<p>The argument specifies the name of a custom function to call with the error raised in an asynchronous task.</p>
+<p>Note, the first task to raise an error will be called, not all tasks that raise an error.</p>
+<p>The function may have any name you like, as long as it does not conflict with a function name already in use.</p>
+<blockquote>
+<p>If error_callback is specified then it should be a callable which accepts a single argument. If the target function fails, then the error_callback is called with the exception instance.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example, if <strong>apply_async()</strong> is configured with an error callback, then the callback function will be called with the error raised in the task.</p>
+<pre><code># error callback function
+def custom_callback(error):
+	print(error, flush=True)
+
+...
+# issue a single task
+result = apply_async(..., error_callback=custom_callback)
+</code></pre>
+<p>Error callbacks should be used to perform a quick action with the error raised by a task in the process pool.</p>
+<p>They should not block or execute for an extended period as they will occupy the resources of the process pool while running.</p>
+<p>Next, let’s look at common usage patterns for the multiprocessing pool.</p>
+<h2>Multiprocessing Pool Common Usage Patterns</h2>
+<p>The <strong>multiprocessing.Pool</strong> provides a lot of flexibility for executing concurrent tasks in Python.</p>
+<p>Nevertheless, there are a handful of common usage patterns that will fit most program scenarios.</p>
+<p>This section lists the common usage patterns with worked examples that you can copy and paste into your own project and adapt as needed.</p>
+<p>The patterns we will look at are as follows:</p>
+<ul>
+<li>Pattern 1: map() and Iterate Results Pattern</li>
+<li>Pattern 2: apply_async() and Forget Pattern</li>
+<li>Pattern 3: map_async() and Forget Pattern</li>
+<li>Pattern 4: imap_unordered() and Use as Completed Pattern</li>
+<li>Pattern 5: imap_unordered() and Wait for First Pattern</li>
+</ul>
+<p>We will use a contrived task in each example that will sleep for a random amount of time equal to less than one second. You can easily replace this example task with your own task in each pattern.</p>
+<p>Let's start with the first usage pattern.</p>
+<h3>Pattern 1: map() and Iterate Results Pattern</h3>
+<p>This pattern involves calling the same function with different arguments then iterating over the results.</p>
+<p>It is a concurrent and parallel version of the built-in <strong>map()</strong> function with the main difference that all function calls are issued to the process pool immediately and we cannot process results until all tasks are completed.</p>
+<p>It requires that we call the <strong>map()</strong> function with our target function and an iterable of arguments and process return values from each function call in a for loop.</p>
+<pre><code>...
+# issue tasks and process results
+for result in pool.map(task, range(10)):
+    print(f'&gt;got {result}')
+</code></pre>
+<p>You can learn more about how to use the <strong>map()</strong> function on the process pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-map/">Multiprocessing Pool.map() in Python</a></li>
+</ul>
+<p>This pattern can be used for target functions that take multiple arguments by changing the <strong>map()</strong> function for the <strong>starmap()</strong> function.</p>
+<p>You can learn more about the <strong>starmap()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-starmap/">Multiprocessing Pool.starmap() in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the map an iterate results usage pattern
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# task to execute in a new process
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # return a value
+    return (value, random_value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the process pool
+    with Pool() as pool:
+        # issue tasks and process results
+        for result in pool.map(task, range(10)):
+            print(f'&gt;got {result}')
+</code></pre>
+<p>Running the example, we can see that the <strong>map()</strong> function is called the <strong>task()</strong> function for each argument in the range 0 to 9.</p>
+<p>Watching the example run, we can see that all tasks are issued to the process pool, complete, then once all results are available will the main process iterate over the return values.</p>
+<pre><code>&gt;got (0, 0.5223115198151266)
+&gt;got (1, 0.21783676257361628)
+&gt;got (2, 0.2987824437365636)
+&gt;got (3, 0.7878833057358723)
+&gt;got (4, 0.3656686303407395)
+&gt;got (5, 0.19329669829989338)
+&gt;got (6, 0.8684106781905665)
+&gt;got (7, 0.19365670382002365)
+&gt;got (8, 0.6705626483476922)
+&gt;got (9, 0.036792658761421904)</code></pre>
+<h3>Pattern 2: apply_async() and Forget Pattern</h3>
+<p>This pattern involves issuing one task to the process pool and then not waiting for the result. Fire and forget.</p>
+<p>This is a helpful approach for issuing ad hoc tasks asynchronously to the process pool, allowing the main process to continue on with other aspects of the program.</p>
+<p>This can be achieved by calling the <strong>apply_async()</strong> function with the name of the target function and any arguments the target function may take.</p>
+<p>The <strong>apply_async()</strong> function will return an <strong>AsyncResult</strong> object that can be ignored.</p>
+<p>For example:</p>
+<pre><code>...
+# issue task
+_ = pool.apply_async(task, args=(1,))</code></pre>
+<p>You can learn more about the <strong>apply_async()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-apply_async/">Multiprocessing Pool.apply_async() in Python</a></li>
+</ul>
+<p>Once all ad hoc tasks have been issued, we may want to wait for the tasks to complete before closing the process pool.</p>
+<p>This can be achieved by calling the <strong>close()</strong> function on the pool to prevent it from receiving any further tasks, then joining the pool to wait for the issued tasks to complete.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>You can learn more about joining the process pool in the tutorial:</p>
+<ul>
+<li><a href="../join-a-multiprocessing-pool-in-python/">Join a Multiprocessing Pool in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the apply_async and forget usage pattern
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# task to execute in a new process
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # prepare result
+    result = (value, random_value)
+    # report results
+    print(f'&gt;task got {result}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the process pool
+    with Pool() as pool:
+        # issue task
+        _ = pool.apply_async(task, args=(1,))
+        # close the pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example fires a task into the process pool and forgets about it, allowing it to complete in the background.</p>
+<p>The task is issued and the main process is free to continue on with other parts of the program.</p>
+<p>In this simple example, there is nothing else to go on with, so the main process then closes the pool and waits for all ad hoc fire-and-forget tasks to complete before terminating.</p>
+<pre><code>&gt;task got (1, 0.1278130542799114)</code></pre>
+<h3>Pattern 3: map_async() and Forget Pattern</h3>
+<p>This pattern involves issuing many tasks to the process pool and then moving on. Fire-and-forget for multiple tasks.</p>
+<p>This is helpful for applying the same function to each item in an iterable and then not being concerned with the result or return values.</p>
+<p>The tasks are issued asynchronously, allowing the caller to continue on with other parts of the program.</p>
+<p>This can be achieved with the <strong>map_async()</strong> function that takes the name of the target task and an iterable of arguments for each function call.</p>
+<p>The function returns an <strong>AsyncResult</strong> object that provides a handle on the issued tasks, that can be ignored in this case.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the process pool
+_ = pool.map_async(task, range(10))</code></pre>
+<p>You can learn more about the <strong>map_async()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li>
+</ul>
+<p>Once all asynchronous tasks have been issued and there is nothing else in the program to do, we can close the process pool and wait for all issued tasks to complete.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the map_async and forget usage pattern
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# task to execute in a new process
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # prepare result
+    result = (value, random_value)
+    # report results
+    print(f'&gt;task got {result}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        _ = pool.map_async(task, range(10))
+        # close the pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example issues ten tasks to the process pool.</p>
+<p>The call returns immediately and the tasks are executed asynchronously. This allows the main process to continue on with other parts of the program.</p>
+<p>There is nothing else to do in this simple example, so the process pool is then closed and the main process blocks, waiting for the issued tasks to complete.</p>
+<pre><code>&gt;task got (1, 0.07000157647675087)
+&gt;task got (0, 0.23377533908752213)
+&gt;task got (4, 0.5817185149247178)
+&gt;task got (3, 0.592827746280798)
+&gt;task got (9, 0.39735803187389696)
+&gt;task got (5, 0.6693476274660454)
+&gt;task got (6, 0.7423437379725698)
+&gt;task got (7, 0.8881483088702092)
+&gt;task got (2, 0.9846685764130632)
+&gt;task got (8, 0.9740735804232945)</code></pre>
+<h3>Pattern 4: imap_unordered() and Use as Completed Pattern</h3>
+<p>This pattern is about issuing tasks to the pool and using results for tasks as they become available.</p>
+<p>This means that results are received out of order, if tasks take a variable amount of time, rather than in the order that the tasks were issued to the process pool.</p>
+<p>This can be achieved with the <strong>imap_unordered()</strong> function. It takes a function and an iterable of arguments, just like the <strong>map()</strong> function.</p>
+<p>It returns an iterable that yields return values from the target function as the tasks are completed.</p>
+<p>We can call the <strong>imap_unordered()</strong> function and iterate the return values directly in a for-loop.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks and process results
+for result in pool.imap_unordered(task, range(10)):
+    print(f'&gt;got {result}')
+</code></pre>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-imap_unordered/">Multiprocessing Pool.imap_unordered() in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the imap_unordered and use as completed usage pattern
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# task to execute in a new process
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # return result
+    return (value, random_value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the process pool
+    with Pool() as pool:
+        # issue tasks and process results
+        for result in pool.imap_unordered(task, range(10)):
+            print(f'&gt;got {result}')
+</code></pre>
+<p>Running the example issues all tasks to the pool, then receives and processes results in the order that tasks are completed, not the order that tasks were issued to the pool, e.g. unordered.</p>
+<pre><code>&gt;got (6, 0.27185692519830873)
+&gt;got (7, 0.30517408991009)
+&gt;got (2, 0.4565919197158417)
+&gt;got (0, 0.4866540025699637)
+&gt;got (5, 0.5594145856578583)
+&gt;got (3, 0.6073766993405534)
+&gt;got (1, 0.6665710827894051)
+&gt;got (8, 0.4987608917896833)
+&gt;got (4, 0.8036914328418536)
+&gt;got (9, 0.49972284685751034)</code></pre>
+<h3>Pattern 5: imap_unordered() and Wait for First Pattern</h3>
+<p>This pattern involves issuing many tasks to the process pool asynchronously, then waiting for the first result or first task to finish.</p>
+<p>It is a helpful pattern when there may be multiple ways of getting a result but only a single or the first result is required, after which, all other tasks become irrelevant.</p>
+<p>This can be achieved by the <strong>imap_unordered()</strong> function that, like the <strong>map()</strong> function, takes the name of a target function and an iterable of arguments.</p>
+<p>It returns an iterable that yields return values in the order that tasks complete.</p>
+<p>This iterable can then be traversed once manually via the <strong>next()</strong> built-in function which will return only once the first task to finish returns.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks and process results
+it = pool.imap_unordered(task, range(10))
+# get the result from the first task to complete
+result = next(it)</code></pre>
+<p>The result can then be processed and the process pool can be terminated, forcing any remaining tasks to stop immediately. This happens automatically via the context manager interface.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the imap_unordered and wait for first result usage pattern
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# task to execute in a new process
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # return result
+    return (value, random_value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the process pool
+    with Pool() as pool:
+        # issue tasks and process results
+        it = pool.imap_unordered(task, range(10))
+        # get the result from the first task to complete
+        result = next(it)
+        # report first result
+        print(f'&gt;got {result}')
+</code></pre>
+<p>Running the example first issues all of the tasks asynchronously.</p>
+<p>The result from the first task to complete is then requested, which blocks until a result is available.</p>
+<p>One task completes, returns a value, which is then processed, then the process pool and all remaining tasks are terminated automatically.</p>
+<pre><code>&gt;got (4, 0.41272860928850164)</code></pre>
+<h2>When to Use the Multiprocessing Pool</h2>
+<p>The <strong>multiprocessing.Pool</strong> is powerful and flexible, although is not suited for all situations where you need to run a background task or apply a function to each item in an iterable in parallel.</p>
+<p>In this section, we will look at some general cases where it is a good fit, and where it isn't, then we'll look at broad classes of tasks and why they are or are not appropriate for the <strong>multiprocessing.Pool</strong>.</p>
+<h3>Use multiprocessing.Pool When...</h3>
+<ul>
+<li>Your tasks can be defined by a pure function that has no state or side effects.</li>
+<li>Your task can fit within a single Python function, likely making it simple and easy to understand.</li>
+<li>You need to perform the same task many times, e.g. homogeneous tasks.</li>
+<li>You need to apply the same function to each object in a collection in a for-loop.</li>
+</ul>
+<p>Process pools work best when applying the same pure function on a set of different data (e.g. homogeneous tasks, heterogeneous data). This makes code easier to read and debug. This is not a rule, just a gentle suggestion.</p>
+<h3>Use Multiple multiprocessing.Pool When...</h3>
+<ul>
+<li>You need to perform groups of different types of tasks; one process pool could be used for each task type.</li>
+<li>You need to perform a pipeline of tasks or operations; one process pool can be used for each step.</li>
+</ul>
+<p>Process pools can operate on tasks of different types (e.g. heterogeneous tasks), although it may make the organization of your program and debugging easy if a separate process pool is responsible for each task type. This is not a rule, just a gentle suggestion.</p>
+<h3>Don't Use multiprocessing.Pool When...</h3>
+<ul>
+<li>You have a single task; consider using the Process class with the "<strong>target</strong>" argument.</li>
+<li>You have long running tasks, such as monitoring or scheduling; consider extending the <strong>Process</strong> class.</li>
+<li>Your task functions require state; consider extending the <strong>Process</strong> class.</li>
+<li>Your tasks require coordination; consider using a <strong>Process</strong> and patterns like a Barrier or Semaphore.</li>
+<li>Your tasks require synchronization; consider using a <strong>Process</strong> and <strong>Locks</strong>.</li>
+<li>You require a process trigger on an event; consider using the <strong>Process</strong> class.</li>
+</ul>
+<p>The sweet spot for process pools is in dispatching many similar tasks, the results of which may be used later in the program. Tasks that don't fit neatly into this summary are probably not a good fit for process pools. This is not a rule, just a gentle suggestion.</p>
+<h3>Don't Use Processes for IO-Bound Tasks (probably)</h3>
+<p>You can use processes for IO-bound tasks, although threads may be a better fit.</p>
+<p>An IO-bound task is a type of task that involves reading from or writing to a device, file, or socket connection.</p>
+<p>The operations involve input and output (IO) and the speed of these operations is bound by the device, hard drive, or network connection. This is why these tasks are referred to as IO-bound.</p>
+<p>CPUs are really fast. Modern CPUs like a 4GHz can execute 4 billion instructions per second, and you likely have more than one CPU in your system.</p>
+<p>Doing IO is very slow compared to the speed of CPUs.</p>
+<p>Interacting with devices, reading and writing files, and socket connections involves calling instructions in your operating system (the kernel), which will wait for the operation to complete. If this operation is the main focus for your CPU, such as executing in the main thread of your Python program, then your CPU is going to wait many milliseconds or even many seconds doing nothing.</p>
+<p>That is potentially billions of operations that it is prevented from executing.</p>
+<p>We can free-up the CPU from IO-bound operations by performing IO-bound operations on another process of execution. This allows the CPU to start the task and pass it off to the operating system (kernel) to do the waiting, and free it up to execute in another application process.</p>
+<p>There's more to it under the covers, but this is the gist.</p>
+<p>Therefore, the tasks we execute with a <strong>multiprocessing.Pool</strong> can be tasks that involve IO operations.</p>
+<p>Examples include:</p>
+<ul>
+<li>Reading or writing a file from the hard drive.</li>
+<li>Reading or writing to standard output, input, or error (stdin, stdout, stderr).</li>
+<li>Printing a document.</li>
+<li>Downloading or uploading a file.</li>
+<li>Querying a server.</li>
+<li>Querying a database.</li>
+<li>Taking a photo or recording a video.</li>
+<li>And so much more.</li>
+</ul>
+<h3>Use Processes for CPU-Bound Tasks</h3>
+<p>You should probably use processes for CPU-bound tasks.</p>
+<p>A CPU-bound task is a type of task that involves performing a computation and does not involve IO.</p>
+<p>The operations only involve data in main memory (RAM) or cache (CPU cache) and performing computations on or with that data. As such, the limit on these operations is the speed of the CPU. This is why we call them CPU-bound tasks.</p>
+<p>Examples include:</p>
+<ul>
+<li>Calculating points in a fractal.</li>
+<li>Estimating Pi</li>
+<li>Factoring primes.</li>
+<li>Parsing HTML, JSON, etc. documents.</li>
+<li>Processing text.</li>
+<li>Running simulations.</li>
+</ul>
+<p>CPUs are very fast and we often have more than one CPU. We would like to perform our tasks and make full use of multiple CPU cores in modern hardware.</p>
+<p>Using processes and process pools via the <strong>multiprocessing.Pool</strong> class in Python is probably the best path toward achieving this end.</p>
+<h2>Multiprocessing Pool Exception Handling</h2>
+<p>Exception handling is an important consideration when using processes.</p>
+<p>Code may raise an exception when something unexpected happens and the exception should be dealt with by your application explicitly, even if it means logging it and moving on.</p>
+<p>Python processes are well suited for use with IO-bound tasks, and operations within these tasks often raise exceptions, such as if a server cannot be reached, if the network goes down, if a file cannot be found, and so on.</p>
+<p>There are three points you may need to consider exception handling when using the multiprocessing.pool.Pool, they are:</p>
+<ol>
+<li>Process Initialization</li>
+<li>Task Execution</li>
+<li>Task Completion Callbacks</li>
+</ol>
+<p>Let's take a closer look at each point in turn.</p>
+<h3>Exception Handling in Worker Initialization</h3>
+<p>You can specify a custom initialization function when configuring your multiprocessing.pool.Pool.</p>
+<p>This can be set via the "<strong>initializer</strong>" argument to specify the function name and "<strong>initargs</strong>" to specify a tuple of arguments to the function.</p>
+<p>Each process started by the process pool will call your initialization function before starting the process.</p>
+<p>For example:</p>
+<pre><code># worker process initialization function
+def worker_init():
+    # ...
+
+...
+# create a process pool and initialize workers
+pool = multiprocessing.pool.Pool(initializer=worker_init)
+</code></pre>
+<p>You can learn more about configuring the pool with worker initializer functions in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-initializer/">Multiprocessing Pool Initializer in Python</a></li>
+</ul>
+<p>If your initialization function raises an exception it will break your process pool.</p>
+<p>We can demonstrate this with an example of a contrived initializer function that raises an exception.</p>
+<pre><code># SuperFastPython.com
+# example of an exception raised in the worker initializer function
+from time import sleep
+from multiprocessing.pool import Pool
+
+# function for initializing the worker process
+def init():
+    # raise an exception
+    raise Exception('Something bad happened!')
+
+# task executed in a worker process
+def task():
+    # block for a moment
+    sleep(1)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a process pool
+    with Pool(initializer=init) as pool:
+        # issue a task
+        pool.apply(task)
+</code></pre>
+<p>Running the example fails with an exception, as we expected.</p>
+<p>The process pool is created and nearly immediately, the internal child worker processes are created and initialized.</p>
+<p>Each worker process fails to be initialized given that the initialization function raises an exception.</p>
+<p>The process pool then attempts to restart new replacement child workers for each process that was started and failed. These too fail with exceptions.</p>
+<p>The process repeats many times until some internal limit is reached and the program exits.</p>
+<p>A truncated example of the output is listed below.</p>
+<pre><code>Process SpawnPoolWorker-1:
+Traceback (most recent call last):
+  ...
+    raise Exception('Something bad happened!')
+Exception: Something bad happened!
+...
+</code></pre>
+<p>This highlights that if you use a custom initializer function, that you must carefully consider the exceptions that may be raised and perhaps handle them, otherwise out at risk all tasks that depend on the process pool.</p>
+<h3>Exception Handling in Task Execution</h3>
+<p>An exception may occur while executing your task.</p>
+<p>This will cause the task to stop executing, but will not break the process pool.</p>
+<p>If tasks were issued with a synchronous function, such as <strong>apply()</strong>, <strong>map()</strong>, or <strong>starmap()</strong> the exception will be re-raised in the caller.</p>
+<p>If tasks are issued with an asynchronous function such as <strong>apply_async()</strong>, <strong>map_async()</strong>, or <strong>starmap_async()</strong>, an <strong>AsyncResult</strong> object will be returned. If a task issued asynchronously raises an exception, it will be caught by the process pool and re-raised if you call <strong>get()</strong> function in the <strong>AsyncResult</strong> object in order to get the result.</p>
+<p>It means that you have two options for handling exceptions in tasks, they are:</p>
+<ol>
+<li>Handle exceptions within the task function.</li>
+<li>Handle exceptions when getting results from tasks.</li>
+</ol>
+<p>Let's take a closer look at each approach in turn.</p>
+<h4>Exception Handling Within the Task</h4>
+<p>Handling the exception within the task means that you need some mechanism to let the recipient of the result know that something unexpected happened.</p>
+<p>This could be via the return value from the function, e.g. <strong>None</strong>.</p>
+<p>Alternatively, you can re-raise an exception and have the recipient handle it directly. A third option might be to use some broader state or global state, perhaps passed by reference into the call to the function.</p>
+<p>The example below defines a work task that will raise an exception, but will catch the exception and return a result indicating a failure case.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task():
+    # block for a moment
+    sleep(1)
+    try:
+        raise Exception('Something bad happened!')
+    except Exception:
+        return 'Unable to get the result'
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a process pool
+    with Pool() as pool:
+        # issue a task
+        result = pool.apply_async(task)
+        # get the result
+        value = result.get()
+        # report the result
+        print(value)
+</code></pre>
+<p>Running the example starts the process pool as per normal, issues the task, then blocks waiting for the result.</p>
+<p>The task raises an exception and the result received is an error message.</p>
+<p>This approach is reasonably clean for the recipient code and would be appropriate for tasks issued by both synchronous and asynchronous functions like <strong>apply()</strong>, <strong>apply_async()</strong> and <strong>map()</strong>.</p>
+<p>It may require special handling of a custom return value for the failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<h4>Exception Handling Outside the Task</h4>
+<p>An alternative to handling the exception in the task is to leave the responsibility to the recipient of the result.</p>
+<p>This may feel like a more natural solution, as it matches the synchronous version of the same operation, e.g. if we were performing the function call in a for-loop.</p>
+<p>It means that the recipient must be aware of the types of errors that the task may raise and handle them explicitly.</p>
+<p>The example below defines a simple task that raises an <strong>Exception</strong>, which is then handled by the recipient when issuing the task asynchronously and then attempting to get the result from the returned <strong>AsyncResult</strong> object.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task in the caller
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task():
+    # block for a moment
+    sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+    # unreachable return value
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a process pool
+    with Pool() as pool:
+        # issue a task
+        result = pool.apply_async(task)
+        # get the result
+        try:
+            value = result.get()
+            # report the result
+            print(value)
+        except Exception:
+            print('Unable to get the result')
+</code></pre>
+<p>Running the example creates the process pool and submits the work as per normal.</p>
+<p>The task fails with an exception, the process pool catches the exception, stores it, then re-raises it when we call the <strong>get()</strong> function in the <strong>AsyncResult</strong> object.</p>
+<p>The recipient of the result accepts the exception and catches it, reporting a failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<p>This approach will also work for any task issued synchronously to the process pool.</p>
+<p>In this case, the exception raised by the task is caught by the process pool and re-raised in the caller when getting the result.</p>
+<p>The example below demonstrates handling an exception in the caller for a task issued synchronously.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task in the caller
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task():
+    # block for a moment
+    sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+    # unreachable return value
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a process pool
+    with Pool() as pool:
+        try:
+            # issue a task and get the result
+            value = pool.apply(task)
+            # report the result
+            print(value)
+        except Exception:
+            print('Unable to get the result')
+</code></pre>
+<p>Running the example creates the process pool and issues the work as per normal.</p>
+<p>The task fails with an error, the process pool catches the exception, stores it, then re-raises it in the caller rather than returning the value.</p>
+<p>The recipient of the result accepts the exception and catches it, reporting a failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<h3>Check for a Task Exception</h3>
+<p>We can also check for the exception directly via a call to the <strong>successful()</strong> function on the <strong>AsyncResult</strong> object for tasks issued asynchronously to the process pool.</p>
+<p>This function must be called after the task has finished and indicates whether the task finished normally (<strong>True</strong>) or whether it failed with an <strong>Exception</strong> or similar (<strong>False</strong>).</p>
+<p>We can demonstrate the explicit checking for an exceptional case in the task in the example below.</p>
+<pre><code># SuperFastPython.com
+# example of checking for an exception raised in the task
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task():
+    # block for a moment
+    sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+    # unreachable return value
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a process pool
+    with Pool() as pool:
+        # issue a task
+        result = pool.apply_async(task)
+        # wait for the task to finish
+        result.wait()
+        # check for a failure
+        if result.successful():
+            # get the result
+            value = result.get()
+            # report the result
+            print(value)
+        else:
+            # report the failure case
+            print('Unable to get the result')
+</code></pre>
+<p>Running the example creates and submits the task as per normal.</p>
+<p>The recipient waits for the task to complete then checks for an unsuccessful case.</p>
+<p>The failure of the task is identified and an appropriate message is reported.</p>
+<pre><code>Unable to get the result</code></pre>
+<h4>Exception Handling When Calling map()</h4>
+<p>We may issue many tasks to the process pool using the synchronous version of the <strong>map()</strong> function or <strong>starmap()</strong>.</p>
+<p>One or more of the issued tasks may fail, which will effectively cause all issued tasks to fail as the results will not be accessible.</p>
+<p>We can demonstrate this with an example, listed below.</p>
+<pre><code># SuperFastPython.com
+# exception in one of many tasks issued to the process pool synchronously
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(value):
+    # block for a moment
+    sleep(1)
+    # check for failure case
+    if value == 2:
+        raise Exception('Something bad happened!')
+    # report a value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a process pool
+    with Pool() as pool:
+        # issues tasks to the process pool
+        for result in pool.map(task, range(5)):
+            print(result)
+</code></pre>
+<p>Running the example, creates the process pool and issues 5 tasks using map().</p>
+<p>One of the 5 tasks fails with an exception.</p>
+<p>The exception is then re-raised in the caller instead of returning the iterator over return values.</p>
+<pre><code>multiprocessing.pool.RemoteTraceback:
+"""
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+</code></pre>
+<p>This also happens when issuing tasks using the asynchronous versions of <strong>map()</strong>, such as <strong>map_async()</strong>.</p>
+<p>If we issue tasks with <strong>imap()</strong> and <strong>imap_unordered()</strong>, the exception is not re-raised in the caller until the return value for the specific task that failed is requested from the returned iterator.</p>
+<p>These examples highlight that if map() or equivalents are used to issue tasks to the process pool, then the tasks should handle their own exceptions or be simple enough that exceptions are not expected.</p>
+<h3>Exception Handling in Task Completion Callbacks</h3>
+<p>A final case we must consider for exception handling when using the <strong>multiprocessing.Pool</strong> is in callback functions.</p>
+<p>When issuing tasks to the process pool asynchronously with a call to <strong>apply_async()</strong> or <strong>map_async()</strong> we can add a callback function to be called with the result of the task or a callback function to call if there was an error in the task.</p>
+<p>For example:</p>
+<pre><code># result callback function
+def result_callback(result):
+    print(result, flush=True)
+
+...
+# issue a single task
+result = apply_async(..., callback=result_callback)
+</code></pre>
+<p>You can learn more about using callback function with asynchronous tasks in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-callback/">Multiprocessing Pool Callback Functions in Python</a></li>
+</ul>
+<p>The callback function is executed in a helper thread in the main process, the same process that creates the process pool.</p>
+<p>If an exception is raised in the callback function, it will break the helper thread and in turn break the process pool.</p>
+<p>Any tasks waiting for a result from the process pool will wait forever and will have to be killed manually.</p>
+<p>We can demonstrate this with a worked example.</p>
+<pre><code># SuperFastPython.com
+# example in a callback function for the process pool
+from time import sleep
+from multiprocessing.pool import Pool
+
+# callback function
+def handler(result):
+    # report result
+    print(f'Got result {result}', flush=True)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+
+# task executed in a worker process
+def task():
+    # block for a moment
+    sleep(1)
+    # return a value
+    return 22
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a process pool
+    with Pool() as pool:
+        # issue a task to the process pool
+        result = pool.apply_async(task, callback=handler)
+        # wait for the task to finish
+        result.wait()
+</code></pre>
+<p>Running the example starts the process pool as per normal and issues the task.</p>
+<p>When the task completes, the callback function is called which fails with a raised exception.</p>
+<p>The helper thread (<em>Thread-3</em> in this case) unwinds and brakes the process pool.</p>
+<p>The caller in the main thread of the main process then waits forever for the result.</p>
+<p>Note, you must terminate the program forcefully by pressing Control-C.</p>
+<pre><code>Got result 22
+Exception in thread Thread-3:
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+</code></pre>
+<p>This highlights that if callbacks are expected to raise an exception, that it must be handled explicitly otherwise it puts all the entire process pool at risk.</p>
+<h2>Multiprocessing Pool vs ProcessPoolExecutor</h2>
+<p>In this section we will consider how the <strong>Pool</strong> class compares to Python's other process-based pool class called the <strong>ProcessPoolExecutor</strong>.</p>
+<h3>What is ProcessPoolExecutor</h3>
+<p>The <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ProcessPoolExecutor"><strong>concurrent.futures.ProcessPoolExecutor</strong> class</a> provides a process pool in Python.</p>
+<p>A process is an instance of a computer program. A process has a main thread of execution and may have additional threads. A process may also spawn or fork child processes. In Python, like many modern programming languages, processes are created and managed by the underlying operating system.</p>
+<p>You can create a process pool by instantiating the class and specifying the number of processes via the <strong>max_workers</strong> argument; for example:</p>
+<pre><code>...
+# create a process pool
+executor = ProcessPoolExecutor(max_workers=10)</code></pre>
+<p>You can then submit tasks to be executed by the process pool using the <strong>map()</strong> and the <strong>submit()</strong> functions.</p>
+<p>The <strong>map()</strong> function matches the built-in <strong>map()</strong> function and takes a function name and an iterable of items. The target function will then be called for each item in the iterable as a separate task in the process pool. An iterable of results will be returned if the target function returns a value.</p>
+<p>The call to <strong>map()</strong> does not block, but each result yielded in the returned iterator will block until the associated task is completed.</p>
+<p>For example:</p>
+<pre><code>...
+# call a function on each item in a list and process results
+for result in executor.map(task, items):
+    # process result...
+</code></pre>
+<p>You can also issue tasks to the pool via the <strong>submit()</strong> function that takes the target function name and any arguments and returns a <strong>Future</strong> object.</p>
+<p>The <strong>Future</strong> object can be used to query the status of the task (e.g. <strong>done()</strong>, <strong>running()</strong>, or <strong>cancelled()</strong>) and can be used to get the result or exception raised by the task once completed. The calls to <strong>result()</strong> and <strong>exception()</strong> will block until the task associated with the Future is done.</p>
+<p>For example:</p>
+<pre><code>...
+# submit a task to the pool and get a future immediately
+future = executor.submit(task, item)
+# get the result once the task is done
+result = future.result()</code></pre>
+<p>Once you are finished with the process pool, it can be shut down by calling the <strong>shutdown()</strong> function in order to release all of the worker processes and their resources.</p>
+<p>For example:</p>
+<pre><code>...
+# shutdown the process pool
+executor.shutdown()</code></pre>
+<p>The process of creating and shutting down the process pool can be simplified by using the context manager that will automatically call the <strong>shutdown()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor(max_workers=10) as executor:
+    # call a function on each item in a list and process results
+    for result in executor.map(task, items):
+        # process result...
+    # ...
+# shutdown is called automatically
+</code></pre>
+<p>For more on the <strong>ProcessPoolExecutor</strong>, see the guide:</p>
+<ul>
+<li><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor in Python: The Complete Guide</a></li>
+</ul>
+<p>Now that we are familiar with the <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong>, let's compare and contrast each.</p>
+<h3>Similarities Between Pool and ProcessPoolExecutor</h3>
+<p>The <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong> classes are very similar. They are both process pools of child worker processes.</p>
+<p>The most important similarities are as follows:</p>
+<ol>
+<li>Both Use Processes</li>
+<li>Both Can Run Ad Hoc Tasks</li>
+<li>Both Support Asynchronous Tasks</li>
+<li>Both Can Wait For All Tasks</li>
+<li>Both Have Thread-Based Equivalents</li>
+</ol>
+<p>Let's take a closer look at each in turn.</p>
+<h4>1. Both Use Processes</h4>
+<p>Both the <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong> create and use child worker processes.</p>
+<p>These are real native or system-level child processes that may be forked or spawned. This means, they are created and managed by the underlying operating system.</p>
+<p>As such, the worker child processes used in each class offer true parallelism via process-based concurrency.</p>
+<p>This means tasks issued to each process pool will execute concurrently and make best use of available CPU cores.</p>
+<p>It also means, tasks issued to each process pool will be subject to inter-process communication, requiring that data sent to child processes and received from child processes be pickled, adding computational overhead.</p>
+<h4>2. Both Can Run Ad Hoc Tasks</h4>
+<p>Both the <strong>multiprocessing.Pool</strong> and ProcessPoolExecutor may be used to execute ad hoc tasks defined by custom functions.</p>
+<p>The <strong>multiprocessing.Pool</strong> can issue one-off tasks using the <strong>apply()</strong> and <strong>apply_async()</strong> function, and may issue multiple tasks that use the same function with different arguments with the <strong>map()</strong>, <strong>imap()</strong>, <strong>imap_unordered()</strong>, and <strong>starmap()</strong> functions and their asynchronous equivalents <strong>map_async()</strong> and <strong>starmap_async()</strong>.</p>
+<p>The <strong>ProcessPoolExecutor</strong> can issue one-off tasks via the <strong>submit()</strong> function, and may issue multiple tasks that use the same function with different arguments via the <strong>map()</strong> function.</p>
+<h4>3. Both Support Asynchronous Tasks</h4>
+<p>Both the <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong> can be used to issue tasks asynchronously.</p>
+<p>Recall that issuing tasks asynchronously means that the main process can issue a task without blocking. The function call will return immediately with some handle on the issued task and allow the main process to continue on with the program.</p>
+<p>The <strong>multiprocessing.Pool</strong> supports issuing tasks asynchronously via the <strong>apply_async()</strong>, <strong>map_async()</strong> and <strong>starmap_async()</strong> functions that return an <strong>AsyncResult</strong> object that provides a handle on the issued tasks.</p>
+<p>The <strong>ProcessPoolExecutor</strong> provides the <strong>submit()</strong> function for issuing tasks asynchronously that returns a Future object that provides a handle on the issued task.</p>
+<p>Additionally, both process pools provide helpful mechanisms for working with asynchronous tasks, such as checking their status, getting their results and adding callback functions.</p>
+<h4>4. Both Can Wait For All Tasks</h4>
+<p>Both the <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong> provide the ability to wait for tasks that were issued asynchronously.</p>
+<p>The <strong>multiprocessing.Pool</strong> provides a <strong>wait()</strong> function on the <strong>AsyncResult</strong> object returned as a handle on asynchronous tasks. It also allows the pool to be shutdown and joined, which will not return until all issued tasks have completed.</p>
+<p>The <strong>ProcessPoolExecutor</strong> provides the <strong>wait()</strong> module function that can take a collection of Future objects on which to wait. It also allows the process pool to be shutdown, which can be configured to block until all tasks in the pool have completed.</p>
+<h4>5. Both Have Thread-Based Equivalents</h4>
+<p>Both the <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong> process pools have thread-based equivalents.</p>
+<p>The <strong>multiprocessing.Pool</strong> has the <strong>multiprocessing.pool.ThreadPool</strong> which provides the same API, except that it uses thread-based concurrency instead of process-based concurrency.</p>
+<p>Similarly, the <strong>ProcessPoolExecutor</strong> has the <strong>concurrent.futures.ThreadPoolExecutor</strong> that provides the same API as the ProcessPoolExecutor (e.g. extends the same Executor base class) except that it is implemented using thread-based concurrency.</p>
+<p>This is helpful as both process pools can be used and switch to use thread-based concurrency with very little change to the program code.</p>
+<h3>Differences Between Pool and ProcessPoolExecutor</h3>
+<p>The <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong> are also subtly different.</p>
+<p>The differences between these two process pools is focused on differences in APIs on the classes themselves.</p>
+<p>Them main differences are as follows:</p>
+<ol>
+<li>Ability to Cancel Tasks</li>
+<li>Operations on Groups of Tasks</li>
+<li>Ability to Terminate All Tasks</li>
+<li>Asynchronous Map Functions</li>
+<li>Ability to Access Exception</li>
+</ol>
+<p>Let's take a closer look at each in turn.</p>
+<h4>1. Ability to Cancel Tasks</h4>
+<p>Tasks issued to the <strong>ProcessPoolExecutor</strong> can be canceled, whereas tasks issued to the multiprocessing.Pool cannot.</p>
+<p>The <strong>ProcessPoolExecutor</strong> provides the ability to cancel tasks that have been issued to the process pool but have not yet started executing.</p>
+<p>This is provided via the <strong>cancel()</strong> function on the <strong>Future</strong> object returned from issuing a task via <strong>submit()</strong>.</p>
+<p>The <strong>multiprocessing.Pool</strong> does not provide this capability.</p>
+<h4>2. Operations on Groups of Tasks</h4>
+<p>The <strong>ProcessPoolExecutor</strong> provides tools to work with groups of asynchronous tasks, whereas the <strong>multiprocessing.Pool</strong> does not.</p>
+<p>The <strong>concurrent.futures</strong> module provides the <strong>wait()</strong> and <strong>as_completed()</strong> module functions. These functions are designed to work with collections of <strong>Future</strong> objects returned when issuing tasks asynchronously to the process pool via the <strong>submit()</strong> function.</p>
+<p>They allow the caller to wait for an event on a collection of heterogeneous tasks in the process pool, such as for all tasks to complete, for the first task to complete, or for the first task to fail.</p>
+<p>They also allow the caller to process the results from a collection of heterogeneous tasks in the order that the tasks are completed, rather than the order the tasks were issued.</p>
+<p>The <strong>multiprocessing.Pool</strong> does not provide this capability.</p>
+<h4>3. Ability to Terminate All Tasks</h4>
+<p>The <strong>multiprocessing.Pool</strong> provides the ability to forcefully terminate all tasks, whereas the ProcessPoolExecutor does not.</p>
+<p>The <strong>multiprocessing.Pool</strong> class provides the <strong>close()</strong> and <strong>terminate()</strong> functions that will send the <strong>SIGTERM</strong> and <strong>SIGKILL</strong> signals to the child worker processes.</p>
+<p>These signals will cause the child worker processes to stop, even if they are in the middle of executing tasks, which could leave program state in an inconsistent state.</p>
+<p>Nevertheless, the <strong>ProcessPoolExecutor</strong> does not provide this capability.</p>
+<h4>4. Asynchronous Map Functions</h4>
+<p>The <strong>multiprocessing.Pool</strong> provides a focus on <strong>map()</strong> based concurrency, whereas the ProcessPoolExecutor does not.</p>
+<p>That <strong>ProcessPoolExecutor</strong> does provide a parallel version of the built-in <strong>map()</strong> function which will apply the same function to an iterable of arguments. Each function call is issued as a separate task to the process pool.</p>
+<p>The <strong>multiprocessing.Pool</strong> provides three versions of the built-in <strong>map()</strong> function for applying the same function to an iterable of arguments in parallel as tasks in the process pool.</p>
+<p>They are: the <strong>map()</strong>, a lazier version of <strong>map()</strong> called <strong>imap()</strong>, and a version of <strong>map()</strong> that takes multiple arguments for each function call called <strong>starmap()</strong>.</p>
+<p>It also provides a version <strong>imap()</strong> where the iterable of results has return values in the order that tasks complete rather than the order that tasks are issued called <strong>imap_unordered()</strong>.</p>
+<p>Finally, it has asynchronous versions of the <strong>map()</strong> function called <strong>map_async()</strong> and of the <strong>starmap()</strong> function called <strong>starmap_async()</strong>.</p>
+<p>In all, the <strong>multiprocessing.Pool</strong> provides 6 parallel versions of the built-in <strong>map()</strong> function.</p>
+<h4>5. Ability to Access Exception</h4>
+<p>The <strong>ProcessPoolExecutor</strong> provides a way to access an exception raised in an asynchronous task directly, whereas the <strong>multiprocessing.Pool</strong> does not.</p>
+<p>Both process pools provide the ability to check if a task was successful or not, and will re-raise an exception when getting the task result, if an exception was raised and not handled in the task.</p>
+<p>Nevertheless, only the <strong>ProcessPoolExecutor</strong> provides the ability to directly get an exception raised in a task.</p>
+<p>A task issued into the <strong>ProcessPoolExecutor</strong> asynchronously via the <strong>submit()</strong> function will return a <strong>Future</strong> object. The <strong>exception()</strong> function on the <strong>Future</strong> object allows the caller to check if an exception was raised in the task, and if so, to access it directly.</p>
+<p>The <strong>multiprocessing.Pool</strong> does not provide this ability.</p>
+<h3>Summary of Differences</h3>
+<p>It may help to summarize the differences between <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong>.</p>
+<h4>multiprocessing.Pool</h4>
+<ul>
+<li>Does not provide the ability to cancel tasks, whereas the <strong>ProcessPoolExecutor</strong> does.</li>
+<li>Does not provide the ability to work with collections of heterogeneous tasks, ereas the <strong>ProcessPoolExecutor</strong> does.</li>
+<li>Provides the ability to forcefully terminate all tasks, whereas the <strong>ProcessPoolExecutor</strong> does not.</li>
+<li>Provides a focus on parallel versions of the <strong>map()</strong> function, whereas the <strong>ProcessPoolExecutor</strong> does not.</li>
+<li>Does not provide the ability to access an exception raised in a task, whereas the <strong>ProcessPoolExecutor</strong> does.</li>
+</ul>
+<h4>ProcessPoolExecutor</h4>
+<ul>
+<li>Provides the ability to cancel tasks, whereas the <strong>multiprocessing.Pool</strong> does not.</li>
+<li>Provides the ability to work with collections of heterogeneous tasks, whereas the <strong>multiprocessing.Pool</strong> does not.</li>
+<li>Does not provide the ability to forcefully terminate all tasks, whereas the <strong>multiprocessing.Pool</strong> does.</li>
+<li>Does not provide multiple parallel versions of the map() function, whereas the <strong>multiprocessing.Pool</strong> does.</li>
+<li>Provides the ability to access an exception raised in a task, whereas the <strong>multiprocessing.Pool</strong> does not.</li>
+</ul>
+<p>The figure below provides a helpful side-by-side comparison of the key differences between <strong>multiprocessing.Pool</strong> and <strong>ProcessPoolExecutor</strong>.</p>
+<figure><img alt="Differences Between multiprocessing.Pool and ProcessPoolExecutor" loading="lazy" src="../pics/Differences-Between-multiprocessing.Pool-and-ProcessPoolExecutor.png"/><figcaption>Differences Between multiprocessing.Pool and ProcessPoolExecutor</figcaption></figure>
+<h2>Multiprocessing Pool Best Practices</h2>
+<p>Now that we know how the <strong>multiprocessing.Pool</strong> works and how to use it, let's review some best practices to consider when bringing process pools into our Python programs.</p>
+<p>To keep things simple, there are five best practices; they are:</p>
+<ul>
+<li>Practice 1: Use the Context Manager</li>
+<li>Practice 2: Use map() for Parallel For-Loops</li>
+<li>Practice 3: Use imap_unordered() For Responsive Code</li>
+<li>Practice 4: Use map_async() to Issue Tasks Asynchronously</li>
+<li>Practice 5: Use Independent Functions as Tasks</li>
+<li>Practice 6: Use for CPU-Bound Tasks (probably)</li>
+</ul>
+<p>Let's get started with the first practice, which is to use the context manager.</p>
+<h3>Practice 1: Use the Context Manager</h3>
+<p>Use the context manager when using the multiprocessing pool to ensure the pool is always closed correctly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool via the context manager
+with Pool(4) as pool:
+    # ...
+</code></pre>
+<p>Remember to configure your multiprocessing pool when creating it in the context manager, specifically by setting the number of child process workers to use in the pool.</p>
+<p>Using the context manager avoids the situation where you have explicitly instantiated the process pool and forget to shut it down manually by calling <strong>close()</strong> or <strong>terminate()</strong>.</p>
+<p>It is also less code and better grouped than managing instantiation and shutdown manually, for example:</p>
+<pre><code>...
+# create a process pool manually
+executor = Pool(4)
+# ...
+executor.close()</code></pre>
+<p>Don't use the context manager when you need to dispatch tasks and get results over a broader context (e.g. multiple functions) and/or when you have more control over the shutdown of the pool.</p>
+<p>You can learn more about how to use the multiprocessing pool context manager in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-context-manager/">Multiprocessing Pool Context Manager</a></li>
+</ul>
+<h3>Practice 2: Use map() for Parallel For-Loops</h3>
+<p>If you have a for-loop that applies a function to each item in a list or iterable, then use the <strong>map()</strong> function to dispatch all tasks and process results once all tasks are completed.</p>
+<p>For example, you may have a for-loop over a list that calls <strong>task()</strong> for each item:</p>
+<pre><code>...
+# apply a function to each item in an iterable
+for item in mylist:
+    result = task(item)
+    # do something...
+</code></pre>
+<p>Or, you may already be using the <a href="https://docs.python.org/3/library/functions.html#map">built-in <strong>map()</strong> function</a>:</p>
+<pre><code>...
+# apply a function to each item in an iterable
+for result in map(task, mylist):
+    # do something...
+</code></pre>
+<p>Both of these cases can be made parallel using the <strong>map()</strong> function on the process pool.</p>
+<pre><code>...
+# apply a function to each item in a iterable in parallel
+for result in pool.map(task, mylist):
+    # do something...
+</code></pre>
+<p>Probably do not use the <strong>map()</strong> function if your target task function has side effects.</p>
+<p>Do not use the <strong>map()</strong> function if your target task function has no arguments or more than one argument. If you have multiple arguments, you can use the <strong>starmap()</strong> function instead.</p>
+<p>Do not use the <strong>map()</strong> function if you need control over exception handling for each task, or if you would like to get results to tasks in the order that tasks are completed.</p>
+<p>Do not use the <strong>map()</strong> function if you have many tasks (e.g. hundreds or thousands) as all tasks will be dispatched at once. Instead, consider the more lazy <strong>imap()</strong> function.</p>
+<p>You can learn more about the parallel version of <strong>map()</strong> with the multiprocessing pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-map/">Multiprocessing Pool.map() in Python</a></li>
+</ul>
+<h3>Practice 3: Use imap_unordered() For Responsive Code</h3>
+<p>If you would like to process results in the order that tasks are completed, rather than the order that tasks are submitted, then use <strong>imap_unordered()</strong> function.</p>
+<p>Unlike the <strong>Pool.map()</strong> function, the <strong>Pool.imap_unordered()</strong> function will iterate the provided iterable one item at a time and issue tasks to the process pool.</p>
+<p>Unlike the <strong>Pool.imap()</strong> function, the <strong>Pool.imap_unordered()</strong> function will yield return values in the order that tasks are completed, not the order that tasks were issued to the process pool.</p>
+<p>This allows the caller to process results from issued tasks as they become available, making the program more responsive.</p>
+<p>For example:</p>
+<pre><code>...
+# apply function to each item in the iterable in parallel
+for result in pool.imap_unordered(task, items):
+    # ...
+</code></pre>
+<p>Do not use the <strong>imap_unordered()</strong> function if you need to process the results in the order that the tasks were submitted to the process pool, instead, use <strong>map()</strong> function.</p>
+<p>Do not use the <strong>imap_unordered()</strong> function if you need results from all tasks before continuing on in the program, instead, you may be better off using <strong>map_async()</strong> and the <strong>AsyncResult.wait()</strong> function.</p>
+<p>Do not use the <strong>imap_unordered()</strong> function for a simple parallel for-loop, instead, you may be better off using map().</p>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-imap_unordered/">Multiprocessing Pool.imap_unordered() in Python</a></li>
+</ul>
+<h3>Practice 4: Use map_async() to Issue Tasks Asynchronously</h3>
+<p>If you need to issue many tasks asynchronously, e.g. fire-and-forget use the <strong>map_async()</strong> function.</p>
+<p>The <strong>map_async()</strong> function does not block while the function is applied to each item in the iterable, instead it returns a <strong>AsyncResult</strong> object from which the results may be accessed.</p>
+<p>Because <strong>map_async()</strong> does not block, it allows the caller to continue and retrieve the result when needed.</p>
+<p>The caller can choose to call the <strong>wait()</strong> function on the returned <strong>AsyncResult</strong> object in order to wait for all of the issued tasks to complete, or call the <strong>get()</strong> function to wait for the task to complete and access an iterable of return values.</p>
+<p>For example:</p>
+<pre><code>...
+# apply the function
+result = map_async(task, items)
+# wait for all tasks to complete
+result.wait()</code></pre>
+<p>Do not use the <strong>map_async()</strong> function if you want to issue the tasks and then process the results once all tasks are complete. You would be better off using the <strong>map()</strong> function.</p>
+<p>Do not use the <strong>map_async()</strong> function if you want to issue tasks one-by-one in a lazy manner in order to conserve memory, instead use the <strong>imap()</strong> function.</p>
+<p>Do not use the <strong>map_async()</strong> function if you wish to issue tasks that take multiple arguments, instead use the <strong>starmap_async()</strong> function.</p>
+<p>You can learn more about the <strong>map_async()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li>
+</ul>
+<h3>Practice 5: Use Independent Functions as Tasks</h3>
+<p>Use the multiprocessing pool if your tasks are independent.</p>
+<p>This means that each task is not dependent on other tasks that could execute at the same time. It also may mean tasks that are not dependent on any data other than data provided via function arguments to the task.</p>
+<p>The multiprocessing pool is ideal for tasks that do not change any data, e.g. have no side effects, so-called <a href="https://en.wikipedia.org/wiki/Pure_function">pure functions</a>.</p>
+<p>The multiprocessing pool can be organized into data flows and pipelines for linear dependence between tasks, perhaps with one multiprocessing pool per task type.</p>
+<p>The multiprocessing pool is not designed for tasks that require coordination, you should consider using the multiprocessing.Process class and coordination patterns like the <strong>Barrier</strong> and <strong>Semaphore</strong>.</p>
+<p>Process pools are not designed for tasks that require synchronization, you should consider using the <strong>multiprocessing.Process</strong> class and locking patterns like <strong>Lock</strong> and <strong>RLock</strong> via a <strong>Manager</strong>.</p>
+<h3>Practice 6: Use for CPU-Bound Tasks (probably)</h3>
+<p>The multiprocessing pool can be used for IO-bound tasks and CPU-bound tasks.</p>
+<p>Nevertheless, it is probably best suited for CPU-bound tasks, whereas the <strong>multiprocessing.pool.ThreadPool</strong> or <strong>ThreadPoolExecutor</strong> are probably best suited for IO-bound tasks.</p>
+<p>CPU-bound tasks are those tasks that involve direct computation, e.g. executing instructions on data in the CPU. They are bound by the speed of execution of the CPU, hence the name CPU-bound.</p>
+<p>This is unlike IO-bound tasks that must wait on external resources such as reading or writing to or from network connections and files.</p>
+<p>Examples of common CPU-bound tasks that may be well suited to the multiprocessing.Pool include:</p>
+<ul>
+<li><strong>Media manipulation</strong>, e.g. resizing images, clipping audio and video, etc.</li>
+<li><strong>Media encoding or decoding</strong>, e.g. encoding audio and video.</li>
+<li><strong>Mathematical calculation</strong>, e.g. fractals, numerical approximation, estimation, etc.</li>
+<li><strong>Model training</strong>, e.g. machine learning and artificial intelligence.</li>
+<li><strong>Search</strong>, e.g. searching for a keyword in a large number of documents.</li>
+<li><strong>Text processing</strong>, e.g. calculating statistics on a corpus of documents.</li>
+</ul>
+<p>The <strong>multiprocessing.Pool</strong> can be used for IO bound tasks, but it is probably a less well fit compared to using threads and the multiprocessing.pool.ThreadPool.</p>
+<p>This is because of two reasons:</p>
+<ul>
+<li>You can have more threads than processes.</li>
+<li>IO-bound tasks are often data intensive.</li>
+</ul>
+<p>The number of processes you can create and manage is often quite limited, such as tens or less than 100.</p>
+<p>Whereas, when you are using threads you can have hundreds of threads or even thousands of threads within one process. This is helpful for IO operations that many need to access or manage a large number of connections or resources concurrently.</p>
+<p>This can be pushed to tens of thousands of connections or resources or even higher when using AsyncIO.</p>
+<p>IO-bound tasks typically involve reading or writing a lot of data.</p>
+<p>This may be data read or written from or to remote connections, database, servers, files, external devices, and so on.</p>
+<p>As such, if the data needs to be shared between processes, such as in a pipeline, it may require that the data be serialized (called pickled, the built-in Python serialization process) in order to pass from process to process. This can be slow and very memory intensive, especially for large amounts of data.</p>
+<p>This is not the case when using threads that can share and access the same resource in memory without data serialization.</p>
+<h2>Common Errors When Using the Multiprocessing Pool</h2>
+<p>There are a number of common errors when using the <strong>multiprocessing.Pool</strong>.</p>
+<p>These errors are typically made because of bugs introduced by copy-and-pasting code, or from a slight misunderstanding in how the multiprocessing.Pool works.</p>
+<p>We will take a closer look at some of the more common errors made when using the <strong>multiprocessing.Pool</strong>, such as:</p>
+<ul>
+<li>Error 1: Forgetting __main__</li>
+<li>Error 2: Using a Function Call in submit()</li>
+<li>Error 3: Using a Function Call in map()</li>
+<li>Error 4: Incorrect Function Signature for map()</li>
+<li>Error 5: Incorrect Function Signature for Callbacks</li>
+<li>Error 6: Arguments or Shared Data that Does Not Pickle</li>
+<li>Error 7: Not Flushing print() Statements</li>
+</ul>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Error 1: Forgetting __main__</h3>
+<p>By far the biggest error when using the multiprocessing <strong>Pool</strong> is forgetting to protect the entry point, e.g. check for the <strong>__main__</strong> module.</p>
+<p>Recall that when using processes in Python such as the <strong>Process</strong> class or the <strong>multiprocessing.Pool</strong> class we must include a check for the top-level environment. This is specifically the case when using the '<strong>spawn</strong>' start method, the default on Win32 and MacOS, but is a good practice anyway.</p>
+<p>We can check for the top-level environment by checking if the module name variable <strong>__name__</strong> is equal to the string '<strong>__main__</strong>'.</p>
+<p>This indicates that the code is running at the top-level code environment, rather than being imported by a program or script.</p>
+<p>For example:</p>
+<pre><code># entry point
+if __name__ == '__main__':
+    # ...
+</code></pre>
+<p>You can learn more about <strong>__main__</strong> more generally here:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/__main__.html">__main__ — Top-level code environment</a></li>
+</ul>
+<p>Forgetting the main function will result in an error that can be quite confusing.</p>
+<p>A complete example of using the <strong>multiprocessing.Pool</strong> without a check for the <strong>__main__</strong> module is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of not having a check for the main top-level environment
+from time import sleep
+from multiprocessing import Pool
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # block for a moment
+    sleep(1)
+    return value
+
+# start the process pool
+with Pool() as pool:
+    # submit all tasks
+    for result in pool.map(task, range(5)):
+        print(result)
+</code></pre>
+<p>Running this example will fail with a <strong>RuntimeError</strong>.</p>
+<pre><code>Traceback (most recent call last):
+...
+RuntimeError:
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+</code></pre>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-spawn-runtimeerror/">Add if name == ‘main' When Spawning a Child Process</a></li>
+</ul>
+<h3>Error 2: Using a Function Call in apply_async()</h3>
+<p>A common error is to call your function when using the <strong>apply_async()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue the task
+result = pool.apply_async(task())</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling submit with a function call
+from time import sleep
+from multiprocessing import Pool
+
+# custom function executed in another process
+def task():
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the process pool
+    with Pool() as pool:
+        # issue the task
+        result = pool.apply_async(task())
+        # get the result
+        value = result.get()
+        print(value)
+</code></pre>
+<p>Running this example will fail with an error.</p>
+<pre><code>multiprocessing.pool.RemoteTraceback:
+"""
+Traceback (most recent call last):
+  ...
+TypeError: 'str' object is not callable
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  ...
+TypeError: 'str' object is not callable
+</code></pre>
+<p>You can fix the error by updating the call to <strong>apply_async()</strong> to take the name of your function and any arguments, instead of calling the function in the call to execute.</p>
+<p>For example:</p>
+<pre><code>...
+# issue the task
+result = pool.apply_async(task)</code></pre>
+<h3>Error 3: Using a Function Call in map()</h3>
+<p>A common error is to call your function when using the <strong>map()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue all tasks
+for result in pool.map(task(), range(5)):
+    print(result)
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map with a function call
+from time import sleep
+from multiprocessing import Pool
+
+# custom function executed in another process
+def task(value):
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the process pool
+    with Pool() as pool:
+        # issue all tasks
+        for result in pool.map(task(), range(5)):
+            print(result)
+</code></pre>
+<p>Running the example results in a <strong>TypeError</strong>.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+    for result in pool.map(task(), range(5)):
+TypeError: task() missing 1 required positional argument: 'value'
+</code></pre>
+<p>This error can be fixed by changing the call to <strong>map()</strong> to pass the name of the target task function instead of a call to the function.</p>
+<pre><code>...
+# issue all tasks
+for result in pool.map(task, range(5)):
+    print(result)
+</code></pre>
+<h3>Error 4: Incorrect Function Signature for map()</h3>
+<p>Another common error when using <strong>map()</strong> is to provide no second argument to the function, e.g. the iterable.</p>
+<p>For example:</p>
+<pre><code>...
+# issue all tasks
+for result in pool.map(task):
+    print(result)
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map without an iterable
+from time import sleep
+from multiprocessing import Pool
+
+# custom function executed in another process
+def task(value):
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the process pool
+    with Pool() as pool:
+        # issue all tasks
+        for result in pool.map(task):
+            print(result)
+</code></pre>
+<p>Running the example does not issue any tasks to the process pool as there was no iterable for the <strong>map()</strong> function to iterate over.</p>
+<p>Running the example results in a <strong>TypeError</strong>.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+TypeError: map() missing 1 required positional argument: 'iterable'
+</code></pre>
+<p>The fix involves providing an iterable in the call to <strong>map()</strong> along with your function name.</p>
+<pre><code>...
+# issue all tasks
+for result in pool.map(task, range(5)):
+    print(result)
+</code></pre>
+<h3>Error 5: Incorrect Function Signature for Callbacks</h3>
+<p>Another common error is to forget to include the result in the signature for the callback function when issuing tasks asynchronously.</p>
+<p>For example:</p>
+<pre><code># result callback function
+def handler():
+    print(f'Callback got: {result}', flush=True)
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a callback function for apply_async()
+from time import sleep
+from multiprocessing.pool import Pool
+
+# result callback function
+def handler():
+    print(f'Callback got: {result}', flush=True)
+
+# custom function executed in another process
+def task():
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        result = pool.apply_async(task, callback=handler)
+        # get the result
+        value = result.get()
+        print(value)
+</code></pre>
+<p>Running this example will result in an error when the callback is called by the process pool.</p>
+<p>This will break the process pool and the program will have to be killed manually with a Control-C.</p>
+<pre><code>Exception in thread Thread-3:
+Traceback (most recent call last):
+  ...
+TypeError: handler() takes 0 positional arguments but 1 was given
+</code></pre>
+<p>Fixing this error involves updating the signature of your callback function to include the result from the task.</p>
+<pre><code># result callback function
+def handler(result):
+    print(f'Callback got: {result}', flush=True)
+</code></pre>
+<p>You can learn more about using callback functions with asynchronous tasks in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-callback/">Multiprocessing Pool Callback Functions in Python</a></li>
+</ul>
+<p>This error can also happen with the error callback and forgetting to add the error as an argument in the error callback function.</p>
+<h3>Error 6: Arguments or Shared Data that Does Not Pickle</h3>
+<p>A common error is sharing data between processes that cannot be serialized.</p>
+<p>Python has a built-in object serialization process called <a href="https://docs.python.org/3/library/pickle.html">pickle</a>, where objects are pickled or unpickled when serialized and unserialized.</p>
+<p>When sharing data between processes, the data will be pickled automatically.</p>
+<p>This includes arguments passed to target task functions, data returned from target task functions, and data accessed directly, such as global variables.</p>
+<p>If data that is shared between processes cannot be automatically pickled, a <strong>PicklingError</strong> will be raised.</p>
+<p>Most <a href="https://docs.python.org/3/library/pickle.html#what-can-be-pickled-and-unpickled">normal Python objects can be pickled</a>.</p>
+<p>Examples of objects that cannot pickle are those that might have an open connection, such as to a file, database, server or similar.</p>
+<p>We can demonstrate this with an example below that attempts to pass a file handle as an argument to a target task function.</p>
+<pre><code># SuperFastPython.com
+# example of an argument that does not pickle
+from time import sleep
+from multiprocessing import Pool
+
+# custom function executed in another process
+def task(file):
+    # write to the file
+    file.write('hi there')
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # open the file
+    with open('tmp.txt', 'w') as file:
+        # start the process pool
+        with Pool() as pool:
+            # issue the task
+            result = pool.apply_async(task, file)
+            # get the result
+            value = result.get()
+            print(value)
+</code></pre>
+<p>Running the example, we can see that it falls with an error indicating that the argument cannot be pickled for transmission to the worker process.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+TypeError: cannot pickle '_io.TextIOWrapper' object
+</code></pre>
+<p>This was a contrived example, nevertheless indicative of cases where you cannot pass some active objects to child processes because they cannot be picked.</p>
+<p>In general, if you experience this error and you are attempting to pass around a connection or open file, perhaps try to open the connection within the task or use threads instead of processes.</p>
+<p>If you experience this type of error with custom data types that are being passed around, you may need to implement code to manually serialize and deserialize your types. I recommend reading the documentation for the <a href="https://docs.python.org/3/library/pickle.html"><strong>pickle</strong> module</a>.</p>
+<h3>Error 7: Not Flushing print() Statements</h3>
+<p>A common error is to not flush standard out (stdout) when calling the built-in <strong>print() </strong>statement from target task functions.</p>
+<p>By default, the built-in <strong>print() </strong>statement in Python does not flush output.</p>
+<p>You can learn more about the built-in functions here:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/functions.html">Python Built-in Functions</a></li>
+</ul>
+<p>The standard output stream (stout) will flush automatically in the main process, often when the internal buffer is full or a new line is detected. This means you see your print statements reported almost immediately after the print function is called in code.</p>
+<p>There is a problem when calling the <strong>print()</strong> function from spawned or forked processes because standard out will buffer output by default.</p>
+<p>This means if you call <strong>print()</strong> from target task functions in the multiprocessing.pool, you probably will not see the print statements on standard out until the worker processes are closed.</p>
+<p>This will be confusing because it will look like your program is not working correctly, e.g. buggy.</p>
+<p>The example below demonstrates this with a target task function that will call print() to report some status.</p>
+<pre><code># SuperFastPython.com
+# example of not flushing output when call print() from tasks in new processes
+from time import sleep
+from random import random
+from multiprocessing import Pool
+
+# custom function executed in another process
+def task(value):
+    # block for a moment
+    sleep(random())
+    # report a message
+    print(f'Done: {value}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the process pool
+    with Pool() as pool:
+        # submit all tasks
+        pool.map(task, range(5))
+</code></pre>
+<p>Running the example will wait until all tasks in the process pool have completed before printing all messages on standard out.</p>
+<pre><code>Done: 0
+Done: 1
+Done: 2
+Done: 3
+Done: 4
+All done!</code></pre>
+<p>This can be fixed by updating all calls to the <strong>print()</strong> statement called from target task functions to flush output after each call.</p>
+<p>This can be achieved by setting the "<strong>flush</strong>" argument to <strong>True</strong>, for example:</p>
+<pre><code>...
+# report a message
+print(f'Done: {value}', flush=True)</code></pre>
+<p>You can learn more about printing from child processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-print/">How to print() from a Child Process in Python</a></li>
+</ul>
+<h2>Common Questions When Using the Multiprocessing Pool</h2>
+<p>This section answers common questions asked by developers when using the <strong>multiprocessing.Pool</strong>.</p>
+<p><strong>Do you have a question about the multiprocessing.Pool?</strong><br/>Ask your question in the comments below and I will do my best to answer it and perhaps add it to this list of questions.</p>
+<h3>How Do You Safely Stop Running Tasks?</h3>
+<p>The process pool does not provide a mechanism to safely stop all currently running tasks.</p>
+<p>It does provide a way to forcefully terminate all running worker processes via the <strong>terminate()</strong> function. This approach is too aggressive for most use cases as it will mean the process pool can no longer be used.</p>
+<p>Instead, we can develop a mechanism to safely stop all running tasks in a process pool using a <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Event"><strong>multiprocessing.Event</strong> object</a>.</p>
+<p>Firstly, an <strong>Event</strong> object must be created and shared among all running tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared event
+event = multiprocessing.Event()</code></pre>
+<p>Recall that an event provides a process-safe boolean variable.</p>
+<p>It is created in the False state and can be checked via the <strong>is_set()</strong> function and made True via the <strong>set()</strong> function.</p>
+<p>You can learn more about how to use a <strong>multiprocessing.Event</strong> in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-event-object-in-python/">Multiprocessing Event Object In Python</a></li>
+</ul>
+<p>The <strong>multiprocessing.Event</strong> object cannot be passed as an argument to task functions executed in the process pool.</p>
+<p>Instead, we have two options to share the <strong>Event</strong> with tasks in the pool.</p>
+<ul>
+<li>Define the <strong>Event</strong> as a global variable and inherit the global variable in the child process. This will only work for child processes created using the ‘<strong>fork</strong>’ start method.</li>
+<li>Define the <strong>Event</strong> using a <strong>Manager</strong>, then inherit the global variable or pass it as an argument. This works with both ‘<strong>spawn</strong>’ and ‘<strong>fork</strong>’ start methods.</li>
+</ul>
+<p>This latter approach is more general and therefore preferred.</p>
+<p>A <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Manager">multiprocessing.Manager</a></strong> creates a process and is responsible for managing a centralized version of an object. It then provides proxy objects that can be used in other processes that keep up-to-date with the single centralized object.</p>
+<p>As such, using a <strong>Manager</strong> is a useful way to centralize a synchronization primitive like an event shared among multiple worker processes.</p>
+<p>We can first create a <strong>multiprocessing.Manager</strong> using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>We can then create a shared <strong>Event</strong> object using the manager.</p>
+<p>This will return a proxy object for the <strong>Event</strong> object in the manager process that we can share among child worker processes directly or indirectly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared event via the manager
+event = manager.Event()</code></pre>
+<p>It is best to explicitly share state among child processes wherever possible. It’s just easier to read and debug.</p>
+<p>Therefore, I recommend passing the shared <strong>Event</strong> as an argument to the target task function.</p>
+<p>For example:</p>
+<pre><code># function executed in worker processes
+def task(event, ...):
+    # ...
+</code></pre>
+<p>The custom function executing the task can check the status of the <strong>Event</strong> object periodically, such as each iteration of a loop.</p>
+<p>If the <strong>Event</strong> set, the target task function can then choose to stop, closing any resources if necessary.</p>
+<pre><code># function executed in worker processes
+def task(event, ...):
+    # ...
+    while True:
+        # ...
+        if event.is_set():
+            return
+</code></pre>
+<p>The example below provides a template you can use for adding an event flag to your target task function to check for a stop condition to shutdown all currently running tasks.</p>
+<p>A complete example to demonstrate this is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of safely stopping all tasks in the process pool
+from time import sleep
+from multiprocessing import Event
+from multiprocessing import Manager
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, event):
+    print(f'Task {identifier} running', flush=True)
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+        # check if the task should stop
+        if event.is_set():
+            print(f'Task {identifier} stopping...', flush=True)
+            # stop the task
+            break
+    # report all done
+    print(f'Task {identifier} Done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared event
+        event = manager.Event()
+        # create and configure the process pool
+        with Pool() as pool:
+            # prepare arguments
+            items = [(i,event) for i in range(4)]
+            # issue tasks asynchronously
+            result = pool.starmap_async(task, items)
+            # wait a moment
+            sleep(2)
+            # safely stop the issued tasks
+            print('Safely stopping all tasks')
+            event.set()
+            # wait for all tasks to stop
+            result.wait()
+            print('All stopped')
+</code></pre>
+<p>Running the example first creates the manager, then creates the shared event object from the manager.</p>
+<p>The process pool is then created using the default configuration.</p>
+<p>The arguments for the tasks are prepared, then the four tasks are issued asynchronously to the process pool.</p>
+<p>The main process then blocks for a moment.</p>
+<p>Each task starts, reporting a message then starting its main loop.</p>
+<p>The main process wakes up and sets the event, requesting all issued tasks to stop. It then waits on the <strong>AsyncResult</strong> for the issued tasks to stop.</p>
+<p>Each task checks the status of the event each iteration of its main loop. They notice that the event is set, break their main loop, report a final message then return, stopping the task safely.</p>
+<p>All tasks stop, allowing the main process to continue on, ending the application.</p>
+<p>This highlights how we can safely stop all tasks in the process pool in a controlled manner.</p>
+<pre><code>Task 0 running
+Task 2 running
+Task 1 running
+Task 3 running
+Safely stopping all tasks
+Task 1 stopping...
+Task 1 Done
+Task 0 stopping...
+Task 0 Done
+Task 3 stopping...
+Task 3 Done
+Task 2 stopping...
+Task 2 Done
+All stopped</code></pre>
+<p>You can learn more about how to safely stop all task in the multiprocessing pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-stop-all-tasks/">Stop All Tasks in the Multiprocessing Pool in Python</a></li>
+</ul>
+<h3>How to Kill All Tasks?</h3>
+<p>Forcefully killing tasks in the process pool is an aggressive approach.</p>
+<p>It may cause undesirable side effects.</p>
+<p>For example, killing tasks in the process while they are running may mean that resources like files, sockets, and data structures used by running tasks are not closed or left in a useful state.</p>
+<p>An alternative to forcefully killing tasks may be to safely pause or stop a task using a synchronization primitive like a <strong>multiprocessing.Event</strong> object.</p>
+<p>The <strong>multiprocessing.pool.Pool</strong> does not provide a mechanism to kill all tasks and continue using the pool.</p>
+<p>Nevertheless, the process pool does provide the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.terminate"><strong>terminate()</strong> function</a> which will forcefully terminate all child worker processes immediately, in turn killing all tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# forcefully terminate the process pool and kill all tasks
+pool.terminate()</code></pre>
+<p>This is achieved by sending a <strong>SIGKILL</strong> signal to each child worker process in the process pool. This signal cannot be handled and immediately terminates the child processes.</p>
+<p>You can learn more about shutting down the process pool in the tutorial:</p>
+<ul>
+<li><a href="../shutdown-the-multiprocessing-pool-in-python/">How to Shutdown the Process Pool in Python</a></li>
+</ul>
+<p>The process pool may take a moment to forcefully kill all child processes, so it is a good practice to call the <strong>join()</strong> function after calling <strong>terminate()</strong>. The <strong>join()</strong> function will only return after all child worker processes are completely closed.</p>
+<p>For example:</p>
+<pre><code>...
+# forcefully terminate the process pool and kill all tasks
+pool.terminate()
+# wait a moment for all worker processes to stop
+pool.join()</code></pre>
+<p>Killing tasks in the process pool assumes that the main process that issues tasks to the process pool is free and able to kill the process pool.</p>
+<p>This means that tasks issued to the process pool are issued in an asynchronous rather than synchronous manner. This can be achieved using functions such as <strong>apply_async()</strong>, <strong>map_async()</strong> and <strong>starmap_async()</strong> to issue tasks.</p>
+<p>We can explore how to forcefully kill running tasks in the process pool with the <strong>terminate()</strong> function.</p>
+<p>In this example we will issue a small number of tasks that run for a long time. We will then wait a moment then forcefully terminate the process pool and all running tasks in the pool.</p>
+<p>A complete example to demonstrate this is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of killing all tasks in the process pool
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier):
+    print(f'Task {identifier} running', flush=True)
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+    # report all done
+    print(f'Task {identifier} Done', flush=True)
+
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issues tasks to process pool
+        _ = pool.map_async(task, range(4))
+        # wait a moment
+        sleep(2)
+        # kill all tasks
+        print('Killing all tasks')
+        pool.terminate()
+        # wait for the pool to close down
+        pool.join()
+</code></pre>
+<p>Running the example first creates the process pool with the default configuration.</p>
+<p>Four tasks are then issued to the process pool asynchronously. The main process then blocks for a moment.</p>
+<p>Each task starts running, first reporting a message and then lopping and sleeping for a second each loop iteration.</p>
+<p>The main process unblocks and continues on. It reports a message then forcefully terminates the process pool.</p>
+<p>This sends a <strong>SIGKILL</strong> signal to each child worker process causing them to terminate immediately. In turn the tasks that each child worker process is executing is forcefully terminated immediately.</p>
+<p>The main process then blocks for a fraction of a second until the child worker processes are stopped, then continues on, closing the application.</p>
+<pre><code>Task 0 running
+Task 1 running
+Task 2 running
+Task 3 running
+Killing all tasks</code></pre>
+<p>You can learn more about killing all tasks in the process pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-kill-all-tasks/">Kill All Tasks in the Multiprocessing Pool in Python</a></li>
+</ul>
+<h3>How Do You Wait for All Tasks to Complete?</h3>
+<p>here are two ways that we can wait for tasks to finish in the <strong>multiprocessing.pool.Pool</strong>.</p>
+<p>They are:</p>
+<ul>
+<li>Wait for an asynchronous set of tasks to complete with the <strong>wait()</strong> function.</li>
+<li>Wait for all issued tasks to complete after shutdown with the <strong>join()</strong> function.</li>
+</ul>
+<p>Let’s take a closer look at each approach.</p>
+<p>Tasks may be issued asynchronously to the process pool.</p>
+<p>This can be achieved using a function such as <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async()</strong>. These functions return an <strong>AsyncResult</strong> object.</p>
+<p>We can wait for a single batch of tasks issued asynchronously to the process pool to complete by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.wait"><strong>wait()</strong> function</a> on the returned <strong>AsyncResult</strong> object.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks
+result = pool.map_async(...)
+# wait for issued tasks to complete
+result.wait()</code></pre>
+<p>If multiple batches of asynchronous tasks are issued to the process pool, we can collect the <strong>AsyncResult</strong> objects that are returned and wait on each in turn.</p>
+<p>We may issue many batches of asynchronous tasks to the process pool and not hang onto the <strong>AsyncResult</strong> objects that are returned.</p>
+<p>Instead, we can wait for all tasks in the process pool to complete by first shutting down the process pool, then joining it to wait for all issued tasks to be completed.</p>
+<p>This can be achieved by first calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.close"><strong>close()</strong> function</a> that will prevent any further tasks to be issued to the process pool and close down the worker processes once all tasks are complete.</p>
+<p>We can then call the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.join"><strong>join()</strong> function</a>. This will block the caller until all tasks in the process pools are completed and the worker child processes in the process pool have closed.</p>
+<p>For example:</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# block until all tasks are complete and processes close
+pool.join()</code></pre>
+<p>The downside of this approach is that we cannot issue tasks to the pool after it is closed. This approach can only be used once you know that you have no further tasks to issue to the process pool.</p>
+<p>We can explore how to wait for a batch of issued tasks to complete in the process pool.</p>
+<p>In this example we will define a task that blocks for a moment and then reports a message. From the main process, we will issue a batch of tasks to the process pool asynchronous. We will then explicitly wait on the batch of tasks to complete by waiting on the returned <strong>AsyncResult</strong> object.</p>
+<p>A complete example to demonstrate this is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for all tasks in a batch to finish
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier):
+    # block for a moment
+    sleep(0.5)
+    # report done
+    print(f'Task {identifier} done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks into the process pool
+        result = pool.map_async(task, range(10))
+        # wait for tasks to complete
+        result.wait()
+        # report all tasks done
+        print('All tasks are done', flush=True)
+    # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>The ten tasks are then issued to the process pool asynchronously. An <strong>AsyncResult</strong> object is returned and the main process then blocks until the issued tasks are completed.</p>
+<p>Each task is issued in the process pool, first blocking for a fraction of a second, then printing a message.</p>
+<p>All ten tasks issued as a batch to the process pool complete, then <strong>wait()</strong> function returns and the main process continues on.</p>
+<p>A final message is reported, then the process pool is closed automatically via the context manager interface.</p>
+<pre><code>Task 1 done
+Task 0 done
+Task 2 done
+Task 3 done
+Task 4 done
+Task 5 done
+Task 6 done
+Task 7 done
+Task 9 done
+Task 8 done
+All tasks are done</code></pre>
+<p>You can learn more about how to wait for tasks to complete in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-wait-for-all-tasks/">Multiprocessing Pool Wait For All Tasks To Finish in Python</a></li>
+</ul>
+<h3>How Do You Get The First Result?</h3>
+<p>There are two main approaches we can use to get the result from the first task to complete in the process pool.</p>
+<p>They are:</p>
+<ol>
+<li>Have tasks put their result on a shared queue.</li>
+<li>Issue tasks using the <strong>imap_unordered()</strong> function.</li>
+</ol>
+<p>Let’s take a closer look at each approach in turn.</p>
+<p>A <strong>multiprocessing.Queue</strong> can be created and shared among all tasks issued to the process pool.</p>
+<p>As tasks finish, they can put their results on the queue.</p>
+<p>The parent process waiting for the first result can get the first result made available via the shared queue.</p>
+<p>A multiprocessing queue can be created as per normal.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared queue
+queue = multiprocessing.Queue()</code></pre>
+<p>We cannot share the queue directly with each task to the process pool as it will result in an error.</p>
+<p>Instead, we can share the queue with the initialization function for each child worker process. The queue can be stored in a global variable and made available to all tasks executed by all workers.</p>
+<p>This requires that we define a child worker initialization function that takes the queue as an argument, declares a global variable available to all tasks executed by the worker, then stores the queue in the global variable.</p>
+<p>For example:</p>
+<pre><code># worker process initialization
+def init_worker(arg_queue):
+    # define global variable for each worker
+    global queue
+    # store queue in global argument
+    queue = arg_queue
+</code></pre>
+<p>We can then configure a new process pool to use our worker initialization function and pass the queue as an argument.</p>
+<pre><code>...
+# create a process pool
+pool = Pool(initializer=init_worker, initargs=(queue,))</code></pre>
+<p>You can learn more about sharing global variables with all tasks executed by a worker in this tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-shared-global-variables/">Multiprocessing Pool Share Global Variable With All Workers</a></li>
+</ul>
+<p>Tasks can then put results on the queue by calling the <strong>put()</strong> function and passing the result object.</p>
+<p>For example:</p>
+<pre><code>...
+# put result on the queue
+queue.put(result)</code></pre>
+<p>The main process can then retrieve the first result made available via the <strong>get()</strong> function on the queue. This call will block until a result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the first result
+result = queue.get()</code></pre>
+<p>You can learn more about using the multiprocessing queue in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li>
+</ul>
+<p>Another approach to getting the first result from the process pool is to issue tasks using the <strong>imap_unordered()</strong>.</p>
+<p>This function will issue tasks in a lazy manner and will return an iterable that yields results in the order that tasks are completed, rather than the order that tasks were issued.</p>
+<p>Therefore, tasks can be issued as per normal via a call to the <strong>imap_unordered()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the process pool
+it = pool.imap_unordered(task, items)</code></pre>
+<p>We can then call the built-in <a href="https://docs.python.org/3/library/functions.html#next"><strong>next() </strong>function</a> on the returned iterable to get the result from the first task to complete in the process pool.</p>
+<p>Recall, the <strong>next()</strong> function returns the next item in an iterable.</p>
+<p>For example:</p>
+<pre><code>...
+# get the first result
+result = next(it)</code></pre>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-imap_unordered/">Multiprocessing Pool.imap_unordered() in Python</a></li>
+</ul>
+<p>We can explore how to issue tasks with the <strong>imap_unordered()</strong> function and get the first result.</p>
+<p>In this example, we can issue all tasks using the <strong>imap_unordered()</strong> function. This will return an iterable that will yield results in the order that the tasks have completed. We can then get the first value from the iterable in order to get the first result.</p>
+<p>A complete example to demonstrate this is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting the first result from the process pool with imap_unordered
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier):
+    # generate a value
+    value = 2 + random() * 10
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue many tasks
+        it = pool.imap_unordered(task, range(30))
+        # get the first result, blocking
+        identifier, value = next(it)
+        # report the first result
+        print(f'First result: identifier={identifier}, value={value}')
+        # terminate remaining tasks
+        print('Terminating remaining tasks')
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>It then issues all tasks to the process pool and returns an iterable for task results.</p>
+<p>The main process then blocks, waiting for the first result to be made available.</p>
+<p>A subset of the tasks begin executing. Each task generates a random number, reports the value, blocks, then returns a tuple of the integer value and generated random number.</p>
+<p>A result is received by the main process and is reported.</p>
+<p>The process pool and all remaining tasks are then forcefully terminated.</p>
+<p>This highlights a simple way to get the first result from multiple tasks in the process pool.</p>
+<p>Note, results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>Task 0 executing with 2.4591115237324237
+Task 1 executing with 6.5464709230061455
+Task 2 executing with 2.847775172423446
+Task 3 executing with 5.482376922246911
+Task 4 executing with 7.11178723756704
+Task 5 executing with 3.6949780247040525
+Task 6 executing with 5.3101695644764915
+Task 7 executing with 2.6110942609971746
+Task 8 executing with 4.104337058058016
+First result: identifier=0, value=2.4591115237324237
+Terminating remaining tasks</code></pre>
+<p>You can learn more about how to wait for the first task to complete in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-first-result/">Multiprocessing Pool Get First Result</a></li>
+</ul>
+<h3>How Do You Dynamically Change the Number of Processes</h3>
+<p>You cannot dynamically increase or decrease the number of processes in a <strong>multiprocessing.Pool</strong>.</p>
+<p>The number of processes is fixed when the <strong>multiprocessing.Pool</strong> is configured in the call to the object constructor.</p>
+<p>For example:</p>
+<pre><code>...
+# configure a process pool
+pool = multiprocessing.Pool(4)</code></pre>
+<h3>How Do You Unit Tasks and Process Pools?</h3>
+<p>You can unit test your target task functions directly, perhaps mocking any external resources required.</p>
+<p>You can unit test your usage of the process pool with mock tasks that do not interact with external resources.</p>
+<p>Unit testing of tasks and the process pool itself must be considered as part of your design and may require that connection to the IO resource be configurable so that it can be mocked, and that the target task function called by your process pool is configurable so that it can be mocked.</p>
+<h3>How Do You Compare Serial to Parallel Performance?</h3>
+<p>You can compare the performance of your program with and without the process pool.</p>
+<p>This can be a useful exercise to confirm that making use of the <strong>multiprocessing.Pool</strong> in your program has resulted in a speed-up.</p>
+<p>Perhaps the simplest approach is to manually record the start and end time of your code and subtract the end from the start time to report the total execution time. Then record the time with and without the use of the process pool.</p>
+<pre><code># SuperFastPython.com
+# example of recording the execution time of a program
+import time
+
+# record the start time
+start_time = time.time()
+# do work with or without a process pool
+# ....
+time.sleep(3)
+# record the end time
+end_time = time.time()
+# report execution time
+total_time = end_time - start_time
+print(f'Execution time: {total_time:.1f} seconds.')
+</code></pre>
+<p>Using an average program execution time might give a more stable program timing than a one-off run.</p>
+<p>You can record the execution time 3 or more times for your program without the process pool then calculate the average as the sum of times divided by the total runs. Then repeat this exercise to calculate the average time with the process pool.</p>
+<p>This would probably only be appropriate if the running time of your program is minutes rather than hours.</p>
+<p>You can then compare the serial vs. parallel version by calculating the speed up multiple as:</p>
+<ul>
+<li>Speed-Up Multiple = Serial Time / Parallel Time</li>
+</ul>
+<p>For example, if the serial run of a program took 15 minutes (900 seconds) and the parallel version with a <strong>multiprocessing.Pool</strong> took 5 minutes (300 seconds), then the percentage multiple up would be calculated as:</p>
+<ul>
+<li>Speed-Up Multiple = Serial Time / Parallel Time</li>
+<li>Speed-Up Multiple = 900 / 300</li>
+<li>Speed-Up Multiple = 3</li>
+</ul>
+<p>That is, the parallel version of the program with the <strong>multiprocessing.Pool</strong> is 3 times faster or 3x faster.</p>
+<p>You can multiply the speed-up multiple by 100 to give a percentage</p>
+<ul>
+<li>Speed-Up Percentage = Speed-Up Multiple * 100</li>
+</ul>
+<p>In this example, the parallel version is 300% faster than the serial version.</p>
+<h3>How Do You Set chunksize in map()?</h3>
+<p>The <strong>map()</strong> function, and related functions like <strong>starmap()</strong> and <strong>imap()</strong> on the <strong>multiprocessing.Pool</strong> takes a parameter called “<strong>chunksize</strong>“.</p>
+<p>The “<strong>chunksize</strong>” argument controls the mapping of items in the iterable passed to <strong>map()</strong> to tasks used in the <strong>multiprocessing.Pool</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# apply a function to each item in an iterable with a chunksize
+for result in pool.map(task, items, chunksize=1)
+    # ...
+</code></pre>
+<p>A value of one means that one item is mapped to one task.</p>
+<p>Recall that the data for each task in terms of arguments sent to the target task function and values that are returned must be serialized by pickle. This happens automatically, but incurs some computational and memory cost, adding overhead to each task processed by the multiprocessing pool.</p>
+<p>When there are a vast number of tasks or tasks are relatively quick to compute, then the chunksize should be tuned to maximize the grouping of items to process pool tasks in order to minimize the overhead per task and in turn reduce the overall compute time.</p>
+<p>By default the <strong>chunksize</strong> is set to <strong>None</strong>. In this case, the chunksize will not be set to 1 as we might expect, instead, a chunksize is calculated automatically.</p>
+<p>We can see this in the <a href="https://github.com/python/cpython/blob/d793ebc11dd248d626bf2da14775703307b47887/Lib/multiprocessing/pool.py#L481">source code for the <strong>Pool</strong> class</a>:</p>
+<pre><code>...
+if chunksize is None:
+    chunksize, extra = divmod(len(iterable), len(self._pool) * 4)
+    if extra:
+        chunksize += 1
+</code></pre>
+<p>The <strong><a href="https://docs.python.org/3/library/functions.html#divmod">divmod()</a></strong> will return the result (quotient) and remainder.</p>
+<p>Here, we are dividing the length of the input by 4 times the number of workers in the pool.</p>
+<p>If we had 4 worker processes and a list of items with 1,000,000 elements, then the default chunksize would be calculated as follows:</p>
+<ul>
+<li>chunksize, extra = divmod(1,000,000, 4 * 4)</li>
+<li>chunksize, extra = divmod(1,000,000, 16)</li>
+<li>chunksize, extra = divmod(1,000,000, 16)</li>
+<li>chunksize, extra = 62500, 0</li>
+</ul>
+<p>Given there is no extra (remainder), one is not added to the chunksize.</p>
+<p>This means that the default chunksize in this example is 62,500.</p>
+<p>This will likely require some tuning of the chunksize that you may be able to perform with real task data, or perhaps a test harness with mock data and task processes.</p>
+<p>Some values to try might include:</p>
+<ul>
+<li><strong>None</strong>: The default.</li>
+<li><strong>1</strong>: A one-to-one mapping of items to tasks in the pool.</li>
+<li><strong>len(items) / number_of_workers</strong>: Splits all items into a number of worker groups, e.g. one batch of items per process.</li>
+</ul>
+<p><strong>Note</strong>: the (len(items) / number_of_workers) division may need to be rounded as the "<strong>chunksize</strong>" argument must be a positive integer.</p>
+<p>For example:</p>
+<pre><code>...
+# estimate the chunksize
+size = round(len(items) / number_of_workers)
+# apply a function to each item in an iterable with a chunksize
+for result in pool.map(task, items, chunksize=size)
+    # ...
+</code></pre>
+<p>Compare the performance to see if one configuration is better than another, and if so, use it as a starting point for similar values to evaluate.</p>
+<h3>How Do You Submit a Follow-up Task?</h3>
+<p>We can execute follow-up tasks in the process pool.</p>
+<p>There are two main approaches we can use, they are:</p>
+<ol>
+<li>Manually issue follow-up tasks.</li>
+<li>Automatically issue follow-up tasks via a callback.</li>
+</ol>
+<p>We will also consider an approach that does not work:</p>
+<p>Issue a task from a task already running in the process pool.</p>
+<p>Let’s take a closer look at each approach of executing a follow-up task.</p>
+<p>We can manually issue a follow-up task based on the results of a first-round task.</p>
+<p>For example, we may issue a task asynchronously using the <strong>apply_async()</strong> function that returns a <strong>ResultAsync</strong>.</p>
+<pre><code>...
+# issue a task
+result = pool.apply_async(...)</code></pre>
+<p>We can then get the result of the issued task, once available, and conditionally issue a follow-up task.</p>
+<p>For example:</p>
+<pre><code>...
+# check the result of an issued task
+if result.get() &gt; 1.0:
+    # issue a follow-up task
+    pool.apply_async(...)
+</code></pre>
+<p>Alternatively, we can automatically issue follow-up tasks to the process pool.</p>
+<p>This can be achieved by configuring issued tasks to have a result callback function.</p>
+<p>The callback function is a custom function that takes the result of the function call used to issue tasks, e.g. a single return value or an iterator of return values if multiple tasks are issued.</p>
+<p>The callback function is executed in the main thread of the main process.</p>
+<p>If the process pool is created and used within the main process, then it may be available as a global variable to the result callback function.</p>
+<p>As such, we can directly issue follow-up tasks from the callback function.</p>
+<p>For example:</p>
+<pre><code># result callback function
+def result_callback(result):
+    # check the result of an issued task
+    if result.get() &gt; 1.0:
+        # issue a follow-up task
+        pool.apply_async(...)
+</code></pre>
+<p>The callback function can be specified when issuing tasks in the main process via the “<strong>callback</strong>” argument.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task with a result callback
+result = pool.apply_async(..., callback=result_callback)</code></pre>
+<p>We can explore how to issue follow-up tasks automatically using a callback function.</p>
+<p>This can be achieved by defining a callback function that processes the results from first-round tasks and issues follow-tasks to the process pool. The main process is only responsible for issuing the first round tasks.</p>
+<p>A complete example to demonstrate this is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of issuing a follow-up task automatically with a result callback
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# handle results of the task (in the main process)
+def result_callback(result_iterator):
+    # unpack result
+    for i,v in result_iterator:
+        # check result
+        if v &gt; 0.5:
+            # issue a follow-up task
+            _ = pool.apply_async(task2, args=(i, v))
+
+# task executed in a worker process
+def task2(identifier, result):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;&gt;{identifier} with {result}, generated {value}', flush=True)
+    # return result
+    return (identifier, result, value)
+
+# task executed in a worker process
+def task1(identifier):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;{identifier} generated {value}', flush=True)
+    # return result
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks asynchronously to the process pool
+        result = pool.map_async(task1, range(10), callback=result_callback)
+        # wait for issued tasks to complete
+        result.wait()
+        # close the pool
+        pool.close()
+        # wait for all issued tasks to complete
+        pool.join()
+    # all done
+    print('All done.')
+</code></pre>
+<p>Running the example first creates and starts the process pool with a default configuration.</p>
+<p>Next, 10 calls to <strong>task1()</strong> are issued as tasks to the process pool and an <strong>AsyncResult</strong> is returned. The main process then blocks waiting for all first-round tasks to complete.</p>
+<p>Each first-round task generates a random number, blocks, reports a message and returns a tuple.</p>
+<p>Once all first round tasks finish, the result callback is then called with an iterable of the return values from the first round tasks. The iterable is traversed and any second round tasks are issued to the process pool.</p>
+<p>The main process carries on, closing the pool and blocking until all second round tasks complete.</p>
+<p>The second-round tasks generate another random number, report the value, and return a tuple. The return results from this task are not considered.</p>
+<p>All second-round tasks complete, the main process unblocks and continues on, terminating the application.</p>
+<p>Note, the results will differ each time the program is run given the use of random numbers. Try running the example a few times.</p>
+<p>This highlights how we can automatically issue follow-up tasks to the process pool from the main process.</p>
+<pre><code>&gt;3 generated 0.026053470123407307
+&gt;5 generated 0.10861107021623373
+&gt;1 generated 0.283776825109049
+&gt;2 generated 0.3812563597749301
+&gt;0 generated 0.47683270636655106
+&gt;4 generated 0.5622089438427635
+&gt;6 generated 0.62617584793209
+&gt;7 generated 0.7745782124217487
+&gt;8 generated 0.9132687159744634
+&gt;9 generated 0.9283828682129988
+&gt;&gt;7 with 0.7745782124217487, generated 0.07060930439614588
+&gt;&gt;6 with 0.62617584793209, generated 0.155765787897853
+&gt;&gt;4 with 0.5622089438427635, generated 0.7745894701213474
+&gt;&gt;8 with 0.9132687159744634, generated 0.8280977095949135
+&gt;&gt;9 with 0.9283828682129988, generated 0.9937548669689297
+All done.</code></pre>
+<p>You can learn more about how to issue a follow-up task in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-follow-up-tasks/">Multiprocessing Pool Follow-Up Tasks in Python</a></li>
+</ul>
+<h3>How Do You Show Progress of All Tasks?</h3>
+<p>We can show progress of tasks in the process pool using the callback function.</p>
+<p>This can be achieved by issuing tasks asynchronously to the process pool, such as via the <strong>apply_async()</strong> function and specifying a callback function via the “<strong>callback</strong>” argument.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task to the process pool
+pool.apply_async(task, callback=progress)</code></pre>
+<p>Our custom callback function will then be called after each task in the process pool is completed.</p>
+<p>We can then perform some action to show the progress of completed tasks in the callback function, such as printing a dot to standard out.</p>
+<p>For example:</p>
+<pre><code># progress indicator for tasks in the process pool
+def progress(results):
+    print('.', end='', flush=True)
+</code></pre>
+<p>We can explore how to show progress of tasks issued to the process pool.</p>
+<p>In this example, we will define a task that will block for a fraction of a second. We will then issue many of these tasks to the process pool. A callback will be called as each task finished and will print a message to show the progress of tasks as they are completed.</p>
+<p>A complete example to demonstrate this is listed below.</p>
+</main>
+</body>
+</html>

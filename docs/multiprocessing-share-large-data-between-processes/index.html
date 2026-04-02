@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Share Large Data Between Processes in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Share Large Data Between Processes in Python</h1>
+<div class="post-meta">October 27, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can <strong>share a large data structure between child processes</strong> and achieve a speedup by operating on the structure in parallel.</p>
+<p>Thank you to Carter D. who promoted the development of this tutorial. If you have a Python concurrency problem, <a href="../contact/">reach out</a>, perhaps I can offer some suggestions and develop a tutorial to help you too.</p>
+<p>In this tutorial, you will discover how to speed up a program composed of tasks that operate on the same shared large data structure in memory.</p>
+<p>Let's get started.</p>
+<h2>Problem of Large Data Structure Shared Among Processes</h2>
+<p>Sharing a large data structure between many child processes for parallel processing in Python can be slow.</p>
+<p>Consider this situation:</p>
+<p>We have a large complex data structure in memory. A dict of lists of custom objects or similar that is 500+ megabytes in size.</p>
+<ul>
+<li>The data is stored in custom objects making using a database challenging.</li>
+<li>The size of the data means we are limited in the number of copies we can have in memory.</li>
+</ul>
+<p>We need to perform the same general task on the data many times.</p>
+<ul>
+<li>Each task needs full access to the data structure and the work is CPU or computationally intensive.</li>
+</ul>
+<p>Executing the tasks sequentially, one by one, is slow and we wish to speed things up by executing the tasks in parallel.</p>
+<p>The computational nature of the tasks means we prefer to use multiprocessing child processes, threads would probably not be appropriate unless the data structure is NumPy arrays.</p>
+<p>The large complex data structure needs to be available to each child process. The use of multiprocessing means that sharing the large data structure can be very slow, potentially requiring inter-process communication. In many cases, this can be even slower than the sequential version of the program.</p>
+<p><strong>How can we share the data structure and parallelize the tasks with multiprocessing and achieve a speed-up?</strong></p>
+<p><strong>Do you have a problem of this type?</strong><br/>Let me know in the comments below.</p>
+<h2>How to Share a Large Data Structure Among Processes</h2>
+<p>A good first approach is to share copies of the in-memory data structure with child processes.</p>
+<p>There are three main approaches we can use for this:</p>
+<ol>
+<li>Inherit a copy of the structure in each process</li>
+<li>Pass a copy of the structure to each task via an argument</li>
+<li>Initialize process workers with a copy of the structure once.</li>
+</ol>
+<p>Other approaches we might consider include:</p>
+<ul>
+<li>Share Data Via Queue or Pipe</li>
+<li>Share data using shared ctypes.</li>
+<li>Shared data using shared_memory.</li>
+</ul>
+<p>Using a queue or a pipe is generally equivalent to passing the structure via an argument. In fact, it is likely significantly slower. The use of shared ctypes and shared_memory are precluded given the complex nature of the shared data structure and use of custom objects (in this hypothetical scenario).</p>
+<p>A good second-order approach would be to consider how the data structure can be stored and accessed by separate processes, without having to have the entire structure in memory within the reach process.</p>
+<p>This would require developing a database-like capability where the structure is stored once in memory or on disk and queries on demand from child processes.</p>
+<p>Some approaches include:</p>
+<ol>
+<li>Hosted structure with manager</li>
+<li>Stored structure in binary or memory-mapped file</li>
+</ol>
+<p>For more ideas of approaches to try, see the tutorials:</p>
+<ul>
+<li><a href="../numpy-share-array-processes/">9 Ways to Share a Numpy Array Between Processes</a></li>
+<li><a href="../numpy-array-share-fastest/">Fastest Way To Share NumPy Array Between Processes</a></li>
+</ul>
+<p>Now that we have some ideas of approaches we could explore, let's look at how we might develop each in turn.</p>
+<h3>Inherit a Copy of the Data Structure</h3>
+<p>A good simple approach is to have each child process that performs the task inherit the data structure.</p>
+<p>This requires that the "<strong>fork</strong>" start method be used to create and start child processes. The parent process is "forked" which copies all memory in the parent process into the child process and this process is very fast.</p>
+<p>The child process can then use the copy of the data "inherited" from the parent to perform its task.</p>
+<p>This can be achieved by setting the process start method to "<strong>fork</strong>" via the <strong>set_start_method()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# set fork start method
+set_start_method('fork')</code></pre>
+<p>The data can be stored in a global variable and then accessed directly in child processes. Specifically, the task function executing in the child process would declare the global variable and then make use of it directly.</p>
+<p>For example:</p>
+<pre><code># task function executed in the child process
+def task():
+	# declare inherited global data
+	global data
+	# use data
+	...
+</code></pre>
+<p>The benefit of this approach is that it is very fast as the copy of the memory is performed efficiently down in the operating system.</p>
+<p>The downside is that the fork start method is not available on all platforms, e.g. it is not available on Windows.</p>
+<p>You can learn more about setting the process start method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-start-method/">Multiprocessing Start Methods</a></li>
+</ul>
+<p>You can learn more about inheriting data in child processes in the tutorials:</p>
+<ul>
+<li><a href="../multiprocessing-inherit-global-variables-in-python/">Multiprocessing Inherit Global Variables in Python</a></li>
+<li><a href="../multiprocessing-inherit-vs-sending-data/">Inheriting is 34x Faster Than Sending Data Between Processes in Python</a></li>
+</ul>
+<h3>Pass Copy of Data Via Argument</h3>
+<p>Another approach is to pass the data structure as a function argument to the child process.</p>
+<p>The task function executed in the child process would be configured to take the data as an argument.</p>
+<p>For example:</p>
+<pre><code># task function executed in the child process
+def task(data):
+	...
+</code></pre>
+<p>This function can then be executed using a new <strong>multiprocessing.Process</strong> instance and pass the argument via the "<strong>args</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# create process, pass data as an argument
+process = Process(target=task, args=(data,))</code></pre>
+<p>Or the data could be provided as an argument to a worker process in a <strong>multiprocessing.Pool</strong> or <strong>ProcessPoolExecutor</strong> class.</p>
+<p>The benefit of this approach is that it is very simple.</p>
+<p>The downside is that it is slow. The data must be pickled, transmitted, received, and unpickled for each child process.</p>
+<p>This approach will likely be slower than the sequential version of the program that does not use child processes.</p>
+<p>You can learn more about passing data to child processes via arguments in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<h3>Initialize Workers With Copy of Data</h3>
+<p>We can get an improvement with a variation of the above approach.</p>
+<p>Instead of using inter-process communication to share the data structure with a child process for each task, we can share the structure once for a fixed number of worker processes and reuse the workers for each task.</p>
+<p>For example, if we had 100 tasks, we might transmit the structure 100 times. Instead, we would use 4 workers to execute all 100 tasks and transmit the structure 4 times only and each worker would keep and reuse its local copy.</p>
+<p>This could be achieved using the <strong>ProcessPoolExecutor</strong> and the ability to specify a function and arguments to initialize worker processes.</p>
+<p>A custom worker initialization function can be defined that takes the data structure as an argument and stores it in a global variable.</p>
+<p>For example:</p>
+<pre><code># initialize worker process
+def init_worker(data_arg):
+    # declare global variable
+    global data
+    # declare the global variable
+    data = data_arg
+</code></pre>
+<p>The <strong>ProcessPoolExecutor</strong> can then be configured to initialize each worker with this function.</p>
+<p>For example:</p>
+<pre><code>...
+# create process pool and init workers with data
+exe = ProcessPoolExecutor(4, initializer=init_worker, initargs=(data,))</code></pre>
+<p>The <strong>task()</strong> function executed in the child worker processes can then access the global variable within each worker process.</p>
+<p>For example:</p>
+<pre><code># perform a task on the structure
+def task(value):
+    # declare global variable
+    global data
+    ...
+</code></pre>
+<p>The benefit of this approach is that the data structure only needs to be shared with each worker process once.</p>
+<p>The downside is that we must still use inter-process communication to share the pickled data structure a number of times, which is very slow.</p>
+<p>You can learn more about initializing <strong>ProcessPoolExecutor</strong> worker processes in the tutorial:</p>
+<ul>
+<li><a href="../processpoolexecutor-initializer/">How to Initialize Worker Processes in the ProcessPoolExecutor</a></li>
+</ul>
+<p>This same approach can be used with the <strong>multiprocessing.Pool</strong> class.</p>
+<p>For more on initializing workers in the Pool class, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-initializer/">Multiprocessing Pool Initializer in Python</a></li>
+</ul>
+<h3>Share Data with Queue or Pipe</h3>
+<p>Another approach is to create a shared multiprocessing <strong>Queue</strong> or <strong>Pipe</strong> and share the data structure with each child process via the <strong>Queue</strong> or <strong>Pipe</strong>.</p>
+<p>This is possible, but not recommended.</p>
+<p>It is expected to be as slow as passing the structure as an argument to a child process, perhaps even slower.</p>
+<p>The reason is that each time data is placed on the <strong>Queue</strong> or transmitted via the Pipe, it must be pickled and unpickled and one copy of the data structure would have to be transmitted for each task.</p>
+<p>Nevertheless, if you want to explore this approach, you can learn more about sharing data via a queue in the tutorials:</p>
+<ul>
+<li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li>
+<li><a href="../multiprocessing-pipe-in-python/">Multiprocessing Pipe in Python</a></li>
+<li><a href="../multiprocessing-pool-share-queue/">How to Share a Queue with a Multiprocessing Pool</a></li>
+</ul>
+<h3>Host the Structure With a Manager</h3>
+<p>Rather than sharing the data structure, an alternative approach is to store one copy of the structure and access it many times from each task.</p>
+<p>One approach to implementing this is to store the structure on a server process and have each child process message the server process with requests or queries.</p>
+<p>This can be implemented using the <strong>multiprocessing.Manager</strong>.</p>
+<p>A <strong>Manager</strong> will create a server process and host objects.</p>
+<p>Child processes can then get proxy objects that can be used to interact with the hosted object without copying data back and forth between the processes.</p>
+<p>The benefit of this approach is that it avoids copying the data. This may be needed if the data is being updated often while tasks are operating upon it or if the memory on the machine is limited.</p>
+<p>The downside is that any data from the main structure needed in the task must be transmitted using inter-process communication, which is slow. This could be addressed by developing helper functions on the data structure to be executed in the server process and sending only summaries and results back to the child processes. This in turn may limit any benefits of operating on the structure in parallel with multiple processes. It really depends on the nature of the tasks and the data needed from the main structure.</p>
+<p>You can learn more about using a <strong>Manager</strong> to share custom objects in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager-custom-class/">Multiprocessing Manager With a Custom Class</a></li>
+</ul>
+<h3>Store Data Structure in File</h3>
+<p>Another approach to centralizing the data structure is to store it in a file on disk.</p>
+<p>Each process can then read the structure into memory as needed.</p>
+<p>Reading the entire data structure into memory in each task would likely be slower than the sequential version if simple pickling is used. Instead, this process could be made more efficient using a memory-mapped file or storing the data in a binary format.</p>
+<p>This would allow tasks to read directly into only those parts of the data structure needed for the task. It may also allow the memory-mapped file to manage a cache of in-memory data to serve multiple tasks operating on the same structure in parallel (depending on the implementation).</p>
+<p>The benefit of this approach is that tasks can read data piecewise which could be more efficient. Note that if tasks only need portions of the data, then perhaps only portions of the data could be shared directly rather than using the disk as intermediate storage.</p>
+<p>The downside is that it may only offer a benefit if saving/loading the binary data is faster than pickling and inter-process communication. This may very well be the case, but only if a binary format can be found for the data structure (something other than the pickle module).</p>
+<p>It may also only offer a benefit if the tasks only need access to portions of the data rather than the entire data structure.</p>
+<p>You can learn more about memory-mapped files in the <strong>mmap</strong> module in the standard library:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/mmap.html">mmap — Memory-mapped file support</a></li>
+</ul>
+<p>You can also see an example of sharing NumPy arrays between processes using a memory-mapped file:</p>
+<ul>
+<li><a href="../numpy-array-memory-mapped-file/">Share NumPy Array Using Memory-Mapped File</a></li>
+</ul>
+<p>Now that we have explored some ideas on how to share the large data structure, let's look at some worked examples.</p>
+<h2>Example of Sequential Version</h2>
+<p>Before we explore parallel versions that share the data structure between processes, let's start with a simple and slow sequential version.</p>
+<p>In this example, we will define a data structure that is about 500 megabytes in memory. We will then execute a suite of time-consuming tasks on the structure and time the overall execution time of the entire program.</p>
+<p>Firstly, we can define a large in-memory data structure.</p>
+<p>There are many ways we could do this, although in this case, we will create a large list of integers - mainly because it's fast to run relative to other structures we could create.</p>
+</main>
+</body>
+</html>

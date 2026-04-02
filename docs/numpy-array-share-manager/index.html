@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Share a Numpy Array Between Processes Using a Manager – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Share a Numpy Array Between Processes Using a Manager</h1>
+<div class="post-meta">June 11, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>share a numpy array between processes</strong> by hosting it in a manager server process and sharing proxy objects for working with the hosted array.</p>
+<p>In this tutorial, you will discover how to share an array between processes using a manager.</p>
+<p>Let's get started.</p>
+<h2>Need to Share Numpy Array Between Processes</h2>
+<p>Python offers process-based concurrency via the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a>.</p>
+<p>Process-based concurrency is appropriate for those tasks that are CPU-bound, as opposed to thread-based concurrency in Python which is generally suited to IO-bound tasks given the presence of the Global Interpreter Lock (GIL).</p>
+<p>You can learn more about process-based concurrency and the multiprocessing module in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing: The Complete Guide</a></li>
+</ul>
+<p>Consider the situation where we need to share numpy arrays between processes.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>Data is loaded as an array in one process and analyzed differently in different subprocesses.</li>
+<li>Many child processes load small data as arrays that are sent to a parent process for handling.</li>
+<li>Data arrays are loaded in the parent process and processed in a suite of child processes.</li>
+</ul>
+<p>Sharing Python objects and data between processes is slow.</p>
+<p>This is because any data, like numpy arrays, shared between processes must be transmitted using inter-process communication (ICP) requiring the data first be pickled by the sender and then unpickled by the receiver.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>This means that if we share numpy arrays between processes, it assumes that we receive some benefit, such as a speedup, that overcomes the slow speed of data transmission.</p>
+<p>For example, it may be the case that the arrays are relatively small and fast to transmit, whereas the computation performed on each array is slow and can benefit from being performed in separate processes.</p>
+<p>Alternatively, preparing the array may be computationally expensive and benefit from being performed in a separate process, and once prepared, the arrays are small and fast to transmit to another process that requires them.</p>
+<p><strong>Given these situations, how can we share data between Processes in Python?</strong></p>
+<h2>How to Share a Numpy Array Using a Manager</h2>
+<p>One way to share a numpy array efficiently between processes is to use a manager.</p>
+<p>Multiprocessing <strong>Manager</strong> provides a way of creating centralized Python objects that can be shared safely among processes.</p>
+<p>Manager objects create a server process that is used to host Python objects. Managers then return proxy objects used to interact with the hosted objects.</p>
+<p>You can learn more about multiprocessing Managers in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li>
+</ul>
+<p>A numpy array can be hosted by defining a custom <strong>Manager</strong> and configuring it to support numpy arrays.</p>
+<p>This requires first defining a custom <strong>Manager</strong> that extends the <strong>BaseManager</strong>.</p>
+<p>For example:</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>We can then register our numpy array with the custom manager via the <strong>register()</strong> function.</p>
+<p>One approach is to register a numpy function used to create a numpy array on the server process, such as the <strong>numpy.ones()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# register a function for creating numpy arrays on the manager
+CustomManager.register('ones', ones)</code></pre>
+<p>We can then create the custom manager to start the server process.</p>
+<pre><code>...
+# create and start the custom manager
+with CustomManager() as manager:
+	# ...
+</code></pre>
+<p>The numpy array can then be created in the server process by calling the registered function, after which a proxy object is returned. The hosted numpy array can then be interacted with via the proxy object.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared numpy array
+data_proxy = manager.shared_array((10,10))</code></pre>
+<p>The proxy object can then be passed between processes, allowing multiple processes to manipulate the same hosted numpy array.</p>
+<p>You can learn more about hosting custom objects in manager processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager-custom-class/">Multiprocessing Manager With a Custom Class</a></li>
+</ul>
+<p>Now that we know how to share a numpy array using a manager, let's look at some worked examples.</p>
+<h2>Example of Hosting a NumPy Array With a Manager</h2>
+<p>We can explore an example of hosting a numpy array in a manager server process.</p>
+<p>In this example, we will create a numpy array and host it in a manager process. We will then perform functions on the array and time how long it takes. We will then make a copy of the array and transmit it back to the parent process and perform the same operation. Finally, we will compare the time it takes to perform the operation on the copy of the data vs the same operation on the server.</p>
+<p>Firstly, we can define the custom manager class that will allow us to register the numpy array.</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>Next, we can register the numpy array on the custom manager.</p>
+<p>In this case, we will register the <strong>numpy.ones()</strong> function used to create a numpy array on the server with the given shape. We will call this function "<strong>shared_array</strong>".</p>
+<pre><code>...
+# register a function for creating numpy arrays on the manager
+CustomManager.register('shared_array', ones)</code></pre>
+<p>We can then create and start the custom manager and create the array on the server, returning a proxy object for interacting with the array.</p>
+<pre><code>...
+# create and start the custom manager
+with CustomManager() as manager:
+    # define the size of the numpy array
+    n = 50000000
+    # create a shared numpy array
+    data_proxy = manager.shared_array((n,))
+    print(f'Array created on host: {data_proxy}')
+</code></pre>
+<p>We will then calculate the sum of the values in the array.</p>
+<p>Given that the array has 50,000,000 elements all filled with one values, we expect the sum to be equal to the number of elements.</p>
+<p>This operation is performed on the server and will report the time of this operation.</p>
+<pre><code>...
+# time sum operation on array in server process
+start = time()
+result = data_proxy.sum()
+duration = time() - start
+print(f'Sum on hosted array took {duration:.3f} seconds')</code></pre>
+<p>Next, we will make a copy of the array and transmit it back to the parent process.</p>
+<p>This can be achieved by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.BaseProxy._getvalue"><strong>_getvalue()</strong> function</a> on the proxy object that returns the hosted object.</p>
+<p>This will transmit the entire array from the manager process to the parent process using inter-process communication. As such it will be very slow.</p>
+<p>We will retrieve the array and calculate the sum, as before, and report the time taken.</p>
+<pre><code>...
+# time copy array and sum operation
+start = time()
+result = data_proxy._getvalue().sum()
+duration = time() - start
+print(f'Sum on copied array took {duration:.3f} seconds')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># host a numpy array on the server
+from time import time
+from multiprocessing.managers import BaseManager
+from numpy import ones
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# protect the entry point
+if __name__ == '__main__':
+    # register a function for creating numpy arrays on the manager
+    CustomManager.register('shared_array', ones)
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the size of the numpy array
+        n = 50000000
+        # create a shared numpy array
+        data_proxy = manager.shared_array((n,))
+        print(f'Array created on host: {data_proxy}')
+        # time sum operation on array in server process
+        start = time()
+        result = data_proxy.sum()
+        duration = time() - start
+        print(f'Sum on hosted array took {duration:.3f} seconds')
+        # time copy array and sum operation
+        start = time()
+        result = data_proxy._getvalue().sum()
+        duration = time() - start
+        print(f'Sum on copied array took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first registers the numpy array on the custom manager class.</p>
+<p>The custom manager is then created and started.</p>
+<p>Next, a numpy array with 50 million elements is created on the manager's server process and a proxy object is returned.</p>
+<p>Printing the proxy object confirms the content of the array is one values.</p>
+<p>Next, the proxy object is used to calculate the sum of the array on the server process. The time taken to perform this operation is reported as about 26 milliseconds.</p>
+<p>Next, the same operation is performed, this time on a copy of the array transmitted from the server process to the parent process.</p>
+<p>This takes more than 100 seconds to complete. It is expected to take much longer as the array has to be pickled and transmitted between processes before the operation can be performed.</p>
+<p>This provides a contrast between the approach of performing operations on the array in a hosted process compared to transmitting the array in order to perform operations upon it.</p>
+<pre><code>Array created on host: array([1., 1., 1., ..., 1., 1., 1.])
+Sum on hosted array took 0.026 seconds
+Sum on copied array took 101.411 seconds
+</code></pre>
+<h2>Example of Sharing a Numpy Array Using a Manager</h2>
+<p>We can explore the case of sharing a numpy array hosted in a manager between processes.</p>
+<p>In this example, we will create an array hosted in a manager process and report the sum of the values in the array. We will then start a child process and pass it the proxy objects for the array and have it perform the same sum operation on the array.</p>
+<p>This will highlight how easy it is for multiple processes to operate on the same array efficiently via proxy objects.</p>
+<p>Firstly, we will define the custom manager class so that we can register numpy arrays.</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>Next, we will define a function to execute in a child process. The function will take the proxy object for the numpy array and calculate the sum of values in the array.</p>
+<pre><code># task executed in a child process
+def task(data_proxy):
+    # report details of the array
+    print(f'Array sum (in child): {data_proxy.sum()}')
+</code></pre>
+<p>Next, in the main process, we will register a function for creating the hosted numpy array with the custom manager.</p>
+<pre><code>...
+# register a function for creating numpy arrays on the manager
+CustomManager.register('shared_array', ones)</code></pre>
+<p>Next, we will create and start the custom manager and create the hosted numpy array with 100,000,000 elements.</p>
+<pre><code>...
+# create and start the custom manager
+with CustomManager() as manager:
+    # define the size of the numpy array
+    n = 100000000
+    # create a shared numpy array
+    data_proxy = manager.shared_array((n,))
+    print(f'Array created on host: {data_proxy}')
+</code></pre>
+<p>We will then calculate the sum of the values in the array on the server process, which we expect to equal 100,000,000, as all values equal one.</p>
+<pre><code>...
+# confirm content
+print(f'Array sum: {data_proxy.sum()}')</code></pre>
+<p>Finally, we will create and configure a child process, configured to execute our task() function, then start it and wait for it to terminate.</p>
+<pre><code>...
+# start a child process
+process = Process(target=task, args=(data_proxy,))
+process.start()
+process.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># share a numpy array between processes using a manager
+from multiprocessing import Process
+from multiprocessing.managers import BaseManager
+from numpy import ones
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# task executed in a child process
+def task(data_proxy):
+    # report details of the array
+    print(f'Array sum (in child): {data_proxy.sum()}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # register a function for creating numpy arrays on the manager
+    CustomManager.register('shared_array', ones)
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the size of the numpy array
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.shared_array((n,))
+        print(f'Array created on host: {data_proxy}')
+        # confirm content
+        print(f'Array sum: {data_proxy.sum()}')
+        # start a child process
+        process = Process(target=task, args=(data_proxy,))
+        process.start()
+        process.join()
+</code></pre>
+<p>Running the example first registers the numpy array with the custom manager.</p>
+<p>Next, the custom manager is created and started.</p>
+<p>The numpy array is created on the manager's server process and a proxy object is returned. The proxy object is printed, providing a string representation of the hosted array, confirming it has one values.</p>
+<p>The parent process then reports the sum of the values in the array. This is calculated on the server process and the value is then reported as 100 million, matching our expectations.</p>
+<p>Next, a child process is configured to execute our task() function and passed the proxy object. The parent process then blocks until the child process terminates.</p>
+<p>The child process runs and executes the task() function. The sum of the array is calculated on the server process and reported via the child process.</p>
+<p>This highlights that both processes are easily able to operate directly upon the same hosted array.</p>
+<pre><code>Array created on host: array([1., 1., 1., ..., 1., 1., 1.])
+Array sum: 100000000.0
+Array sum (in child): 100000000.0
+</code></pre>
+<h2>Example Accessing Attributes on Hosted Numpy Array</h2>
+<p>A limitation of proxy objects is that we cannot access the attributes of a hosted object.</p>
+<p>This may be a problem if we wish to access attributes on our numpy array, such as the "<strong>shape</strong>", "<strong>size</strong>", or other attributes of the <a href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html"><strong>numpy.ndarray</strong> class</a>.</p>
+<p>In this section, we will explore how we might overcome this limitation.</p>
+<h3>Example of Accessing Attribute Directly (failure)</h3>
+<p>Firstly, we can create a numpy array hosted in the server process, as before.</p>
+<p>We will then attempt to access the "<strong>shape</strong>" attribute via the proxy object.</p>
+<pre><code>...
+# access shape of hosted array
+print(data_proxy.shape)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># access attribute of hosted numpy array
+from multiprocessing.managers import BaseManager
+from numpy import ones
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# protect the entry point
+if __name__ == '__main__':
+    # register a function for creating numpy arrays on the manager
+    CustomManager.register('shared_array', ones)
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the size of the numpy array
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.shared_array((n,))
+        print(f'Array created on host: {data_proxy}')
+        # confirm content
+        print(f'Array sum: {data_proxy.sum()}')
+        # access shape of hosted array
+        print(data_proxy.shape)
+</code></pre>
+<p>Running the example creates and starts the manager as before.</p>
+<p>The array is created and its contents are reported correctly.</p>
+<p>We attempt to access the shape of the array.</p>
+<p>In this case, an <strong>AttributeError</strong> exception is raised, reporting that the hosted object has no attribute "<strong>shape</strong>".</p>
+<p>The error is misleading, but it is in fact attempting to execute a shape() method on the hosted object and has no concept of a "shape" attribute.</p>
+</main>
+</body>
+</html>

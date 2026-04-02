@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Server Context Manager – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Server Context Manager</h1>
+<div class="post-meta">March 24, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can use the <strong>asyncio server asynchronous context manager</strong> by the "<strong><a href="../asyncio-async-with/">async with</a></strong>" expression.</p>
+<p>The context manager interface on the asyncio server will automatically close the server and all client connections. This is helpful to ensure that the server is closed safely, such as on error, when the server task is canceled, and when the program is terminated via a <strong>SIGINT</strong> signal.</p>
+<p>In this tutorial, you will discover how to use the <strong><a href="../asynchronous-context-manager/">asynchronous context manager</a></strong> interface on the asyncio.Server.</p>
+<p>Let's get started.</p>
+<h2>Asyncio Server Context Manager</h2>
+<p>The <strong>asyncio.Server</strong> allows us to accept client socket connections in asyncio programs.</p>
+<p>We can create a server via the <strong>asyncio.start_server()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# create an asyncio server
+server = await asyncio.start_server(handler, '127.0.0.1', 8888)</code></pre>
+<p>You can learn more about creating an asyncio server in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-server/">How to Create And Run An Asyncio Server</a></li>
+</ul>
+<p>The <strong>asyncio.Server</strong> class implements the asynchronous context manager interface used via the "async with" expression.</p>
+<p>If you are new to asynchronous context managers, you can learn more in the tutorial:</p>
+<ul>
+<li><a href="../asynchronous-context-manager/">Asynchronous Context Managers in Python</a></li>
+</ul>
+<p>The body of the context manager can be used to accept client connections. When the context manager is exited, the server is closed to new client connections, and all current client connections are closed.</p>
+<p>For example:</p>
+<pre><code>...
+# open the server context manager
+async with server:
+	# ...
+</code></pre>
+<p>We can use the body of the context manager to accept client connections via the <strong>serve_forever()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# open the server context manager
+async with server:
+    # accept client connections forever
+    await server.serve_forever()
+</code></pre>
+<p>This is helpful for a few reasons, for example:</p>
+<ol>
+<li>If the asyncio task running the server is canceled, the connections will be closed safely.</li>
+<li>If the server fails with an unexpected exception, the connections will be closed safely.</li>
+<li>If the process running the server is terminated via a <strong>SIGINT</strong> (control-c), the connections will be closed safely.</li>
+</ol>
+<p>Without the asynchronous context manager, it is possible for the server to be killed abruptly and client connections will not close safely.</p>
+<p>This could be overcome manually using a try-finally block and manually closing the server and client connections.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# accept client connections forever
+    await server.serve_forever()
+finally:
+	# close the server
+	server.close()
+	# wait for all client connections to close
+	await server.wait_closed()
+</code></pre>
+<p>This achieves the same effect as the asynchronous context manager, although it uses more code. The context manager provides a simpler and clearer solution.</p>
+<p>Now that we know about the asyncio server context manager, let's look at some worked examples.</p>
+<h2>Example Asyncio Server Context Manager with Cancellation</h2>
+<p>We can explore an example of canceling the asyncio task running the server and confirming that the server was closed correctly via the context manager.</p>
+<p>In this example, we will run the asyncio server in a background task, allow the server to run for a while, then cancel the task that is running the server. The expectation is that the context manager will safely close the server automatically. We will then check the status of the server after the context manager and confirm that it was closed.</p>
+<p>Firstly, we can define the handler for client connections.</p>
+<p>In this case, we don't expect any client connections, so the handler will be empty.</p>
+<pre><code># handler for client connections
+async def handler(reader, writer):
+    pass
+</code></pre>
+<p>Next, we can define the coroutine that will run the server as a background task.</p>
+<p>Firstly, we will create a server configured to expect connections on port 8888. Once created, we will report the details of the server.</p>
+<p>We will then open the context manager interface and accept client connections via the <strong>server_forever()</strong> method.</p>
+<p>The context manager is then wrapped in a try-finally structure and the finally block reports the serving status of the server.</p>
+<p>Tying this together, the <strong>background_server()</strong> coroutine below implements this.</p>
+<pre><code># task for running the server in the background
+async def background_server():
+    # create an asyncio server
+    server = await asyncio.start_server(handler, '127.0.0.1', 8888)
+    # report the details of the server
+    print(server)
+    try:
+        # ensure the server is closed correctly
+        async with server:
+            # accept client connections forever
+            await server.serve_forever()
+    finally:
+        # confirm the server has stopped
+        print(f'Server closed: serving={server.is_serving()}')
+</code></pre>
+<p>Next, we can define the main coroutine.</p>
+<p>Firstly, we will create and schedule a task for our <strong>background_server()</strong> coroutine.</p>
+<p>We will then suspend for two seconds and allow the server to be created and start running.</p>
+<p>The <strong>main()</strong> coroutine will then cancel the task running the server and wait for the task to be done.</p>
+<p>This is called the cancel-and-wait idiom. You can learn more about it in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task-and-wait/">Asyncio Cancel Task and Wait</a></li>
+</ul>
+<p>Tying this together, the <strong>main()</strong> coroutine is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # start and run the server as a background task
+    server_task = asyncio.create_task(background_server())
+    # wait around for a while
+    await asyncio.sleep(2)
+    # report progress
+    print('Shutting down...')
+    # cancel the server task
+    server_task.cancel()
+    # wait for the server to shutdown
+    try:
+        await server_task
+    except asyncio.CancelledError:
+        pass
+</code></pre>
+<p>Finally, we can start the asyncio event loop.</p>
+<pre><code>...
+# start the asyncio event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of asyncio server context manager and cancellation
+import asyncio
+
+# handler for client connections
+async def handler(reader, writer):
+    pass
+
+# task for running the server in the background
+async def background_server():
+    # create an asyncio server
+    server = await asyncio.start_server(handler, '127.0.0.1', 8888)
+    # report the details of the server
+    print(server)
+    try:
+        # ensure the server is closed correctly
+        async with server:
+            # accept client connections forever
+            await server.serve_forever()
+    finally:
+        # confirm the server has stopped
+        print(f'Server closed: serving={server.is_serving()}')
+
+# main coroutine
+async def main():
+    # start and run the server as a background task
+    server_task = asyncio.create_task(background_server())
+    # wait around for a while
+    await asyncio.sleep(2)
+    # report progress
+    print('Shutting down...')
+    # cancel the server task
+    server_task.cancel()
+    # wait for the server to shutdown
+    try:
+        await server_task
+    except asyncio.CancelledError:
+        pass
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>background_server()</strong> as a background task. It then suspends with a sleep for two seconds.</p>
+<p>The <strong>background_server()</strong> ask runs and creates the server and reports its details. It then enters the asynchronous context manager and suspends, accepting client connections forever.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a message. It then cancels the <strong>background_server()</strong> task and waits for the task to be done.</p>
+<p>A CancelledError exception is raised in <strong>background_server()</strong>. The context manager is exited, the server is closed and any client connections are closed (none in this case).</p>
+<p>The finally block executes and reports the status of the server, confirming that the context manager closed it when it exited.</p>
+<p>This highlights that the asyncio server asynchronous context manager will automatically close the server when the task running the server is canceled.</p>
+<pre><code>&lt;Server sockets=(&lt;asyncio.TransportSocket fd=6, family=2, type=1, proto=6, laddr=('127.0.0.1', 8888)&gt;,)&gt;
+Shutting down...
+Server closed: serving=False
+</code></pre>
+<p>Next, let's explore an example of the context manager closing the server when the process is terminated with a <strong>SIGINT</strong>.</p>
+<h2>Example Asyncio Server Context Manager with SIGINT (KeyboardInterrupt)</h2>
+<p>We can explore the case of the asyncio server context manager safely closing the server when the process running the server is terminated with a <strong>SIGINT</strong> signal.</p>
+<p>Recall that the <a href="https://en.wikipedia.org/wiki/Signal_(IPC)#SIGINT">SIGINT (signal interrupt)</a> is a signal sent to a process when the user presses the Control-C key combination. It typically terminates the program that receives the signal.</p>
+<p>In this case, we will update the example above to no longer cancel the task running the server. Instead, it will raise a SIGINT signal within the current Python process.</p>
+<p>This can be achieved via the <a href="https://docs.python.org/3/library/signal.html#signal.raise_signal"><strong>signal.raise_signal()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# send signal to the current process
+signal.raise_signal(signal.SIGINT)</code></pre>
+<p>The asyncio event loop is configured to handle the SIGINT and cancel the main task. When the main task exits, the event loop will cancel any remaining tasks.</p>
+<blockquote>
+<p>When signal.SIGINT is raised by Ctrl-C, the custom signal handler cancels the main task by calling asyncio.Task.cancel() which raises asyncio.CancelledError inside the main task. This causes the Python stack to unwind, try/except and try/finally blocks can be used for resource cleanup. After the main task is cancelled, asyncio.Runner.run() raises KeyboardInterrupt.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-runner.html">Runners, Asyncio API Documentation</a></cite></blockquote>
+<p>It will then sleep for a moment to allow the signal to take effect and terminate the process.</p>
+<pre><code>...
+# wait for the signal
+await asyncio.sleep(2)</code></pre>
+<p>The updated <strong>main()</strong> coroutine with this change is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # start and run the server as a background task
+    server_task = asyncio.create_task(background_server())
+    # wait around for a while
+    await asyncio.sleep(2)
+    # report progress
+    print('Shutting down...')
+    # send signal to the current process
+    signal.raise_signal(signal.SIGINT)
+    # wait for the signal
+    await asyncio.sleep(2)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of asyncio server context manager and SIGINT
+import asyncio
+import signal
+
+# handler for client connections
+async def handler(reader, writer):
+    pass
+
+# task for running the server in the background
+async def background_server():
+    # create an asyncio server
+    server = await asyncio.start_server(handler, '127.0.0.1', 8888)
+    # report the details of the server
+    print(server)
+    try:
+        # ensure the server is closed correctly
+        async with server:
+            # accept client connections forever
+            await server.serve_forever()
+    finally:
+        # confirm the server has stopped
+        print(f'Server closed: serving={server.is_serving()}')
+
+# main coroutine
+async def main():
+    # start and run the server as a background task
+    server_task = asyncio.create_task(background_server())
+    # wait around for a while
+    await asyncio.sleep(2)
+    # report progress
+    print('Shutting down...')
+    # send signal to the current process
+    signal.raise_signal(signal.SIGINT)
+    # wait for the signal
+    await asyncio.sleep(2)
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>background_server()</strong> as a background task. It then suspends with a sleep for two seconds.</p>
+<p>The <strong>background_server()</strong> ask runs and creates the server and reports its details. It then enters the asynchronous context manager and suspends, accepting client connections forever.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a message. It then raises a <strong>SIGINT</strong> signal in the current Python process and then sleeps and awaits the signal to take effect.</p>
+<p>The <strong>SIGINT</strong> is handled by the asyncio event loop, canceling the main task. The event loop exits and cancels the task running the server.</p>
+<p>A CancelledError exception is raised in <strong>background_server()</strong>. The context manager is exited and the server is closed and any client connections are closed (none in this case). The finally block executes and reports the status of the server, confirming that the context manager closed it when it exited.</p>
+<p>This highlights that the asyncio server asynchronous context manager will automatically close the server when the process running the server is terminated with a SIGINT.</p>
+<pre><code>&lt;Server sockets=(&lt;asyncio.TransportSocket fd=6, family=2, type=1, proto=6, laddr=('127.0.0.1', 8888)&gt;,)&gt;
+Shutting down...
+Server closed: serving=False
+Traceback (most recent call last):
+  …
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  …
+KeyboardInterrupt
+</code></pre>
+<p>Next, let's confirm that clients are safely disconnected when the context manager is exited.</p>
+<h2>Example Confirming Asyncio Server Context Manager Closes Server</h2>
+<p>We can explore whether connected clients are disconnected from the asyncio server safely when the server's context manager is exited.</p>
+<p>In this case, we will run the server for a moment, then develop and run a client that connects to the server. The asyncio task running the server will then be canceled and we observe the effect on both the server and the currently connected client.</p>
+<p>Let's dive in.</p>
+<h3>Asyncio Server</h3>
+<p>We will use the same server that we developed in the first example above.</p>
+<p>In this case, we need to implement the callback used to handle the connected client. The callback will report a message and then sleep for 10 seconds.</p>
+<pre><code># handler for client connections
+async def handler(reader, writer):
+    # report progress
+    print('Client connected')
+    # wait a while
+    await asyncio.sleep(10)
+</code></pre>
+<p>We will also update it so that the server runs for 5 seconds before the main coroutine cancels the task running the server. This will give us enough time to start the server, then start the client before the server is closed.</p>
+<pre><code>...
+# wait around for a while
+await asyncio.sleep(5)
+</code></pre>
+<p>The updated <strong>main()</strong> coroutine with this change is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # start and run the server as a background task
+    server_task = asyncio.create_task(background_server())
+    # wait around for a while
+    await asyncio.sleep(5)
+    # report progress
+    print('Shutting down...')
+    # cancel the server task
+    server_task.cancel()
+    # wait for the server to shutdown
+    try:
+        await server_task
+    except asyncio.CancelledError:
+        pass
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of asyncio server context manager and cancellation
+import asyncio
+
+# handler for client connections
+async def handler(reader, writer):
+    # report progress
+    print('Client connected')
+    # wait a while
+    await asyncio.sleep(10)
+
+# task for running the server in the background
+async def background_server():
+    # create an asyncio server
+    server = await asyncio.start_server(handler, '127.0.0.1', 8888)
+    # report the details of the server
+    print(server)
+    try:
+        # ensure the server is closed correctly
+        async with server:
+            # accept client connections forever
+            await server.serve_forever()
+    finally:
+        # confirm the server has stopped
+        print(f'Server closed: serving={server.is_serving()}')
+
+# main coroutine
+async def main():
+    # start and run the server as a background task
+    server_task = asyncio.create_task(background_server())
+    # wait around for a while
+    await asyncio.sleep(5)
+    # report progress
+    print('Shutting down...')
+    # cancel the server task
+    server_task.cancel()
+    # wait for the server to shutdown
+    try:
+        await server_task
+    except asyncio.CancelledError:
+        pass
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's develop the client.</p>
+<h3>Asyncio Client</h3>
+<p>The client is very simple.</p>
+<p>It connects to the server, reports a message that it is connected, and then sleeps for 10 seconds before closing the connection.</p>
+<p>The complete client program is listed below.</p>
+<pre><code># SuperFastPython.com
+# client for our test server
+import asyncio
+
+# test client
+async def main():
+    print('Connecting...')
+    # open a connection to the server
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+    # report message
+    print('Connected')
+    # wait around
+    await asyncio.sleep(10)
+    # close the connection
+    print('Shutting down...')
+    writer.close()
+    await writer.wait_closed()
+
+# run the event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's run both client and server.</p>
+<h3>Example Exchange</h3>
+<p>We can now run the server, connect the client, and observe both as the server task is canceled and the server context manager closes the server safely.</p>
+<p>We can save the server program to the file <strong>server.py</strong>.</p>
+<p>The server can then be run from the command line using the Python command.</p>
+<p>For example:</p>
+<pre><code>python server.py</code></pre>
+<p>This starts the server, allowing clients to connect.</p>
+<p>The client program can be saved to the file <strong>client.py</strong> and run from the command line in the same manner.</p>
+<p>For example:</p>
+<pre><code>python client.py</code></pre>
+<p>The client then connects to the server.</p>
+<p>The client sleeps after it is connected. Similarly, the handler for the client in the server sleeps after the client is connected.</p>
+<p>The <strong>main()</strong> coroutine resumes after 5 seconds and cancels the task running the server.</p>
+<p>The context manager closes the server and the connection to the client. And the program exits.</p>
+<p>A never-retrieved exception is then reported by the asyncio event loop after the program is exited.</p>
+<p>A sample output from the server program is listed below.</p>
+<pre><code>&lt;Server sockets=(&lt;asyncio.TransportSocket fd=6, family=2, type=1, proto=6, laddr=('127.0.0.1', 8888)&gt;,)&gt;
+Client connected
+Shutting down...
+Server closed: serving=False
+Exception ignored in: &lt;function StreamWriter.__del__ at 0x107bda0c0&gt;
+Traceback (most recent call last):
+  File ".../lib/python3.11/asyncio/streams.py", line 395, in __del__
+    self.close()
+  File ".../lib/python3.11/asyncio/streams.py", line 343, in close
+    return self._transport.close()
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../asyncio/selector_events.py", line 860, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File ".../asyncio/base_events.py", line 761, in call_soon
+    self._check_closed()
+  File ".../asyncio/base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+</code></pre>
+<p>The client disconnects normally, as we might expect.</p>
+<p>A sample output from the client program is listed below.</p>
+<pre><code>Connecting...
+Connected
+Shutting down...
+</code></pre>
+<p>Next, let's take a look at a common error when using the context manager for the asyncio server.</p>
+<h2>Common Error When Using Asyncio Server Context Manager</h2>
+<p>A common error when using the asynchronous context manager for the asyncio server is to create the server as part of the "async with" expression.</p>
+<p>For example:</p>
+<pre><code>...
+# ensure the server is closed correctly
+async with asyncio.start_server(handler, '127.0.0.1', 8888):
+    # accept client connections forever
+    await server.serve_forever()
+</code></pre>
+<p>This will result in a <strong>TypeError</strong>.</p>
+<p>The reason is because the <strong>asyncio.start_server()</strong> returns a coroutine, not an object that implements the asynchronous context manager interface.</p>
+<p>This breaks the expectation of the "<strong><a href="../asyncio-async-with/">async with</a></strong>" expression that expects to be provided an object that implements the <strong>__aenter__()</strong> and <strong>__aexit__()</strong> methods.</p>
+<p>We can demonstrate this with a worked example, listed below.</p>
+<pre><code># SuperFastPython.com
+# example of attempting to create server in "async with" expression
+import asyncio
+
+# handler for client connections
+async def handler(reader, writer):
+    pass
+
+# main coroutine
+async def main():
+    # ensure the server is closed correctly
+    async with asyncio.start_server(handler, '127.0.0.1', 8888):
+        # accept client connections forever
+        await server.serve_forever()
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example fails with exceptions, including a <strong>TypeError</strong></p>
+<pre><code>RuntimeWarning: coroutine 'start_server' was never awaited
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+TypeError: 'coroutine' object does not support the asynchronous context manager protocol
+</code></pre>
+<p>The correct usage of the context manager is to first call and await the <strong>asyncio.start_server()</strong> coroutine to create an <strong>asyncio.Server</strong> instance.</p>
+<p>The <strong>asyncio.Server</strong> instance implements the asynchronous context manager interface, which can then be used within the "<strong>async with</strong>" expression.</p>
+<p>For example:</p>
+<pre><code>...
+# create an asyncio server
+server = await asyncio.start_server(handler, '127.0.0.1', 8888)
+# ensure the server is closed correctly
+async with server:
+    # accept client connections forever
+    await server.serve_forever()
+</code></pre>
+<p>One way to combine the creation of the server and the "<strong>async with</strong>" expression is to use the <strong>:=</strong> operator (also called the <a href="https://docs.python.org/3/whatsnew/3.8.html">walrus operator</a>).</p>
+<p>For example:</p>
+<pre><code>...
+# ensure the server is closed correctly
+async with (server:= await asyncio.start_server(handler, '127.0.0.1', 8888)):
+    # accept client connections forever
+    await server.serve_forever()
+</code></pre>
+<p>This awaits the creation of the server, assigns it to the "<strong>server</strong>" variable and returns the asyncio server object. This happens within a sub-expression because of the brackets. The "<strong>async with</strong>" expression then uses the returned asyncio server object from the expression.</p>
+<p>The complete example below demonstrates this.</p>
+<pre><code># SuperFastPython.com
+# example of correctly creating the server in the "async with" expression
+import asyncio
+
+# handler for client connections
+async def handler(reader, writer):
+    pass
+
+# main coroutine
+async def main():
+    # ensure the server is closed correctly
+    async with (server:= await asyncio.start_server(handler, '127.0.0.1', 8888)):
+        # accept client connections forever
+        await server.serve_forever()
+
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use the asyncio server context manager interface in Python programs.</p>
+</main>
+</body>
+</html>

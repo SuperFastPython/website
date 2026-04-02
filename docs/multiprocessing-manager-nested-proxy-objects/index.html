@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Manager Nested Proxy Objects – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Manager Nested Proxy Objects</h1>
+<div class="post-meta">September 6, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can create a managed python object and add a managed object to it, nesting one proxy object within another.</p>
+<p>This allows hosted objects created via a multiprocessing Manager nested one within another to behave as expected when shared across processes.</p>
+<p>In this tutorial you will discover how to <strong>nest proxy objects</strong> when <strong>sharing them between processes in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>What is a Multiprocessing Manager</h2>
+<p>A manager in the multiprocessing module provides a way to create Python objects that can be shared easily between processes.</p>
+<blockquote><p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>A manager creates a server process that hosts a centralized version of objects that can be shared among multiple processes.</p>
+<p>The objects are not shared directly. Instead, the manager creates a proxy object for each object that it manages and the proxy objects are shared among processes.</p>
+<p>The proxy objects are used and operate just like the original objects, except that they serialize data, synchronize and coordinate with the centralized version of the object hosted in the manager server process.</p>
+<blockquote><p>A proxy is an object which refers to a shared object which lives (presumably) in a different process. [...] A proxy object has methods which invoke corresponding methods of its referent (although not every method of the referent will necessarily be available through the proxy).</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This makes managers a process-safe and preferred way to share Python objects among processes.</p>
+<p>You can learn more about multiprocessing managers in the tutorial:</p>
+<ul><li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li></ul>
+<p>Next, let's consider the server process of the manager itself.</p>
+<h2>Need for Manager Nested Proxy Objects</h2>
+<p>A problem when using hosted objects via their proxies is nested objects.</p>
+<p>Recall, <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing-proxy-objects">proxy objects</a> are returned from the manager when we use the manager to create a hosted Python object.</p>
+<p>We may use a manager to host a list and interact with the list from multiple processes via the proxies.</p>
+<p>For example:</p>
+<pre><code>...
+# create a hosted list
+proxy = manager.list()</code></pre>
+<p>We may then add objects to the list, such as dicts.</p>
+<p>For example:</p>
+<pre><code>...
+# add a dict to the list
+d = dict()
+proxy.append(d)</code></pre>
+<p>This is a problem: the dict is not hosted by the manager and is only local to the process that created and added it to the list.</p>
+<p>When another process attempts to modify the dict, it will not share a copy with the process that added it.</p>
+<p>For example:</p>
+<pre><code>...
+# get the dict from the shared list
+d = proxy[0]</code></pre>
+<p>Instead, we must use nested proxy objects.</p>
+<p>Support for nested proxy objects was added in Python 3.6 and is required in this example situation.</p>
+<blockquote><p>Changed in version 3.6: Shared objects are capable of being nested. For example, a shared container object such as a shared list can contain other shared objects which will all be managed and synchronized by the SyncManager.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<h2>How to Nest Manager Proxy Objects</h2>
+<p>Nesting proxy objects is straightforward.</p>
+<p>Firstly, the container object must be created by the manager as per normal.</p>
+<p>For example, we might create a list via the manager:</p>
+<pre><code>...
+# create a hosted list
+proxy_list = manager.list()</code></pre>
+<p>We must then create the nested object via the manager and add it to the container object.</p>
+<p>For example:</p>
+<pre><code>...
+# create a hosted dict
+proxy_dict = manager.dict()
+# add dict to list
+proxy_list.append(proxy_dict)</code></pre>
+<p>And that's all there is to it.</p>
+<p>We may now share the managed list with processes and changes to both the list and to the nested dict will be centralized in the manager process and available to all processes.</p>
+<p>Now that we know how to nest proxy objects, let's look at some worked examples.</p>
+<h2>Example of Manager Without Nested Proxy Objects</h2>
+<p>Before we explore how to use nested proxy objects, let's support a case where we get unexpected behavior from not nesting proxy objects, e.g. a failure mode.</p>
+<p>In this example, we will create a manager and use the manager to create a hosted list object. We will then add a dict to the list. The list will then be shared with a child process which will modify the content of the dust in the list. Finally, the main process will check the content of the dict in the shared list again.</p>
+<p>The expectation is that the child process would modify the dict within the list and that the main process would see the change. Instead, we will get unexpected behavior because we will not use nested proxy objects.</p>
+<p>Firstly, we can define a function to be executed by child processes.</p>
+<p>THe function will take a shared list as an argument. It will then retrieve a dict from the shared list, report its contents, change its contents, then report the contents again as confirmation that the changes were made, at least locally.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in child process
+def task(shared_list):
+    # get the first item from the list
+    item = shared_list[0]
+    # report the list of dicts
+    print(f'Task Before: {item}', flush=True)
+    # update the dict in the shared list
+    item['a'] = 1
+    item['b'] = 2
+    item['c'] = 3
+    # report the list of dicts
+    print(f'Task After: {item}', flush=True)
+</code></pre>
+<p>Next, in the main process we will create a manager via the context manager interface to ensure it is started and closed automatically for us.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>Next, we will use the manager to create a shared list.</p>
+<pre><code>...
+# create the shared list
+list_proxy = manager.list()</code></pre>
+<p>We will then create a dict inline with three items all mapped to the initial value zero.</p>
+<pre><code>...
+# create a dict
+dict_item = {'a':0, 'b':0, 'c':0}</code></pre>
+<p>This dict is then added to the shared list hosted in the manager's server process. The content of the dict is then reported as confirmation by the main process.</p>
+<pre><code>...
+# add the dict to the list
+list_proxy.append(dict_item)
+print(f'Main Before: {list_proxy[0]}', flush=True)</code></pre>
+<p>Next, a child process is created and configured to execute our custom <strong>task()</strong> function and is passed the shared list as an argument. The process is then started and the main process blocks until the child process terminates.</p>
+<pre><code>...
+# start a child process
+process = Process(target=task, args=(list_proxy,))
+process.start()
+process.join()</code></pre>
+<p>If you are new to joining a child process, you can learn more in the tutorial:</p>
+<ul><li><a href="../join-a-process-in-python/">How to Join a Process in Python</a></li></ul>
+<p>Finally, the main process reports the content dict again, expecting to see changes made by the child process</p>
+<pre><code>...
+# report the list of dicts
+print(f'Main After: {list_proxy[0]}', flush=True)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of unexpected behavior from not using nested proxy objects
+from multiprocessing import Process
+from multiprocessing import Manager
+
+# task executed in child process
+def task(shared_list):
+    # get the first item from the list
+    item = shared_list[0]
+    # report the list of dicts
+    print(f'Task Before: {item}', flush=True)
+    # update the dict in the shared list
+    item['a'] = 1
+    item['b'] = 2
+    item['c'] = 3
+    # report the list of dicts
+    print(f'Task After: {item}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared list
+        list_proxy = manager.list()
+        # create a dict
+        dict_item = {'a':0, 'b':0, 'c':0}
+        # add the dict to the list
+        list_proxy.append(dict_item)
+        print(f'Main Before: {list_proxy[0]}', flush=True)
+        # start a child process
+        process = Process(target=task, args=(list_proxy,))
+        process.start()
+        process.join()
+        # report the list of dicts
+        print(f'Main After: {list_proxy[0]}', flush=True)
+</code></pre>
+<p>Running the example first creates the manager which starts the manager's server process.</p>
+<p>Next, the shared list is created via the manager. The main process then defines a new dict with three initial values set to zero and adds the dict to the shared list. It reports the contents of the dict, matching what was initialized.</p>
+<p>Next, the main process configures and starts a new child process and passes the shared list to it. It then blocks until the child process terminates.</p>
+<p>The child process runs, first retrieving the dict from the shared list. It reports the content of the dict, which matches the content stored by the main process.</p>
+<p>This highlights that a dict was added to the list and was stored in the manager's process.</p>
+<p>Next, the child process changes the content of the dict and reports the new values, confirming that the change was made, at least to the local copy of the dict.</p>
+<p>The child process terminates and the main process continues on and reports the content of the dict within the shared list.</p>
+<p>Here, we see an unexpected result. The changes made to the dict within the shared list by the child process are not reflected in the main process.</p>
+<p>This suggests that the child process got a local copy of the list and the changes were not propagated to the manager and therefore remain unavailable to other processes.</p>
+<pre><code>Main Before: {'a': 0, 'b': 0, 'c': 0}
+Task Before: {'a': 0, 'b': 0, 'c': 0}
+Task After: {'a': 1, 'b': 2, 'c': 3}
+Main After: {'a': 0, 'b': 0, 'c': 0}</code></pre>
+<p>Next, we will explore how we might fix this failure case using nested proxy objects.</p>
+<h2>Example of Manager With Nested Proxy Objects</h2>
+<p>We can explore how to nest proxy objects in order to overcome the failure case seen in the previous example where changes to a nested object are not propagated.</p>
+<p>In this example, we will update the previous example and make one small change. The dict that is nested within the manage list, will itself be a proxy object, created via the manager.</p>
+<p>This will ensure that changes made to it in isolation will propagate, along with changes to the list in which it is nested.</p>
+<p>This requires a single line change in the way that the dict is created.</p>
+<p>For example:</p>
+<pre><code>...
+# create a dict
+dict_item = manager.dict({'a':0, 'b':0, 'c':0})</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of nested proxy objects where changes are propagated
+from multiprocessing import Process
+from multiprocessing import Manager
+
+# task executed in child process
+def task(shared_list):
+    # get the first item from the list
+    item = shared_list[0]
+    # report the list of dicts
+    print(f'Task Before: {item}', flush=True)
+    # update the dict in the shared list
+    item['a'] = 1
+    item['b'] = 2
+    item['c'] = 3
+    # report the list of dicts
+    print(f'Task After: {item}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared list
+        list_proxy = manager.list()
+        # create a dict
+        dict_item = manager.dict({'a':0, 'b':0, 'c':0})
+        # add the dict to the list
+        list_proxy.append(dict_item)
+        print(f'Main Before: {list_proxy[0]}', flush=True)
+        # start a child process
+        process = Process(target=task, args=(list_proxy,))
+        process.start()
+        process.join()
+        # report the list of dicts
+        print(f'Main After: {list_proxy[0]}', flush=True)
+</code></pre>
+<p>Running the example first creates the manager which starts the manager's server process.</p>
+<p>Next, the shared list is created via the manager. The main process then creates a dict via the manager, initialized with three values. It then adds this managed dict to the shared list. It reports the contents of the dict, matching what was initialized.</p>
+<p>Next, the main process configures and starts a new child process and passes the shared list to it. It then blocks until the child process terminates.</p>
+<p>The child process runs, first retrieving the managed dict from the shared list. It reports the content of the dict, which matches the content stored by the main process.</p>
+<p>Next, the child process changes the content of the dict and reports the new values, confirming that the change was made. Because the dict is also managed, the changes are made on the hosted version of the object.</p>
+<p>The child process terminates and the main process continues on and reports the content of the dict within the shared list.</p>
+<p>In this case, we see that the main process sees the changes made by the child process.</p>
+<p>This highlights how we might nest proxy objects in order to achieve expected behavior when multiple processes change and use nested Python objects.</p>
+<p>Although we demonstrated one-level of nesting, we may in fact nest to any level and as long as the objects are hosted in the manager's server process, changes will be propagated correctly.</p>
+<pre><code>Main Before: {'a': 0, 'b': 0, 'c': 0}
+Task Before: {'a': 0, 'b': 0, 'c': 0}
+Task After: {'a': 1, 'b': 2, 'c': 3}
+Main After: {'a': 1, 'b': 2, 'c': 3}</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to nest proxy objects when sharing them between processes.</p>
+</main>
+</body>
+</html>

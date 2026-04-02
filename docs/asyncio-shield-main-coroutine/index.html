@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Shield Main Coroutine From Cancellation – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Shield Main Coroutine From Cancellation</h1>
+<div class="post-meta">May 2, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>We can simulate <strong>shielding the main coroutine</strong> from cancellation by using a wrapper coroutine that consumes cancellation requests.</p>
+<p>In this tutorial, you will discover how to <strong>shield the main coroutine</strong> from cancellation.</p>
+<p>Let's get started.</p>
+<h2>Need to Shield The Main Coroutine From Cancellation</h2>
+<p>Asyncio <a href="../asyncio-when-are-tasks-cancelled/">tasks can be canceled</a> at any time.</p>
+<p>The main coroutine is the entry point into the asyncio program.</p>
+<p>You can learn more about the main coroutine in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-main-coroutine/">What is the Main Coroutine</a></li>
+</ul>
+<p>We may want to protect or shield the main coroutine from cancellation.</p>
+<p>This may be for many reasons, such as:</p>
+<p>In asyncio, shielding the main coroutine from cancellation can be useful in scenarios where you want to ensure that critical operations or cleanup tasks are completed before the coroutine is terminated. Here are some reasons why you might want to shield the main coroutine from cancellation:</p>
+<ol>
+<li><strong>Cleanup Tasks</strong>: We may have critical cleanup tasks that need to be performed before the coroutine exits, such as releasing resources, closing connections, or saving state. By shielding the main coroutine from cancellation, we ensure that these cleanup tasks are executed regardless of whether the coroutine is canceled or not.</li>
+<li><strong>Data Integrity</strong>: If the main coroutine is performing operations that could leave data in an inconsistent or corrupted state if abruptly terminated, shielding it from cancellation can help maintain data integrity. This is particularly important in applications where data consistency is crucial, such as databases or file systems.</li>
+<li><strong>Graceful Shutdown</strong>: Shielding the main coroutine allows us to implement a graceful shutdown mechanism for our application. Instead of abruptly terminating the coroutine and potentially leaving resources in an inconsistent state, we can use the shielding mechanism to ensure that the application shuts down cleanly, completing any necessary cleanup tasks before exiting.</li>
+</ol>
+<p><strong>How can we shield the main coroutine from cancellation in asyncio?</strong></p>
+<h2>How to Shield The Main Coroutine From Cancellation</h2>
+<p>Asyncio tasks can be shielded.</p>
+<p>This can be achieved via the <strong>asyncio.shield()</strong> function that wraps the target task in a task that absorbs any requests for cancellation.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shield
+shield = asyncio.shield(task)</code></pre>
+<p>You can learn more about shielding asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-shield/">Asyncio Shield From Cancellation</a></li>
+</ul>
+<p>The problem is, the <strong>asyncio.shield()</strong> function cannot be used to shield the main coroutine.</p>
+<p>For example, if we call <strong>asyncio.run()</strong> to start our asyncio program and attempt to pass it a shielded coroutine, it fails with an exception.</p>
+<pre><code>...
+# run the asyncio event loop
+asyncio.run(asyncio.shield(main()))</code></pre>
+<p>This fails because it attempts to convert the <strong>main()</strong> coroutine into a task before shielding it, and we cannot create a task until the event loop has been started.</p>
+<p>One solution is to define a new wrapper coroutine that in turn creates a task for the <strong>main()</strong> coroutine and shields it. It can then specifically consume any cancellation requests, allowing the true main coroutine to continue running.</p>
+<p>For example:</p>
+<pre><code># main coroutine
+async def shielded_main():
+    try:
+        # run the main coroutine as a shielded task
+        await asyncio.shield(asyncio.create_task(main()))
+    except asyncio.CancelledError:
+        # get the current task
+        current = asyncio.current_task()
+        # wait for all other tasks to be done
+        for task in asyncio.all_tasks():
+            # ensure the task does not await itself
+            if task is not current:
+                # await the other task
+                await task
+</code></pre>
+<p>This can then be used via <strong>asyncio.run()</strong>.</p>
+<pre><code>...
+# run the asyncio event loop
+asyncio.run(shielded_main())</code></pre>
+<p>This protects the main coroutine from a single cancellation request.</p>
+<p>A more robust solution may protect the main coroutine from repeated cancellation requests by using a loop.</p>
+<p>For example:</p>
+<pre><code># main coroutine
+async def shielded_main():
+    # schedule the main coroutine as a task
+    task = asyncio.shield(asyncio.create_task(main()))
+    # get the current task
+    current = asyncio.current_task()
+    # loop forever
+    while True:
+        try:
+            # get all tasks
+            all_tasks = asyncio.all_tasks()
+            # remove the current task
+            all_tasks.remove(current)
+            # check for no other tasks
+            if not all_tasks:
+                break
+            # wait for all other tasks to be done
+            for task in all_tasks:
+                # await the other task
+                await task
+        except asyncio.CancelledError:
+            pass
+</code></pre>
+<p>This is perhaps overly aggressive.</p>
+<p>You can learn more about consuming or suppressing the <strong>CancelledError</strong> exceptions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-suppress-cancellederror/">4 Ways to Suppress Asyncio CancelledError</a></li>
+</ul>
+<p>Now that we know how to shield the main coroutine from cancellation, let's look at some worked examples.</p>
+<h2>Example of Canceling the Main Coroutine</h2>
+<p>Before we explore how to protect the main coroutine from cancellation, let's explore an example of canceling the main coroutine.</p>
+<p>In this example, we will define a task that gets a list of all running tasks and finds and cancels the main coroutine, in this case named "Task-1".</p>
+<pre><code># definition of other task that cancels the main task
+async def other_task():
+    # get all tasks
+    tasks = asyncio.all_tasks()
+    # cancel the main task
+    for task in tasks:
+        # check if it is the main task
+        if task.get_name() == 'Task-1':
+            # report a message
+            print(f'Canceling task: {task.get_coro()}')
+            # cancel the task
+            result = task.cancel()
+            # report success of cancellation
+            print(f'Cancellation successful: {result}')
+    # suspend a while
+    await asyncio.sleep(1)
+    # report a final message
+    print('Other task done.')
+</code></pre>
+<p>The main coroutine will first create and schedule our <strong>other_task()</strong> in the event loop, then suspend for a moment to allow the new task to run. It will catch the <strong>CancelledError</strong> and report a message, to confirm that the main coroutine was canceled.</p>
+<pre><code># main coroutine
+async def main():
+    try:
+        # report a message
+        print('Main is running')
+        # schedule the other task
+        task = asyncio.create_task(other_task())
+        # suspend a while
+        await asyncio.sleep(2)
+        # report a message
+        print('Main is done.')
+    except asyncio.CancelledError:
+        print('Main task cancelled')
+</code></pre>
+<p>Finally, we can start the asyncio event loop and run our main coroutine.</p>
+<pre><code>...
+# run the asyncio event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling the main coroutine
+import asyncio
+
+# definition of other task that cancels the main task
+async def other_task():
+    # get all tasks
+    tasks = asyncio.all_tasks()
+    # cancel the main task
+    for task in tasks:
+        # check if it is the main task
+        if task.get_name() == 'Task-1':
+            # report a message
+            print(f'Canceling task: {task.get_coro()}')
+            # cancel the task
+            result = task.cancel()
+            # report success of cancellation
+            print(f'Cancellation successful: {result}')
+    # suspend a while
+    await asyncio.sleep(1)
+    # report a final message
+    print('Other task done.')
+
+# main coroutine
+async def main():
+    try:
+        # report a message
+        print('Main is running')
+        # schedule the other task
+        task = asyncio.create_task(other_task())
+        # suspend a while
+        await asyncio.sleep(2)
+        # report a message
+        print('Main is done.')
+    except asyncio.CancelledError:
+        print('Main task cancelled')
+
+# run the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the asyncio event loop and runs our main coroutine.</p>
+<p>The main coroutine runs, reports a message, and then creates and schedules a new task to run our <strong>other_task()</strong> task before suspending with a sleep.</p>
+<p>The <strong>other_task()</strong> task runs and gets a list of all running tasks. It then searches the list by task name for the main task and cancels it, reporting the details of the main task and that the cancellation request was successful.</p>
+<p>The main task resumes and catches the raised <strong>CancelledError</strong>, confirming that it was canceled.</p>
+<p>This highlights how the main task may be canceled.</p>
+<pre><code>Main is running
+Canceling task: &lt;coroutine object main at 0x10e2fc040&gt;
+Cancellation successful: True
+Main task cancelled
+</code></pre>
+<p>Next, let's look at a naive approach to shielding the main coroutine.</p>
+<h2>Example Cannot use asyncio.shield() For The Main Coroutine</h2>
+<p>We can explore a naive case of protecting the main coroutine from cancellation.</p>
+<p>In this case, we can update the above example to wrap the <strong>main()</strong> coroutine in a call to <strong>asyncio.shield()</strong>.</p>
+<pre><code>...
+# run the asyncio event loop
+asyncio.run(asyncio.shield(main()))</code></pre>
+<p>The hope is that the main coroutine would then be shielded from direct cancellation.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of shielding the main coroutine from cancellation
+import asyncio
+
+# definition of other task that cancels the main task
+async def other_task():
+    # get all tasks
+    tasks = asyncio.all_tasks()
+    # cancel the main task
+    for task in tasks:
+        # check if it is the main task
+        if task.get_name() == 'Task-1':
+            # report a message
+            print(f'Canceling task: {task.get_coro()}')
+            # cancel the task
+            result = task.cancel()
+            # report success of cancellation
+            print(f'Cancellation successful: {result}')
+    # suspend a while
+    await asyncio.sleep(1)
+    # report a final message
+    print('Other task done.')
+
+# main coroutine
+async def main():
+    try:
+        # report a message
+        print('Main is running')
+        # schedule the other task
+        task = asyncio.create_task(other_task())
+        # suspend a while
+        await asyncio.sleep(2)
+        # report a message
+        print('Main is done.')
+    except asyncio.CancelledError:
+        print('Main task cancelled')
+
+# run the asyncio event loop
+asyncio.run(asyncio.shield(main()))
+</code></pre>
+<p>Running the example fails with an exception.</p>
+<p>The program fails before the asyncio event loop can even run the main coroutine.</p>
+<p>It fails because the call to <strong>asyncio.shield()</strong> attempts to wrap the <strong>main()</strong> coroutine in an <strong>asyncio.Task</strong>, and creating a task requires that an asyncio event loop is running.</p>
+<p>This highlights that the naive approach of shielding the main coroutine from cancellation with <strong>asyncio.shield()</strong> does not work.</p>
+<pre><code>ValueError: a coroutine was expected, got &lt;Future pending cb=&gt;
+Task was destroyed but it is pending!
+task: &lt;Task pending name='Task-1' coro=&lt;main() running at ...&gt; cb=&gt;
+sys:1: RuntimeWarning: coroutine 'main' was never awaited
+</code></pre>
+<p>Next, let's look at an alternative approach.</p>
+<h2>Example of Shielded Main Coroutine</h2>
+<p>We can explore how to manually shield the main coroutine from cancellation.</p>
+<p>This requires developing a main coroutine wrapper that consumes cancellation requests and allows the main coroutine to run.</p>
+<p>This approach adds a level of indirection, meaning that the main coroutine is not the actual main coroutine.</p>
+<pre><code># main coroutine
+async def shielded_main():
+    try:
+        # run the main coroutine as a shielded task
+        await asyncio.shield(asyncio.create_task(main()))
+    except asyncio.CancelledError:
+        # get the current task
+        current = asyncio.current_task()
+        # wait for all other tasks to be done
+        for task in asyncio.all_tasks():
+            # ensure the task does not await itself
+            if task is not current:
+                # await the other task
+                await task
+</code></pre>
+<p>It then requires that the <strong>asyncio.run()</strong> call be executed with our <strong>shielded_main()</strong> coroutine instead of the <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# run the asyncio event loop
+asyncio.run(shielded_main())</code></pre>
+<p>Canceling the <strong>shielded_main()</strong> coroutine will consume the <strong>CancelledError</strong> and allow the true main coroutine <strong>main()</strong> to continue running.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of shielding the main coroutine from cancellation
+import asyncio
+
+# definition of other task that cancels the main task
+async def other_task():
+    # cancel the main task
+    for task in asyncio.all_tasks():
+        # check if it is the main task
+        if task.get_name() == 'Task-1':
+            # report a message
+            print(f'Canceling task: {task.get_coro()}')
+            # cancel the task
+            result = task.cancel()
+            # report success of cancellation
+            print(f'Cancellation successful: {result}')
+    # suspend a while
+    await asyncio.sleep(1)
+    # report a final message
+    print('Other task done.')
+
+# main coroutine
+async def main():
+    # report a message
+    print('Main is running')
+    # schedule the other task
+    task = asyncio.create_task(other_task())
+    # suspend a while
+    await asyncio.sleep(2)
+    # report a message
+    print('Main is done.')
+
+# main coroutine
+async def shielded_main():
+    try:
+        # run the main coroutine as a shielded task
+        await asyncio.shield(asyncio.create_task(main()))
+    except asyncio.CancelledError:
+        # get the current task
+        current = asyncio.current_task()
+        # wait for all other tasks to be done
+        for task in asyncio.all_tasks():
+            # ensure the task does not await itself
+            if task is not current:
+                # await the other task
+                await task
+
+# run the asyncio event loop
+asyncio.run(shielded_main())
+</code></pre>
+<p>Running the example first starts and runs the asyncio event loop with our <strong>shielded_main()</strong> coroutine.</p>
+<p>The <strong>shielded_main()</strong> coroutine runs and creates, schedules, and awaits the <strong>main()</strong> coroutine as a shielded task.</p>
+<p>The <strong>main()</strong> task runs and reports a message, then creates and schedules the <strong>other_task()</strong> coroutine before suspending for two seconds.</p>
+<p>The <strong>other_task()</strong> coroutine runs and attempts to cancel the main coroutine. It finds the <strong>shielded_main()</strong> and requests it to cancel, reports the details of the coroutine, and reports that the cancellation request was successful.</p>
+<p>The <strong>shielded_main()</strong> resumes and catches a <strong>CancelledError</strong>. It then awaits all running tasks.</p>
+<p>The <strong>main()</strong> coroutine is not canceled and resumes before reporting a final message and terminating normally.</p>
+<p>The <strong>shielded_main()</strong> coroutine resumes and terminates.</p>
+<p>This highlights how we can shield the main coroutine using a wrapper coroutine.</p>
+<pre><code>Main is running
+Canceling task: &lt;coroutine object shielded_main at 0x10d9035b0&gt;
+Cancellation successful: True
+Other task done.
+Main is done.
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to shield the main coroutine from cancellation.</p>
+</main>
+</body>
+</html>

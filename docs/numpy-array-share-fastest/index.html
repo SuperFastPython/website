@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fastest Way To Share NumPy Array Between Processes – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Fastest Way To Share NumPy Array Between Processes</h1>
+<div class="post-meta">August 31, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>share a NumPy array between processes</strong> in Python using a suite of different techniques.</p>
+<p>Generally, if the shared array can be read-only, then the fastest method to share the array between processes is via inheritance.</p>
+<p>If multiple processes need to read and write the shared NumPy array then a memory-mapped file or shared memory-backed array is the fastest.</p>
+<p>Sharing NumPy arrays using queues and pipes is slower by nearly two orders of magnitude than other methods.</p>
+<p>In this tutorial, you will discover the <strong>speed of different methods to share a NumPy array between processes</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>9 Ways to Share a NumPy Array Between Processes</h2>
+<p>There are many ways to share a NumPy array between processes.</p>
+<p>Nevertheless, there are perhaps 9 main approaches that we can implement using the Python standard library.</p>
+<p>They are:</p>
+<ol>
+<li>Share NumPy Array via Inheritance</li>
+<li>Share NumPy Array via Function Argument</li>
+<li>Share NumPy Array Via Pipe</li>
+<li>Share NumPy Array Via Queue</li>
+<li>Share NumPy Array via ctype Array</li>
+<li>Share NumPy Array via ctype RawArray</li>
+<li>Share NumPy Array via SharedMemory</li>
+<li>Share NumPy Array via Memory Mapped File</li>
+<li>Share NumPy Array via Manager</li>
+</ol>
+<p>You can learn more about most ways to share NumPy arrays in the tutorial:</p>
+<ul>
+<li><a href="../numpy-share-array-processes/">9 Ways to Share a NumPy Array Between Processes</a></li>
+</ul>
+<p><strong>Are there other methods you want me to benchmark consistently?</strong><br/>Let me know in the comments below.</p>
+<p>Next, let's consider the setup for benchmarking each approach.</p>
+<h2>How to Benchmark NumPy Array Sharing</h2>
+<p>Once we know the different ways to share a NumPy array between processes and what approach to use when the question becomes:</p>
+<ul>
+<li><strong>What is the fastest approach to sharing a NumPy array between processes?</strong></li>
+</ul>
+<p>We will explore this question in this tutorial.</p>
+<p>Firstly, we can define a benchmark test setup so that it is consistent in each case.</p>
+<p>Each approach will explore sharing a NumPy array with 100,000,000 floating point values, internalized with <strong>numpy.ones()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# define the global variable
+n = 100000000
+data = ones((n,))</code></pre>
+<p>Each task executed in the new child process will simply report the shape of the shared NumPy array, in order to confirm that the array is accessible.</p>
+<p>For example:</p>
+<pre><code># task executed in a child process
+def task(data):
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+</code></pre>
+<p>All of the preparation of the NumPy array, the creation and starting of the new child process, and the sharing of the array with the child process will occur within a <strong>main()</strong> function.</p>
+<p>For example:</p>
+<pre><code># create a child process and share a numpy array
+def main():
+    # define the data
+    n = 100000000
+    data = ones((n,))
+    # create a child process
+    child = Process(target=task, args=(data,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+</code></pre>
+<p>The benchmarking will be repeated 3 times and the average time will be reported as the methods benchmark results.</p>
+<p>This will involve recording the start and end time using the <a href="../benchmark-time-perf-counter/"><strong>time.perf_counter()</strong> function</a> (preferred over <strong>time.time()</strong>), calling the <strong>main()</strong> function and reporting the results for each run, as well as calculating and reporting the average after all runs.</p>
+<p>For example:</p>
+<pre><code># protect the entry point
+if __name__ == '__main__':
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>You can learn more about benchmarking with the <strong>time.perf_counter()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../benchmark-time-perf-counter/">Benchmark Python with time.perf_counter()</a></li>
+</ul>
+<p>Let's dive into the methods</p>
+<h2>Benchmark Sharing NumPy Array Via Inheritance</h2>
+<p>We can explore the benchmark of how to share a NumPy array between processes using inheritance.</p>
+<p>This requires first setting the start method to the <strong>'fork'</strong> method as the very first line of the program.</p>
+<pre><code>...
+# ensure we are using fork start method
+set_start_method('fork')
+</code></pre>
+<p>Next, in the <strong>main()</strong> method, we can explicitly declare the NumPy array as a global variable, and then define it.</p>
+<pre><code>...
+# declare the global variable
+global data
+# define the global variable
+n = 100000000
+data = ones((n,))
+</code></pre>
+<p>Finally, in the <strong>task()</strong> function we can also explicitly declare the NumPy array global variable.</p>
+<pre><code>...
+# declare the global variable
+global data</code></pre>
+<p>Declaring global variables explicitly is not required, but I think it's a good practice in some cases, especially here as it is the focus of the test.</p>
+<p>You can learn more about sharing a NumPy array between processes via inheritance in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multiprocessing-share-array-global-variable/">Share Numpy Array Between Processes Using Global Variable</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of sharing a numpy array using inheritance
+from multiprocessing import set_start_method
+from multiprocessing import Process
+from numpy import ones
+from time import perf_counter
+
+# task executed in a child process
+def task():
+    # declare the global variable
+    global data
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+
+# create a child process and share a numpy array
+def main():
+    # declare the global variable
+    global data
+    # define the global variable
+    n = 100000000
+    data = ones((n,))
+    # create a child process
+    child = Process(target=task)
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+
+# protect the entry point
+if __name__ == '__main__':
+    # ensure we are using fork start method
+    set_start_method('fork')
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>Running the example runs the benchmarking of sharing the NumPy array between processes using inheritance.</p>
+<p>The array is created and shared 3 times.</p>
+<p><strong>Note</strong>: The 'fork' start method used in this example is not available on all systems (e.g. Windows). This means you may not be able to run this example.</p>
+<p>In this case, this method takes about 0.250 seconds (250 milliseconds) on average.</p>
+<pre><code>&gt;child has data: (100000000,)
+&gt;0 took 0.240 seconds
+&gt;child has data: (100000000,)
+&gt;1 took 0.258 seconds
+&gt;child has data: (100000000,)
+&gt;2 took 0.252 seconds
+Average Time: 0.250 seconds</code></pre>
+<h2>Benchmark Sharing NumPy Array Via Function Argument</h2>
+<p>We can explore the benchmark of how to share a NumPy array between processes using a function argument.</p>
+<p>This requires updating the <strong>task()</strong> function to take the NumPy array as an argument.</p>
+<pre><code># task executed in a child process
+def task(data):
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+</code></pre>
+<p>It also requires updating the <strong>main()</strong> function to share the NumPy array with the child process as a function argument.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(data,))</code></pre>
+<p>You can learn more about sharing a NumPy array between processes via a function argument in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multiprocessing-share-array-function/">Share Numpy Array Between Processes Using Function Arguments and Return Values</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of sharing a numpy array using function argument
+from multiprocessing import Process
+from numpy import ones
+from time import perf_counter
+
+# task executed in a child process
+def task(data):
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+
+# create a child process and share a numpy array
+def main():
+    # define the data
+    n = 100000000
+    data = ones((n,))
+    # create a child process
+    child = Process(target=task, args=(data,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+
+# protect the entry point
+if __name__ == '__main__':
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>Running the example runs the benchmarking of sharing the NumPy array between processes using a function argument.</p>
+<p>The array is created and shared 3 times.</p>
+<p>In this case, this method takes about 1.413 seconds on average.</p>
+<pre><code>&gt;child has data: (100000000,)
+&gt;0 took 1.559 seconds
+&gt;child has data: (100000000,)
+&gt;1 took 1.334 seconds
+&gt;child has data: (100000000,)
+&gt;2 took 1.346 seconds
+Average Time: 1.413 seconds</code></pre>
+<h2>Benchmark Sharing NumPy Array Via Pipe</h2>
+<p>We can explore the benchmark of how to share a NumPy array between processes using a <a href="../multiprocessing-pipe-in-python/">pipe data structure</a>.</p>
+<p>This requires updating the <strong>task()</strong> function to take a <strong>Pipe</strong> reception connection as an argument and calling the <strong>recv()</strong> method to read the NumPy array.</p>
+<pre><code># task executed in a child process
+def task(conn1):
+    # receive the data
+    data = conn1.recv()
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+</code></pre>
+<p>It also requires updating the <strong>main()</strong> method to create the pipe send and receive connections, then sending the NumPy array on the pipe and passing the receiving connection to the child process as an argument.</p>
+<p>Notice that we send the array after the process is running to ensure the bytes are read and the internal buffers of the pipe are not overwhelmed before the child process starts reading.</p>
+<pre><code># create a child process and share a numpy array
+def main():
+    # create the shared queue
+    conn1, conn2 = Pipe()
+    # define the data
+    n = 100000000
+    data = ones((n,))
+    # create a child process
+    child = Process(target=task, args=(conn1,))
+    # start the child process
+    child.start()
+    # share the data
+    conn2.send(data)
+    # wait for the child process to complete
+    child.join()
+</code></pre>
+<p>You can see a fuller example of sharing a NumPy array between processes in the tutorial:</p>
+<ul>
+<li><a href="../numpy-share-array-processes/">7 Ways to Share a Numpy Array Between Processes</a></li>
+</ul>
+<p>You can learn more about how to use the multiprocessing Pipe in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pipe-in-python/">Multiprocessing Pipe in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of sharing a numpy array using pipe
+from multiprocessing import Process
+from multiprocessing import Pipe
+from numpy import ones
+from time import perf_counter
+
+# task executed in a child process
+def task(conn1):
+    # receive the data
+    data = conn1.recv()
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+
+# create a child process and share a numpy array
+def main():
+    # create the shared queue
+    conn1, conn2 = Pipe()
+    # define the data
+    n = 100000000
+    data = ones((n,))
+    # create a child process
+    child = Process(target=task, args=(conn1,))
+    # start the child process
+    child.start()
+    # share the data
+    conn2.send(data)
+    # wait for the child process to complete
+    child.join()
+
+# protect the entry point
+if __name__ == '__main__':
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>Running the example runs the benchmarking of sharing the NumPy array between processes using a pipe.</p>
+<p>The array is created and shared 3 times.</p>
+<p>In this case, this method takes about 129.228 seconds on average.</p>
+<pre><code>&gt;child has data: (100000000,)
+&gt;0 took 131.518 seconds
+&gt;child has data: (100000000,)
+&gt;1 took 133.835 seconds
+&gt;child has data: (100000000,)
+&gt;2 took 122.330 seconds
+Average Time: 129.228 seconds</code></pre>
+<h2>Benchmark Sharing NumPy Array Via Queue</h2>
+<p>We can explore the benchmark of how to share a NumPy array between processes using a <a href="../multiprocessing-queue-in-python/">queue data structure</a>.</p>
+<p>This requires updating the <strong>task()</strong> function to take a <strong>Queue</strong> as an argument and retrieve the NumPy array via the <strong>get()</strong> method.</p>
+<pre><code># task executed in a child process
+def task(queue):
+    # get the data
+    data = queue.get()
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+</code></pre>
+<p>It also requires updating the <strong>main()</strong> method to create the shared queue and putting the NumPy array on the queue.</p>
+<p>The queue then needs to be shared with the child process via a function argument.</p>
+<pre><code># create a child process and share a numpy array
+def main():
+    # create the shared queue
+    queue = Queue()
+    # define the data
+    n = 100000000
+    data = ones((n,))
+    # put the data in the queue
+    queue.put(data)
+    # create a child process
+    child = Process(target=task, args=(queue,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+</code></pre>
+<p>You can see a fuller example of sharing a NumPy array between processes using a queue in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multiprocessing-share-array-queue/">Share Numpy Array Between Processes Using a Queue</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of sharing a numpy array using queue
+from multiprocessing import Process
+from multiprocessing import Queue
+from numpy import ones
+from time import perf_counter
+
+# task executed in a child process
+def task(queue):
+    # get the data
+    data = queue.get()
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+
+# create a child process and share a numpy array
+def main():
+    # create the shared queue
+    queue = Queue()
+    # define the data
+    n = 100000000
+    data = ones((n,))
+    # put the data in the queue
+    queue.put(data)
+    # create a child process
+    child = Process(target=task, args=(queue,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+
+# protect the entry point
+if __name__ == '__main__':
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>Running the example runs the benchmarking of sharing the NumPy array between processes using a queue.</p>
+<p>The array is created and shared 3 times.</p>
+<p>In this case, this method takes about 11.285 seconds on average.</p>
+<pre><code>&gt;child has data: (100000000,)
+&gt;0 took 11.251 seconds
+&gt;child has data: (100000000,)
+&gt;1 took 11.330 seconds
+&gt;child has data: (100000000,)
+&gt;2 took 11.273 seconds
+Average Time: 11.285 seconds</code></pre>
+<h2>Benchmark Share NumPy Array using ctype Array</h2>
+<p>We can explore the benchmark of how to share a NumPy array between processes using a shared ctype <strong>Array</strong>.</p>
+<p>This requires that we share the ctype <strong>Array</strong> with the child process, such as an inherited global variable or function argument.</p>
+<p>We will use a function argument in this case for simplicity (e.g. the <strong>'fork'</strong> start method is not available on all systems).</p>
+<pre><code># task executed in a child process
+def task(array):
+    # report details of data
+    print(f'&gt;child has data: {len(array)}')
+</code></pre>
+<p>This also requires updating the main() function to create the shared ctype array with the correct data type, and then populating it with the content of our NumPy array.</p>
+<pre><code># create a child process and share a numpy array
+def main():
+    # define the data
+    n = 100000000
+    data = ones((n,))
+    # get ctype for our array
+    ctype = as_ctypes(data)
+    # create ctype array initialized from our array
+    array = Array(ctype._type_, data, lock=False)
+    # create a child process
+    child = Process(target=task, args=(array,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+</code></pre>
+<p>You can learn more about sharing a NumPy array between processes using a shared ctype array in the tutorial:</p>
+<ul>
+<li><a href="../numpy-shared-array-ctypes/">Share Numpy Array Between Processes With Shared ctypes</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of sharing a numpy array ctype array
+from multiprocessing import Process
+from multiprocessing.sharedctypes import Array
+from numpy import ones
+from numpy.ctypeslib import as_ctypes
+from time import perf_counter
+
+# task executed in a child process
+def task(array):
+    # report details of data
+    print(f'&gt;child has data: {len(array)}')
+
+# create a child process and share a numpy array
+def main():
+    # define the data
+    n = 100000000
+    data = ones((n,))
+    # get ctype for our array
+    ctype = as_ctypes(data)
+    # create ctype array initialized from our array
+    array = Array(ctype._type_, data, lock=False)
+    # create a child process
+    child = Process(target=task, args=(array,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+
+# protect the entry point
+if __name__ == '__main__':
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>Running the example runs the benchmarking of sharing the NumPy array between processes using a shared ctype <strong>Array</strong>.</p>
+<p>The array is created and shared 3 times.</p>
+<p>In this case, this method takes about 15.013 seconds on average.</p>
+<pre><code>&gt;child has data: 100000000
+&gt;0 took 15.021 seconds
+&gt;child has data: 100000000
+&gt;1 took 15.049 seconds
+&gt;child has data: 100000000
+&gt;2 took 14.969 seconds
+Average Time: 15.013 seconds</code></pre>
+<h2>Benchmark Share NumPy Array using ctype RawArray</h2>
+<p>We can explore the benchmark of how to share a NumPy array between processes using a shared ctype <strong>RawArray</strong>.</p>
+<p>This requires that we share the ctype <strong>RawArray</strong> with the child process, such as an inherited global variable or function argument.</p>
+<p>We will use a function argument in this case for simplicity (e.g. the <strong>'fork'</strong> start method is not available on all systems).</p>
+<pre><code># task executed in a child process
+def task(data):
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+</code></pre>
+<p>We must also update the <strong>main()</strong> function to first create the <strong>RawArray</strong> and allocate memory for it, then use it as a buffer to create the NumPy array.</p>
+<p>The RawArray is then passed to the new child process as a function argument.</p>
+<pre><code># create a child process and share a numpy array
+def main():
+    # create the raw array
+    n = 100000000
+    array = RawArray('d', n)
+    # create numpy array from raw array buffer
+    data = frombuffer(array, dtype=double, count=len(array))
+    # populate the array
+    data.fill(1.0)
+    # create a child process
+    child = Process(target=task, args=(data,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+</code></pre>
+<p>You can learn more about sharing a NumPy array between processes using a shared ctype <strong>RawArray</strong> in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-shared-ctype-rawarray/">Share a Numpy Array Between Processes Backed By RawArray</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of sharing a numpy array ctype rawarray
+from multiprocessing import Process
+from multiprocessing.sharedctypes import RawArray
+from numpy import frombuffer
+from numpy import double
+from time import perf_counter
+
+# task executed in a child process
+def task(data):
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+
+# create a child process and share a numpy array
+def main():
+    # create the raw array
+    n = 100000000
+    array = RawArray('d', n)
+    # create numpy array from raw array buffer
+    data = frombuffer(array, dtype=double, count=len(array))
+    # populate the array
+    data.fill(1.0)
+    # create a child process
+    child = Process(target=task, args=(data,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+
+# protect the entry point
+if __name__ == '__main__':
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>Running the example runs the benchmarking of sharing the NumPy array between processes using a shared ctype <strong>RawArray</strong>.</p>
+<p>The array is created and shared 3 times.</p>
+<p>In this case, this method takes about 1.642 seconds on average.</p>
+<pre><code>&gt;child has data: (100000000,)
+&gt;0 took 1.798 seconds
+&gt;child has data: (100000000,)
+&gt;1 took 1.578 seconds
+&gt;child has data: (100000000,)
+&gt;2 took 1.551 seconds
+Average Time: 1.642 seconds</code></pre>
+<h2>Benchmark Share NumPy Array using SharedMemory</h2>
+<p>We can explore the benchmark of how to share a NumPy array between processes using <strong><a href="../multiprocessing-sharedmemory/">SharedMemory</a></strong>.</p>
+<p>This requires first updating the <strong>task()</strong> function to connect to the named shared memory, and then creating a NumPy array using the shared memory as a buffer.</p>
+<p>The size of the <strong>SharedMemory</strong> is provided to the function as an argument.</p>
+<pre><code># task executed in a child process
+def task(n):
+    # attach another shared memory block
+    sm = SharedMemory('MyMemory')
+    # create a new numpy array that uses the shared memory
+    data = ndarray((n,), dtype=double, buffer=sm.buf)
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+    # close the shared memory
+    sm.close()
+</code></pre>
+<p>It also requires updating the <strong>main()</strong> function to define the shared memory and use it to create a NumPy array that is then initialized.</p>
+<p>Once the program is finished with the shared memory, it is then unlinked.</p>
+<pre><code># create a child process and share a numpy array
+def main():
+    # define the size of the array
+    n = 100000000
+    # bytes required for the array (8 bytes per value for doubles)
+    n_bytes = n * 8
+    # create the shared memory
+    sm = SharedMemory(name='MyMemory', create=True, size=n_bytes)
+    # create a new numpy array that uses the shared memory
+    data = ndarray((n,), dtype=double, buffer=sm.buf)
+    # populate the array
+    data.fill(1.0)
+    # create a child process
+    child = Process(target=task, args=(n,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # release the shared memory
+    sm.unlink()
+</code></pre>
+<p>You can learn more about sharing NumPy arrays between processes using <strong>SharedMemory</strong> in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-sharedmemory/">How to Share Numpy Array Using SharedMemory</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of sharing a numpy array with sharedmemory
+from multiprocessing import Process
+from multiprocessing.shared_memory import SharedMemory
+from numpy import ndarray
+from numpy import double
+from time import perf_counter
+
+# task executed in a child process
+def task(n):
+    # attach another shared memory block
+    sm = SharedMemory('MyMemory')
+    # create a new numpy array that uses the shared memory
+    data = ndarray((n,), dtype=double, buffer=sm.buf)
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+    # close the shared memory
+    sm.close()
+
+# create a child process and share a numpy array
+def main():
+    # define the size of the array
+    n = 100000000
+    # bytes required for the array (8 bytes per value for doubles)
+    n_bytes = n * 8
+    # create the shared memory
+    sm = SharedMemory(name='MyMemory', create=True, size=n_bytes)
+    # create a new numpy array that uses the shared memory
+    data = ndarray((n,), dtype=double, buffer=sm.buf)
+    # populate the array
+    data.fill(1.0)
+    # create a child process
+    child = Process(target=task, args=(n,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # release the shared memory
+    sm.unlink()
+
+# protect the entry point
+if __name__ == '__main__':
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>Running the example runs the benchmarking of sharing the NumPy array between processes using <strong>SharedMemory</strong>.</p>
+<p>The array is created and shared 3 times.</p>
+<p>In this case, this method takes about 0.372 seconds (372 milliseconds) on average.</p>
+<pre><code>&gt;child has data: (100000000,)
+&gt;0 took 0.370 seconds
+&gt;child has data: (100000000,)
+&gt;1 took 0.379 seconds
+&gt;child has data: (100000000,)
+&gt;2 took 0.367 seconds
+Average Time: 0.372 seconds</code></pre>
+<h2>Benchmark Share NumPy Array using Memory-Mapped File</h2>
+<p>We can explore the benchmark of how to share a NumPy array between processes using a memory-mapped NumPy array file.</p>
+<p>This requires updating the <strong>task()</strong> function to define and access the existing memory-mapped NumPy array file using the <a href="https://numpy.org/doc/stable/reference/generated/numpy.memmap.html"><strong>numpy.memmap()</strong> function</a>.</p>
+<p>The name of the memory-mapped file and the size are provided as arguments to the function.</p>
+<pre><code># task executed in a child process
+def task(filename, n):
+    # load the memory mapped file
+    data = memmap(filename, dtype='float32', mode='r+', shape=(n,))
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+</code></pre>
+<p>It also requires updating the <strong>main()</strong> function to define the memory-mapped NumPy array file and initialize the array.</p>
+<p>The filename and size of the array are provided to the child process as arguments.</p>
+<pre><code># create a child process and share a numpy array
+def main():
+    # define the size of the data
+    n = 100000000
+    # define the filename
+    filename = 'data.np'
+    # create the memory mapped file
+    data = memmap(filename, dtype='float32', mode='w+', shape=(n,))
+    # populate the array
+    data.fill(1.0)
+    # create a child process
+    child = Process(target=task, args=(filename,n))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+</code></pre>
+<p>You can learn more about sharing a NumPy array between processes using a memory mapped file in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-memory-mapped-file/">Share NumPy Array Using Memory-Mapped File</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of sharing a numpy array using memory mapped file
+from multiprocessing import Process
+from numpy import memmap
+from time import perf_counter
+
+# task executed in a child process
+def task(filename, n):
+    # load the memory mapped file
+    data = memmap(filename, dtype='float32', mode='r+', shape=(n,))
+    # report details of data
+    print(f'&gt;child has data: {data.shape}')
+
+# create a child process and share a numpy array
+def main():
+    # define the size of the data
+    n = 100000000
+    # define the filename
+    filename = 'data.np'
+    # create the memory-mapped file
+    data = memmap(filename, dtype='float32', mode='w+', shape=(n,))
+    # populate the array
+    data.fill(1.0)
+    # create a child process
+    child = Process(target=task, args=(filename,n))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+
+# protect the entry point
+if __name__ == '__main__':
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>Running the example runs the benchmarking of sharing the NumPy array between processes using a memory-mapped NumPy array.</p>
+<p>The array is created and shared 3 times.</p>
+<p>In this case, this method takes about 0.334 seconds (334 milliseconds) on average.</p>
+<pre><code>&gt;child has data: (100000000,)
+&gt;0 took 0.342 seconds
+&gt;child has data: (100000000,)
+&gt;1 took 0.334 seconds
+&gt;child has data: (100000000,)
+&gt;2 took 0.325 seconds
+Average Time: 0.334 seconds</code></pre>
+<h2>Benchmark Share NumPy Array using Manager</h2>
+<p>We can explore the benchmark of how to share a NumPy array between processes using a <strong><a href="../multiprocessing-manager/">Manager</a></strong>.</p>
+<p>This requires first defining a custom manager that allows custom types to be defined and hosted.</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>Next, the proxy object for the hosted array needs to be shared with the child process.</p>
+<p>In this case, we will share it using a function argument as this approach will work on all platforms.</p>
+<p>The "<strong>shape</strong>" attribute is not directly accessible via the proxy object, so we will call a method on the array instead, in this case the <strong>sum()</strong> which we expect to equal 100 million.</p>
+<pre><code># task executed in a child process
+def task(data_proxy):
+    # report details of data
+    print(f'&gt;child has data: {data_proxy.sum()}')
+</code></pre>
+<p>Next, the <strong>main()</strong> method needs to be updated to create the <strong>CustomManager</strong> via the context manager interface, then create the hosted array, providing a proxy object that can be passed to the child process.</p>
+<pre><code># create a child process and share a numpy array
+def main():
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the data
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.shared_array((n,))
+        # create a child process
+        child = Process(target=task, args=(data_proxy,))
+        # start the child process
+        child.start()
+        # wait for the child process to complete
+        child.join()
+</code></pre>
+<p>Finally, the first line of the program can register our custom function for creating a NumPy array of all ones in the manager process.</p>
+<pre><code>...
+# register a function for creating numpy arrays on the manager
+CustomManager.register('shared_array', ones)</code></pre>
+<p>You can learn more about sharing a NumPy array between processes using a manager in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-share-manager/">Share a Numpy Array Between Processes Using a Manager</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# benchmark of sharing a numpy array using manager
+from multiprocessing import Process
+from multiprocessing.managers import BaseManager
+from numpy import ones
+from time import perf_counter
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# task executed in a child process
+def task(data_proxy):
+    # report details of data
+    print(f'&gt;child has data: {data_proxy.sum()}')
+
+# create a child process and share a numpy array
+def main():
+    # create and start the custom manager
+    with CustomManager() as manager:
+        # define the data
+        n = 100000000
+        # create a shared numpy array
+        data_proxy = manager.shared_array((n,))
+        # create a child process
+        child = Process(target=task, args=(data_proxy,))
+        # start the child process
+        child.start()
+        # wait for the child process to complete
+        child.join()
+
+# protect the entry point
+if __name__ == '__main__':
+    # register a function for creating numpy arrays on the manager
+    CustomManager.register('shared_array', ones)
+    # repeat the benchmark
+    results = list()
+    for i in range(3):
+        # record start time
+        time_start = perf_counter()
+        # perform task
+        main()
+        # record duration
+        time_duration = perf_counter() - time_start
+        # report progress
+        print(f'&gt;{i} took {time_duration:.3f} seconds')
+        # store result
+        results.append(time_duration)
+    # calculate average time
+    time_avg = sum(results) / 3.0
+    # report average time
+    print(f'Average Time: {time_avg:.3f} seconds')
+</code></pre>
+<p>Running the example runs the benchmarking of sharing the NumPy array between processes using a manager.</p>
+<p>This does not actually share the array, but rather the proxy objects. Nevertheless, there is setup time required to create the manager and the hosted array.</p>
+<p>The array is created and shared 3 times.</p>
+<p>In this case, this method takes about 0.574 seconds (574 milliseconds) on average.</p>
+<pre><code>&gt;child has data: 100000000.0
+&gt;0 took 0.586 seconds
+&gt;child has data: 100000000.0
+&gt;1 took 0.570 seconds
+&gt;child has data: 100000000.0
+&gt;2 took 0.566 seconds
+Average Time: 0.574 seconds</code></pre>
+<h2>Comparison of Results</h2>
+<p>Now that we have benchmarked all of the popular methods for sharing a NumPy array between processes, we can compare the results.</p>
+<p>The table below summarizes the performance of each method using the same benchmark methodology.</p>
+<p>It also comments on whether the method copies the array or not. Specifically whether the child process works with a copy of the array.</p>
+<pre><code>Method            | Copy? | Time (sec)
+---------------------------------------
+Inherited         | Yes   |   0.250 (*)
+Function Argument | Yes   |   1.413
+Queue             | Yes   |  11.285
+Pipe              | Yes   | 129.228
+ctype Array       | No    |  15.013
+ctype RawArray    | No    |   1.642
+SharedMemory      | No    |   0.372
+MemoryMapped File | No    |   0.334 (*)
+Manager           | No    |   0.574
+</code></pre>
+<p>We can see from the methods that create a copy of the array that inheriting the array is the fastest. A limitation of this approach is that it requires the fork start method for child processes that is not available on all systems (e.g. windows)</p>
+<p>Passing the array as a function argument is also fast, and a good alternative that will work on all platforms.</p>
+<p>From the methods that do not copy the array, we can see that the memory mapped file is the fastest method, followed very closely by the <strong>SharedMemory</strong> method. Either approach provides an effective method for sharing an array among processes that allows read and write access on the data. A muex may also be needed to avoid possible race conditions.</p>
+<h2>Takeaways</h2>
+<p>You now know the speed of different methods to share a NumPy array between processes in Python.</p>
+</main>
+</body>
+</html>

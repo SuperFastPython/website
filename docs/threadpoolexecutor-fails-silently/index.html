@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why Do Tasks in the ThreadPoolExecutor Fail Silently – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Why Do Tasks in the ThreadPoolExecutor Fail Silently</h1>
+<div class="post-meta">December 16, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You can expose and handle suppressed exceptions in the <strong><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor</a></strong> by getting the results from the task.</p>
+<p>In this tutorial, you will discover how to uncover and handle suppressed exceptions in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Let's get started.</p>
+<h2>ThreadPoolExecutor Fails Silently</h2>
+<p>The <strong>ThreadPoolExecutor</strong> in Python provides a pool of reusable threads for executing ad hoc tasks.</p>
+<p>You can submit tasks to the thread pool by calling the <strong>submit()</strong> function and passing in the name of the function you wish to execute on another thread.</p>
+<p>Calling the <strong>submit()</strong> function will return a <strong>Future</strong> object that allows you to check on the status of the task and get the result from the task once it completes.</p>
+<p>You can also submit tasks by calling the <strong>map()</strong> function and specifying the name of the function to execute and the iterable of items to which your function will be applied.</p>
+<p>Tasks executing concurrently in the thread pool can fail by raising an exception.</p>
+<p>When tasks in the <strong>ThreadPoolExecutor</strong> raise an exception, it can look like they fail silently.</p>
+<p><strong>Why does the ThreadPoolExecutor suppress exceptions?</strong></p>
+<h2>ThreadPoolExecutor Will Catch Exceptions for You</h2>
+<p>The <strong>ThreadPoolExecutor</strong> intentionally suppresses exceptions raised by tasks.</p>
+<p>This is to ensure that the failure of a task does not result in the failure of a worker thread in the thread pool. An exception raised by a task will not halt your program.</p>
+<h3>ThreadPoolExecutor Suppresses Exceptions</h3>
+<p>If the <strong>ThreadPoolExecutor</strong> did not suppress exceptions raised by tasks, then a failure in a task will cause the worker thread to unwind and close, meaning that the thread pool would have one fewer worker threads.</p>
+<p>For example, if you issue tasks to the thread pool using the <strong>submit()</strong> function that returns a <strong>Future</strong> object, and you do not get the result from the task by calling <strong>result()</strong> on the <strong>Future</strong>, then you will have no knowledge that the task failed.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+	# submit tasks
+	future = executor.submit(task)
+# no idea of the outcome of the task...
+</code></pre>
+<p>Alternatively, if you issue tasks to the thread pool by calling the <strong>map()</strong> function, but do not iterate over the results, again, you will have no knowledge that the task failed.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+	# submit tasks
+	results = executor.map(task, items)
+# no idea of the outcome of the tasks...
+</code></pre>
+<h3>How to Access Suppressed Exceptions</h3>
+<p>You can discover the outcome of a task issued to the thread pool using <strong>submit()</strong> in one of two ways.</p>
+<p>Firstly, you can call the <strong>result()</strong> function on the <strong>Future</strong> object. This will re-raise any exception raised within the task, allowing you to catch and handle it if you choose.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+	# submit tasks
+	future = executor.submit(task)
+	# handle exceptions raised by the task
+	try:
+		result = future.result()
+	except:
+		# handle task failure...</code></pre>
+<p>Alternatively, you can call the <strong>exception()</strong> function on the <strong>Future</strong> object that will return the exception raised during the execution of the task or <strong>None</strong> if no exception was raised.</p>
+<p>The <strong>exception()</strong> function will block until the task is done (successfully or otherwise), and you can specify a timeout in seconds for how long you are willing to wait for the task to be done.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+	# submit tasks
+	future = executor.submit(task)
+	# handle failure of the task
+	if future.exception() != None:
+		# handle exception...
+</code></pre>
+<p>Similarly, exceptions raised by a task issued by calling the <strong>map()</strong> function will be raised when iterating the results returned from calling the <strong>map()</strong> function, unlike the <strong>submit()</strong> function; for example:</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+	# submit tasks
+	results = executor.map(task, items)
+	# handle an exception in any result
+	try:
+		for result in results:
+			# do something...
+	except:
+		# handle exception</code></pre>
+<p>Now that we are familiar with why the <strong>ThreadPoolExecutor</strong> will suppress exceptions and how to gain access to those exceptions, let's look at some worked examples.</p>
+<h2>Get Suppressed Exceptions From submit()</h2>
+<p>Let's take a look at an example of the <strong>ThreadPoolExecutor</strong> suppressing an exception when calling <strong>submit()</strong>, then how we can uncover the exception that occurred.</p>
+<p>First, let's define a simple task function that fails by raising an exception.</p>
+<pre><code># mock work task that sleeps for a moment and raises an exception
+def task():
+    sleep(1)
+    raise('Something bad happened')
+    # never gets here
+    return 100
+</code></pre>
+<p>We can then start a thread pool and submit the task in the pool for execution.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit a task
+    future = executor.submit(task)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<p>We expect the task to fail, but we also expect to have no knowledge of this failure given that the <strong>ThreadPoolExecutor</strong> will suppress the exception.</p>
+<pre><code># SuperFastPython.com
+# example of the thread pool suppressing exceptions in tasks with submit
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock work task that sleeps for a moment and raises an exception
+def task():
+    sleep(1)
+    raise('Something bad happened')
+    # never gets here
+    return 100
+
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit a task
+    future = executor.submit(task)
+print('All done')
+</code></pre>
+<p>Running the example, the thread pool is created and the task is submitted.</p>
+<p>The program reports all tasks are done.</p>
+<p>The problem is that we know the task failed and that it failed silently. The user has no way of knowing that the task has failed.</p>
+<pre><code>All done</code></pre>
+<p>We can update the example to get the result from the target task function by calling the <strong>result()</strong> function on the <strong>Future</strong> object associated with the task.</p>
+<p>This will expose the exception which will be re-raised by the thread pool. We can then choose to handle it.</p>
+<pre><code>...
+# handle any exception in the task
+try:
+    # get the result from the task
+    result = future.result()
+    print(f'Task result: {result}')
+except:
+    print('The task failed')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the thread pool suppressing exceptions in tasks with submit
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock work task that sleeps for a moment and raises an exception
+def task():
+    sleep(1)
+    raise('Something bad happened')
+    # never gets here
+    return 100
+
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit a task
+    future = executor.submit(task)
+    # handle any exception in the task
+    try:
+        # get the result from the task
+        result = future.result()
+        print(f'Task result: {result}')
+    except:
+        print('The task failed')
+print('All done')
+</code></pre>
+<p>Running the example creates the thread pool and executes the task.</p>
+<p>The task fails as we expect. In this case, we attempt to get the result of the task and because the task failed, the thread pool re-raises the exception, which we then handle and report a message.</p>
+<pre><code>The task failed
+All done</code></pre>
+<p>Alternatively, we can check if a task has failed by calling the <strong>exception()</strong> function.</p>
+<p>This will return any <strong>Exception</strong> raised during the execution of the task or <strong>None</strong> if no exception was raised.</p>
+<p>This function may be more helpful to conditionally take action if the task fails and useful in the case where the task does not return a value.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the task failed
+if future.exception():
+    print('The task failed')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the thread pool suppressing exceptions in tasks with submit
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock work task that sleeps for a moment and raises an exception
+def task():
+    sleep(1)
+    raise('Something bad happened')
+    # never gets here
+    return 100
+
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit a task
+    future = executor.submit(task)
+    # check if the task failed
+    if future.exception():
+        print('The task failed')
+print('All done')
+</code></pre>
+<p>Running the example, the thread pool is started as per normal and the task is issued for execution.</p>
+<p>The task fails and we check for any exceptions raised during the exception of the task. An exception is returned and we report a message that the task failed.</p>
+<pre><code>The task failed
+All done</code></pre>
+<h2>Get Suppressed Exceptions From map()</h2>
+<p>We can also look at an example of the <strong>ThreadPoolExecutor</strong> suppressing an exception when calling the map() function, then how we can uncover the exception that occurred.</p>
+<p>Firstly, we can update the target task function to take an argument, a requirement of using the <strong>map()</strong> function.</p>
+<pre><code># mock work task that sleeps for a moment and raises an exception
+def task(value):
+    sleep(1)
+    raise('Something bad happened')
+    # never gets here
+    return value + 1
+</code></pre>
+<p>We can then create the thread pool and call the <strong>map()</strong> function with the target <strong>task()</strong> function and a list of items.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit the tasks
+    result = executor.map(task, range(5))
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<p>We would expect the tasks to be issued to the thread pool and for each task to fail with a raised Exception. We would also expect that running the program will provide no indication that an exception occurred and that all tasks failed.</p>
+<pre><code># SuperFastPython.com
+# example of the thread pool suppressing exceptions in tasks with map
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock work task that sleeps for a moment and raises an exception
+def task(value):
+    sleep(1)
+    raise('Something bad happened')
+    # never gets here
+    return value + 1
+
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit the tasks
+    result = executor.map(task, range(5))
+print('All done')
+</code></pre>
+<p>Running the example, the thread pool is created and five tasks are submitted for execution.</p>
+<p>The program ends successfully with no indication to the user that the tasks failed.</p>
+<pre><code>All done</code></pre>
+<p>We can update the example to iterate the results of the tasks, which will expose the failure of those tasks.</p>
+<p>One approach is to wrap the iteration of results in a try-except block to handle the case that any task in the collection failed.</p>
+<p>For example:</p>
+<pre><code>...
+# handle a task failure
+try:
+    # submit tasks an iterate results
+    for result in executor.map(task, range(5)):
+        print(result)
+except:
+    print('A task failed')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the thread pool suppressing exceptions in tasks with map
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock work task that sleeps for a moment and raises an exception
+def task(value):
+    sleep(1)
+    raise('Something bad happened')
+    # never gets here
+    return value + 1
+
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+    # handle a task failure
+    try:
+        # submit tasks an iterate results
+        for result in executor.map(task, range(5)):
+            print(result)
+    except:
+        print('A task failed')
+print('All done')
+</code></pre>
+<p>Running the example creates the thread pool and submits all five tasks.</p>
+<p>While iterating the results, the first task fails by raising an exception, which is caught and an error message is reported.</p>
+<pre><code>A task failed
+All done</code></pre>
+<p>Alternatively, we may want to manually iterate the iterable returned from map() and handle any exceptions along the way.</p>
+<p>You might recall from Python basics that we can manually iterate an iterable by calling the <strong>next()</strong> function on it until a StopIteration is raised.</p>
+<p>If an exception is raised by one of the tasks, it will abort the iterable and the <strong>StopIteration</strong> will also be raised.</p>
+<p>Therefore, we can write an infinite while loop and manually iterate over the results of <strong>map()</strong> until an exception is raised. If the exception is a <strong>StopIteration</strong>, we can break the while loop, whereas if the exception is anything else, we can handle it, after which the iterable will throw a <strong>StopIteration</strong> and we can break out of the loop.</p>
+<p>For example:</p>
+<pre><code>...
+# submit tasks an iterate results
+results = executor.map(task, range(5))
+# iterate over all results
+while True:
+    # handle a task failure or end of the iterable
+    try:
+        # manually retrieve the next result
+        result = next(results)
+        print(result)
+    except StopIteration:
+        break
+    except:
+        # a task failed
+        print('A task failed')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the thread pool suppressing exceptions in tasks with map
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock work task that sleeps for a moment and raises an exception
+def task(value):
+    sleep(1)
+    raise('Something bad happened')
+    # never gets here
+    return value + 1
+
+# create the thread pool
+with ThreadPoolExecutor() as executor:
+    # submit tasks an iterate results
+    results = executor.map(task, range(5))
+    # iterate over all results
+    while True:
+        # handle a task failure or end of the iterable
+        try:
+            # manually retrieve the next result
+            result = next(results)
+            print(result)
+        except StopIteration:
+            break
+        except:
+            # a task failed
+            print('A task failed')
+
+print('All done')
+</code></pre>
+<p>Running the example creates the thread pool and submits all tasks for execution.</p>
+<p>We then begin iterating the results. The first task fails and raises an exception that we handle and then report. This breaks the iterable and we stop iterating the results.</p>
+<p>Note that all five tasks were submitted and all five failed in this case, but only the first failure is reported. If we want to report on the failure of each task separately, we must use the <strong>submit()</strong> function.</p>
+<pre><code>A task failed
+All done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to uncover and handle suppressed exceptions in the <strong>ThreadPoolExecutor</strong>.</p>
+</main>
+</body>
+</html>

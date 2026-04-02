@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread-Safe List in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread-Safe List in Python</h1>
+<div class="post-meta">March 24, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can make a<strong> thread-safe list</strong> by using a mutual exclusion (mutex) lock via the <strong>threading.Lock</strong> class.</p>
+<p>In this tutorial you will discover how to develop a thread-safe list in Python.</p>
+<p>Let's get started.</p>
+<h2>Need a Thread-Safe List</h2>
+<p>A thread is a <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread of execution</a> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming we may need to share a list data structure between threads.</p>
+<p>Multiple threads may need to append data to the same list, other threads may wish to remove items or check the length of the list.</p>
+<p><strong>Is the list thread-safe in Python and if not, how can we make it thread-safe?</strong></p>
+<h2>Most List Operations Are Atomic</h2>
+<p>Many common operations on a list are atomic, meaning that they are thread-safe.</p>
+<p>Recall, a list is an instance of the <a href="https://docs.python.org/3/library/stdtypes.html#typesseq-list"><strong>List</strong> class</a>.</p>
+<p>Atomic means that the operation either occurs or does not occur with no in between inconsistent state.</p>
+<p>Operations such as adding, removing, and reading a value on a list are atomic.</p>
+<blockquote><p>In practice, it means that operations on shared variables of built-in data types (ints, lists, dicts, etc) that “look atomic” really are.</p><cite>-- <a href="https://docs.python.org/3/faq/library.html#what-kinds-of-global-value-mutation-are-thread-safe">What kinds of global value mutation are thread-safe?</a></cite></blockquote>
+<p>Specifically:</p>
+<ul><li>Appending a value via <strong>append()</strong>.</li><li>Adding a list to a list via <strong>extend()</strong>.</li><li>Assigning multiple values of a list via a slice.</li><li>Getting a value from a list via bracket notation <strong>[]</strong>.</li><li>Removing the last value from a list via <strong>pop()</strong>.</li><li>Sorting a list via <strong>sort()</strong>.</li></ul>
+<p>You can learn about atomic operations in Python here:</p>
+<ul><li><a href="../thread-atomic-operations/">Thread Atomic Operation in Python</a></li></ul>
+<p>Because atomic operations either occur or do not occur, it means that they are thread-safe.</p>
+<p>Specifically, using any of the above operations on a list shared between multiple threads will not result in a race condition, corruption of the list or corruption of the data within the list.</p>
+<p>Next, let's consider why relying on atomic list operations might be fragile.</p>
+<h2>Atomic List Operations Are Fragile</h2>
+<p>Common operations on a list are atomic and therefore thread safe as we saw in the previous section.</p>
+<p>This is only true at the time of writing because of a few specific considerations, such as:</p>
+<ul><li>The precise details on how these list operations are converted to python virtual machine bytecode.</li><li>The use of the reference python interpreter.</li><li>The use of a Global Interpreter Lock (GIL) within the reference python interpreter.</li></ul>
+<p>This means that depending on the thread-safety of these operations could be fragile in future versions of Python or when executing your Python program with alternate Python interpreters.</p>
+<p><strong>This is not a minor concern.</strong></p>
+<p>There are frequent development efforts to improve the Python interpreter and even attempts to remove the GIL. These will likely change the specifics of the Python VM, bytecode compiling and thread-safety of built-in data structures.</p>
+<p>It is also becoming more common to run Python code using third-party interpreters, mostly to achieve better performance. Alternate interpreters may or may not implement the same rules for atomic operations on lists.</p>
+<p>Therefore, we may desire a thread-safe Python list that is future-proof to changes to Python interpreters and the GIL.</p>
+<blockquote><p>When in doubt, use a mutex!</p><cite>-- <a href="https://docs.python.org/3/faq/library.html#what-kinds-of-global-value-mutation-are-thread-safe">What kinds of global value mutation are thread-safe?</a></cite></blockquote>
+<p>Next, let's look at how we might develop a thread-safe list.</p>
+<h2>How to Develop a Thread-Safe List</h2>
+<p>A list can be made thread-safe using a mutual exclusion (mutex) lock.</p>
+<p>Specifically, each add, delete, update, and read of the list must be protected by a lock.</p>
+<p>This can be achieved by wrapping a list with a new class. The class can then expose the specific operations that we require on the list and protect those operations on the internal list using a lock.</p>
+<p>An instance of the <strong>threading.Lock</strong> can be used to protect the list.</p>
+<p>You can learn more about the mutex lock here:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>This lock must be acquired prior to an operation on the list and released once the operation on the list has completed.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+# operate on the list
+...
+# release the lock
+lock.release()</code></pre>
+<p>This ensures that only one thread at a time is able to operate on the list.</p>
+<p>The context manager interface on the lock may be used to simplify this operation, allowing the lock to be released automatically.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# operate on the list
+	...
+</code></pre>
+<p>This adds overhead, making each list operation much slower than it otherwise would be without the lock. The benefit is confidence that race conditions with list have been removed entirely.</p>
+<p>If your design is to have some wrapped functions call other wrapped functions, then a reentrant lock is preferred, in order to avoid a deadlock.</p>
+<p>This can be achieved via the <a href="../thread-reentrant-lock/"><strong>threading.RLock</strong> class</a>. It will allow the lock to be acquired by the same thread again.</p>
+<p>You can learn more about the reentrant lock here:</p>
+<ul><li><a href="../thread-reentrant-lock/">How to Use a Reentrant Lock in Python</a></li></ul>
+<p>Let's develop a class that wraps some common list operations in a thread-safe manner.</p>
+<p>One approach would be to override the <strong>List</strong> class and implement thread-safe versions of all or a subset of functions.</p>
+<p>Another approach would be to define a new class with the same interface as the <strong>List</strong> class, except the functions on the class are threads-safe.</p>
+<p>A final approach would be to define a new class with list-like operations, that may not resemble the interface of the <strong>List</strong> class.</p>
+<p>I prefer the latter approach to make it clear to the user of the class that they are working with something different. It is not a slot-in replacement for <strong>List</strong> that is thread safe, it is a data structure designed for a thread-safe use case that must be treated with extreme care.</p>
+<p>First, we can define the class with a clear name like <strong>ThreadSafeList</strong>.</p>
+<pre><code># custom class wrapping a list in order to make it thread safe
+class ThreadSafeList():
+	# ...
+</code></pre>
+<p>Next, we can define a constructor that initializes both an internal list and a lock used to protect the list as instance variables on the class.</p>
+<pre><code># constructor
+def __init__(self):
+    # initialize the list
+    self._list = list()
+    # initialize the lock
+    self._lock = Lock()
+</code></pre>
+<p>Next, we can start adding functionality that we may need in our application.</p>
+<p>In this case, we will provide four operations on the list:</p>
+<ul><li>Adding a value via <strong>append()</strong>.</li><li>Removing and returning a value via <strong>pop()</strong>.</li><li>Accessing a value at an index via <strong>get()</strong>.</li><li>Getting the length of the list via <strong>length()</strong>.</li></ul>
+<p>Each operation on the list will be protected by the lock using the context manager interface.</p>
+<p>The context manager interface is preferred as an operation on the list may raise an error (e.g. index out of bounds) and we need to ensure that the lock will always be released, regardless of the success or failure of the operation.</p>
+<p>For example, the method for the append operation is listed below.</p>
+<pre><code># add a value to the list
+def append(self, value):
+    # acquire the lock
+    with self._lock:
+        # append the value
+        self._list.append(value)
+</code></pre>
+<p>The methods for the pop, get, and length operations are listed below.</p>
+</main>
+</body>
+</html>

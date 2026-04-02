@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing RLock in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing RLock in Python</h1>
+<div class="post-meta">May 16, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can use <strong>reentrant locks for processes</strong> via the <strong>multiprocessing.RLock</strong> class.</p>
+<p>In this tutorial you will discover how to use <strong>reentrant mutex locks for processes in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need for a Reentrant Lock</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> is a running instance of a computer program.</p>
+<p>Every Python program is executed in a Process, which is a new instance of the Python interpreter. This process has the name <em>MainProcess</em> and has one thread used to execute the program instructions called the <em>MainThread</em>. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create new child processes in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process"><strong>multiprocessing.Process</strong> class</a>.</p>
+<p>You can learn more about multiprocessing in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing in Python: The Complete Guide</a></li>
+</ul>
+<p>When writing concurrent programs we may need to share data or resources between processes, which typically must be protected with a lock.</p>
+<p>A standard mutex lock does not allow a process to acquire the lock more than once. This means that code in one critical section cannot call or execute code with another critical section protected by the same lock. Instead, a different type of mutex lock is required called a reentrant lock.</p>
+<p><strong>What is a reentrant lock and how can we use it with processes in Python?</strong></p>
+<p>First, let's take a quick look at a standard mutex lock.</p>
+<h2>What is a Mutex Lock</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Mutual_exclusion">mutual exclusion lock</a> or mutex lock is a synchronization primitive intended to prevent a race condition.</p>
+<p>A race condition is a concurrency failure case when two processes (or threads) run the same code and access or update the same resource (e.g. data variables, stream, etc.) leaving the resource in an unknown and inconsistent state.</p>
+<p>Race conditions often result in unexpected behavior of a program and/or corrupt data.</p>
+<p>These sensitive parts of code that can be executed by multiple processes concurrently and may result in race conditions are called critical sections. A critical section may refer to a single block of code, but it also refers to multiple accesses to the same data variable or resource from multiple functions.</p>
+<blockquote>
+<p>The most commonly used mechanism for ensuring mutual exclusion is a mutual exclusion lock or mutex, or simply lock. A mutex is a special type of object that has support in the underlying hardware. The basic idea is that each critical section is protected by a lock.</p>
+<cite>-- Page 53, <a href="https://amzn.to/3LRljie">An Introduction to Parallel Programming</a>, 2020.</cite></blockquote>
+<p>A mutex lock can be used to ensure that only one process at a time executes a critical section of code at a time, while all other processes trying to execute the same code must wait until the currently executing process is finished with the critical section.</p>
+<blockquote>
+<p>While one thread “owns” the lock—that is, has returned from a call to the lock function but hasn't yet called the unlock function—any other thread attempting to execute the code in the critical section will wait in its call to the lock function.</p>
+<cite>-- Page 53, <a href="https://amzn.to/3LRljie">An Introduction to Parallel Programming</a>, 2020.</cite></blockquote>
+<p>Each process must attempt to acquire the lock at the beginning of the critical section. If the lock has not been obtained, then a process will acquire it and other processes must wait until the process that acquired the lock releases it.</p>
+<blockquote>
+<p>Before a thread can execute the code in the critical section, it must "obtain" the mutex by calling a mutex function, and when it's done executing the code in the critical section, it should “relinquish” the mutex by calling an unlock function.</p>
+<cite>-- Page 53, <a href="https://amzn.to/3LRljie">An Introduction to Parallel Programming</a>, 2020.</cite></blockquote>
+<p>You can learn more about mutex locks for Python processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<p>Now that we know what a mutex lock is, let's take a closer look at a reentrant mutex lock.</p>
+<h2>What is a Reentrant Lock</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Reentrant_mutex">reentrant mutual</a> exclusion lock, "reentrant mutex" or "reentrant lock" for short, is like a mutex lock except it allows a process (or thread) to acquire the lock more than once.</p>
+<p>A process may need to acquire the same lock more than once for many reasons.</p>
+<p>We can imagine critical sections spread across a number of functions, each protected by the same lock. A process may call across these functions in the course of normal execution and may call into one critical section from another critical section.</p>
+<p>A limitation of a (non-reentrant) mutex lock is that if a process has acquired the lock that it cannot acquire it again. In fact, this situation will result in a deadlock as it will wait forever for the lock to be released so that it can be acquired, but it holds the lock and will not release it.</p>
+<p>A reentrant lock will allow a process to acquire the same lock again if it has already acquired it. This allows the process to execute critical sections from within critical sections, as long as they are protected by the same reentrant lock.</p>
+<p>Each time a process acquires the lock it must also release it, meaning that there are recursive levels of acquire and release for the owning process. As such, this type of lock is sometimes called a "recursive mutex lock".</p>
+<p>Now that we know about the reentrant lock, let's take a look at how we can use it in Python.</p>
+<h2>How to Use the RLock</h2>
+<p>Python provides a reentrant lock for processes via the <strong>multiprocessing.RLock</strong> class.</p>
+<p>An instance of the multiprocessing.RLock can be created and then acquired by processes before accessing a critical section, and released after the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# create a reentrant lock
+lock = multiprocessing.RLock()
+# acquire the lock
+lock.acquire()
+# ...
+# release the lock
+lock.release()
+</code></pre>
+<p>The process attempting to acquire the lock will block until the lock is acquired, such as if another process currently holds the lock (once or more than once) then releases it.</p>
+<p>We can attempt to acquire the lock without blocking by setting the "<strong>bloc</strong>k" argument to <strong>False</strong>. If the lock cannot be acquired, a value of <strong>False</strong> is returned.</p>
+<pre><code>...
+# acquire the lock without blocking
+lock.acquire(block=false)</code></pre>
+<p>We can also attempt to acquire the lock with a timeout, that will wait the set number of seconds to acquire the lock before giving up. If the lock cannot be acquired, a value of <strong>False</strong> is returned.</p>
+<pre><code>...
+# acquire the lock with a timeout
+lock.acquire(timeout=10)</code></pre>
+<p>We can also use the reentrant lock via the context manager protocol via the with statement, allowing the critical section to be a block within the usage of the lock and for the lock to be released once the block is exited.</p>
+<p>For example:</p>
+<pre><code>...
+# create a reentrant lock
+lock = multiprocessing.RLock()
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p><strong>RLocks</strong> are also available for threads in Python, you can learn more in the tutorial:</p>
+<ul>
+<li><a href="../thread-reentrant-lock/">How to Use a Reentrant Lock in Python</a></li>
+</ul>
+<p>Now that we know how to use the <strong>multiprocessing.RLock</strong> class, let's look at a worked example.</p>
+<h2>Example of Using an RLock</h2>
+<p>We can develop an example to demonstrate how to use the <strong>multiprocessing.RLock</strong> for processes.</p>
+<p>First, we can define a function to report that a process is done that protects the <strong>print()</strong> statement with a lock.</p>
+<pre><code># reporting function
+def report(lock, identifier):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} done')
+</code></pre>
+<p>Next, we can define a task function that reports a message, blocks for a moment, then calls the reporting function. All of the work is protected with the lock.</p>
+<pre><code># work function
+def task(lock, identifier, value):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} sleeping for {value}')
+        sleep(value)
+        # report
+        report(lock, identifier)
+</code></pre>
+<p>Given that the target task function is protected with a lock and calls the reporting function that is also protected by the same lock, we can use a reentrant lock so that if a process acquires the lock in <strong>task()</strong>, it will be able to re-enter the lock in the <strong>report()</strong> function.</p>
+<p>Next, we can create the reentrant lock.</p>
+<pre><code>...
+# create a shared reentrant lock
+lock = RLock()</code></pre>
+<p>We can then create many processes, each configured to execute our <strong>task()</strong> function.</p>
+<p>Each process will receive the shared <strong>multiprocessing.RLock</strong> as an argument as well as an integer id between 0 and 9 and a random time to sleep in seconds between 0 and 1.</p>
+<p>We can implement this via a list comprehension, creating a list of ten configured multiprocessing.Process instances.</p>
+<pre><code>...
+# create processes
+processes = [Process(target=task, args=(lock, i, random())) for i in range(10)]</code></pre>
+<p>Next, we can start all of the processes.</p>
+<pre><code>...
+# start child processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>Finally, we can wait for all of the new child processes to terminate.</p>
+<pre><code>...
+# wait for child processes to finish
+for process in processes:
+    process.join()
+</code></pre>
+<p>Tying this together, the complete example of using a lock is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a reentrant lock for processes
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import RLock
+
+# reporting function
+def report(lock, identifier):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} done')
+
+# work function
+def task(lock, identifier, value):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} sleeping for {value}')
+        sleep(value)
+        # report
+        report(lock, identifier)
+
+# entry point
+if __name__ == '__main__':
+    # create a shared reentrant lock
+    lock = RLock()
+    # create processes
+    processes = [Process(target=task, args=(lock, i, random())) for i in range(10)]
+    # start child processes
+    for process in processes:
+        process.start()
+    # wait for child processes to finish
+    for process in processes:
+        process.join()
+</code></pre>
+<p>Running the example starts up ten processes that execute the target task function.</p>
+<p>Only one process can acquire the lock at a time, and then once acquired, blocks and then reenters the same lock again to report the done message via the <strong>report()</strong> function.</p>
+<p>If a non-reentrant lock, e.g. a <strong>multiprocessing.Lock</strong> was used instead, then the process would block forever waiting for the lock to become available, which it can't because the process already holds the lock.</p>
+<p>Note, your specific results will differ given the use of random numbers. Try running the example a few times.</p>
+<pre><code>&gt;process 0 sleeping for 0.9703475136810683
+&gt;process 0 done
+&gt;process 1 sleeping for 0.10372469305828702
+&gt;process 1 done
+&gt;process 2 sleeping for 0.26627777997152036
+&gt;process 2 done
+&gt;process 3 sleeping for 0.9821832886127358
+&gt;process 3 done
+&gt;process 6 sleeping for 0.005591916432016064
+&gt;process 6 done
+&gt;process 5 sleeping for 0.6150762561153148
+&gt;process 5 done
+&gt;process 4 sleeping for 0.3145220383413917
+&gt;process 4 done
+&gt;process 7 sleeping for 0.8961655132345371
+&gt;process 7 done
+&gt;process 8 sleeping for 0.5968254072867757
+&gt;process 8 done
+&gt;process 9 sleeping for 0.8139723778675512
+&gt;process 9 done
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use the <strong>multiprocessing.RLock</strong> reentrant mutex lock for processes in Python.</p>
+</main>
+</body>
+</html>

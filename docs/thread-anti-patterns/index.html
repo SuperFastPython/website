@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>5 Threading Anti-Patterns in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>5 Threading Anti-Patterns in Python</h1>
+<div class="post-meta">May 1, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can avoid common <strong>threading anti-patterns</strong>.</p>
+<p>In this tutorial you will discover how to identify common <a href="../threading-in-python/">threading</a> anti-patterns in Python.</p>
+<p>Let's get started.</p>
+<h2>Threading Anti-Patterns</h2>
+<p>A <strong>programming anti-pattern</strong> is a common solution to a problem that itself introduces new problems.</p>
+<p>Anti-patterns are programming solutions that are typically counter-productive, making things worse.</p>
+<p>We call them patterns instead of simply "bugs" because they are implemented again and again, typically by inexperienced developers.</p>
+<p>Anti-patterns in concurrent programming typically result in race conditions where shared data or variables become inconsistent or corrupt.</p>
+<p>Five common threading anti-patterns are as follows:</p>
+<ol><li>Relying On the GIL</li><li>Assuming Operations Are Atomic</li><li>Not Using The Context Manager Interface</li><li>Not Using a Lock Consistently</li><li>Using Sleep to Coordinate Threads</li></ol>
+<p>Let's take a closer look at each of these threading anti-patterns and how to avoid them in our own programs.</p>
+<h2>Anti-Pattern 1: Relying On the GIL</h2>
+<p>The Global Interpreter Lock or GIL for short is a lock used within the reference CPython Python interpreter to ensure only one thread can run at a time.</p>
+<blockquote><p>The mechanism used by the CPython interpreter to assure that only one thread executes Python bytecode at a time. This simplifies the CPython implementation by making the object model (including critical built-in types such as dict) implicitly safe against concurrent access. Locking the entire interpreter makes it easier for the interpreter to be multi-threaded, at the expense of much of the parallelism afforded by multi-processor machines.</p><cite>-- <a href="https://docs.python.org/3/glossary.html#term-global-interpreter-lock">global interpreter lock, Python Glossary</a>.</cite></blockquote>
+<p>The GIL means that Python threads may not be appropriate for computationally intensive tasks.</p>
+<p>However, the GIL is released in some situations, such as blocking IO and when accessing some external C-libraries like NumPy. This means that Python threads are appropriate for IO-bound tasks such as working with files and socket connections.</p>
+<p>Nevertheless, it is often assumed that because of the GIL that race conditions are not possible between threads that share variables or resources.</p>
+<p><strong>This is dangerously incorrect.</strong></p>
+<p>Race conditions are possible when using Python threads, in the face of the GIL.</p>
+<p>Python threads may be context switched at any time by the underlying operating system. The context switch is performed at the Python bytecode level, which is a lower level than lines of Python code.</p>
+<p>This means if critical sections of code are not appropriately protected with concurrency primitives like mutex locks, then race conditions are possible.</p>
+<p>A common example is the operation of adding a number to a number.</p>
+<p>For example:</p>
+<pre><code>...
+# add a value to a number
+total += 2</code></pre>
+<p>This involves at least three Python bytecode operations:</p>
+<ol><li>Read the current value of the variable.</li><li>Calculate the new value of the variable.</li><li>Assign the new value of the variable.</li></ol>
+<p>A context switch may occur between steps 1 and 2 or between 2 and 3. Another thread may change the value of the variable, then the thread may be switched back, in which case an incorrect value of the variable will be assigned.</p>
+<p>You can see examples of race conditions in these tutorials:</p>
+<ul><li><a href="../thread-race-condition-shared-variable/">Race Condition With a Shared Variable in Python</a></li><li><a href="../thread-race-condition-timing/">How to Fix a Race Condition With Timing in Python</a></li></ul>
+<p><strong>Summary</strong></p>
+<ul><li><strong>Problem</strong>: Assume thread race conditions are not possible because of the GIL, which is false.</li><li><strong>Solution</strong>: Always protect critical sections with concurrency primitives like mutex locks.</li></ul>
+<h2>Anti-Pattern 2: Assuming Atomic</h2>
+<p>Many operations in Python are atomic.</p>
+<p>In the context of concurrent programming with threads, atomic operations are those that either happen or don't happen.</p>
+<p>There is no inbetween case where the operation is half-performed and the thread is context-switched before the operation can be completed. As such, atomic operations are thread-safe.</p>
+<p>Python instructions are only atomic at the Python bytecode level.</p>
+<p>In most cases, it means that operations on built-in data structures like lists, sets, and dicts are atomic, such as:</p>
+<ul><li>Appending to a list.</li><li>Popping an item from a list.</li><li>Adding an item to a dictionary</li><li>Adding one dictionary to another.</li></ul>
+<p>And so on.</p>
+<p>The problem is that many operations on primitive types, on built-in data structures, and in general are in fact compound operations consisting of many Python bytecode instructions.</p>
+<p>The most common example is incrementing an integer, for example:</p>
+<pre><code>...
+# increment an integer
+i += 1</code></pre>
+<p>This is not thread safe.</p>
+<p>Assuming all lines of Python code map onto a single atomic bytecode instruction is dangerous.</p>
+<p>You can learn more about thread-safe atomic operations in this tutorial:</p>
+<ul><li><a href="../thread-atomic-operations/">Thread Atomic Operations in Python</a></li></ul>
+<p><strong>Summary</strong></p>
+<ul><li><strong>Problem</strong>: Assume all python operations are atomic, which is false.</li><li><strong>Solution</strong>: Always protect critical sections with concurrency primitives like mutex locks.</li></ul>
+<h2>Anti-Pattern 3: Not Using The Context Manager</h2>
+<p>Critical sections of code can be protected using a mutex lock such as the <strong>threading.Lock</strong> class.</p>
+<p>A critical section may involve program state like variables, data, and resources shared among multiple threads.</p>
+<p>If left unprotected, then updates to the shared program state may result in a race condition where data is lost, is corrupted or the program becomes inconsistent.</p>
+<p>A mutex lock provides a way to ensure that blocks of code are executed serially by threads.</p>
+<p>This is achieved by ensuring that access to the block is mutually exclusive among threads.</p>
+<p>If one thread holds the lock, all other threads must wait until the lock is made available until the next thread can acquire the lock and access the protected critical section. The waiting and handing over from one thread to the next is all handled automatically within the lock.</p>
+<p>You can learn more about mutex locks in Python in this tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>A thread must call the <strong>acquire()</strong> function on the lock at the beginning of the critical section and the <strong>release()</strong> function at the end of the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+# critical section
+...
+# release the lock
+lock.release()</code></pre>
+<p>Generally, this is an anti-pattern.</p>
+<p>The reason is that if the critical section raises an unexpected Error or Exception, the lock will never be released.</p>
+<p>This will likely result in a deadlock as all other threads waiting to acquire the lock will not be able to acquire it and will wait forever.</p>
+<p>The solution is to acquire the lock using the context manager interface.</p>
+<p>This will ensure that the lock is always released automatically once the block within the context manager is exited, such as normally or by raising an <strong>Error</strong> or <strong>Exception</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# critical section
+	...
+</code></pre>
+<p>This is equivalent to using a try-finally pattern.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+try:
+	# critical section
+	...
+finally:
+	# release the lock
+	lock.release()
+</code></pre>
+<p>This context manager interface can be used on mutex locks via the <strong>threading.Lock</strong> class, and is also available for a suite of related concurrency primitives.</p>
+<p>Specifically, the interface is provided on the following concurrency primitives:</p>
+<ul><li>Mutex locks provided by the <strong>threading.Lock</strong> class.</li><li>Reentrant locks provided by the <strong>threading.RLock</strong> class.</li><li>Conditions aka Monitors provided by the <strong>threading.Condition</strong> class.</li><li>Semaphores provided by the <strong>threading.Semaphore</strong> class.</li><li>Bounded semaphores provided by the <strong>threading.BoundedSemaphore</strong> class.</li></ul>
+<p>You can learn more about the context manager on concurrency primitives in this tutorial:</p>
+<ul><li><a href="../thread-context-manager/">Thread-Safety With Context Managers in Python</a></li></ul>
+<p><strong>Summary</strong></p>
+<ul><li><strong>Problem</strong>: Not using the context manager interface with concurrency primitives, which can be dangerous.</li><li><strong>Solution</strong>: Use the context manager with concurrency primitives wherever possible.</li></ul>
+<h2>Anti-Pattern 4: Not Using a Lock Consistently</h2>
+<p>A lock may be used to protect access to a shared variable that may be updated from multiple threads.</p>
+<p>The lock must be acquired at the beginning of the critical section by calling the <strong>acquire()</strong> function and released at the end of the critical section by calling the <strong>release() </strong>function.</p>
+<p>For example, this can be achieved using the context manager interface:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# update variable
+	total += amount
+</code></pre>
+<p>The problem is, if the lock is not always used whenever the variable is updated, then it will not be protected and may be subject to race conditions.</p>
+<p>Protecting a shared variable with a lock requires an audit of the program to identify all cases where the variable is being used and update them so that it is protected by the lock appropriately.</p>
+<p>It also requires that all future code written to interact with the variable also be protected by the lock.</p>
+<p>Assuming that the variable is protected by the lock because one usage of the variable is protected is insufficient.</p>
+<p><strong>Summary</strong></p>
+<ul><li><strong>Problem</strong>: Only protecting one or a few critical sections with a lock, which is insufficient.</li><li><strong>Solution</strong>: Protect all critical sections with the lock, e.g. all uses of a protected variable.</li></ul>
+<h2>Anti-Pattern 5: Coordinating Threads With sleep()</h2>
+<p>It is common to use a background thread to load or prepare data used by another thread.</p>
+<p>This typically requires one thread to wait for another thread to finish before the result can be retrieved.</p>
+<p>Sometimes a call <strong>time.sleep()</strong> function is used to make one thread wait for another that is preparing the result.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for a result from another thread
+time.sleep(5)</code></pre>
+<p>You can learn more about sleeping threads in this tutorial:</p>
+<ul><li><a href="../thread-sleep-in-python/">How to Sleep a Thread in Python</a></li></ul>
+<p>If the waiting thread finishes too soon, the solution is to simply increase the sleep time.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for a result from another thread
+time.sleep(10)</code></pre>
+<p>Using sleep to wait for a result is an anti-pattern.</p>
+<p>Sleep is a fragile way of trying to coordinate two threads when more robust concurrency primitives and concurrency patterns can be used instead.</p>
+<p>If you find yourself dialing in the sleep period while waiting for a result, something is very wrong.</p>
+<p>A better solution might be to wait for the thread that is preparing the result to terminate.</p>
+<p>This can be achieved by joining the thread.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for new thread to terminate
+thread.join()</code></pre>
+<p>You can learn more about joining threads in this tutorial:</p>
+<ul><li><a href="../join-a-thread-in-python/">How to Join a Thread in Python</a></li></ul>
+<p>Alternatively, you may want to signal a result is available from one thread to another.</p>
+<p>This could be achieved using a <strong>threading.Barrier</strong>, <strong>threading.Condition</strong> or using a <strong>threading.Event</strong>.</p>
+<p><strong>Summary</strong></p>
+<ul><li><strong>Problem</strong>: Using a sleep in one thread to wait for a result from another thread, which is fragile.</li><li><strong>Solution</strong>: Join the new thread or use a primitive like a barrier, condition, or an event.</li></ul>
+<h2>Takeaways</h2>
+<p>You now know how to identify and avoid thread anti-patterns in Python.</p>
+</main>
+</body>
+</html>

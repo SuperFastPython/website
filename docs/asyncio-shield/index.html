@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Shield From Cancellation – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Shield From Cancellation</h1>
+<div class="post-meta">November 26, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>Asyncio tasks can be canceled at any time.</p>
+<p>This can cause a running task to stop mid-execution, which can cause problems if we expect a task or subtask to complete as an atomic operation.</p>
+<p>Asyncio provides a way to <strong>shield tasks</strong> from cancellation via <strong>asyncio.shield()</strong>, making them directly immune from being canceled.</p>
+<p>In this tutorial, you will discover <strong>how to shield asyncio tasks from cancellation</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>How to shield asyncio tasks from cancellation.</li>
+<li>How shields work and how we can work around them if we really need to.</li>
+<li>How to develop worked examples that use shields to protect tasks from cancellation.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is Asyncio shield()</h2>
+<p>The <strong>asyncio.shield()</strong> function wraps an awaitable in <strong>Future</strong> that will absorb requests to be canceled.</p>
+<blockquote>
+<p>Protect an awaitable object from being cancelled.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>This means the shielded future can be passed around to tasks that may try to cancel it and the cancellation request will look like it was successful, except that the Task or coroutine that is being shielded will continue to run.</p>
+<p>It may be useful in asyncio programs where some tasks can be canceled, but others, perhaps with a higher priority cannot.</p>
+<p>It may also be useful in programs where some tasks can safely be canceled, such as those that were designed with asyncio in mind, whereas others cannot be safely terminated and therefore must be shielded from cancellation.</p>
+<p>Now that we know what <strong>asyncio.shield()</strong> is, let's look at how to use it.</p>
+<h2>How to Use Asyncio shield()</h2>
+<p>The <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.shield"><strong>asyncio.shield()</strong> function</a> will protect another <strong>Task</strong> or coroutine from being canceled.</p>
+<p>It takes an awaitable as an argument and returns an <strong>asyncio.Future</strong> object.</p>
+<p>The Future object can then be awaited directly or passed to another task or coroutine.</p>
+<p>For example:</p>
+<pre><code>...
+# shield a task from cancellation
+shielded = asyncio.shield(task)
+# await the shielded task
+await shielded</code></pre>
+<p>The returned <strong>Future</strong> can be canceled by calling the <strong>cancel()</strong> method.</p>
+<p>If the inner task is running, the request will be reported as successful.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel a shielded task
+was_canceld = shielded.cancel()</code></pre>
+<p>You can learn more about canceling asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<p>Any coroutines awaiting the Future object will raise an <strong>asyncio.CancelledError</strong>, which may need to be handled.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# await the shielded task
+	await asyncio.shield(task)
+except asyncio.CancelledError:
+	# ...
+</code></pre>
+<p>Importantly, the request for cancellation made on the <strong>Future</strong> object is not propagated to the inner task.</p>
+<p>This means that the request for cancellation is absorbed by the shield.</p>
+<p>For example:</p>
+<pre><code>...
+# create a task
+task = asyncio.create_task(coro())
+# create a shield
+shield = asyncio.shield(task)
+# cancel the shield (does not cancel the task)
+shield.cancel()
+</code></pre>
+<p>If a coroutine is provided to the <strong>asyncio.shield()</strong> function it is wrapped in an <strong>asyncio.Task()</strong> and scheduled immediately.</p>
+<p>This means that the shield does not need to be awaited for the inner coroutine to run.</p>
+<blockquote>
+<p>If aw is a coroutine it is automatically scheduled as a Task.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>If the task that is being shielded is canceled, the cancellation request will be propagated up to the shield, which will also be canceled.</p>
+<p>For example:</p>
+<pre><code>...
+# create a task
+task = asyncio.create_task(coro())
+# create a shield
+shield = asyncio.shield(task)
+# cancel the task (also cancels the shield)
+task.cancel()</code></pre>
+<p>Now that we know how to use the <strong>asyncio.shield()</strong> function, let's look at some worked examples.</p>
+<h2>Example of Asyncio shield() for a Task</h2>
+<p>We can explore how to protect a task from cancellation using <strong>asyncio.shield()</strong>.</p>
+<p>In this example, we define a simple coroutine task that takes an integer argument, sleeps for a second, then returns the argument. The coroutine can then be created and scheduled as a <strong>Task</strong>.</p>
+<p>We can define a second coroutine that takes a task, sleeps for a fraction of a second, then cancels the provided task.</p>
+<p>In the main coroutine, we can then shield the first task and pass it to the second task, then await the shielded task.</p>
+<p>The expectation is that the shield will be canceled and leave the inner task intact. The cancellation will disrupt the main coroutine. We can check the status of the inner task at the end of the program and we expect it to have been completed normally, regardless of the request to cancel made on the shield.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using asyncio shield to protect a task from cancellation
+import asyncio
+
+# define a simple asynchronous
+async def simple_task(number):
+    # block for a moment
+    await asyncio.sleep(1)
+    # return the argument
+    return number
+
+# cancel the given task after a moment
+async def cancel_task(task):
+    # block for a moment
+    await asyncio.sleep(0.2)
+    # cancel the task
+    was_cancelled = task.cancel()
+    print(f'cancelled: {was_cancelled}')
+
+# define a simple coroutine
+async def main():
+    # create the coroutine
+    coro = simple_task(1)
+    # create a task
+    task = asyncio.create_task(coro)
+    # created the shielded task
+    shielded = asyncio.shield(task)
+    # create the task to cancel the previous task
+    asyncio.create_task(cancel_task(shielded))
+    # handle cancellation
+    try:
+        # await the shielded task
+        result = await shielded
+        # report the result
+        print(f'&gt;got: {result}')
+    except asyncio.CancelledError:
+        print('shielded was cancelled')
+    # wait a moment
+    await asyncio.sleep(1)
+    # report the details of the tasks
+    print(f'shielded: {shielded}')
+    print(f'task: {task}')
+
+# start
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the application.</p>
+<p>The task coroutine is created, then it is wrapped and scheduled in a <strong>Task</strong>.</p>
+<p>The task is then shielded from cancellation.</p>
+<p>The shielded task is then passed to the <strong>cancel_task()</strong> coroutine which is wrapped in a task and scheduled.</p>
+<p>The main coroutine then awaits the shielded task, which expects a <strong>CancelledError</strong> exception.</p>
+<p>The task runs for a moment then sleeps. The cancellation task runs for a moment, sleeps, resumes then cancels the shielded task. The request to cancel reports that it was successful.</p>
+<p>This raises a <strong>CancelledError</strong> exception in the shielded <strong>Future</strong>, although not in the inner task.</p>
+<p>The <strong>main()</strong> coroutine resumes and responds to the <strong>CancelledError</strong> exception, reporting a message. It then sleeps for a while longer.</p>
+<p>The task resumes, finishes, and returns a value.</p>
+<p>Finally, the <strong>main()</strong> coroutine resumes, and reports the status of the shielded future and the inner task. We can see that the shielded future is marked as canceled and yet the inner task is marked as finished normally and provides a return value.</p>
+<p>This example highlights how a shield can be used to successfully protect an inner task from cancellation.</p>
+<pre><code>cancelled: True
+shielded was cancelled
+shielded: &lt;Future cancelled&gt;
+task: &lt;Task finished name='Task-2' coro=&lt;simple_task() done, defined at ...&gt; result=1&gt;
+</code></pre>
+<p>Next, let's look at shielding a coroutine, instead of a task, from cancellation.</p>
+<h2>Example of Asyncio shield for a Coroutine</h2>
+<p>We can explore how to protect a coroutine from cancellation using <strong>asyncio.shield()</strong>.</p>
+<p>In this example, we update the above example to shield a coroutine directly, instead of a task.</p>
+<p>The expectation is that the coroutine will be wrapped in a task immediately and scheduled for execution. The request for cancellation made on the shield will protect the inner coroutine from cancellation as it does for tasks.</p>
+<p>At the end of the program, we will locate the <strong>asyncio.Task</strong> associated with the shielded coroutine and report its status. The expectation is that it will have finished normally and was not canceled.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using asyncio shield to protect a coroutine from cancellation
+import asyncio
+
+# define a simple asynchronous
+async def simple_task(number):
+    # block for a moment
+    await asyncio.sleep(1)
+    # return the argument
+    return number
+
+# cancel the given task after a moment
+async def cancel_task(task):
+    # block for a moment
+    await asyncio.sleep(0.2)
+    # cancel the task
+    was_cancelled = task.cancel()
+    print(f'cancelled: {was_cancelled}')
+
+# define a simple coroutine
+async def main():
+    # create the coroutine
+    coro = simple_task(1)
+    # created the shielded task
+    shielded = asyncio.shield(coro)
+    # create the task to cancel the previous task
+    asyncio.create_task(cancel_task(shielded))
+    # handle cancellation
+    try:
+        # await the shielded task
+        result = await shielded
+        # report the result
+        print(f'&gt;got: {result}')
+    except asyncio.CancelledError:
+        print('shielded was cancelled')
+    # get all tasks
+    tasks = asyncio.all_tasks()
+    # wait a moment
+    await asyncio.sleep(1)
+    # report the details of the tasks
+    print(f'shielded: {shielded}')
+    # report the task for the coroutine
+    for task in tasks:
+        if task.get_coro() is coro:
+            print(f'task: {task}')
+
+# start
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the application.</p>
+<p>The task coroutine is created. It is then shielded from cancellation. Internally this wraps the coroutine in a Task object and schedules it for execution. We will retrieve this Task object later.</p>
+<p>The shielded task is then passed to the <strong>cancel_task()</strong> coroutine which is wrapped in a task and scheduled.</p>
+<p>The main coroutine then awaits the shielded task, which expects a <strong>CancelledError</strong> exception.</p>
+<p>The task runs for a moment then sleeps. The cancellation task runs for a moment, sleeps, resumes, then cancels the shielded task. The request to cancel reports that it was successful.</p>
+<p>This raises a <strong>CancelledError</strong> exception in the shielded <strong>Future</strong>, although not in the inner task or coroutine.</p>
+<p>The <strong>main()</strong> coroutine resumes and responds to the <strong>CancelledError</strong> exception, reporting a message. It then sleeps for a while longer.</p>
+<p>The inner task resumes, finishes, and returns a value.</p>
+<p>Finally, the <strong>main()</strong> coroutine resumes, reporting the status of the shielded future. It then locates the Task associated with the inner coroutine and reports its status.</p>
+<p>We can see that the shielded future is marked as canceled and yet the inner task for the shielded coroutine is marked as finished normally and provides a return value.</p>
+<p>This example highlights how a shield can be used to successfully protect an inner coroutine from cancellation, and that the <strong>shield()</strong> function will create an asyncio.Task object for a provided coroutine.</p>
+<pre><code>cancelled: True
+shielded was cancelled
+shielded: &lt;Future cancelled&gt;
+task: &lt;Task finished name='Task-2' coro=&lt;simple_task() done, defined at ...&gt; result=1&gt;
+</code></pre>
+<p>Next, let's look at what happens when we cancel the task with a shield.</p>
+<h2>Example of Canceling Shielded Task</h2>
+<p>We can explore what happens when the inner shielded task is canceled.</p>
+<p>In this example, we will pass the inner task to the cancellation coroutine.</p>
+<p>The expectation is that the inner task will be canceled and that this request for cancellation will be propagated out to the shield and then impact the main coroutine.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling the task directly inside the shield
+import asyncio
+
+# define a simple asynchronous
+async def simple_task(number):
+    # block for a moment
+    await asyncio.sleep(1)
+    # return the argument
+    return number
+
+# cancel the given task after a moment
+async def cancel_task(task):
+    # block for a moment
+    await asyncio.sleep(0.2)
+    # cancel the task
+    was_cancelled = task.cancel()
+    print(f'cancelled: {was_cancelled}')
+
+# define a simple coroutine
+async def main():
+    # create the coroutine
+    coro = simple_task(1)
+    # create a task
+    task = asyncio.create_task(coro)
+    # created the shielded task
+    shielded = asyncio.shield(task)
+    # create the task to cancel the previous task
+    asyncio.create_task(cancel_task(task))
+    # handle cancellation
+    try:
+        # await the shielded task
+        result = await shielded
+        # report the result
+        print(f'&gt;got: {result}')
+    except asyncio.CancelledError:
+        print('shielded was cancelled')
+    # wait a moment
+    await asyncio.sleep(1)
+    # report the details of the tasks
+    print(f'shielded: {shielded}')
+    print(f'task: {task}')
+
+# start
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the application.</p>
+<p>The task coroutine is created, then it is wrapped and scheduled in a <strong>Task</strong>.</p>
+<p>The task is then shielded from cancellation.</p>
+<p>The task itself, not the shielded task, is then passed to the <strong>cancel_task()</strong> coroutine that is wrapped in a task and scheduled.</p>
+<p>The main coroutine then awaits the shielded task, which expects a <strong>CancelledError</strong> exception.</p>
+<p>The task runs for a moment then sleeps. The cancellation task runs for a moment, sleeps, resumes then cancels the task directly. The request to cancel reports that it was successful.</p>
+<p>This raises a <strong>CancelledError</strong> exception in the task itself which cancels. The <strong>CancelledError</strong> exception is then raised in the shielded Future object, which also cancels.</p>
+<p>The <strong>main()</strong> coroutine resumes and responds to the <strong>CancelledError</strong> exception, reporting a message. It then sleeps for a while longer.</p>
+<p>Finally, the <strong>main()</strong> coroutine resumes, and reports the status of the shielded future and the inner task.</p>
+<p>We can see that both the shielded <strong>Future</strong> object and the inner <strong>Task</strong> are marked as canceled.</p>
+<p>This example highlights that although a <strong>Task</strong> can be shielded, it can still be canceled directly.</p>
+<pre><code>cancelled: True
+shielded was cancelled
+shielded: &lt;Future cancelled&gt;
+task: &lt;Task cancelled name='Task-2' coro=&lt;simple_task() done, defined at ...&gt;&gt;
+</code></pre>
+<h2>Example of Asyncio shield() with wait_for()</h2>
+<p>We can explore what happens to a shielded task that is canceled by a call to <strong>wait_for()</strong> after a timeout.</p>
+<p>In this example, we shield the task from cancellation as before. In this case, we pass the shielded <strong>Future</strong> to a call to the <strong>asyncio.wait_for()</strong> function.</p>
+<p>This function will wait for a task to complete with a timeout. If the timeout elapses before the task is complete, it is canceled.</p>
+<p>You can learn more about the <strong>wait_for()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait_for/">Asyncio wait_for() to Wait With a Timeout</a></li>
+</ul>
+<p>The expectation is that the shielded future will be canceled after the timeout by the <strong>wait_for()</strong> function, although this will not impact the internal task.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using wait_for() with a shielded task
+import asyncio
+
+# define a simple asynchronous
+async def simple_task(number):
+    # block for a moment
+    await asyncio.sleep(1)
+    # return the argument
+    return number
+
+# define a simple coroutine
+async def main():
+    # create the coroutine
+    coro = simple_task(1)
+    # create a task
+    task = asyncio.create_task(coro)
+    # created the shielded task
+    shielded = asyncio.shield(task)
+    # execute shielded task with a timeout
+    try:
+        # await the shielded task
+        result = await asyncio.wait_for(shielded, timeout=0.2)
+        # report the result
+        print(f'&gt;got: {result}')
+    except asyncio.CancelledError:
+        print('wait_for was cancelled')
+    except asyncio.TimeoutError:
+        print('timed out waiting for result')
+    # wait a moment
+    await asyncio.sleep(1)
+    # report the details of the tasks
+    print(f'shielded: {shielded}')
+    print(f'task: {task}')
+
+# start
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the application.</p>
+<p>The task coroutine is created, then it is wrapped and scheduled in a <strong>Task</strong>.</p>
+<p>The task is then shielded from cancellation.</p>
+<p>The shielded task is then passed to the <strong>wait_for()</strong> function and a timeout of a fraction of a second is used. This call expects a possible <strong>CancelledError</strong> exception if the shield is canceled and a <strong>TimeoutError</strong> if the task is canceled with a timeout.</p>
+<p>The main coroutine then awaits the <strong>wait_for()</strong> task.</p>
+<p>The task runs for a moment then sleeps. The timeout in the <strong>wait_for()</strong> task elapses and cancels the shielded Future.</p>
+<p>This raises a <strong>TimeoutError</strong> exception in the shielded Future, although not in the inner task.</p>
+<p>The <strong>main()</strong> coroutine resumes and responds to the <strong>TimeoutError</strong> exception, reporting a message. It then sleeps for a while longer.</p>
+<p>The task resumes, finishes, and returns a value.</p>
+<p>Finally, the <strong>main()</strong> coroutine resumes, and reports the status of the shielded future and the inner task. We can see that the shielded future is marked as canceled and yet the inner task is marked as finished normally and provides a return value.</p>
+<p>This example highlights how the shield can be used to protect a time from cancellation due to a timeout when using the <strong>asyncio.wait_for()</strong> function.</p>
+<pre><code>timed out waiting for result
+shielded: &lt;Future cancelled&gt;
+task: &lt;Task finished name='Task-2' coro=&lt;simple_task() done, defined at ...&gt; result=1&gt;
+</code></pre>
+<h2>Common Questions</h2>
+<p>This section considers common questions related to shielding tasks from cancellation.</p>
+<p><strong>Do you have any questions about shielding tasks from cancellation?</strong><br/>Ask your questions in the comments below and I will do my best to answer them and may add them to this section.</p>
+<h3>Can a Task Be Shielded?</h3>
+<p>Yes.</p>
+<h3>Can a Coroutine Be Shielded?</h3>
+<p>Yes.</p>
+<p>A coroutine passed to <strong>shield()</strong> will be wrapped in an <strong>asyncio.Task</strong> and scheduled immediately.</p>
+<p>The <strong>Future </strong>returned from <strong>shield()</strong> does not need to be awaited in order for the provided coroutine to be executed.</p>
+<h3>How Can We Wait For a Shielded Task To Complete?</h3>
+<p>We can wait for a shielded task to complete by keeping a reference to the <strong>asyncio.Task</strong> object that was shielded and waiting for it directly.</p>
+<p>Alternatively, if a coroutine was provided to the <strong>shield()</strong> function, then the associated <strong>asyncio.Task</strong> can be located from <strong>asyncio.all_tasks()</strong> and awaited.</p>
+<h3>How Can We Get The Result from a Canceled Shielded Task?</h3>
+<p>We can get the result from a canceled shielded task by keeping a reference to the <strong>asyncio.Task</strong> object that was shielded and called the <strong>result()</strong> method in order to get the return value.</p>
+<p>Alternatively, if a coroutine was provided to the <strong>shield()</strong> function, then the associated <strong>asyncio.Task</strong> can be located from <strong>asyncio.all_tasks()</strong> and the <strong>result()</strong> method can be called on it.</p>
+<h3>What Happens if The Shielded Task Itself is Canceled?</h3>
+<p>If the inner task that is being shielded is canceled, it will cancel the external <strong>Future</strong> that wraps it.</p>
+<p>This means that cancellations are propagated up from the inner task to the outer shield task.</p>
+<h3>Can the Inner Task Still Be Canceled?</h3>
+<p>Yes.</p>
+<p>If the shielded inner <strong>asyncio.Task</strong> object is canceled directly, then the task will raise an <strong>asyncio.CancelledError</strong> exception and can cancel the task.</p>
+<h2>Takeaways</h2>
+<p>You now know how to shield asyncio tasks from cancellation in Python.</p>
+</main>
+</body>
+</html>

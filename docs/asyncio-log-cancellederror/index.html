@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Log CancelledError Exceptions – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Log CancelledError Exceptions</h1>
+<div class="post-meta">February 13, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can <strong>log CancelledError exceptions</strong> within the task that is canceled or in the caller that requested that the task be canceled.</p>
+<p>Logging the <strong>CancelledError</strong> exception provides help when debugging an asyncio program later, confirming that tasks were canceled. By logging the <strong>CancelledError</strong> exception at the point of cancellation, the log will also include details of the task or coroutine that requested the target cancel in the message if needed, and in the stack trace.</p>
+<p>In this tutorial, you will discover how to <strong>log CancelledError exceptions</strong> in asyncio programs.</p>
+<p>Let's get started.</p>
+<h2>What is a CancelledError Exception</h2>
+<p>A <strong>CancelledError</strong> exception is raised in an asyncio task when it is canceled.</p>
+<blockquote>
+<p>When a task is cancelled, asyncio.CancelledError will be raised in the task at the next opportunity.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>Recall that an asyncio task can be called via the <strong>cancel()</strong> method.</p>
+<p>This requests that the task be canceled and causes a <strong>CancelledError</strong> exception to be raised in the task the next time it resumes executing.</p>
+<p>You can learn more about how to cancel a task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<h2>Log CancelledError Exceptions</h2>
+<p>It can be a good practice to log task cancellations.</p>
+<p>Logging <strong>CancelledError</strong> exceptions in an asyncio program can be a good idea for several reasons, such as:</p>
+<ol>
+<li><strong>Debugging and Diagnostics</strong>: When a task is canceled, it's often useful to know why it was canceled. Logging CancelledError exceptions allows you to capture information about the cancellation, such as which part of your code initiated it or under what conditions it occurred. This information can be invaluable for debugging and diagnosing issues in your asyncio application.</li>
+<li><strong>Traceability</strong>: In a complex asyncio application with multiple tasks and asynchronous operations, tracking down the source of a cancellation can be challenging. Logging CancelledError exceptions with contextual information can help you trace back the sequence of events leading to the cancellation, making it easier to understand the flow of your program.</li>
+<li><strong>Auditing and Monitoring</strong>: In production environments, logging canceled tasks can be part of auditing and monitoring efforts. It provides insights into how often tasks are being canceled and whether cancellations are occurring due to unexpected conditions. Monitoring canceled tasks can help you detect and address issues that impact the stability and performance of your application.</li>
+<li><strong>Documentation and Insights</strong>: Keeping a log of CancelledError exceptions can serve as documentation for your codebase. It provides insights into the design decisions and asynchronous flow of your program, which can be helpful for both current and future developers working on the project.</li>
+<li><strong>Alerts and Notifications</strong>: In some cases, you might want to set up alerts or notifications when certain tasks are canceled. For example, if a critical task is canceled unexpectedly, it could indicate a problem that requires immediate attention. Logging cancellations can be a trigger for such alerts.</li>
+</ol>
+<p>While logging <strong>CancelledError</strong> exceptions can provide valuable insights, it's essential to strike a balance.</p>
+<p>Excessive logging of cancellations can clutter logs and make it challenging to distinguish critical information from routine cancellations.</p>
+<p>Therefore, it's important to log cancellations judiciously and consider log-level settings to control the verbosity of cancellation-related logs.</p>
+<h2>Log The Source of Cancellation</h2>
+<p>Not knowing why a task was canceled is perhaps one of the biggest complaints about task cancellation in asyncio programs.</p>
+<p>The main reason to log <strong>CancelledError</strong> is so that the logs capture what task was canceled when and which task requested the cancellation.</p>
+<p>Logging the trace of the <strong>CancelledError</strong> exception ensures that the source of the cancellation is captured and recorded.</p>
+<p>This means that when logging <strong>CancelledError</strong> exceptions, we must ensure that we also log the stack trace of the exception.</p>
+<p>We can achieve this by logging messages within a try-except block and using the <strong>logging.exception()</strong> function. In these conditions, the logging infrastructure will automatically log the trace of the exception.</p>
+<blockquote>
+<p>Exception info is added to the logging message. This function should only be called from an exception handler.</p>
+<cite>-- <a href="https://docs.python.org/3/library/logging.html">logging — Logging facility for Python</a></cite></blockquote>
+<p>Also, if possible, the <strong>CancelledError</strong> exception should be logged at the point where it is handled, e.g. suppressed. Most commonly, this is the point at which the request was made to cancel the task. This ensures that the trace includes information about the source of the cancellation, e.g. module/file and line number information.</p>
+<p>Next, let's look at how exactly we can log <strong>CancelledError</strong> exceptions.</p>
+<h2>How to Log CancelledError Exceptions</h2>
+<p>There are two ways that we might log <strong>CancelledError</strong> exceptions in our asyncio programs, they are:</p>
+<ol>
+<li>Log CancelledError within the task.</li>
+<li>Log CancelledError within the caller.</li>
+</ol>
+<h3>Log CancelledError in Task</h3>
+<p>We can log <strong>CancelledError</strong> exceptions in the task that was canceled.</p>
+<p>This can be achieved by wrapping the body of the task in a try-except structure.</p>
+<p>We can handle the raised <strong>CancelledError</strong>, log it using <strong>logging.exception()</strong> to ensure the trace of the exception is also logged automatically, then re-raise.</p>
+<p>For example:</p>
+<pre><code>async def work():
+    try:
+        # body of the task
+        ...
+    except asyncio.CancelledError:
+        # log the cancellation
+        logging.exception(f'Task was cancelled, details: {asyncio.current_task()}')
+        # re-raise the exception
+        raise
+</code></pre>
+<p>It is important to re-raise the <strong>CancelledError</strong> exception so that the task is canceled correctly and that the contract with the <strong>cancel()</strong> method is kept (e.g. the task does not consume the <strong>CancelledError</strong> exception).</p>
+<p>You can learn more about tasks consuming <strong>CancelledError</strong> exceptions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancellederror-consumed/">Asyncio CancelledError Can Be Consumed</a></li>
+</ul>
+<h3>Log CancelledError in Caller</h3>
+<p>It is common to suppress the <strong>CancelledError</strong> exception at the point where the request to cancel the task was made.</p>
+<p>If the task is suppressed using a try-except block, then we can choose to log the <strong>CancelledError</strong> exception at this point.</p>
+<p>This can be achieved using a cancel-and-wait pattern that involves first requesting that the task be canceled and awaiting the task so that the expected <strong>CancelledError</strong> is raised and handled.</p>
+<p>In the except block, we can then log a message using <strong>logging.exception()</strong> to ensure that the trace of the exception is logged automatically.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel the task
+task.cancel()
+try:
+    # wait for the task to cancel
+    await task
+except asyncio.CancelledError:
+    logging.exception(f'Confirmed that task {task} was cancelled.')
+</code></pre>
+<p>This is the preferred way to log <strong>CancelledError</strong> exceptions as the stack trace will include information about the source of the cancellation request.</p>
+<p>You can learn more about the cancel-and-wait pattern in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task-and-wait/">Asyncio Cancel Task and Wait</a></li>
+</ul>
+<p>You can learn more about suppressing the <strong>CancelledError</strong> exception at the point of requested cancellation in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-suppress-cancellederror/">4 Ways to Suppress Asyncio CancelledError</a></li>
+</ul>
+<p>Now that we know how to log CancelledError exceptions, let's look at some worked examples.</p>
+<h2>Example of Logging CancelledError In Task</h2>
+<p>We can explore an example of logging the <strong>CancelledError</strong> exception from within the task.</p>
+<p>In this example, we will define a task that does some work. The task handles the <strong>CancelledError</strong> exception and logs it before re-raising it. The main coroutine creates the task, lets it run for a moment, then cancels it.</p>
+<p>This will log the <strong>CancelledError</strong> exception with stack trace information, but will not capture the cause of the cancellation.</p>
+<p>Firstly, we can define the task.</p>
+<p>The task logs a start message, sleeps for one second, then logs a done message.</p>
+<p>The body of the task is wrapped in a try-except block and handles the <strong>CancelledError</strong> exception. The exception is logged with details of the task and re-raised.</p>
+<p>The <strong>work()</strong> coroutine below implements this.</p>
+<pre><code># task that does work and logs
+async def work():
+    try:
+        # log a message
+        logging.info(f'Task is starting')
+        # simulate doing work
+        await asyncio.sleep(1)
+        # log a message
+        logging.info(f'Task is done')
+    except asyncio.CancelledError:
+        # log the cancellation
+        logging.exception(f'Task was cancelled, details: {asyncio.current_task()}')
+        # re-raise the exception
+        raise
+</code></pre>
+<p>Next, we can define the main coroutine.</p>
+<p>It starts by logging a start message. It then creates and schedules a task for the <strong>work()</strong> coroutine and suspends with a sleep for half a second, allowing the task to run.</p>
+<p>The main coroutine then cancels the task and awaits the cancellation, ignoring the raised <strong>CancelledError</strong> exception before logging a final message.</p>
+<p>The <strong>main()</strong> coroutine below implements this.</p>
+<pre><code># main coroutine
+async def main():
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule a task
+    task = asyncio.create_task(work())
+    # wait around
+    await asyncio.sleep(0.5)
+    # cancel the task
+    task.cancel()
+    try:
+        # wait for the task to cancel
+        await task
+    except asyncio.CancelledError:
+        pass
+    # log a message
+    logging.info(f'Main is done')
+</code></pre>
+<p>Finally, we can configure the logging infrastructure to log all messages at a <strong>DEBUG</strong> level and higher, then start the event loop.</p>
+<pre><code>...
+# prepare the logger
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging a cancellederror within the task
+import logging
+import asyncio
+
+# task that does work and logs
+async def work():
+    try:
+        # log a message
+        logging.info(f'Task is starting')
+        # simulate doing work
+        await asyncio.sleep(1)
+        # log a message
+        logging.info(f'Task is done')
+    except asyncio.CancelledError:
+        # log the cancellation
+        logging.exception(f'Task was cancelled, details: {asyncio.current_task()}')
+        # re-raise the exception
+        raise
+
+# main coroutine
+async def main():
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule a task
+    task = asyncio.create_task(work())
+    # wait around
+    await asyncio.sleep(0.5)
+    # cancel the task
+    task.cancel()
+    try:
+        # wait for the task to cancel
+        await task
+    except asyncio.CancelledError:
+        pass
+    # log a message
+    logging.info(f'Main is done')
+
+# prepare the logger
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first configures the logging infrastructure, then starts the asyncio event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and logs a start message.</p>
+<p>It then creates and schedules a task for the <strong>work()</strong> coroutine and suspends for a fraction of a second.</p>
+<p>The <strong>work()</strong> task runs and logs a start message then suspends with a sleep for one second.</p>
+<p>The <strong>main()</strong> coroutine resumes and cancels the <strong>work()</strong> task and then awaits it.</p>
+<p>The <strong>work()</strong> task resumes. A <strong>CancelledError</strong> exception is raised in the <strong>work()</strong> task causing the <strong>sleep()</strong> to be interrupted.</p>
+<p>The <strong>CancelledError</strong> is caught and logged as an exception. This includes an error message with the details of the task and the stack trace of the exception.</p>
+<p>The <strong>work()</strong> task then re-raises the <strong>CancelledError</strong> exception and terminates.</p>
+<p>The <strong>main()</strong> coroutine resumes and handles the <strong>CancelledError</strong> exception, ignoring it. It then logs a final message and terminates.</p>
+<p>This highlights how we can log a <strong>CancelledError</strong> exception from within the task.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+INFO:root:Main is starting
+INFO:root:Task is starting
+ERROR:root:Task was cancelled, details: &lt;Task cancelling name='Task-2' coro=&lt;work() running at ...:17&gt; cb=[Task.task_wakeup()]&gt;
+Traceback (most recent call last):
+  File "...", line 12, in work
+    await asyncio.sleep(1)
+  File ".../asyncio/tasks.py", line 639, in sleep
+    return await future
+           ^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+INFO:root:Main is done
+</code></pre>
+<p>Next, let's look at an example of logging a <strong>CancelledError</strong> exception from the caller that requested the task be canceled.</p>
+<h2>Example of Logging CancelledError In Caller</h2>
+<p>We can explore an example of logging a <strong>CancelledError</strong> exception in the caller that requested that the target task be canceled.</p>
+<p>In this case, we can update the above example so that the <strong>work()</strong> coroutine no longer handles the <strong>CancelledError</strong> exception.</p>
+<pre><code># task that does work and logs
+async def work():
+    # log a message
+    logging.info(f'Task is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # log a message
+    logging.info(f'Task is done')
+</code></pre>
+<p>We can then update the main() coroutine so that it logs the <strong>CancelledError</strong> exception raised by the target task, rather than ignores it.</p>
+<pre><code>...
+# cancel the task
+task.cancel()
+try:
+    # wait for the task to cancel
+    await task
+except asyncio.CancelledError:
+    logging.exception(f'Confirmed that task {task} was cancelled.')
+</code></pre>
+<p>Logging the <strong>CancelledError</strong> exception at the point that the request to cancel was made will allow the details of the cause of the cancellation to be included in the stack trace that is logged along with the exception. This can be helpful later when reviewing logs and attempting to identify the cause of cancellation.</p>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging a cancellederror within the caller
+import logging
+import asyncio
+
+# task that does work and logs
+async def work():
+    # log a message
+    logging.info(f'Task is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # log a message
+    logging.info(f'Task is done')
+
+# main coroutine
+async def main():
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule a task
+    task = asyncio.create_task(work())
+    # wait around
+    await asyncio.sleep(0.5)
+    # cancel the task
+    task.cancel()
+    try:
+        # wait for the task to cancel
+        await task
+    except asyncio.CancelledError:
+        logging.exception(f'Confirmed that task {task} was cancelled.')
+    # log a message
+    logging.info(f'Main is done')
+
+# prepare the logger
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first configures the logging infrastructure, then starts the asyncio event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and logs a start message.</p>
+<p>It then creates and schedules a task for the <strong>work()</strong> coroutine and suspends for a fraction of a second.</p>
+<p>The <strong>work()</strong> task runs and logs a start message then suspends with a sleep for one second.</p>
+<p>The <strong>main()</strong> coroutine resumes and cancels the <strong>work()</strong> task and then awaits it.</p>
+<p>The <strong>work()</strong> task resumes and a <strong>CancelledError</strong> exception is raised in the work() task causing the <strong>sleep()</strong> to be interrupted. The <strong>CancelledError</strong> exception bubbles up and causes the <strong>work()</strong> task to be terminated.</p>
+<p>The <strong>main()</strong> coroutine resumes and the <strong>CancelledError</strong> exception is raised. It is handled and logged as an exception. This includes an <strong>ERROR</strong> level message with the details of the task, as well as a stack trace for the exception. The trace includes the awaiting of the task after cancellation, which is part of the cause of the cancellation.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final done message.</p>
+<p>This highlights how we can log a <strong>CancelledError</strong> exception from the caller that requested the target task be canceled. The output shows that logging the <strong>CancelledError</strong> exception in this way can include details of the caller who requested that the task be canceled, which can be helpful when reviewing the log at a later date.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+INFO:root:Main is starting
+INFO:root:Task is starting
+ERROR:root:Confirmed that task &lt;Task cancelled name='Task-2' coro=&lt;work() done, defined at ...:7&gt;&gt; was cancelled.
+Traceback (most recent call last):
+  File "...", line 27, in main
+    await task
+  File "...", line 11, in work
+    await asyncio.sleep(1)
+  File ".../asyncio/tasks.py", line 639, in sleep
+    return await future
+           ^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+INFO:root:Main is done
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to log CancelledError exceptions in asyncio programs.</p>
+</main>
+</body>
+</html>

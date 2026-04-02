@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Thumbnails Concurrently in Python (3x faster) – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Create Thumbnails Concurrently in Python (3x faster)</h1>
+<div class="post-meta">November 10, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>The <a href="../processpoolexecutor-in-python/"><strong>ProcessPoolExecutor</strong> class in Python</a> can be used to create multiple thumbnail images at the same time.</p>
+<p>This can dramatically speed-up your program compared to creating thumbnail images sequentially, one-by-one.</p>
+<p>In this tutorial, you will discover how you can create and save thumbnail images of thousands of photos concurrently using a process pool.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul><li>How to create thumbnail images one by one in Python and how slow it can be.</li><li>How to use the <strong>ProcessPoolExecutor</strong> to manage a pool of worker processes.</li><li>How to use the <strong>ProcessPoolExecutor</strong> to create thumbnail images concurrently.</li></ul>
+<p>Let's dive in.</p>
+<h2 id="create-thumbnail-images-one-at-a-time-slowly">Create Thumbnail Images One at a Time (slowly)</h2>
+<p>Creating thumbnail images from photos is a common task.</p>
+<p>We may need to create thumbnails for a large number of photos in a batch, such as all photos in a directory. This could be for a personal photo album or a website project.</p>
+<p>This is not difficult if there are just a few photos, but it can become slow if there are hundreds of photos and painfully slow if there are thousands or millions of photos.</p>
+<p>Let's explore this project as the basis for how to use the ProcessPoolExecutor class effectively to execute tasks concurrently.</p>
+<h3 id="download-animal-image-dataset">Download Animal Image Dataset</h3>
+<p>Firstly, we need a directory of photos that we can load and convert into thumbnail images.</p>
+<p>There are many options, but perhaps the easiest is to download a dataset of photos used for image recognition.</p>
+<p>In this case, we will use a dataset of animal photos made available on the Kaggle website here:</p>
+<ul><li><a href="https://www.kaggle.com/alessiocorrado99/animals10">Animals-10: Animal pictures of 10 different categories taken from Google Images</a></li></ul>
+<p>Download the dataset by clicking the download button. <strong>Note</strong>: you will require an account on kaggle.com in order to download this dataset. It will only take a moment to create. I provide a mirror of the photos we will be using further down.</p>
+<p>The dataset is about 614 megabytes and will take a few moments to download, depending on the speed of your internet connection.</p>
+<p>The dataset is downloaded as <code>archive.zip</code>. Unzip the archive and select a folder of images you'd like to work with.</p>
+<p>In this case, we will work with pictures of cats located in the <code>archive/raw-img/gatto/</code> in the unzipped archive.</p>
+<p>Copy the <code>gatto</code> folder to your local working directory where you will be writing Python scripts.</p>
+<figure><img alt="" loading="lazy" src="../pics/Screenshot-of-the-Unzipped-Image-Dataset.png"/></figure>
+<p>You can download all photos in just the <meta/><code>gatto</code> directory directly from a mirror here:</p>
+<ul><li><a href="../zips/cat_photos.zip">Cat Photos (cat_photos.zip)</a></li></ul>
+<h3 id="iterate-files-in-directory-and-create-paths">Iterate Files in Directory and Create Paths</h3>
+<p>First, we need to enumerate all images files in the directory.</p>
+<p>This can be achieved using the <code>listdir()</code> function from the <code>os</code> module. This will return the name of each file in the directory.</p>
+<ul><li><a href="https://docs.python.org/3/library/os.html">os — Miscellaneous operating system interfaces</a></li></ul>
+<p>We can then create a full path for each filename by connecting the filename with the path to the directory using the <code>join()</code> function from the <meta/><code>os.path</code> module.</p>
+<ul><li><a href="https://docs.python.org/3/library/os.path.html">os.path — Common pathname manipulations</a></li></ul>
+<p>For example:</p>
+<pre><code>...
+# list all images in the source location
+for filename in listdir(image_path):
+    # construct the input path
+    inpath = join(image_path, filename)
+</code></pre>
+<p>Next, we can create a target filename to which we will save the thumbnail images.</p>
+<p>We can do this in a few steps.</p>
+<p>First, we can take the filename and split it into the name part and the file extension using the <code>splitext()</code> function in the <code>os.path</code> module.</p>
+<pre><code>...
+# separate the filename into name and extension
+name, _ = splitext(filename)
+</code></pre>
+<p>We can then create a name part of the filename with <code>a _thumbnail</code> string at the end.</p>
+<pre><code>...
+# construct a new filename
+out_filename = f'{name}_thumbnail.{ext}'
+</code></pre>
+<p>Finally, we can join the filename with the output path for the directory where we intend to save all of the thumbnail images.</p>
+<pre><code>...
+# construct the output path
+outpath = join(save_path, out_filename)
+</code></pre>
+<p>Tying this together, the <code>get_output_path()</code> function below takes the name of the target directory for thumbnail images, the filename of the image to be loaded and a new file extension (in case we choose to change the image file type), and returns an output path for the thumbnail image.</p>
+<pre><code># return the output path for a thumbnail image
+def get_output_path(save_path, filename, extension):
+    # separate the filename into name and extension
+    name, _ = splitext(filename)
+    # construct a new filename
+    out_filename = f'{name}_thumbnail.{extension}'
+    # construct the output path
+    outpath = join(save_path, out_filename)
+    return outpath
+</code></pre>
+<h3 id="load-photos-and-save-thumbnails">Load Photos And Save Thumbnails</h3>
+<p>Next, we need to load the original image, convert it to a thumbnail, and then save the thumbnail image.</p>
+<p>This can be achieved easily using the Pillow Python library for image manipulation.</p>
+<ul><li><a href="https://pillow.readthedocs.io/en/stable/index.html">Pillow (PIL Fork)</a></li></ul>
+<p>This library is very likely already installed on your system.</p>
+<p>If not, you can install it using your preferred Python package manager, such as <code>pip</code>:</p>
+<pre><code>pip3 install Pillow</code></pre>
+<p>We can load an image with Pillow using the <code>Image.open()</code> function within a context manager to ensure that the file is closed correctly.</p>
+<pre><code>...
+# load the image
+with Image.open(inpath) as image:
+	# ...
+</code></pre>
+<p>Once loaded, we can resize the image using the <code>thumbnail()</code> function and specify the preferred size as a tuple.</p>
+<p>For example, a common thumbnail size is 128x128 pixels. If the original image is not square, then the longest edge of the new thumbnail will be 128 pixels, preserving the aspect ratio of the original image.</p>
+<pre><code>...
+# create a thumbnail image
+image.thumbnail((128,128))
+</code></pre>
+<p>Finally, we can save the resized image by calling the <meta/><code>save()</code> function with the path, which we prepared earlier.</p>
+<p>The <code>save()</code> function allows you to specify the image format as a string constant. In this case we will save all thumbnail images in PNG format, which is popular on the web.</p>
+<pre><code>...
+# save the thumbnail image in PNG format
+image.save(outpath, 'PNG')
+</code></pre>
+<p>Tying this together, the <code>save_thumbnail()</code> function below loads a photo, creates a thumbnail, and saves it to the provided location in PNG format.</p>
+<pre><code># load an image and save a thumbnail version
+def save_thumbnail(inpath, outpath):
+    # load the image
+    with Image.open(inpath) as image:
+        # create a thumbnail image
+        image.thumbnail((128,128))
+        # save the thumbnail image in PNG format
+        image.save(outpath, 'PNG')
+</code></pre>
+<p>We can then call this function for each filename in the directory.</p>
+<p>The <code>main()</code> function below does this, first specifying the directory that contains the photos and the directory where the thumbnails will be saved.</p>
+<p>The directory of photos is then enumerated, input and output paths are constructed calling <code>get_output_path()</code> as needed, then thumbnails are created and saved by calling the <code>save_thumbnail()</code> function.</p>
+<pre><code># entry point
+def main():
+    # location for loading images
+    image_path = 'gatto'
+    # location for saving image thumbnails
+    save_path = 'tmp'
+    # create the output directory
+    makedirs(save_path, exist_ok=True)
+    # list all images in the source location
+    for filename in listdir(image_path):
+        # construct the input path
+        inpath = join(image_path, filename)
+        # construct the output path
+        outpath = get_output_path(save_path, filename, 'png')
+        # create the thumbnail
+        save_thumbnail(inpath, outpath)
+        # report progress
+        print(f'.saved {outpath}')
+</code></pre>
+<p>Tying this together, the complete example of creating thumbnails for all photos in a directory is listed below.</p>
+<p>Note: you may want to change the path to the <code>gatto</code> directory to match your system, or move the <meta/><code>gatto</code> directory into the same directory as your Python file.</p>
+<pre><code># SuperFastPython.com
+# create thumbnails of all images in a directory
+from os import listdir
+from os import makedirs
+from os.path import splitext
+from os.path import join
+from PIL import Image
+
+# load an image and save a thumbnail version
+def save_thumbnail(inpath, outpath):
+    # load the image
+    with Image.open(inpath) as image:
+        # create a thumbnail image
+        image.thumbnail((128,128))
+        # save the thumbnail image in PNG format
+        image.save(outpath, 'PNG')
+
+# return the output path for a thumbnail image
+def get_output_path(save_path, filename, extension):
+    # separate the filename into name and extension
+    name, _ = splitext(filename)
+    # construct a new filename
+    out_filename = f'{name}_thumbnail.{extension}'
+    # construct the output path
+    outpath = join(save_path, out_filename)
+    return outpath
+
+# entry point
+def main():
+    # location for loading images
+    image_path = 'gatto'
+    # location for saving image thumbnails
+    save_path = 'tmp'
+    # create the output directory
+    makedirs(save_path, exist_ok=True)
+    # list all images in the source location
+    for filename in listdir(image_path):
+        # construct the input path
+        inpath = join(image_path, filename)
+        # construct the output path
+        outpath = get_output_path(save_path, filename, 'png')
+        # create the thumbnail
+        save_thumbnail(inpath, outpath)
+        # report progress
+        print(f'.saved {outpath}')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example will create a thumbnail for each photo in the directory saved in a <code>tmp/</code> directory relative to the Python script.</p>
+<p>Each file is loaded and saved as a thumbnail sequentially.</p>
+<p>This is relatively slow.</p>
+<p>On my system, it takes approximately 10.3 seconds to complete.</p>
+<p><strong>How long does it take to run on your system?</strong><br/>Let me know in the comments below.</p>
+<pre><code>.saved tmp/1716_thumbnail.png
+.saved tmp/1346_thumbnail.png
+.saved tmp/373_thumbnail.png
+.saved tmp/ea36b40d2df2003ed1584d05fb1d4e9fe777ead218ac104497f5c978a7e8b7bc_640_thumbnail.png
+.saved tmp/e831b40a2cf2023ed1584d05fb1d4e9fe777ead218ac104497f5c978a7eebdbb_640_thumbnail.png
+.saved tmp/1653_thumbnail.png
+.saved tmp/ea35b70e2bf3033ed1584d05fb1d4e9fe777ead218ac104497f5c978a7eebdbb_640_thumbnail.png
+.saved tmp/1203_thumbnail.png
+.saved tmp/1829_thumbnail.png
+.saved tmp/47_thumbnail.png
+.saved tmp/1311_thumbnail.png
+...
+</code></pre>
+<h2 id="create-a-pool-of-workers-with-the-processpoolexecutor">Create a Pool of Workers With the ProcessPoolExecutor</h2>
+<p>We can use the <code>ProcessPoolExecutor</code> to speed up the process of creating thumbnail images.</p>
+<p>The <meta/><code>ProcessPoolExecutor</code> class is provided as part of the concurrent.futures module for easily running concurrent tasks.</p>
+<p>The <meta/><code>ProcessPoolExecutor</code> provides a pool of worker processes, which is different from the <code>ThreadPoolExecutor</code> that provides a pool of worker threads.</p>
+<p>You can learn more about the full concurrent API here:</p>
+<ul><li><a href="https://docs.python.org/3/library/concurrent.futures.html">concurrent.futures — Launching parallel tasks</a></li></ul>
+<p>Generally, <meta/><code>ProcessPoolExecutor</code> should be used for concurrent CPU-bound tasks, like computing something, and the <meta/><code>ThreadPoolExecutor</code> should be used for concurrent IO-bound tasks, like downloading files.</p>
+<p>Using the <meta/><code>ProcessPoolExecutor</code> was designed to be easy and straightforward. It is like the "automatic mode" for Python processes.</p>
+<ol><li>Create the process pool by calling <code>ProcessPoolExecutor()</code>.</li><li>Submit tasks and get futures by calling <code>submit()</code> or <code>map()</code>.</li><li>Wait and get results as tasks complete by calling <code>as_completed()</code>.</li><li>Shutdown the process pool by calling <code>shutdown()</code>.</li></ol>
+<h3 id="create-the-process-pool">Create the Process Pool</h3>
+<p>First, a <meta/><code>ProcessPoolExecutor</code> instance must be created. By default, it will create a pool that is equal to the number of logical CPUs you have available.</p>
+<p>For example, if you have four CPU cores and each has hyperthreading (common for most modern CPUs), then Python will see eight logical CPUs in your system and will configure the <meta/><code>ProcessPoolExecutor</code> to have eight worker processes.</p>
+<p>This is good for most purposes.</p>
+<pre><code>...
+# create a process pool with the default number of workers
+pool = ProcessPoolExecutor()
+</code></pre>
+<p>You can specify the number of worker processes via the <code>max_workers</code> argument. </p>
+<p>This can be a good idea if the tasks you are executing are CPU intensive, in which case you might get better performance by setting the number of works equal to the number of physical (not logical) CPU cores; for example:</p>
+<pre><code>...
+# create a process pool with 4 workers
+pool = ProcessPoolExecutor(max_workers=4)
+</code></pre>
+<p>The <meta/><code>max_workers</code> argument is the first argument and does not need to be explicitly named; for example:</p>
+<pre><code>...
+# create a process pool with 4 workers
+pool = ProcessPoolExecutor(4)
+</code></pre>
+<h3 id="submit-tasks-to-the-process-pool">Submit Tasks to the Process Pool</h3>
+<p>Once created, it can send tasks into the pool to be completed using the <code>submit()</code> function.</p>
+<p>This function takes the name of the function to call any and all arguments and returns a <meta/><code>Future</code> object.</p>
+<p>The <code>Future</code> object is a promise to return the results from the task (if any) and provides a way to determine if a specific task has been completed or not.</p>
+<pre><code># submit tasks to the process pool
+future = pool.submit(task, arg1, arg2, ...)</code></pre>
+<p>The return from a function executed by the process pool can be accessed via the <code>result()</code> function on the <meta/><code>Future</code> object. </p>
+<p>It will wait until the result is available, if needed, or return immediately if the result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from a future
+result = future.result()
+</code></pre>
+<p>The <meta/><code>ProcessPoolExecutor</code> also provides a concurrent version of the built-in <meta/><code>map()</code> function.</p>
+<p>It works in the same way as the built-in <meta/><code>map()</code> function, taking the name of a function and an iterable. It will then apply the function to each item in the iterable. It then returns an iterable over the results returned from the target function.</p>
+<p>Unlike the built-in <code>map()</code> function, the function calls are performed concurrently rather than sequentially.</p>
+<p>A common idiom when using the <meta/><code>map()</code> function is to iterate over the results returned. We can use the same idiom with the concurrent version of the <meta/><code>map()</code> function on the process pool; for example:</p>
+<pre><code>...
+# perform all tasks in parallel
+for result in pool.map(task, items):
+	# ...
+</code></pre>
+<h3 id="get-results-as-tasks-complete">Get Results as Tasks Complete</h3>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available rather than waiting for tasks to be completed in the order they were submitted.</p>
+<p>The <code>concurrent.futures</code> module provides an <code>as_completed()</code> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
+<p>We can call the function and provide it a list of <meta/><code>Future</code> objects created by calling <code>submit()</code> and it will return <meta/><code>Future</code> objects as they are completed in whatever order.</p>
+<p>For example, we can use a list comprehension to submit the tasks and create the list of <meta/><code>Future</code> objects:</p>
+</main>
+</body>
+</html>

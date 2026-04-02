@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Condition Variable in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Condition Variable in Python</h1>
+<div class="post-meta">December 13, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>We often need to coordinate the behavior between multiple concurrent tasks.</p>
+<p>For example, it is common for one or more tasks to need to wait for an activity to be completed by another task.</p>
+<p>Rather than requiring the task to be completed and have other task wait upon it, we can use a concurrency primitive designed for this purpose called a <strong>monitor</strong> or a <strong>condition variable</strong>, provided in asyncio via the <strong>asyncio.Condition</strong> class class.</p>
+<p>The <strong>condition variable</strong> implements the common wait/notify and wait/notify-all patterns for concurrent programming. Dependent tasks can wait on the condition variable and the target task can complete its work and notify all interested parties that a condition has been met and they can resume. </p>
+<p>In this tutorial, you will discover <strong>how to use the condition variable in asyncio</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>What is a condition variable and the types of problems where it can be used.</li>
+<li>How to create and use a condition variable to signal between asyncio tasks and coroutines.</li>
+<li>How to develop examples that make use of the condition variable.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is an Asyncio Condition Variable</h2>
+<p>In concurrency, a condition (also called a <a href="https://en.wikipedia.org/wiki/Monitor_(synchronization)">monitor</a>) allows multiple threads to be notified about some result.</p>
+<p>It combines both a mutual exclusion lock (mutex) and an event allowing exclusive access and notification.</p>
+<blockquote>
+<p>In essence, a Condition object combines the functionality of an Event and a Lock.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-sync.html">Asyncio Synchronization Primitives</a></cite></blockquote>
+<p>A mutex can be used to protect a critical section, but it cannot be used to alert other threads that a condition has changed or been met</p>
+<p>An event can be used to notify other threads, but it cannot be used to protect a critical section and enforce mutual exclusion.</p>
+<p>A condition can be acquired by a thread (like a mutex) after which it can wait to be notified by another thread that something has changed like an event. While waiting, the thread is blocked and releases the lock for other threads to acquire.</p>
+<p>Another thread can then acquire the condition, make a change, and notify one, all, or a subset of threads waiting on the condition that something has changed. The waiting thread can then wake up (be scheduled by the operating system), re-acquire the condition (mutex), perform checks on any changed state, and perform required actions.</p>
+<p>The condition variable is typically described in terms of threads. Python provides a condition variable for threads via the <strong>threading.Condition</strong> class:</p>
+<ul>
+<li><a href="../thread-condition/">Threading Condition Variable in Python</a></li>
+</ul>
+<p>Nevertheless, a condition may also be used with other units of concurrency, such as processes via the <strong>multiprocessing.Condition</strong> class:</p>
+<ul>
+<li><a href="../multiprocessing-condition-variable-in-python/">Multiprocessing Condition Variable in Python</a></li>
+</ul>
+<p>It may also be used with coroutines in asyncio via the <strong>asyncio.Condition</strong> class.</p>
+<p>Now that we know what a condition is, let's look at how we might use it in an asyncio program.</p>
+<h2>How to Use an Asyncio Condition Variable</h2>
+<p>In this section, we will explore how to use the asyncio condition variable.</p>
+<h3>Create a Condition Variable</h3>
+<p>Python provides a condition for use with coroutines via the <a href="https://docs.python.org/3/library/asyncio-sync.html#asyncio.Condition"><strong>asyncio.Condition</strong> class</a>.</p>
+<p>To use a condition variable, we must create an instance of the class.</p>
+<pre><code>...
+# create a new condition
+condition = asyncio.Condition()</code></pre>
+<p>The condition object may then be shared and used among multiple asyncio coroutines.</p>
+<h3>Acquire and Release Condition Variable</h3>
+<p>In order for a coroutine to make use of the condition, it must acquire it and release it, like a mutex lock.</p>
+<p>You can learn more about acquiring and releasing mutex locks in asyncio programs in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-lock/">How to use Asyncio Mutex Locks</a></li>
+</ul>
+<p>This can be achieved manually with the <strong>acquire()</strong> and <strong>release()</strong> methods.</p>
+<p>Acquiring the condition via <strong>acquire()</strong> returns a coroutine object that requires that the caller use an await expression.</p>
+<p>For example, we can acquire the condition, do something, then release the condition as follows:</p>
+<pre><code>...
+# acquire the condition
+await condition.acquire()
+# do something
+# ...
+# release the condition
+condition.release()</code></pre>
+<p>An alternative to calling the <strong>acquire()</strong> and <strong>release()</strong> methods directly is to use the async context manager, which will perform the acquire/release automatically for us, for example:</p>
+<pre><code>...
+# acquire the condition
+async with condition:
+	# do something
+	# ...
+</code></pre>
+<p>You can learn more about the "<strong>async with</strong>" expression in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-async-with/">What is Asyncio async with</a></li>
+</ul>
+<h3>Wait to be Notified</h3>
+<p>Once the condition is acquired, we can wait on it.</p>
+<p>This will suspend the calling coroutine until another coroutine notices it via the condition with the <strong>notify()</strong> function (seen later).</p>
+<p>This can be achieved via the <strong>wait()</strong> method that will return a coroutine and must be awaited.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the condition
+async with condition:
+	# wait to be notified
+	await condition.wait()
+</code></pre>
+<p>Critically, the condition is relinquished while waiting. This allows other coroutines to acquire it in order to also wait or to notify waiting coroutines.</p>
+<h3>Wait For Expression</h3>
+<p>The <strong>asyncio.Condition</strong> class also provides a <strong>wait_for()</strong> method that can be used to only unlock the waiting coroutine if a condition is met, such as calling a function that returns a boolean value.</p>
+<p>The name of the function that returns a boolean value can be provided to the <strong>wait_for()</strong> method directly.</p>
+<p>Like the <strong>wait()</strong> method, it returns a coroutine object that must be awaited.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the condition
+async with condition:
+	# wait to be notified and a function to return true
+	await condition.wait_for(all_data_collected)
+</code></pre>
+<p>The condition is only checked when the coroutine is notified. If the condition is not met, the coroutine may be notified many times and will not resume until the condition is met.</p>
+<h3>Notify Waiting Coroutines</h3>
+<p>We also must acquire the condition in a coroutine if we wish to notify waiting coroutines. This too can be achieved directly with the acquire/release method calls or via the context manager.</p>
+<p>We can notify a single waiting coroutine via the <strong>notify()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the condition
+async with condition:
+	# notify a waiting coroutine
+	condition.notify()
+</code></pre>
+<p>The notified coroutine will resume as soon as it can re-acquire the mutex within the condition. This will be attempted automatically as part of its call to <strong>wait()</strong>, you do not need to do anything extra.</p>
+<p>If there are more than one coroutine waiting on the condition, we will not know which coroutine will be notified.</p>
+<p>We can also notify a subset of waiting coroutines by setting the “<strong>n</strong>” argument to an integer number of coroutines to notify, for example:</p>
+<pre><code>...
+# acquire the condition
+async with condition:
+	# notify 3 waiting coroutines
+	condition.notify(n=3)
+</code></pre>
+<h3>Notify All Waiting Coroutines</h3>
+<p>Finally, we can notify all coroutines waiting on the condition via the <strong>notify_all()</strong> method.</p>
+<pre><code>...
+# acquire the condition
+async with condition:
+	# notify all coroutines waiting on the condition
+	condition.notify_all()
+</code></pre>
+<p>A final reminder, a coroutine must acquire the condition before waiting on it or notifying waiting coroutines.</p>
+<p>A failure to acquire the condition (the lock within the condition) before performing these actions will result in a <strong>RuntimeError</strong>.</p>
+<p>Now that we know how to use the <strong>asyncio.Condition</strong> class, let's look at some worked examples.</p>
+<h2>Example of Wait and Notify With an Asyncio Condition</h2>
+<p>In this section, we will explore using an <strong>asyncio.Condition</strong> to notify a waiting coroutine that something has happened.</p>
+<p>We will use a task to prepare some data and notify a waiting coroutine, and in the main coroutine, we will create and schedule the new task and use the condition to wait for the work to be completed.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of wait/notify with an asyncio condition
+import asyncio
+
+# task coroutine
+async def task(condition, work_list):
+    # block for a moment
+    await asyncio.sleep(1)
+    # add data to the work list
+    work_list.append(33)
+    # notify a waiting coroutine that the work is done
+    print('Task sending notification...')
+    async with condition:
+        condition.notify()
+
+# main coroutine
+async def main():
+    # create a condition
+    condition = asyncio.Condition()
+    # prepare the work list
+    work_list = list()
+    # wait to be notified that the data is ready
+    print('Main waiting for data...')
+    async with condition:
+        # create and start the a task
+        _ = asyncio.create_task(task(condition, work_list))
+        # wait to be notified
+        await condition.wait()
+    # we know the data is ready
+    print(f'Got data: {work_list}')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine which is used as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the shared condition and the work list.</p>
+<p>The <strong>main()</strong> coroutine then acquires the condition. A new task is created and scheduled, provided the shared condition and work list.</p>
+<p>The <strong>main()</strong> coroutine then waits to be notified, suspending and calling the new scheduled task to run.</p>
+<p>The <strong>task()</strong> coroutine runs. It first blocks for a moment to simulate effort, then adds work to the shared list. The condition is acquired and the waiting coroutine is notified, then releases the condition automatically. The task terminates.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final message, showing the updated content of the shared list.</p>
+<p>This highlights how we can use a wait-notify pattern between coroutines using a condition variable.</p>
+<pre><code>Main waiting for data...
+Task sending notification...
+Got data: [33]</code></pre>
+<p>Next, let's look at how we might notify all waiting coroutines.</p>
+<h2>Example of wait() and notify_all() With an Asyncio Condition</h2>
+<p>We can explore how to notify all coroutines waiting on a condition.</p>
+<p>In this example, we will start a suite of tasks that will wait on the condition to be notified before performing their processing and reporting a result.</p>
+<p>The main coroutine will block for a moment and then notify all waiting coroutines that they can begin processing.</p>
+<p>The complete example is listed below.</p>
+</main>
+</body>
+</html>

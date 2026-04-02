@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool Context Manager – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool Context Manager</h1>
+<div class="post-meta">July 3, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>automatically terminate a <a href="../multiprocessing-pool-python/">process pool</a></strong> once you are finished with it using the <strong>context manager interface</strong>.</p>
+<p>In this tutorial you will discover how to <strong>use the context manager interface</strong> of the <strong>process pool in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Automatically Shutdown the Process Pool</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>. Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>The process pool must be closed once we are finished with it in order to release the child worker processes.</p>
+<p><strong>How can we safely and automatically close the process pool once we are finished with it?</strong></p>
+<h2>What is a Context Manager</h2>
+<p>A context manager is an interface on Python objects for defining a new run context.</p>
+<blockquote><p>Python’s with statement supports the concept of a runtime context defined by a context manager. This is implemented using a pair of methods that allow user-defined classes to define a runtime context that is entered before the statement body is executed and exited when the statement ends</p><cite>-- <a href="https://docs.python.org/3/library/stdtypes.html#typecontextmanager">CONTEXT MANAGER TYPES, BUILT-IN TYPES</a></cite></blockquote>
+<p>A run context is a block of Python code. Examples of other run contexts include the content of a function or the content of a loop.</p>
+<p>Context managers allow an object to define the code that runs at the beginning and end of a block of code. This is a lot like the try-except-finally pattern, except the code executed before and after the block is hidden within the object and only the body block of code needs to be specified.</p>
+<p>The context manager interface has two methods that must be implemented on an object that supports the interface, they are:</p>
+<ul><li><strong>__enter__()</strong>: Executed prior to the code block.</li><li><strong>__exit__()</strong>: Executed after the code block.</li></ul>
+<p>These two methods are always executed, even if an error or exception occurs within the block. In this way, <strong>__exit__()</strong> acts like a finally block in a try-except-finally pattern.</p>
+<blockquote><p>The with statement is used to wrap the execution of a block with methods defined by a context manager . This allows common try…except…finally usage patterns to be encapsulated for convenient reuse.</p><cite>-- <a href="https://docs.python.org/3/reference/compound_stmts.html#with">THE WITH STATEMENT</a>.</cite></blockquote>
+<p>Context managers on Python objects are used via the “<strong>with</strong>” statement.</p>
+<p>The with statement takes the object instance that implements the context manager interface as an argument. It will execute the code in the object for the beginning of the block, e.g. the <strong>__enter__()</strong> method and return an instance of an object that can be assigned.</p>
+<p>Context managers are useful for operations that require the consistent initialization and shutdown of an operation.</p>
+<blockquote><p>The context manager handles the entry into, and the exit from, the desired runtime context for the execution of the block of code.</p><cite>-- <a href="https://docs.python.org/3/reference/datamodel.html#context-managers">WITH STATEMENT CONTEXT MANAGERS</a></cite></blockquote>
+<p>Common examples of context managers provided in the Python standard library include:</p>
+<ul><li>Opening and closing files.</li><li>Opening and closing sockets.</li></ul>
+<p>Now that we know what context managers are, let's look at the use of context managers with the process pool.</p>
+<h2>How to Close a Process Pool</h2>
+<p>The process pool provides a pool of worker child processes.</p>
+<p>As such, the pool must be closed directly once we are finished with it to allow the child processes and their resources to be released. Otherwise, the worker processes and their resources such as main threads will remain until the program exits.</p>
+<blockquote><p>multiprocessing.pool objects have internal resources that need to be properly managed (like any other resource) by using the pool as a context manager or by calling close() and terminate() manually. Failure to do this can lead to the process hanging on finalization.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>In fact, not closing the process pool and relying on the Python garbage collector to close it once we are finished with it can result in the program hanging.</p>
+<blockquote><p>Note that it is not correct to rely on the garbage collector to destroy the pool as CPython does not assure that the finalizer of the pool will be called</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>There are two ways to safely close the process pool, they are:</p>
+<ul><li><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.close"><strong>Pool.close()</strong> method</a>: close the pool once all issued tasks are complete, will not accept additional tasks.</li><li><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.terminate"><strong>Pool.terminate()</strong> method</a>: close the worker processes immediately, will not accept additional tasks.</li></ul>
+<p>As such, the normal usage pattern for the process pool is to:</p>
+<ol><li>Create and configure the process pool.</li><li>Issue tasks to the pool.</li><li>Close the pool.</li></ol>
+<p>We need to ensure that the pool is closed, even if an error is raised while tasks are issued to the pool and their results are processed.</p>
+<p>There are three main ways we could handle this, they are:</p>
+<ol><li>Directly.</li><li>With a Try-Except-Finally pattern.</li><li>With a Context Manager.</li></ol>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Approach 1: Directly</h3>
+<p>We can create, use and close the pool directly.</p>
+<p>This can be achieved by calling the class constructor to create and configure the pool.</p>
+<p>Issuing tasks to the pool using methods such as <strong>apply()</strong> and <strong>map()</strong>.</p>
+<p>Then, calling the <strong>close()</strong> method on the pool and perhaps <strong>join()</strong> to ensure all remaining tasks are completed.</p>
+<p>For example:</p>
+<pre><code>...
+# create the process pool
+pool = multiprocessing.pool.Pool()
+# issue tasks to the pool
+...
+# close the process pool
+pool.close()
+# wait for issued tasks to complete
+pool.join()</code></pre>
+<p>If we don't call the join() function and there are tasks executing the pool, it is possible that the pool will be forcefully terminated by the Python garbage collector and the tasks will not complete.</p>
+<p>The danger of this approach is that an <strong>Error</strong> or <strong>Exception</strong> could be raised while issuing tasks to the pool and processing their results.</p>
+<p>For example:</p>
+<pre><code>...
+# create the process pool
+pool = multiprocessing.pool.Pool()
+# issue tasks to the pool
+...
+raise Exception('Something bad happened')
+# ...
+# close the process pool
+pool.close()
+# wait for issued tasks to complete
+pool.join()</code></pre>
+<p>This is a problem because the pool will not be closed in a controlled manner and it is possible that it will be forcefully terminated, stopping any tasks that are being processed.</p>
+<h3>Approach 2: Try-Except-Finally</h3>
+<p>A better approach is to use a try-except-finally pattern.</p>
+<p>The issuing of tasks and processing of results can be performed within the try block. Any expected errors or exceptions can be handled in the except block, if desired. The pool can then be closed safely in the finally block.</p>
+<p>For example:</p>
+<pre><code>...
+# create the process pool
+pool = multiprocessing.pool.Pool()
+try:
+	# issue tasks to the pool
+	# ...
+except:
+	# handle expected errors and exceptions
+finally:
+	# close the process pool
+	pool.close()
+	# wait for issued tasks to complete
+	pool.join()
+</code></pre>
+<p>This is an improvement over directly closing the pool because it ensures that the safe shutdown procedure for the pool is always executed, even if an exception is raised.</p>
+<p>Using a try-finally or a try-except-finally pattern means that if an unexpected exception is raised, any other tasks issued to the pool will have a chance to complete before the pool is gracefully closed.</p>
+<p>In other programming languages like Java and C#, the try-except-finally pattern is a best practice when creating, using and releasing a resource such as a process pool.</p>
+<p>It is not a best practice in Python, because we have something better.</p>
+<h3>Approach 3: Context Manager</h3>
+<p>Python provides a context manager interface on the process pool.</p>
+<p>This achieves a similar outcome to using a try-except-finally pattern, with less code.</p>
+<p>Specifically, it is more like a try-finally pattern, where any exception handling must be added and occur within the code block itself.</p>
+<p>For example:</p>
+<pre><code>...
+# create and configure the process pool
+with multiprocessing.pool.Pool() as pool:
+	# issue tasks to the pool
+	# ...
+# close the pool automatically
+</code></pre>
+<p>There is an important difference with the try-finally block.</p>
+<p>If we look at the <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/pool.py#L735">source code for the <strong>multiprocessing.pool.Pool</strong> class</a>, we can see that the <strong>__exit__()</strong> method calls the <strong>terminate()</strong> method on the process pool when exiting the context manager block.</p>
+<p>This means that the pool is forcefully closed once the context manager block is exited. It ensures that the resources of the process pool are released before continuing on, but does not ensure that tasks that have already been issued are completed first.</p>
+<p>Therefore, if we wish to wait for all issued tasks to complete before closing the pool, we must explicitly add a call to <strong>close()</strong> and <strong>join()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create and configure the process pool
+with multiprocessing.pool.Pool() as pool:
+	# issue tasks to the pool
+	# ...
+	# close the process pool
+	pool.close()
+	# wait for issued tasks to complete
+	pool.join()
+# close the pool automatically
+</code></pre>
+<p>It means that if we fail to close the pool safely due to an unexpected error or exception, the pool will always be terminated, allowing child processes to be released and ensuring our main process does not hang waiting for the pool.</p>
+<p>Now that we know the benefit of context managers when using process pools, let's look at some examples.</p>
+<h2>Example of the Process Pool with a Context Manager</h2>
+<p>We can explore how to use the context manager interface of the process pool.</p>
+<p>In this example, we will define a custom function to execute in the process pool. We will then create and configure a process pool using the context manager interface. The task will be issued, then we will safely close the process pool.</p>
+<p>Firstly, let's define a task to execute in the process pool.</p>
+<p>The task will report a message to indicate that it is starting, blocks for one second, then reports a message that it has finished.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+</code></pre>
+<p>Next, in the main process will create and configure the process pool using the context manager interface.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>Next, we will issue a task to the process pool to execute our custom function asynchronously and not wait for the result.</p>
+<pre><code>...
+# issue tasks to the process pool
+pool.apply_async(task)</code></pre>
+<p>We can then close the process pool and wait for the issued tasks to complete.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait for all tasks to complete
+pool.join()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using the process pool context manager
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        pool.apply_async(task)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>A task is issued to the process pool, then the main process closes the pool and waits for issued tasks to complete.</p>
+<p>The process pool executes the task, reports the messages, then finishes.</p>
+<p>The main process continues on. The process pool is then terminated automatically by the context manager interface, although it has no effect in this case.</p>
+<pre><code>Task executing
+Task done</code></pre>
+<p>An alternate pattern when using the context manager interface is to explicitly block while waiting for the task result and allow the process pool to close automatically via the context manager interface.</p>
+<p>This can be achieved by getting the <strong>multiprocessing.pool.AsyncResult</strong> returned from <strong>apply_async()</strong> and waiting on the result via a call to <strong>wait()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.apply_async(task)
+# wait for the result
+result.wait()</code></pre>
+<p>In this way, we do not need to explicitly close the process pool and wait for all issued tasks to complete.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using the process pool context manager and waiting for the result
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        result = pool.apply_async(task)
+        # wait for the result
+        result.wait()
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>A task is issued to the process pool and an <strong>AsyncResult</strong> is returned. The main process blocks on the result, waiting for the task to finish.</p>
+<p>The process pool executes the task, reports the messages, then finishes.</p>
+<p>The main process continues on. The process pool is then terminated automatically by the context manager interface, releasing all of the resources.</p>
+<pre><code>Task executing
+Task done</code></pre>
+<p>Next, let's consider what happens if the context manager closes the process pool while tasks are running.</p>
+<h2>Example of Exiting the Context Manager With Running Tasks</h2>
+<p>The context manager interface of the process pool will forcefully terminate the child worker processes in the pool.</p>
+<p>This means that if there are tasks being executed when the context manager with-block exits, then those tasks will be forcefully stopped.</p>
+<p>We can update the example from the previous section to demonstrate this.</p>
+<p>The task can be issued to the process pool, then the main process can block for a fraction of a second then exit the context manager block of the process pool. This will terminate the task half-way through.</p>
+<p>For example:</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+    # issue tasks to the process pool
+    pool.apply_async(task)
+    # block for a moment
+    sleep(0.5)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using the process pool context manager and forcefully terminating running tasks
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        pool.apply_async(task)
+        # block for a moment
+        sleep(0.5)
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>A task is issued to the process pool. The main process blocks for a fraction of a second.</p>
+<p>The process pool starts executing the task and reports the first message.</p>
+<p>The main process continues on and exits the context manager. This results in the <strong>terminate()</strong> method on the process pool being executed automatically.</p>
+<p>The child worker processes in the pool are terminated and the running task is stopped half way through.</p>
+<pre><code>Task executing</code></pre>
+<p>This highlights that care must be taken to wait for running tasks when using the context manager interface of the process pool.</p>
+<h2>Takeaways</h2>
+<p>You now know how to use the context manager interface of the process pool in Python.</p>
+</main>
+</body>
+</html>

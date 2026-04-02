@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How To Identify Deadlocks With The ThreadPoolExecutor in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How To Identify Deadlocks With The ThreadPoolExecutor in Python</h1>
+<div class="post-meta">November 15, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You can get thread deadlocks when using the <a href="../threadpoolexecutor-in-python/"><strong>ThreadPoolExecutor</strong> in Python</a>.</p>
+<p>In this tutorial, you will discover how to identify deadlocks when using thread pools in Python.</p>
+<p>Let's get started.</p>
+<h2 id="threadpoolexecutor-deadlocks">ThreadPoolExecutor Deadlocks</h2>
+<p>The <code>ThreadPoolExecutor</code> is a flexible and powerful thread pool for executing ad hoc tasks in an asynchronous manner.</p>
+<p>Nevertheless, it is possible to get deadlocks when using the <meta/><code>ThreadPoolExecutor</code>.</p>
+<p>A deadlock refers to a failure condition in multithreaded programs when one thread is waiting for a result from another thread, and the other thread is waiting on a result from the first thread.</p>
+<p>The result is that neither thread can progress and the program will halt until it is externally terminated.</p>
+<p>If threads in a <meta/><code>ThreadPoolExecutor</code> are stuck in a deadlock, it means that the thread pool itself cannot be shutdown and will impact the main thread. This is especially the case if the context manager for the <meta/><code>ThreadPoolExecutor</code> is used, meaning that the <code>shutdown()</code> function of the thread pool will be called automatically and will wait forever for the deadlocked threads to complete.</p>
+<p>In this tutorial, we will look at three examples of deadlocks when using the <meta/><code>ThreadPoolExecutor</code>. They are:</p>
+<ul><li><strong>Deadlock 1</strong>: Submit and Wait for a Task Within a Task</li><li><strong>Deadlock 2</strong>: Task A Waits on Task B; Task B Waits on Task A</li><li><strong>Deadlock 3</strong>: Task Waits on Its Own Result</li></ul>
+<p>Deadlocks are caused in the <meta/><code>ThreadPoolExecutor</code> by one task waiting on one or more other tasks.</p>
+<p>Reviewing how deadlocks are possible when using the <meta/><code>ThreadPoolExecutor</code> will help you both identify and avoid deadlocks in your own programs.</p>
+<p>Note: these examples are inspired by the examples provided in the <a href="https://docs.python.org/3/library/concurrent.futures.html#threadpoolexecutors">ThreadPoolExecutor API</a>.</p>
+<p><strong>Can you think of any other examples of deadlocks with the threadpoolexecutor?</strong><br/>Let me know in the comments; I'd love to see what you discover.</p>
+<p>Next, let's take a look at the first case of a deadlock.</p>
+<h2 id="deadlock-1-submit-and-wait-for-a-task-within-a-task">Deadlock 1: Submit and Wait for a Task Within a Task</h2>
+<p>Submitting tasks to the <meta/><code>ThreadPoolExecutor</code> from target task functions can lead to a deadlock.</p>
+<p>Consider the situation where we have very few worker threads or all threads are fully occupied.</p>
+<p>Submitting a new task in this circumstance will mean the task will wait on the queue for execution, and will not execute until a worker thread becomes available. Any threads waiting on the result of the task will in turn wait.</p>
+<p>If a worker thread is the thread that submitted the new task and is waiting for the result, then this will occupy a worker thread. The worker thread will never free-up to take the new task off the queue and we will be in a deadlock.</p>
+<p>We can make this clear with an extreme version of this situation where the thread pool has a single worker thread; the worker thread enqueues a task in the thread pool and waits for the result. The worker thread will wait forever because it is occupying the single thread in the pool that is required to execute the tasks that it has submitted.</p>
+<p>We can demonstrate this case with a worked example.</p>
+<p>First, we can define a target task function named <code>task1()</code> that takes the <meta/><code>ThreadPoolExecutor</code> instance, submits a task to the pool, and waits for the result.</p>
+<pre><code># define a task
+def task1(executor):
+    sleep(0.5)
+    # submit a task
+    future = executor.submit(task2)
+    # wait for the result
+    print('Worker in task1 for task2...')
+    return future.result() # deadlock
+</code></pre>
+<p>We can then define a second task named <code>task2()</code> that is called from the first task. This second task doesn't do anything special.</p>
+<pre><code># define a task
+def task2():
+    return 'Hi here'
+</code></pre>
+<p>Finally, we can define our thread pool and submit the first task.</p>
+<p>Key to this example is that the thread pool only has a single worker thread, forcing the deadlock situation.</p>
+<p>This simulates the situation where worker threads are fully occupied with long running tasks.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(1) as executor:
+    # submit a task
+    future = executor.submit(task1, executor)
+    print('Main thread waiting for task1...')
+    result = future.result()
+    print(result)
+</code></pre>
+<p>Tying this together, the complete example of a thread deadlock in the <meta/><code>ThreadPoolExecutor</code> caused by a task submitting and waiting on a task is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by waiting for a task within a task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# define a task
+def task1(executor):
+    sleep(0.5)
+    # submit a task
+    future = executor.submit(task2)
+    # wait for the result
+    print('Worker in task1 for task2...')
+    return future.result() # deadlock
+
+# define a task
+def task2():
+    return 'Hi here'
+
+# create the thread pool
+with ThreadPoolExecutor(1) as executor:
+    # submit a task
+    future = executor.submit(task1, executor)
+    print('Main thread waiting for task1...')
+    result = future.result()
+    print(result)
+</code></pre>
+<p>Running the example first submits and waits for the results from <code>task1()</code>, which in turn submits and waits for the results of <code>task2()</code>.</p>
+<p>The limited resources available in the thread pool results in a deadlock and task1 will wait forever, in turn causing the main thread to wait forever.</p>
+<p>The program will need to be forcibly killed.</p>
+<pre><code>Main thread waiting for task1...
+Worker in task1 for task2...</code></pre>
+<p>Increasing the thread pool so that there is additional capacity will avoid the deadlock in this specific situation, but not in the general case.</p>
+<p>You can avoid this deadlock by never waiting on the results of tasks executed by the thread pool within tasks executed by the thread pool.</p>
+<p>Further, it may be a good practice to only submit tasks from one thread, e.g. the main thread, and to not expose the thread pool itself to target task functions.</p>
+<h2 id="deadlock-2-task-a-waits-on-task-b-task-b-waits-on-task-a">Deadlock 2: Task A Waits on Task B; Task B Waits on Task A</h2>
+<p>You can get a deadlock if two tasks wait on each other.</p>
+<p>For example, two tasks are submitted to the thread pool for asynchronous execution. The first task has a reference to the second task and waits on a result, and the second task has a reference to the first task and waits on a result.</p>
+<p>In this case, neither task can ever progress and both are stuck in a deadlock.</p>
+<p>This may seem obvious, in the simplest case, but may be less obvious if tasks executed by the thread pool directly interact and wait on the results from other tasks.</p>
+<p>Let's make this case concrete with a worked example.</p>
+<p>First, we can define <code>task1()</code> that will sleep for a moment, then attempt to access the result from a <code>Future</code> object, which happens to be for <code>task1()</code>.</p>
+<pre><code># define a task
+def task1():
+    sleep(0.1)
+    print('Task1 waiting on Task2...')
+    result = future2.result() # deadlock
+    return 2 + result
+</code></pre>
+<p>Next, we can define <code>task2()</code> that will also sleep for a moment, then attempt to access the result from a <meta/><code>Future</code> object; in this case, it happens to be for <meta/><code>task1()</code>.</p>
+<pre><code># define a task
+def task2():
+    sleep(0.2)
+    print('Task2 waiting on Task1...')
+    result = future1.result() # deadlock
+    return 10 + result
+</code></pre>
+<p>Finally, we can create the thread pool and submit the two tasks.</p>
+<pre><code># create the thread pool
+with ThreadPoolExecutor(2) as executor:
+    # submit a task
+    future1 = executor.submit(task1)
+    future2 = executor.submit(task2)
+    print('Main thread waiting for tasks 1 and 2...')
+</code></pre>
+<p>As the tasks wait on each other, neither will ever progress and will be stuck in a deadlock.</p>
+<p>Additionally, the context manager for the <code>ThreadPoolExecutor</code> will wait for all running threads to complete before exiting. As the two threads in the deadlock will never complete, the thread pool will wait forever to close, and the block for the context manager will never exit.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by waiting tasks waiting on each other
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# define a task
+def task1():
+    sleep(0.1)
+    print('Task1 waiting on Task2...')
+    result = future2.result() # deadlock
+    return 2 + result
+
+# define a task
+def task2():
+    sleep(0.2)
+    print('Task2 waiting on Task1...')
+    result = future1.result() # deadlock
+    return 10 + result
+
+# create the thread pool
+with ThreadPoolExecutor(2) as executor:
+    # submit a task
+    future1 = executor.submit(task1)
+    future2 = executor.submit(task2)
+    print('Main thread waiting for tasks 1 and 2...')
+</code></pre>
+<p>Running the example creates the thread pool and submits <code>task1()</code> and <code>task2()</code>.</p>
+<p>As the tasks wait for the result from each other, they wait forever and the program is stuck in a deadlock.</p>
+<pre><code>Main thread waiting for tasks 1 and 2...
+Task1 waiting on Task2...
+Task2 waiting on Task1...
+</code></pre>
+<p>You can avoid this deadlock by not accessing the results from tasks within tasks executed by the <meta/><code>ThreadPoolExecutor</code>. That is, do not pass around or access <meta/><code>Future</code> objects within target task functions.</p>
+<h2 id="deadlock-3-task-waits-on-its-own-result">Deadlock 3: Task Waits on Its Own Result</h2>
+<p>You can get a deadlock if a target task function waits on its own result.</p>
+<p>That is, a target task function can attempt to retrieve a result from a <code>Future</code> object, which just so happens to be the Future object that represents the task that is executing.</p>
+<p>This might seem obvious and easily preventable, but can happen in situations where target task functions access <meta/><code>Future</code> objects for tasks in the same thread pool.</p>
+<p>Let's explore an example.</p>
+<p>First, we can define a task that attempts to retrieve a result from a <meta/><code>Future</code> object.</p>
+<pre><code># define a task
+def task1():
+    sleep(0.5)
+    # attempt to get a result from itself
+    print('Worker in task1 for task1...')
+    value = future.result() # deadlock
+    return 99
+</code></pre>
+<p>Next, we can define the <code>ThreadPoolExecutor</code> and submit the task.</p>
+<p>This defines a <meta/><code>Future</code> object that the task will attempt to access and, in turn, cause the deadlock.</p>
+<pre><code># create the thread pool
+with ThreadPoolExecutor(1) as executor:
+    # submit a task
+    future = executor.submit(task1)
+    print('Main thread waiting for task1...')
+</code></pre>
+<p>Tying this together, the complete example of a deadlock caused by a task waiting on its own result in the <meta/><code>ThreadPoolExecutor</code> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by a task waiting on itself
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# define a task
+def task1():
+    sleep(0.5)
+    # attempt to get a result from itself
+    print('Worker in task1 for task1...')
+    value = future.result() # deadlock
+    return 99
+
+# create the thread pool
+with ThreadPoolExecutor(1) as executor:
+    # submit a task
+    future = executor.submit(task1)
+    print('Main thread waiting for task1...')
+</code></pre>
+<p>Running the example first creates the thread pool, then submits the task for execution.</p>
+<p>The task accesses a <meta/><code>Future</code> object, which happens to be for itself in the thread pool, and waits for a result.</p>
+<p>This triggers a deadlock, meaning the thread will wait forever.</p>
+<p>In turn, the context manager will close the thread pool and wait for all running threads to complete. As one thread is stuck in a deadlock, the thread pool will never shut down.</p>
+<pre><code>Main thread waiting for task1...
+Worker in task1 for task1...
+</code></pre>
+<p>This deadlock could be avoided by rearranging the code so that tasks in the thread pool do not access the <meta/><code>Future</code> objects directly, and instead receive the results from future objects as arguments.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to identify deadlocks when using the ThreadPoolExecutor in Python.</p>
+</main>
+</body>
+</html>

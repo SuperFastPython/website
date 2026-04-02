@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread Countdown Latch in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread Countdown Latch in Python</h1>
+<div class="post-meta">March 18, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can develop a <strong>countdown latch</strong> from scratch using a <strong>threading.Condition</strong>.</p>
+<p>In this tutorial you will discover how to develop a <strong>latch for threads</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>Need for a Countdown Latch</h2>
+<p>A thread is a <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread of execution</a> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming, we may need to coordinate one or more threads based on the work completed by many other threads.</p>
+<p>This may be needed for many reasons, but generally involves one master or controlling thread waiting for a fixed number of subtasks to be completed by worker threads.</p>
+<p>For example:</p>
+<ul><li>Waiting for multiple parts of a solution to be complete before piecing them together.</li><li>Waiting for all subtasks to complete before moving on to the next task.</li></ul>
+<p>Solving this type of coordination problem requires keeping track of the number of elements or subtasks that have completed in a thread-safe manner, and not moving on until all elements have completed.</p>
+<p>A latch can be used to address this type of problem as it provides a thread-safe counter and notification mechanism once the counter reaches zero.</p>
+<p><strong>What is a latch and how can we use it in Python?</strong></p>
+<h2>What is a Latch</h2>
+<p>A <strong>latch</strong> or <strong>countdown latch</strong> is a synchronization primitives used in concurrent programming.</p>
+<p>It is created in the closed position and requires a count to be decremented until zero before opening.</p>
+<p>The count is decremented by threads that pass through the latch, calling a <strong>count_down()</strong> function. This is a non-blocking call, allowing the caller to proceed immediately.</p>
+<p>Other threads register interest in the latch by calling <strong>wait()</strong> to block on the latch until it is opened.</p>
+<p>A latch is used to coordinate more threads with the full opening of the latch. It just so happens that the latch is designed to be opened incrementally each time other threads pass through, e.g. counting down from a specified number to zero.</p>
+<p>A latch is a one-use structure and is not reset after use. Once open, additional threads that may wait on the latch will not block but will instead return immediately.</p>
+<p>Internally, the latch may count up or count down, but typically decrements with each arrival, hence the common name "<em>countdown latch</em>". Internally, the latch may or may not raise an exception if more than the specified number of arrivals (countdowns) are performed.</p>
+<p>Java provides a countdown latch implementation via the <a href="https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/CountDownLatch.html"><strong>java.util.concurrent.CountDownLatch</strong> class</a>, which may provide an interesting reference.</p>
+<p>Now that we know what a latch is, let's compare it to a related synchronization primitive called a barrier.</p>
+<h2>Latch Vs Barrier</h2>
+<p>In concurrency, a latch and <a href="../thread-barrier-in-python/">barrier</a> are related, but perform different functions.</p>
+<p>A latch and a barrier are very similar, for example:</p>
+<ul><li>Both are synchronization primitives for use in concurrent programming.</li><li>Both involve a count or number of threads arriving before the state of the structure changes.</li><li>Both are a data structure that starts closed and is open once all parties arrive.</li><li>Both allow threads to wait or be blocked until the structure is open.</li></ul>
+<p>The main difference is:</p>
+<ul><li>The "<em>countdown</em>" and "<em>waiting</em>" are performed by separate parties (threads) on the latch.</li><li>The "<em>countdown</em>" and "<em>waiting</em>" are performed by the same parties (threads) on the barrier.</li></ul>
+<p>The threads that countdown on the latch are free to carry on after reaching the latch, whereas on the barrier the threads that countdown must all block or wait until the barrier is open.</p>
+<p>Put another way, the barrier coordinates the countdown threads themselves on the count, whereas the latch coordinates other threads waiting on the count alone.</p>
+<ul><li>A latch can have any number of waiting threads and a fixed number of expected arrivals before opening.</li><li>A barrier has a fixed number of waiting threads that are all waiting for each other to arrive before opening.</li></ul>
+<h3>Latch</h3>
+<p>This means that on the latch, we have separate threads counting down the latch from those threads that are waiting for the latch to open.</p>
+<p>For example, worker threads each performing their task then counting down the latch and a coordinator thread waiting for all worker threads to finish by waiting for the latch to open.</p>
+<h3>Barrier</h3>
+<p>It means that on a barrier, the threads that countdown are the same threads that wait for the barrier to open.</p>
+<p>For example, worker threads each perform their task then counting down the barrier and waiting for the other threads to finish, before all proceeding together once the barrier is open.</p>
+<h3>Latch with a Barrier</h3>
+<p>We cannot implement a latch with a barrier.</p>
+<p>A barrier will prevent the threads that count down from proceeding unlike a latch where they are free to carry on after reaching the latch. And the only threads that can wait on the barrier are those that are part of counting down.</p>
+<p>Nevertheless, we could simulate a latch with a barrier, by having the countdown threads as well as those other threads interested in waiting for the open state all wait together on the barrier until it is open.</p>
+<h3>Barrier with a Latch</h3>
+<p>We could implement a barrier with a latch.</p>
+<p>This could be achieved by having each countdown thread that reaches the latch to also wait on the latch for it to open.</p>
+<p>Now that we know the difference between a latch and a barrier, let's look at how we might implement it in Python.</p>
+<h2>How to Develop a Countdown Latch</h2>
+<p>Python does not provide a countdown latch, but we can develop one easily using a new class and a <strong>threading.Condition</strong>.</p>
+<p>We can develop a simple countdown latch class named <strong>CountDownLatch</strong>. It must have three elements:</p>
+<ul><li><strong>Constructor</strong> that require a count and initializes the internal locks.</li><li><strong>CountDown</strong> that decrements the counter in a thread safe manner and notify waiting threads if the count reaches zero.</li><li><strong>Wait</strong> that allows threads to block until the count reaches zero.</li></ul>
+<p>We will require a wait/notify structure within the latch. Python provides a <strong>threading.Condition</strong> that supports wait/notify directly.</p>
+<p>If you are new to the condition, you can learn more here:</p>
+<ul><li><a href="../thread-condition/">How to Use A Thread Condition Object in Python</a></li></ul>
+<p>Let's start developing our class.</p>
+<pre><code># simple countdown latch, starts closed then opens once count is reached
+class CountDownLatch():
+	# ...
+</code></pre>
+<p>The constructor will take a count specified by the user, indicating the expected number of parties to arrive before the latch is opened.</p>
+<p>We will store this count and then create a new <strong>threading.Condition</strong> used to manage changes to the count and to allow threads to wait and be notified.</p>
+<pre><code># constructor
+def __init__(self, count):
+    # store the count
+    self.count = count
+    # control access to the count and notify when latch is open
+    self.condition = Condition()
+</code></pre>
+<p>The <strong>count_down()</strong> function must first acquire the condition before doing anything to ensure any checking and changing of the internal count is thread safe.</p>
+<p>This can be achieved using the context manager.</p>
+<pre><code>...
+# acquire the lock on the condition
+with self.condition:
+	# ...
+</code></pre>
+<p>Next, we need to check if the latch is already open, and if so return immediately.</p>
+<pre><code>...
+# check if the latch is already open
+if self.count == 0:
+    return
+</code></pre>
+<p>We can then decrement the counter.</p>
+<pre><code>...
+# decrement the counter
+self.count -= 1</code></pre>
+<p>Finally, we can check if the counter has reached zero and whether we should notify all waiting threads.</p>
+<pre><code>...
+# check if the latch is now open
+if self.count == 0:
+    # notify all waiting threads that the latch is open
+    self.condition.notify_all()
+</code></pre>
+<p>Tying this together, the complete <strong>count_down()</strong> method is listed below.</p>
+<pre><code># count down the latch by one increment
+def count_down(self):
+    # acquire the lock on the condition
+    with self.condition:
+        # check if the latch is already open
+        if self.count == 0:
+            return
+        # decrement the counter
+        self.count -= 1
+        # check if the latch is now open
+        if self.count == 0:
+            # notify all waiting threads that the latch is open
+            self.condition.notify_all()
+</code></pre>
+<p>The <strong>count_down()</strong> function could be extended to support counting down by a specified amount. It may also raise an <strong>Exception</strong> if the latch is already open, if that truly is an error state (it feels like it is).</p>
+<p>Finally, we need a <strong>wait()</strong> function.</p>
+<p>Again, we must acquire the condition before we can check the internal state in a thread-safe manner.</p>
+<pre><code>...
+# acquire the lock on the condition
+with self.condition:
+	# ...
+</code></pre>
+<p>We can then check if the latch is already open, in which case we can return immediately.</p>
+<pre><code>...
+# check if the latch is already open
+if self.count == 0:
+    return
+</code></pre>
+<p>Otherwise, we can wait on the condition to be notified that the latch will be opened.</p>
+<pre><code>...
+# wait to be notified when the latch is open
+self.condition.wait()</code></pre>
+<p>Tying this together, the complete <strong>wait()</strong> function is listed below.</p>
+<pre><code># wait for the latch to open
+def wait(self):
+    # acquire the lock on the condition
+    with self.condition:
+        # check if the latch is already open
+        if self.count == 0:
+            return
+        # wait to be notified when the latch is open
+        self.condition.wait()
+</code></pre>
+<p>The <strong>wait()</strong> function could be extended to support a timeout.</p>
+<p>And that's it.</p>
+<p>Tying this together, the complete <strong>CountDownLatch</strong> class is listed below.</p>
+<pre><code># simple countdown latch, starts closed then opens once count is reached
+class CountDownLatch():
+    # constructor
+    def __init__(self, count):
+        # store the count
+        self.count = count
+        # control access to the count and notify when latch is open
+        self.condition = Condition()
+
+    # count down the latch by one increment
+    def count_down(self):
+        # acquire the lock on the condition
+        with self.condition:
+            # check if the latch is already open
+            if self.count == 0:
+                return
+            # decrement the counter
+            self.count -= 1
+            # check if the latch is now open
+            if self.count == 0:
+                # notify all waiting threads that the latch is open
+                self.condition.notify_all()
+
+    # wait for the latch to open
+    def wait(self):
+        # acquire the lock on the condition
+        with self.condition:
+            # check if the latch is already open
+            if self.count == 0:
+                return
+            # wait to be notified when the latch is open
+            self.condition.wait()
+</code></pre>
+<p>You might want to add extra methods to the latch as a fun extension.</p>
+<p>For example, we could add a method to get the current value of the internal count. We also might want to add a method to reset the count, but perhaps only if the latch is already open, e.g. reset from open to closed state.</p>
+<p>We can use this countdown class by first creating an instance of the class and specifying the number of expected parties to arrive as an argument to the constructor.</p>
+<pre><code>...
+# create the countdown latch
+latch = CountDownLatch(5)</code></pre>
+<p>As each party arrives at the latch, we can call the <strong>count_down()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# count down the latch
+latch.count_down()</code></pre>
+<p>Any threads interested in when the latch is open can call the <strong>wait()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# block until the latch is open
+latch.wait()</code></pre>
+<p>Now that we know how to develop a countdown latch class, let's look at using it in a worked example.</p>
+<h2>Example of Using a Countdown Latch</h2>
+<p>We can develop an example to demonstrate the latch.</p>
+<p>In this example, we will start a number of threads, each of which must perform some task then trigger the latch to signal they are done. The coordinating thread will wait for all threads to complete their work before carrying on.</p>
+<p>This is a very common usage pattern for a countdown latch.</p>
+<p>First, we can define a custom function to be executed by each worker thread. The function will take the latch instance as well as a unique identifying integer as arguments.</p>
+<p>We will simulate work in the thread by blocking for a random interval of ten seconds, then counting down the latch to indicate the work is done before finally reporting a message that the thread is closing as all work is done.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task that counts down the latch
+def task(latch, i):
+    # block for a moment
+    sleep(random() * 10)
+    # count down the latch
+    latch.count_down()
+    # report done
+    print(f'Thread {i} done.')
+</code></pre>
+<p>Next, in the main thread we can first create an instance of the latch class, configured to expect five arrivals.</p>
+<pre><code>...
+# create the countdown latch
+latch = CountDownLatch(5)</code></pre>
+<p>We can then create and start five worker threads, each configured to call our <strong>task()</strong> function via the "<strong>target</strong>" argument of the <strong>threading.Thread</strong> constructor. We will pass the latch instance as an argument as well as a unique integer for each worker thread from 0 to 4.</p>
+<pre><code>...
+# start 5 threads
+for i in range(5):
+    thread = Thread(target=task, args=(latch, i))
+    thread.start()
+</code></pre>
+<p>The main thread will then wait, blocking until the latch is open.</p>
+<p>This signals that all worker threads have completed their work successfully and have reached the latch.</p>
+<pre><code>...
+# wait for the latch to close
+print('Main waiting on latch...')
+latch.wait()</code></pre>
+<p>Finally, the main thread will report a message and terminate.</p>
+<pre><code>...
+# latch is open, move on
+print('Main done')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a countdown latch
+from time import sleep
+from random import random
+from threading import Thread
+from threading import Condition
+
+# simple countdown latch, starts closed then opens once count is reached
+class CountDownLatch():
+    # constructor
+    def __init__(self, count):
+        # store the count
+        self.count = count
+        # control access to the count and notify when latch is open
+        self.condition = Condition()
+
+    # count down the latch by one increment
+    def count_down(self):
+        # acquire the lock on the condition
+        with self.condition:
+            # check if the latch is already open
+            if self.count == 0:
+                return
+            # decrement the counter
+            self.count -= 1
+            # check if the latch is now open
+            if self.count == 0:
+                # notify all waiting threads that the latch is open
+                self.condition.notify_all()
+
+    # wait for the latch to open
+    def wait(self):
+        # acquire the lock on the condition
+        with self.condition:
+            # check if the latch is already open
+            if self.count == 0:
+                return
+            # wait to be notified when the latch is open
+            self.condition.wait()
+
+# task that counts down the latch
+def task(latch, i):
+    # block for a moment
+    sleep(random() * 10)
+    # count down the latch
+    latch.count_down()
+    # report done
+    print(f'Thread {i} done.')
+
+# create the countdown latch
+latch = CountDownLatch(5)
+# start 5 threads
+for i in range(5):
+    thread = Thread(target=task, args=(latch, i))
+    thread.start()
+# wait for the latch to close
+print('Main waiting on latch...')
+latch.wait()
+# latch is open, move on
+print('Main done')
+</code></pre>
+<p>Running the example first creates the countdown latch.</p>
+<p>Then five worker threads are created and configured and started immediately.</p>
+<p>Each worker thread blocks for some fraction of ten seconds, triggers the latch, then reports a message that is done before terminating.</p>
+<p>Meanwhile, the main thread blocks on the latch, waiting for each thread to complete its work and signal the fact on the latch.</p>
+<p>Once all threads reach the latch, the latch is opened and the main thread is notified and its <strong>wait()</strong> function returns.</p>
+<p>The main thread then carries on and reports its final message.</p>
+<pre><code>Main waiting on latch...
+Thread 4 done.
+Thread 0 done.
+Thread 1 done.
+Thread 2 done.
+Thread 3 done.
+Main done
+</code></pre>
+<p>Now that we know how to use the countdown latch, let's consider how we might simulate a similar result with a barrier.</p>
+<h2>Simulate a Latch with a Barrier</h2>
+<p>A barrier cannot be used to implement a latch.</p>
+<p>The main reason is because the latch allows threads that arrive to carry on and to have any number of other waiting threads. Whereas the barrier requires that each thread that arrives must also wait for all other threads to arrive.</p>
+<p>Nevertheless, if the application permits these limitations, we could simulate (something like) a countdown latch with a <a href="../thread-barrier-in-python/"><strong>threading.Barrier</strong> class</a>.</p>
+<p>A barrier is first configured with the expected number of parties then requires that each thread that arrives calls the <strong>wait()</strong> function, and that's all there is to it.</p>
+<p>If you are new to the barrier, you can learn more here:</p>
+<ul><li><a href="../thread-barrier-in-python/">How to Use a Thread Barrier in Python</a></li></ul>
+<p>We can update the example from the previous section to use a <strong>threading.Barrier</strong> instead of our custom <strong>CountdownLatch</strong> class.</p>
+<p>First, we must update the <strong>task()</strong> function to take a <strong>threading.Barrier</strong> instance as an argument and to call the <strong>wait()</strong> function on the barrier once its work is completed.</p>
+<p>The updated version of the <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task that does some work and waits on the barrier
+def task(barrier, i):
+    # block for a moment
+    sleep(random() * 10)
+    # wait on the barrier
+    barrier.wait()
+    # report done
+    print(f'Thread {i} done.')
+</code></pre>
+<p>Next, we must create an instance of the <strong>threading.Barrier</strong> class configured to expect five parties, one for each worker thread, plus the main thread, e.g. 6.</p>
+<pre><code>...
+# create the barrier
+barrier = Barrier(5 + 1)</code></pre>
+<p>Next, we can create and configure the worker threads to take the instance of the barrier as an argument.</p>
+<pre><code>...
+# start 5 threads
+for i in range(5):
+    thread = Thread(target=task, args=(barrier, i))
+    thread.start()
+</code></pre>
+<p>Finally, the main thread must wait on the barrier for all worker threads to arrive.</p>
+<pre><code>...
+# wait for the barrier to open
+print('Main waiting on barrier...')
+barrier.wait()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of simulating a latch with a barrier
+from time import sleep
+from random import random
+from threading import Thread
+from threading import Barrier
+
+# task that does some work and waits on the barrier
+def task(barrier, i):
+    # block for a moment
+    sleep(random() * 10)
+    # wait on the barrier
+    barrier.wait()
+    # report done
+    print(f'Thread {i} done.')
+
+# create the barrier
+barrier = Barrier(5 + 1)
+# start 5 threads
+for i in range(5):
+    thread = Thread(target=task, args=(barrier, i))
+    thread.start()
+# wait for the barrier to open
+print('Main waiting on barrier...')
+barrier.wait()
+# barrier is open, move on
+print('Main done')
+</code></pre>
+<p>Running the example first creates the barrier and then creates and starts the five worker threads passing the barrier instance as an argument.</p>
+<p>Each worker thread performs its work then reaches the barrier and waits, blocking until all other worker threads and the main thread arrive at the barrier.</p>
+<p>This keeps the worker threads alive, along with their resource requirements in memory (e.g. each thread has its own stack space and is scheduled by the operating system).</p>
+<p>The main thread reaches the barrier and waits for all of the worker threads to complete their work.</p>
+<p>Finally, all threads reach the barrier and are free to continue.</p>
+<p>The worker threads print their messages and terminate. The main thread carries on and reports its own final message.</p>
+<p>We can see that functionally, we achieved the same result as the previous section. Namely, we were able to block the main thread until the worker threads finished, at the cost of keeping the worker threads alive unnecessarily.</p>
+<pre><code>Main waiting on barrier...
+Thread 0 done.
+Main done
+Thread 4 done.
+Thread 3 done.
+Thread 2 done.
+Thread 1 done.</code></pre>
+<p>Now that we know how to simulate a latch with a barrier (sort of), let's explore the reverse of simulating a barrier with a latch.</p>
+<h2>Simulate a Barrier with a Latch</h2>
+<p>We can simulate a barrier using a countdown latch.</p>
+<p>This is relatively straightforward and involves having the threads that arrive on the latch to count down also wait.</p>
+<p>We can update the above countdown latch example to act like a barrier by having each worker thread wait on the latch, and to have the main thread also countdown the latch along with the wait.</p>
+<p>First, we must update the latch to add an additional position for the main thread, before opening.</p>
+<pre><code>...
+# create the countdown latch
+latch = CountDownLatch(5 + 1)</code></pre>
+<p>Next, we can update the <strong>task()</strong> function so that each thread will wait for the latch to open after counting down.</p>
+<pre><code># task that counts down the latch
+def task(latch, i):
+    # block for a moment
+    sleep(random() * 10)
+    # count down the latch
+    latch.count_down()
+    # wait on the latch itself
+    latch.wait()
+    # report done
+    print(f'Thread {i} done.')
+</code></pre>
+<p>We can then update the main thread to first count down the latch, then wait, just like the worker threads.</p>
+<pre><code>...
+# wait for the latch to close
+print('Main waiting on latch...')
+# count down the latch as well
+latch.count_down()
+# wait for all other threads
+latch.wait()
+</code></pre>
+<p>The effect is that the latch will act like a barrier, mostly.</p>
+<p>Unlike a barrier, there is a possible race condition between the last thread reaching the call to <strong>count_down()</strong> and other threads making it to their call to <strong>wait()</strong>, meaning that it is theoretically possible that not all threads are blocking on the call to <strong>wait()</strong> at the time the final thread comes through. But this is a reasonably minor difference.</p>
+<p>It points out that if you need a barrier, use a barrier, don't simulate one with a latch.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of simulating a barrier with a latch
+from time import sleep
+from random import random
+from threading import Thread
+from threading import Condition
+
+# simple countdown latch, starts closed then opens once count is reached
+class CountDownLatch():
+    # constructor
+    def __init__(self, count):
+        # store the count
+        self.count = count
+        # control access to the count and notify when latch is open
+        self.condition = Condition()
+
+    # count down the latch by one increment
+    def count_down(self):
+        # acquire the lock on the condition
+        with self.condition:
+            # check if the latch is already open
+            if self.count == 0:
+                return
+            # decrement the counter
+            self.count -= 1
+            # check if the latch is now open
+            if self.count == 0:
+                # notify all waiting threads that the latch is open
+                self.condition.notify_all()
+
+    # wait for the latch to open
+    def wait(self):
+        # acquire the lock on the condition
+        with self.condition:
+            # check if the latch is already open
+            if self.count == 0:
+                return
+            # wait to be notified when the latch is open
+            self.condition.wait()
+
+# task that counts down the latch
+def task(latch, i):
+    # block for a moment
+    sleep(random() * 10)
+    # count down the latch
+    latch.count_down()
+    # wait on the latch itself
+    latch.wait()
+    # report done
+    print(f'Thread {i} done.')
+
+# create the countdown latch
+latch = CountDownLatch(5 + 1)
+# start 5 threads
+for i in range(5):
+    thread = Thread(target=task, args=(latch, i))
+    thread.start()
+# wait for the latch to close
+print('Main waiting on latch...')
+# count down the latch as well
+latch.count_down()
+# wait for all other threads
+latch.wait()
+# latch is open, move on
+print('Main done')
+</code></pre>
+<p>Running the example first creates the latch and then creates and starts the five worker threads.</p>
+<p>Each thread performs its own work then hits the latch calling <strong>count_down()</strong> then waiting for all other parties.</p>
+<p>The main thread continues on first calling <strong>count_down()</strong> then blocking waiting for the latch to open.</p>
+<p>All worker threads reach the latch and call <strong>count_down()</strong> allowing the latch to open.</p>
+<p>Any threads blocking on the call to <strong>wait()</strong> are then released to carry on, including the main thread. Any threads that had called <strong>count_down()</strong> but had not yet made it to <strong>wait()</strong> will call <strong>wait()</strong> and not block.</p>
+<pre><code>Main waiting on latch...
+Thread 0 done.
+Main done
+Thread 2 done.
+Thread 1 done.
+Thread 3 done.
+Thread 4 done.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a countdown latch in Python.</p>
+</main>
+</body>
+</html>

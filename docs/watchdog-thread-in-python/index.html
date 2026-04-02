@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watchdog Thread in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Watchdog Thread in Python</h1>
+<div class="post-meta">March 28, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can create a <strong>watchdog thread</strong> by creating a <strong>daemon thread that polls</strong> a target resource.</p>
+<p>In this tutorial you will discover how to develop a watchdog thread in Python.</p>
+<p>Let's get started.</p>
+<h2>Need for a Watchdog Thread</h2>
+<p>A thread is a <strong>thread of execution</strong> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming, we often need to monitor a resource and take action if a problem is detected.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>Access to the resource is essential to the application.</li><li>The resource may be known to have rare but repeating intermittent problems.</li><li>The resource may be restarted or changed if there is a fault, allowing the application to continue working.</li></ul>
+<p>This can be achieved using a watchdog thread.</p>
+<p><strong>What is a watchdog thread and how can we develop one in Python?</strong></p>
+<h2>What is a Watchdog Thread</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Watchdog_timer">watchdog thread</a> is a thread that monitors another resource and takes action if a change or failure is detected.</p>
+<p>Generally, a watchdog may monitor any resource, although when we are describing watchdog threads, the resource is typically directly relevant to the parent application.</p>
+<p>A watchdog may monitor a resource within the application, such as:</p>
+<ul><li>Another thread, such as a worker thread.</li><li>Data, such as data structures in memory.</li><li>Program state, such as global or instance variables.</li></ul>
+<p>A watchdog may also monitor an external resource, perhaps on which the application is dependent, such as:</p>
+<ul><li>A server, e.g. webserver, fileserver, etc.</li><li>A file or directory, e.g. for change.</li><li>A database, e.g. for accessibility.</li></ul>
+<p>A watchdog thread will typically monitor the resource using polling. This means checking the status of the resource repeatedly in a loop after an interval of time.</p>
+<p>If a fault or problem with the monitored resource is detected, then the watchdog thread will take action, depending on the nature of the resource, such as:</p>
+<ul><li>Reporting the fault, e.g. logging.</li><li>Restarting or resuming a task or service.</li><li>Changing the server address, e.g. fail-over.</li></ul>
+<p>Next, let's look at how to develop a watchdog thread.</p>
+<h2>How to Create a Watchdog Thread</h2>
+<p>A watchdog thread can be created using a new daemon <strong>threading.Thread</strong> in Python.</p>
+<p>This can be achieved by creating a new thread instance and using the "<strong>target</strong>" argument to specify the watchdog function.</p>
+<p>The watchdog can be given an appropriate <strong>name</strong>, like "<strong>Watchdog</strong>" and be configured to be a daemon thread by setting the "<strong>daemon</strong>" argument to <strong>True</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# configure a watchdog thread
+watchdog = threading.Thread(target=watchdog_task, name="Watchdog", daemon=True)
+# start the watchdog thread
+watchdog.start()</code></pre>
+<p>A daemon thread is a background thread and is appropriate for a watchdog task.</p>
+<p>You can learn more about daemon threads in this tutorial:</p>
+<ul><li><a href="../daemon-threads-in-python/">How to Use Daemon Threads in Python</a></li></ul>
+<p>The function for executing the watchdog task may have any name you like and may take any required data as arguments.</p>
+<p>For example, we could define a function named <strong>watchdog()</strong> and have it take the resource to monitor and the name of the function to call if a failure is detected.</p>
+<p>The watchdog would then loop for the duration of the main application and check the status of the resource every interval. This can be achieved using a while loop that first checks the resource, takes action if needed, then blocks for an interval of time, such as a fraction of a second.</p>
+<p>For example:</p>
+<pre><code># task for a watchdog thread to monitor a resource
+def watchdog_task(resource, action):
+	# poll the target resource
+	while True:
+		# check the resource
+		if has_fault(resource):
+			# fix the resource
+			action()
+		# block for a moment
+		sleep(0.5)</code></pre>
+<p>The checking of the resource may call a custom function or may call a function on the resource object itself.</p>
+<p>The action taken may operate on the application, e.g. change a server address, or may operate on the resource object itself. It may even be as simple as logging the fault.</p>
+<p>Finally, the target resource that is being monitored should be polled an appropriate amount that makes sense for the application. Perhaps it is every fraction of a section, every minute, hour, day or so on. It may also be some combination of polling and responding to events within the application.</p>
+<p>Now that we know how to create and configure a watchdog thread, let's look at a worked example.</p>
+<h2>Example of a Watchdog Thread</h2>
+<p>We can develop a worked example of a watchdog thread.</p>
+<p>In this example, we will have a worker thread that is designed to run for a long time, but is subject to intermittent failures that cause the thread to stop. We will then create a watchdog thread that will monitor the worker thread for a failure and will restart it as needed.</p>
+<p>First, let's define the task for the worker thread.</p>
+<p>We will name the function <strong>worker_task()</strong> and give it a counter variable that it must increment as high as possible in a loop forever. Each iteration of the loop, the thread will block for a second and may fail with a 30% chance.</p>
+<p>The function below implements this.</p>
+<pre><code># task for a worker thread
+def worker_task():
+    # work forever
+    counter = 0
+    while True:
+        counter += 1
+        print(f'.worker {counter}')
+        # conditionally fail
+        if random() &lt; 0.3:
+            print('.worker failed')
+            break
+        # block
+        sleep(1)
+</code></pre>
+<p>Next, we can define a function that is responsible for creating a new <strong>threading.Thread</strong> instance configured to run the worker thread, start the thread and return the thread instance.</p>
+<p>This function can be used to initially start the worker thread, and to restart the worker thread if it fails.</p>
+<p>The <strong>boot_worker()</strong> function below implements this.</p>
+<pre><code># create and start a worker thread, returns instance of thread
+def boot_worker():
+    # create and configure the thread
+    worker = Thread(target=worker_task, name="Worker")
+    # start the thread
+    worker.start()
+    # return the instance of the thread
+    return worker
+</code></pre>
+<p>Next, we will create a function for running the watchdog.</p>
+<p>This function will have a loop that will run for the duration of the program. Each iteration it will check if the worker thread is alive and if not restart it by calling the <strong>boot_worker()</strong> function.</p>
+<p>The watchdog will poll the worker thread every half second.</p>
+<p>The <strong>watchdog()</strong> function below implements this, taking the worker thread instance "<strong>target</strong>" and function for booting a new worker thread "<strong>action</strong>" as arguments.</p>
+<pre><code># task for a watchdog thread
+def watchdog(target, action):
+    # run forever
+    print('Watchdog running')
+    while True:
+        # check the status of the target thread
+        if not target.is_alive():
+            # report fault
+            print('Watchdog: target thread is not running, restarting...')
+            # restart the target thread
+            target = action()
+        # block for a moment
+        sleep(0.5)
+</code></pre>
+<p>Finally, the main thread will first book the worker thread.</p>
+<pre><code>...
+# create the worker thread
+worker = boot_worker()
+</code></pre>
+<p>It then creates a new daemon thread and configures it to run the watchdog function. Then starts the watchdog thread.</p>
+<pre><code>...
+# create the watchdog for the worker thread
+watchdog = Thread(target=watchdog, args=(worker, boot_worker), daemon=True, name="Watchdog")
+# start the watchdog
+watchdog.start()
+</code></pre>
+<p>Finally, the main thread is free to go off and run the main application.</p>
+<p>We will simulate this by having the main thread block on the watchdog thread.</p>
+<pre><code>...
+# do other things...
+watchdog.join()</code></pre>
+<p>Tying this together, the complete example of a watchdog thread to monitor a worker thread is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a watchdog thread monitoring a worker thread
+from time import sleep
+from random import random
+from threading import Thread
+
+# task for a worker thread
+def worker_task():
+    # work forever
+    counter = 0
+    while True:
+        counter += 1
+        print(f'.worker {counter}')
+        # conditionally fail
+        if random() &lt; 0.3:
+            print('.worker failed')
+            break
+        # block
+        sleep(1)
+
+# create and start a worker thread, returns instance of thread
+def boot_worker():
+    # create and configure the thread
+    worker = Thread(target=worker_task, name="Worker")
+    # start the thread
+    worker.start()
+    # return the instance of the thread
+    return worker
+
+# task for a watchdog thread
+def watchdog(target, action):
+    # run forever
+    print('Watchdog running')
+    while True:
+        # check the status of the target thread
+        if not target.is_alive():
+            # report fault
+            print('Watchdog: target thread is not running, restarting...')
+            # restart the target thread
+            target = action()
+        # block for a moment
+        sleep(0.5)
+
+# create the worker thread
+worker = boot_worker()
+# create the watchdog for the worker thread
+watchdog = Thread(target=watchdog, args=(worker, boot_worker), daemon=True, name="Watchdog")
+# start the watchdog
+watchdog.start()
+# do other things...
+watchdog.join()
+</code></pre>
+<p>Running the example first starts the worker thread, then the watchdog thread.</p>
+<p>The worker threads begin work and may fail any iteration with a probability of 30%.</p>
+<p>When the worker does fail, the watchdog notices and reboots the worker thread, restarting the task.</p>
+<p>In this case, we can see many cases of the worker thread iterating through the task and failing, then being rebooted by the watchdog.</p>
+<p>Your specific results will differ given the use of random numbers.</p>
+<p>Note, you will need to kill the program manually once you've had enough, e.g. via Control-C.</p>
+<pre><code>Watchdog running
+.worker 1
+.worker 2
+.worker 3
+.worker failed
+Watchdog: target thread is not running, restarting...
+.worker 1
+.worker 2
+.worker 3
+.worker 4
+.worker 5
+.worker failed
+Watchdog: target thread is not running, restarting...
+.worker 1
+.worker 2
+.worker failed
+Watchdog: target thread is not running, restarting...
+.worker 1
+.worker failed
+Watchdog: target thread is not running, restarting...
+.worker 1
+.worker 2
+.worker 3
+.worker 4
+.worker failed
+Watchdog: target thread is not running, restarting...
+.worker 1
+.worker 2
+.worker 3
+.worker failed
+Watchdog: target thread is not running, restarting...
+.worker 1
+.worker 2
+.worker failed
+Watchdog: target thread is not running, restarting...
+.worker 1
+.worker 2
+.worker 3
+.worker 4
+.worker 5
+.worker 6
+...</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to develop a watchdog thread in Python.</p>
+</main>
+</body>
+</html>

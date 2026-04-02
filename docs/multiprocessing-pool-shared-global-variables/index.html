@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool Share Global Variable With All Workers – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool Share Global Variable With All Workers</h1>
+<div class="post-meta">July 24, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>share a global variable</strong> with <strong>all child workers processes</strong> in the <strong><a href="../multiprocessing-pool-python/">multiprocessing pool</a></strong> by defining it in the worker process initialization function.</p>
+<p>In this tutorial you will discover how to <strong>share global variables with all workers</strong> in the <strong>Python process pool</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need To Share Global Variable With All Workers in Process Pool</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the process pool, we may need to share a global variable with all child worker processes in the process pool.</p>
+<p>This would allow all tasks executed in the process pool to use the shared global variable.</p>
+<p>We may need this capability for many reasons, such as:</p>
+<ul><li>Allow all tasks to use a shared log.</li><li>Allow all tasks to use a shared queue or pipe.</li><li>Allow all tasks to use a shared synchronization primitive like a lock, semaphore, or event.</li></ul>
+<p>The process pool does not provide this capability.</p>
+<p><strong>How can we share a global variable with all child worker processes?</strong></p>
+<p>Or, put another way:</p>
+<p><strong>How can a shared global variable be accessed by all tasks executed by the process pool in Python?</strong></p>
+<h2>How to Share a Global Variable With All Workers</h2>
+<p>We can share a global variable with all child process workers in the process pool.</p>
+<p>This can be achieved by configuring the process pool to initialize each worker process using a custom function.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool with custom initialization
+pool = Pool(initializer=init_worker, initargs=(data,))</code></pre>
+<p>The global variable data required by each child worker process can be passed as an argument to the initialization function. It can then be stored in a global variable. This will make it available to each child worker process.</p>
+<p>Recall, declaring a variable "<strong>global</strong>" in a function will define a global variable for the process, rather than a local variable for the function.</p>
+<p>You may also recall that the worker initialization function is executed by the main thread of each new worker process. Therefore, a global variable defined in the initialization function will be available to the process later.</p>
+<p>For example:</p>
+<pre><code># initialize worker processes
+def init_worker(data):
+    # declare scope of a new global variable
+    global shared_data
+    # store argument in the global variable for this process
+    shared_data = data
+</code></pre>
+<p>Because each child worker process in the process pool will be initialized using the same function, the global variable or (or variables) will be accessible by all child worker processes in the process pool.</p>
+<p>This means that any tasks executed in the process pool can access the global variable, such as custom functions executed as tasks in the process pool.</p>
+<p>For example:</p>
+<pre><code># task executed in a worker process
+def task():
+	# access the global variable
+	print(shared_data)
+</code></pre>
+<p>You can learn more about configuring the child worker process initialization function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-initializer/">Process Pool Initializer in Python</a></li></ul>
+<p>Now that we know how to share global variables with all worker processes, let's look at a worked example.</p>
+<h2>Example of Sharing a Global Variable With All Workers</h2>
+<p>We can explore how to share a global variable with all child worker processes.</p>
+<p>In this example, we will define a shared multiprocessing queue. We will then share this queue with each child worker process via its initialization function. Each child worker will store reference to the queue in a global variable so that all tasks executed by each worker can access it. We will then execute tasks in the process pool that put task results into the shared queue. The main process will then read results as they become available via the shared queue.</p>
+<p>Firstly, we need to define the custom function used to initialize the child worker processes.</p>
+<p>The initialization function must take the shared queue as an argument. It will then declare a new global variable for the child process and store a reference to the shared queue in the global variable.</p>
+<p>The <strong>init_worker()</strong> function below implements this.</p>
+<pre><code># initialize worker processes
+def init_worker(shared_queue):
+    # declare scope of a new global variable
+    global queue
+    # store argument in the global variable for this process
+    queue = shared_queue
+</code></pre>
+<p>Next, we can define a custom task function to execute in the process pool.</p>
+<p>The task function will take an integer identifier as a number as an argument. It will then generate a number between 0 and 5, then block for that many seconds to simulate a variable amount of computational effort. Finally, it will send the generated number and integer identifier as a tuple into the shared queue.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<p>Note that we explicitly define the scope of the queue global variable. This is technically not required, but I believe it helps make the code more readable.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    # generate a value
+    value = random() * 5
+    # block for a moment
+    sleep(value)
+    # declare scope of shared queue
+    global queue
+    # send result using shared queue
+    queue.put((identifier, value))
+</code></pre>
+<p>Next, in the main process we can first create the shared multiprocessing queue. We will use a <strong>multiprocessing.SimpleQueue</strong> in this case.</p>
+<pre><code>...
+# create a shared queue
+shared_queue = SimpleQueue()</code></pre>
+<p>You can learn more about the <strong>multiprocessing.SimpleQueue</strong> in the tutorial:</p>
+<ul><li><a href="../multiprocessing-simplequeue-in-python/">Multiprocessing SimpleQueue in Python</a></li></ul>
+<p>Next, we can create and configure the process pool.</p>
+<p>In this case, we will configure it so that each worker process is initialized using our <strong>init_worker()</strong> custom initialization function and pass the shared queue as an argument.</p>
+<p>We will use the context manager interface so that the process pool is closed for us automatically once we are finished with it.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool(initializer=init_worker, initargs=(shared_queue,)) as pool:
+	# ...
+</code></pre>
+<p>You can learn more about the context manager interface in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<p>Next, we will issue 10 calls to our custom task function asynchronously using the <strong>map_async()</strong> function.</p>
+<pre><code>...
+# issue tasks into the process pool
+_ = pool.map_async(task, range(10))</code></pre>
+<p>We will then consume the results of the tasks as they are available (e.g. simulating the <strong>imap_unordered()</strong> function). This can be achieved by iterating over the expected number of results and calling <strong>get()</strong> ob the shared queue for each task result.</p>
+<pre><code>...
+# read results from the queue as they become available
+for i in range(10):
+    result = shared_queue.get()
+    print(f'Got {result}', flush=True)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a global variable among all workers
+from random import random
+from time import sleep
+from multiprocessing import SimpleQueue
+from multiprocessing.pool import Pool
+
+# initialize worker processes
+def init_worker(shared_queue):
+    # declare scope of a new global variable
+    global queue
+    # store argument in the global variable for this process
+    queue = shared_queue
+
+# task executed in a worker process
+def task(identifier):
+    # generate a value
+    value = random() * 5
+    # block for a moment
+    sleep(value)
+    # declare scope of shared queue
+    global queue
+    # send result using shared queue
+    queue.put((identifier, value))
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a shared queue
+    shared_queue = SimpleQueue()
+    # create and configure the process pool
+    with Pool(initializer=init_worker, initargs=(shared_queue,)) as pool:
+        # issue tasks into the process pool
+        _ = pool.map_async(task, range(10))
+        # read results from the queue as they become available
+        for i in range(10):
+            result = shared_queue.get()
+            print(f'Got {result}', flush=True)
+</code></pre>
+<p>Running the example first creates the shared queue.</p>
+<p>Next, the process pool is created and configured to use the custom initialization function.</p>
+<p>Each worker process is created and started then initialized with the custom initialization function. Each worker creates a new global variable named "<strong>queue</strong>" and stores the passed in shared queue against the global variable. This makes "queue" available to all tasks executed by the worker process, and all worker processes are initialized the same way.</p>
+<p>Next, 10 tasks are issued into the process pool.</p>
+<p>The main process then iterates the 10 results, calling get() on the queue which will block and not return until a result is available.</p>
+<p>Each task first generates a random number between 0 and 5, then blocks for that many seconds to simulate computational effort. The "<strong>queue</strong>" global variable for the process is declared explicitly, then accessed. The result for the task is put on the queue and the task completes.</p>
+<p>Results are reported in the main process as they become available.</p>
+<p>After all 10 results are retrieved from the shared queue, the main process continues on, automatically closing the process pool and then closing the application.</p>
+<p>Note, the specific results will differ each time the program is run due to the use of random numbers.</p>
+<pre><code>Got (2, 0.38947694846648895)
+Got (3, 0.7665425799985037)
+Got (4, 1.6182597482880667)
+Got (6, 2.912364034686572)
+Got (7, 3.0557058569816458)
+Got (8, 2.6846243338785)
+Got (0, 3.589396223885189)
+Got (5, 4.1921930714219116)
+Got (1, 4.282642869898409)
+Got (9, 4.827317385371338)</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share global variables with all workers in the Python process pool.</p>
+</main>
+</body>
+</html>

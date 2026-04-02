@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Queue in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Queue in Python</h1>
+<div class="post-meta">December 4, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>A <strong>queue</strong> is a helpful data structure where items can be added and removed.</p>
+<p>Queues are generally used on concurrent programs to connect tasks, such as between threads and between processes.</p>
+<p>Asyncio also provides the <strong>asyncio.Queue</strong>, specifically tailored to share data between coroutines and tasks where blocking operations such as placing items on the queue and removing them can be awaited, spending the caller.</p>
+<p>In this tutorial, you will discover <strong>how to share data between coroutines using queues</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>How to create and use a queue to connect coroutines and tasks in asyncio.</li>
+<li>How to use a queue without blocking and with timeouts.</li>
+<li>How to join a queue and have tasks done, and limit the overall capacity of the queue.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is an Asyncio Queue</h2>
+<p>The <strong>asyncio.Queue</strong> provides a FIFO queue for use with coroutines.</p>
+<p>Before we dive into the details of the <strong>asyncio.Queue</strong>, let's take a quick look at queues more generally in Python.</p>
+<h3>Queue</h3>
+<p>A <a href="https://en.wikipedia.org/wiki/Queue_(abstract_data_type)">queue is a data structure</a> on which items can be added by a call to <strong>put()</strong> and from which items can be retrieved by a call to <strong>get()</strong>.</p>
+<p>Python provides a thread-safe queue via the <strong>threading.Queue</strong> class that allows threads to share objects with each other.</p>
+<blockquote>
+<p>The queue module implements multi-producer, multi-consumer queues. It is especially useful in threaded programming when information must be exchanged safely between multiple threads. The Queue class in this module implements all the required locking semantics.</p>
+<cite>-- <a href="https://docs.python.org/3/library/queue.html">Queue - A synchronized queue class</a></cite></blockquote>
+<p>You can learn more about the thread-safe queue in the tutorial:</p>
+<ul>
+<li><a href="../thread-queue/">Thread-Safe Queue in Python</a></li>
+</ul>
+<p>A process-safe queue is proved via the <strong>multiprocessing.Queue</strong> class. This queue is both thread-safe and process-safe and allows processes to share data Python objects.</p>
+<p>You can learn more about the multiprocessing queue in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li>
+</ul>
+<p>Both queues manage data in a first-in, first-out FIFO queue, which means that the items are retrieved from the queue in the order they were added. The first items added to the queue will be the first items retrieved. This is opposed to other queue types such as last-in, first-out and priority queues.</p>
+<p>Next, let's take a look at the asyncio queue.</p>
+<h3>Asyncio Queue</h3>
+<p>The <strong>asyncio.Queue</strong> class provides a queue that allows coroutines to share data.</p>
+<blockquote>
+<p>asyncio queues are designed to be similar to classes of the queue module. Although asyncio queues are not thread-safe, they are designed to be used specifically in async/await code.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-queue.html">Asyncio Queues</a></cite></blockquote>
+<p>This queue is not thread-safe nor process-safe.</p>
+<p>This means that it cannot be used by threads or processes to share Python objects and is only intended for use by coroutines within one Python thread, e.g. one event loop.</p>
+<p>Like the <strong>queue.Queue</strong> and <strong>multiprocessing.Queue</strong> classes, the <strong>asyncio.Queue</strong> is a FIFO queue. This means that data is managed and retrieved in a first-in, first-out manner.</p>
+<p>The <strong>asyncio.Queue</strong> is intended for use within asyncio programs by coroutines. As such, some methods on the class are in fact coroutines and must be awaited.</p>
+<p>This means that the <strong>asyncio.Queue</strong> cannot be used outside of an asyncio program.</p>
+<p>Now that we know about the <strong>asyncio.Queue</strong>, let's look at how we might use it.</p>
+<h2>How to Use an Asyncio Queue</h2>
+<p>In this section, we will explore how to use the <strong>asyncio.Queue</strong> class, including how to create and configure an instance, how to add and remove items, query the properties of the queue and manage tasks.</p>
+<h3>Create an Asyncio Queue</h3>
+<p>We can create an <strong>asyncio.Queue</strong> by creating an instance of the class.</p>
+<p>By default, the queue will not be limited in capacity.</p>
+<p>For example:</p>
+<pre><code>...
+# create a queue with no size limit
+queue = asyncio.Queue()</code></pre>
+<p>The <strong>asyncio.Queue</strong> takes one constructor argument which is "<strong>maxsize</strong>", set to zero (no limit) by default.</p>
+<p>For example:</p>
+<pre><code>...
+# create a queue with no size limit
+queue = asyncio.Queue(maxsize=0)</code></pre>
+<p>We can set a size limit on the queue.</p>
+<p>The effect of a size limit means that when the queue is full and coroutines attempt to add an object, they will block until space becomes available, or fail if a non-blocking method is used.</p>
+<p>For example:</p>
+<pre><code>...
+# create a queue with a size limit
+queue = asyncio.Queue(maxsize=100)</code></pre>
+<h3>Add Items to Asyncio Queue</h3>
+<p>Python objects can be added to a queue via the <strong>put()</strong> method.</p>
+<p>This is in fact a coroutine that must be awaited. The reason is that the calling coroutine may block if the queue is full.</p>
+<p>For example:</p>
+<pre><code>...
+# add an object to the queue
+await queue.put(item)</code></pre>
+<p>An item can also be added to the queue without blocking via the <strong>put_nowait()</strong> method.</p>
+<p>This method is not a coroutine and will either add the item or return immediately or fail with an <strong>asyncio.QueueFull</strong> exception if the queue is full and the item cannot be added.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# attempt to add an item
+	queue.put_nowait(item)
+except asyncio.QueueFull:
+	# ...
+</code></pre>
+<p>Because the "<strong>maxsize</strong>" argument is the first position argument, we don't need to specify it by name.</p>
+<p>For example:</p>
+<pre><code>...
+# create a queue with a size limit
+queue = asyncio.Queue(100)</code></pre>
+<h3>Get Items from Asyncio Queue</h3>
+<p>Items can be retrieved from the queue by calling the <strong>get()</strong> method.</p>
+<p>This is in fact a coroutine that must be awaited. The reason is that the queue may not have any items to retrieve at the time, and the calling coroutine may need to block until an item becomes available.</p>
+<p>For example:</p>
+<pre><code>...
+# retrieve an item from the queue
+item = await queue.get()</code></pre>
+<p>The item retrieved will be the oldest item added, e.g. FIFO ordering.</p>
+<p>An item can be retrieved from the queue without blocking via the <strong>get_nowait()</strong> method.</p>
+<p>This method is not a coroutine and will return an item immediately if available, otherwise will fail with an <strong>asyncio.QueueEmpty</strong> exception.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# attempt retrieve an item
+	item = queue.get_nowait()
+except asyncio.QueueEmpty:
+	# ...
+</code></pre>
+<h3>Query Asyncio Queue Size</h3>
+<p>We can retrieve the fixed size of the queue via the "<strong>maxsize</strong>" property.</p>
+<p>For example:</p>
+<pre><code>...
+# report the size of the queue
+print(queue.maxsize)</code></pre>
+<p>We can check if the queue is empty via the <strong>empty()</strong> which returns True if the queue contains no items or False otherwise.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the queue is empty
+if queue.empty():
+	# ...
+</code></pre>
+<p>We can also check if the queue is full via the <strong>full()</strong> method that returns <strong>True</strong> if the queue is at capacity or False otherwise.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the queue is full
+if queue.full():
+	# ...
+</code></pre>
+<h3>Asyncio Queue Join and Task Done</h3>
+<p>Items on the queue can be treated as tasks that can be marked as processes by consumer coroutines.</p>
+<p>This can be achieved by consumer coroutines retrieving items from the queue via <strong>get()</strong> or <strong>get_nowait()</strong> and once processed marking them via the <strong>task_done()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# retrieve an item from the queue
+item = await queue.get()
+# process the item
+# ...
+# mark the item as processes
+queue.task_done()
+</code></pre>
+<p>Other coroutines may be interested to know when all items added to the queue have been retrieved and marked as done.</p>
+<p>This can be achieved by the coroutine awaiting the <strong>join()</strong> coroutine on the queue.</p>
+<p>The <strong>join()</strong> coroutine will not return until all items added to the queue prior to the call have been marked as done.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all items on the queue to be marked as done
+await queue.join()</code></pre>
+<p>If the queue is empty or all items have already been marked as done, then the <strong>join()</strong> coroutine will return immediately.</p>
+<p>Now that we know how to use the <strong>asyncio.Queue</strong>, let's look at some worked examples.</p>
+<h2>Example of Asyncio Queue</h2>
+<p>We can explore how to use the <strong>asyncio.Queue</strong> class with a worked example.</p>
+<p>In this example, we will create a producer coroutine that will generate ten random numbers and put them on the queue. We will also create a consumer coroutine that will get numbers from the queue and report their values.</p>
+<p>The <strong>asyncio.Queue</strong> provides a way to allow these producer and consumer coroutines to communicate data with each other.</p>
+<p>First, we can define the function to be executed by the producer coroutine.</p>
+<p>The task will iterate ten times in a loop. Each iteration will generate a new random value between 0 and 1 via the <strong>random.random()</strong> function. It will then sleep for that fraction of a second to simulate work, then put the value on the queue.</p>
+<p>Once the task is complete it will put the value None on the queue to signal to the consumer coroutine that there is no further work.</p>
+<p>The <strong>producer()</strong> coroutine below implements this by taking the queue instance as an argument.</p>
+<pre><code># coroutine to generate work
+async def producer(queue):
+    print('Producer: Running')
+    # generate work
+    for i in range(10):
+        # generate a value
+        value = random()
+        # block to simulate work
+        await asyncio.sleep(value)
+        # add to the queue
+        await queue.put(value)
+    # send an all done signal
+    await queue.put(None)
+    print('Producer: Done')
+</code></pre>
+<p>Next, we can define the function to be executed by the consumer coroutine.</p>
+<p>The task will loop forever. Each iteration, it will get an item from the queue and block if there is no item yet available.</p>
+<p>If the item retrieved from the queue is the value <strong>None</strong>, then the task will break the loop and terminate the coroutine. Otherwise, the value is reported.</p>
+<p>The <strong>consumer()</strong> coroutine below implements this and takes the queue instance as an argument.</p>
+<pre><code># coroutine to consume work
+async def consumer(queue):
+    print('Consumer: Running')
+    # consume work
+    while True:
+        # get a unit of work
+        item = await queue.get()
+        # check for stop signal
+        if item is None:
+            break
+        # report
+        print(f'&gt;got {item}')
+    # all done
+    print('Consumer: Done')
+</code></pre>
+<p>Finally, in the main coroutine, we can create the shared queue instance.</p>
+<p>We can then create and run the producer and consumer coroutines and wait for them both to complete via the <strong>asyncio.gather()</strong> method.</p>
+<pre><code># entry point coroutine
+async def main():
+    # create the shared queue
+    queue = asyncio.Queue()
+    # run the producer and consumers
+    await asyncio.gather(producer(queue), consumer(queue))
+</code></pre>
+<p>You can learn more about <strong>asyncio.gather()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather-cancel-all-if-one-fails/">Asyncio gather() Cancel All Tasks if One Task Fails</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using an asyncio queue
+from random import random
+import asyncio
+
+# coroutine to generate work
+async def producer(queue):
+    print('Producer: Running')
+    # generate work
+    for i in range(10):
+        # generate a value
+        value = random()
+        # block to simulate work
+        await asyncio.sleep(value)
+        # add to the queue
+        await queue.put(value)
+    # send an all done signal
+    await queue.put(None)
+    print('Producer: Done')
+
+# coroutine to consume work
+async def consumer(queue):
+    print('Consumer: Running')
+    # consume work
+    while True:
+        # get a unit of work
+        item = await queue.get()
+        # check for stop signal
+        if item is None:
+            break
+        # report
+        print(f'&gt;got {item}')
+    # all done
+    print('Consumer: Done')
+
+# entry point coroutine
+async def main():
+    # create the shared queue
+    queue = asyncio.Queue()
+    # run the producer and consumers
+    await asyncio.gather(producer(queue), consumer(queue))
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the shared <strong>asyncio.Queue</strong> instance.</p>
+<p>Next, the producer coroutine is created and passed the queue instance. Then the consumer coroutine is started and the main coroutine blocks until both coroutines terminate.</p>
+<p>The producer coroutine generates a new random value for each iteration of the task, blocks, and adds it to the queue. The consumer coroutine waits on the queue for items to arrive, then consumes them one at a time, reporting their value.</p>
+<p>Finally, the producer task finishes, a None value is put on the queue and the coroutine terminates. The consumer coroutine gets the <strong>None</strong> value, breaks its loop, and also terminates.</p>
+<p>This highlights how the <strong>asyncio.Queue</strong> can be used to share data easily between producer and consumer coroutines.</p>
+<p>Note that the program output will differ each time it is run given the use of random numbers.</p>
+<pre><code>Producer: Running
+Consumer: Running
+&gt;got 0.7559246569022605
+&gt;got 0.965203750033905
+&gt;got 0.49834912260024233
+&gt;got 0.22783211775499135
+&gt;got 0.07775542407106295
+&gt;got 0.5997647474647314
+&gt;got 0.7236540952500915
+&gt;got 0.7956407178426339
+&gt;got 0.11256095725867177
+Producer: Done
+&gt;got 0.9095338767572713
+Consumer: Done</code></pre>
+<p>Next, let's look at how we might get values from the queue without blocking.</p>
+<h2>Example of Asyncio Queue Without Blocking</h2>
+<p>We can get values from the <strong>asyncio.Queue</strong> without blocking.</p>
+<p>This might be useful if we wish to use busy waiting in the consumer coroutine to check other state or perform other tasks while waiting for data to arrive on the queue.</p>
+<p>You can learn more about busy waiting in the tutorial:</p>
+<ul>
+<li><a href="../thread-busy-waiting-in-python/">How to Use Busy Waiting in Python</a></li>
+</ul>
+<p>We can update the example from the previous section to get items from the queue without blocking.</p>
+<p>This can be achieved by calling the <strong>get_nowait()</strong> method.</p>
+<p>The <strong>get_nowait()</strong> function will return immediately.</p>
+<p>If there is a value in the queue to retrieve, then it is returned. Otherwise, if the queue is empty, then an <strong>asyncio.QueueEmpty</strong> exception is raised, which can be handled.</p>
+<p>In this case, if there is no value to get from the queue, we report a message and sleep for a fraction of a second. We will then continue which will jump back to the start of the consumer busy waiting loop.</p>
+<pre><code># coroutine to consume work
+async def consumer(queue):
+    print('Consumer: Running')
+    # consume work
+    while True:
+        # get a unit of work without blocking
+        try:
+            item = queue.get_nowait()
+        except asyncio.QueueEmpty:
+            print('Consumer: got nothing, waiting a while...')
+            await asyncio.sleep(0.5)
+            continue
+        # check for stop
+        if item is None:
+            break
+        # report
+        print(f'&gt;got {item}')
+    # all done
+    print('Consumer: Done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using an asyncio queue without blocking
+from random import random
+import asyncio
+
+# coroutine to generate work
+async def producer(queue):
+    print('Producer: Running')
+    # generate work
+    for i in range(10):
+        # generate a value
+        value = random()
+        # block to simulate work
+        await asyncio.sleep(value)
+        # add to the queue
+        await queue.put(value)
+    # send an all done signal
+    await queue.put(None)
+    print('Producer: Done')
+
+# coroutine to consume work
+async def consumer(queue):
+    print('Consumer: Running')
+    # consume work
+    while True:
+        # get a unit of work without blocking
+        try:
+            item = queue.get_nowait()
+        except asyncio.QueueEmpty:
+            print('Consumer: got nothing, waiting a while...')
+            await asyncio.sleep(0.5)
+            continue
+        # check for stop
+        if item is None:
+            break
+        # report
+        print(f'&gt;got {item}')
+    # all done
+    print('Consumer: Done')
+
+# entry point coroutine
+async def main():
+    # create the shared queue
+    queue = asyncio.Queue()
+    # run the producer and consumers
+    await asyncio.gather(producer(queue), consumer(queue))
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the shared <strong>queue.Queue</strong>, then starts the consumer and producer coroutines, as before.</p>
+<p>The producer coroutine generates, blocks, and adds items to the queue.</p>
+<p>The consumer coroutine attempts to get a value from the queue. If there is no value to retrieve, an <strong>asyncio.QueueEmpty</strong> exception is raised and handled by reporting a message, sleeping for a fraction of a second then starting the busy wait loop again.</p>
+<p>Otherwise, if there is a value in the queue, the consumer will retrieve it and report it as normal.</p>
+<p>We can see the messages from the consumer coroutine busy waiting for new data to arrive in the queue.</p>
+<p>This highlights how to get items from the <strong>asyncio.Queue</strong> without blocking.</p>
+<p>Note that the program output will differ each time it is run given the use of random numbers.</p>
+<pre><code>Producer: Running
+Consumer: Running
+Consumer: got nothing, waiting a while...
+Consumer: got nothing, waiting a while...
+&gt;got 0.896558357626797
+Consumer: got nothing, waiting a while...
+Consumer: got nothing, waiting a while...
+&gt;got 0.6498874449486562
+&gt;got 0.14862534743361389
+Consumer: got nothing, waiting a while...
+Consumer: got nothing, waiting a while...
+&gt;got 0.9271724543351715
+Consumer: got nothing, waiting a while...
+&gt;got 0.6659822945662333
+&gt;got 0.11205862071348183
+Consumer: got nothing, waiting a while...
+Consumer: got nothing, waiting a while...
+&gt;got 0.9490125408623084
+Consumer: got nothing, waiting a while...
+&gt;got 0.150509682492045
+&gt;got 0.23281901173320807
+Consumer: got nothing, waiting a while...
+Consumer: got nothing, waiting a while...
+Producer: Done
+&gt;got 0.8999468879239988
+Consumer: Done
+</code></pre>
+<p>Next, let's look at how we might get values from the queue with a timeout.</p>
+<h2>Example of Asyncio Queue With Timeout</h2>
+<p>We can get values from the <strong>asyncio.Queue</strong> by blocking but limited by a timeout.</p>
+<p>This allows a consumer coroutine to both block while waiting for values to arrive in the queue, but also execute other tasks while busy waiting. It may be more efficient than being busy waiting without any blocking calls.</p>
+<p>We can update the above example to use a timeout when getting items from the queue in the consumer coroutine.</p>
+<p>This can be achieved by calling the <strong>get()</strong> coroutine as normal.</p>
+<p>Unlike the <strong>queue.Queue</strong>, the <strong>asyncio.Queue</strong> does not support a timeout directly.</p>
+<p>Instead, we can wrap the <strong>get()</strong> coroutine in a <strong>wait_for()</strong> coroutine that supports a timeout. If the timeout elapses before the <strong>get()</strong> coroutine completes, an <strong>asyncio.TimeoutError</strong> exception is raised and can be handled.</p>
+<p>For example:</p>
+<pre><code># consume work
+async def consumer(queue):
+    print('Consumer: Running')
+    # consume work
+    while True:
+        # get a unit of work
+        try:
+            # retrieve the get() awaitable
+            get_await = queue.get()
+            # await the awaitable with a timeout
+            item = await asyncio.wait_for(get_await, 0.5)
+        except asyncio.TimeoutError:
+            print('Consumer: gave up waiting...')
+            continue
+        # check for stop
+        if item is None:
+            break
+        # report
+        print(f'&gt;got {item}')
+    # all done
+    print('Consumer: Done')
+</code></pre>
+<p>You can learn more about the <strong>asyncio.wait_for()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait_for/">Asyncio wait_for() to Wait With a Timeout</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using an asyncio queue with a timeout
+from random import random
+import asyncio
+
+# coroutine to generate work
+async def producer(queue):
+    print('Producer: Running')
+    # generate work
+    for i in range(10):
+        # generate a value
+        value = random()
+        # block to simulate work
+        await asyncio.sleep(value)
+        # add to the queue
+        await queue.put(value)
+    # send an all done signal
+    await queue.put(None)
+    print('Producer: Done')
+
+# consume work
+async def consumer(queue):
+    print('Consumer: Running')
+    # consume work
+    while True:
+        # get a unit of work
+        try:
+            # retrieve the get() awaitable
+            get_await = queue.get()
+            # await the awaitable with a timeout
+            item = await asyncio.wait_for(get_await, 0.5)
+        except asyncio.TimeoutError:
+            print('Consumer: gave up waiting...')
+            continue
+        # check for stop
+        if item is None:
+            break
+        # report
+        print(f'&gt;got {item}')
+    # all done
+    print('Consumer: Done')
+
+# entry point coroutine
+async def main():
+    # create the shared queue
+    queue = asyncio.Queue()
+    # run the producer and consumers
+    await asyncio.gather(producer(queue), consumer(queue))
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the shared <strong>asyncio.Queue</strong>, then starts the consumer and producer coroutines, as before.</p>
+<p>The producer coroutine will generate, block, and add items to the queue.</p>
+<p>The consumer coroutine will attempt to get a value from the queue. The coroutine will block for a timeout.</p>
+<p>If no value is available before the timeout expires, then an asyncio.TimeoutError exception is raised and handled by reporting a message and then starting the busy wait loop again. Otherwise, if there is a value in the queue, the consumer will retrieve it and report it as normal.</p>
+<p>We can see the messages from the consumer coroutine busy waiting for new data to arrive in the queue.</p>
+<p>This highlights how to get items from the <strong>asyncio.Queue</strong> by blocking with a timeout.</p>
+<p>Note that the program output will differ each time it is run given the use of random numbers.</p>
+<pre><code>Producer: Running
+Consumer: Running
+Consumer: gave up waiting...
+&gt;got 0.8506665865206575
+Consumer: gave up waiting...
+&gt;got 0.851355213428328
+&gt;got 0.3050736798012632
+Consumer: gave up waiting...
+&gt;got 0.7019959682053681
+Consumer: gave up waiting...
+&gt;got 0.9753069917130328
+Consumer: gave up waiting...
+&gt;got 0.7813291071437218
+Consumer: gave up waiting...
+&gt;got 0.7831885826899522
+Consumer: gave up waiting...
+&gt;got 0.8001066750131507
+Consumer: gave up waiting...
+&gt;got 0.9564293628868409
+Producer: Done
+&gt;got 0.41507431394001704
+Consumer: Done
+</code></pre>
+<p>Next, let's look at how we might wait on the queue and mark tasks as completed in the queue.</p>
+<h2>Example of Asyncio Queue Join and Task Done</h2>
+<p>In the previous examples, we have sent a special message (<strong>None</strong>) into the queue to indicate that all tasks are done.</p>
+<p>An alternative approach is to have coroutines wait on the queue directly and to have the consumer coroutine mark tasks as done.</p>
+<p>This can be achieved via the <strong>join()</strong> and <strong>task_done()</strong> functions on the <strong>asyncio.Queue</strong>.</p>
+<p>The producer coroutine can be updated to no longer send a <strong>None</strong> value into the queue to indicate no further tasks.</p>
+<p>The updated version of the <strong>producer() </strong>function with this change is listed below.</p>
+<pre><code># coroutine to generate work
+async def producer(queue):
+    print('Producer: Running')
+    # generate work
+    for i in range(10):
+        # generate a value
+        value = random()
+        # block to simulate work
+        await asyncio.sleep(value)
+        # add to the queue
+        await queue.put(value)
+    print('Producer: Done')
+</code></pre>
+<p>The consumer coroutine can be updated to no longer check for <strong>None</strong> messages, and to mark each task as completed via a call to <strong>task_done()</strong>.</p>
+<p>The updated version of the <strong>consumer()</strong> function with these changes is listed below.</p>
+<pre><code># coroutine to consume work
+async def consumer(queue):
+    print('Consumer: Running')
+    # consume work
+    while True:
+        # get a unit of work
+        item = await queue.get()
+        # report
+        print(f'&gt;got {item}')
+        # block while processing
+        if item:
+            await asyncio.sleep(item)
+        # mark the task as done
+        queue.task_done()
+</code></pre>
+<p>The producer coroutine will run until there are no longer any tasks to add to the queue and will terminate. The consumer coroutine will now run forever.</p>
+<p>We will start the consumer coroutine first as a separate standalone task.</p>
+<p>Next, we will execute and await the producer coroutine until it is done and all items have been added to the queue.</p>
+<p>Finally, we will wait for all items added to the queue to be marked as done.</p>
+<p>The updated <strong>main()</strong> coroutine is listed below.</p>
+<pre><code># entry point coroutine
+async def main():
+    # create the shared queue
+    queue = asyncio.Queue()
+    # start the consumer
+    _ = asyncio.create_task(consumer(queue))
+    # start the producer and wait for it to finish
+    await asyncio.create_task(producer(queue))
+    # wait for all items to be processed
+    await queue.join()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using join and task_done with an asyncio queue
+from random import random
+import asyncio
+
+# coroutine to generate work
+async def producer(queue):
+    print('Producer: Running')
+    # generate work
+    for i in range(10):
+        # generate a value
+        value = random()
+        # block to simulate work
+        await asyncio.sleep(value)
+        # add to the queue
+        await queue.put(value)
+    print('Producer: Done')
+
+# coroutine to consume work
+async def consumer(queue):
+    print('Consumer: Running')
+    # consume work
+    while True:
+        # get a unit of work
+        item = await queue.get()
+        # report
+        print(f'&gt;got {item}')
+        # block while processing
+        if item:
+            await asyncio.sleep(item)
+        # mark the task as done
+        queue.task_done()
+
+# entry point coroutine
+async def main():
+    # create the shared queue
+    queue = asyncio.Queue()
+    # start the consumer
+    _ = asyncio.create_task(consumer(queue))
+    # start the producer and wait for it to finish
+    await asyncio.create_task(producer(queue))
+    # wait for all items to be processed
+    await queue.join()
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the shared <strong>asyncio.Queue</strong>, then starts the consumer and producer coroutines, as before.</p>
+<p>The producer coroutine generates, blocks, and adds items to the queue.</p>
+<p>The consumer coroutine attempts to get values from the queue.</p>
+<p>Once the producer coroutine has added all of its ten items, it will terminate. The consumer coroutine will run forever in the background.</p>
+<p>Once the producer coroutine has terminated, the main coroutine will then block on the queue.</p>
+<p>Once the consumer coroutine has processed all items that were added to the queue, the main coroutine will then resume and terminate.</p>
+<p>The asyncio program then terminates with the consumer coroutine still running in the background, but with no work to process.</p>
+<p>This highlights how to mark tasks as completed in the queue and how to wait on the queue for all work to be completed.</p>
+<p>Note that the program output will differ each time it is run given the use of random numbers.</p>
+<pre><code>Consumer: Running
+Producer: Running
+&gt;got 0.98439852757525
+&gt;got 0.31319007221013795
+&gt;got 0.9398085059848861
+&gt;got 0.14351842921376057
+&gt;got 0.24629462902135835
+&gt;got 0.4488704344186214
+&gt;got 0.19476785739518376
+&gt;got 0.8393990524378161
+&gt;got 0.3269099694795079
+Producer: Done
+&gt;got 0.8274430954459486</code></pre>
+<p>Next, let's look at how we might work with a limited-sized queue.</p>
+<h2>Example of Asyncio Queue With Limited Size</h2>
+<p>We can limit the capacity of the queue.</p>
+<p>This can be helpful if we have a large number of producers or slow consumers. It allows us to limit the number of tasks that may be in memory at any one time, limiting the overall memory usage of the application.</p>
+<p>This can be achieved by setting the "<strong>maxsize</strong>" argument in the constructor to the queue when configuring it. Because this is the first and only positional argument, we can omit the name of the argument to the constructor.</p>
+<p>When the queue is full, calls to <strong>put()</strong> will block until a position becomes available to place another item on the queue.</p>
+<p>We can demonstrate this by updating the example in the previous section to limit the size of the queue to a small number, like 2 items, and have a modest number of producers, e.g. 5, attempt to populate the queue. This will keep the queue full most of the time forcing the producers to block when adding items.</p>
+<p>Firstly, we can specify the capacity of the queue when it is constructed.</p>
+<pre><code>...
+# create the shared queue
+queue = asyncio.Queue(2)</code></pre>
+<p>Next, we can create five producer coroutines that will all add attempted tasks to the queue at the same time.</p>
+<p>This can be done in a list comprehension which can then be unpacked into separate expressions using the star operator in a call to <strong>asyncio.gather()</strong>.</p>
+<p>After all of the producers are finished, the <strong>main()</strong> coroutine can <strong>join()</strong> the queue and wait for the consumer to mark all items as done.</p>
+</main>
+</body>
+</html>

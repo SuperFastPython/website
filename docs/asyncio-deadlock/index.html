@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Deadlocks in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Deadlocks in Python</h1>
+<div class="post-meta">December 11, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can identify <strong>coroutine deadlocks</strong> by seeing examples and developing an intuition for their common causes.</p>
+<p>In most cases, deadlocks can be avoided by using best practices in concurrency programming, such as lock ordering, using timeouts on waits, and using context managers when acquiring locks.</p>
+<p>In this tutorial, you will discover how to <strong>identify asyncio deadlocks in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>What is a Deadlock</h2>
+<p>A deadlock is a concurrency failure mode where a thread or threads wait for a condition that never occurs.</p>
+<p>The result is that the deadlock threads are unable to progress and the program is stuck or frozen and must be terminated forcefully.</p>
+<blockquote><p><strong>Deadlock</strong>: A situation in which one or more threads are waiting for an event that will never occur. The most common situation is when two threads are each holding a synchronization object that the other thread wants and there is no way for one thread to release the object it holds in order to allow the other thread to proceed.</p><cite>-- Glossary, <a href="https://amzn.to/3Eb4T4b">The Art of Concurrency</a>, 2009.</cite></blockquote>
+<p>Although deadlocks are described in terms of threads, they may also occur with other units of concurrency, such as processes and coroutines.</p>
+<p>There are many ways in which we may encounter a deadlock in our asyncio program.</p>
+<p>Deadlocks are not developed intentionally, instead, they are an unexpected side effect or bug in concurrency programming.</p>
+<p>Common examples of the cause of coroutine deadlocks include:</p>
+<ul><li>A coroutine that waits on itself (e.g. attempts to acquire the same mutex lock twice).</li><li>Coroutines that wait on each other (e.g. A waits on B, B waits on A).</li><li>Coroutine that fails to release a resource (e.g. mutex lock, semaphore, barrier, condition, event, etc.).</li><li>Coroutines that acquire mutex locks in different orders (e.g. fail to perform lock ordering).</li></ul>
+<p>Deadlocks may be easy to describe, but hard to detect in an application just from reading code.</p>
+<p>It is important to develop an intuition for the causes of different deadlocks. This will help you identify deadlocks in your own code and trace down the causes of those deadlocks that you may encounter.</p>
+<p>Now that we are familiar with what a deadlock is, let's look at some worked examples in asyncio programs.</p>
+<h2>Deadlock: Coroutine Waits On Itself</h2>
+<p>A common cause of a deadlock is a coroutine that waits on itself.</p>
+<p>We do not intend for this deadlock to occur, e.g. we don’t intentionally write code that causes a coroutine to wait on itself. Instead, this occurs accidentally due to a series of function calls and variables being passed around.</p>
+<p>A coroutine may wait on itself for many reasons, such as:</p>
+<ul><li>Waiting to acquire a mutex lock that it has already acquired.</li><li>Waiting to be notified on a condition by itself.</li><li>Waiting for an event to be set by itself.</li><li>Waiting for a semaphore to be released by itself.</li><li>And so on.</li></ul>
+<p>We can demonstrate a deadlock caused by a coroutine waiting on itself.</p>
+<p>In this case, we will develop a <strong>task()</strong> coroutine that directly attempts to acquire the same mutex lock twice. That is, the task will acquire the lock, then attempt to acquire the lock again.</p>
+<p>This will cause a deadlock as the coroutine already holds the lock and will wait forever for itself to release the lock so that it can acquire it again.</p>
+<p>If you are new to mutex locks in asyncio programs, see the tutorial:</p>
+<ul><li><a href="../asyncio-lock/">How to use Asyncio Mutex Locks</a></li></ul>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by a coroutine waiting on itself
+import asyncio
+
+# coroutine that acquires the lock twice
+async def task(lock):
+    # report a message
+    print('Task acquiring lock...')
+    # acquire the lock
+    async with lock:
+        # report a second message
+        print('Task acquiring lock again...')
+        # acquire the lock again
+        async with lock:
+            # will never get here
+            pass
+
+# main coroutine
+async def main():
+    # create the shared lock
+    lock = asyncio.Lock()
+    # execute and await the coroutine
+    await task(lock)
+
+# entry point for the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine that is executed as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs, first creating the lock, then creating and awaiting the <strong>task()</strong> coroutine, passing the lock as an argument.</p>
+<p>The new coroutine runs and first reports a message and acquires the lock. It then reports a second message and attempts to acquire the same mutex lock again.</p>
+<p>It will be suspended forever waiting for the lock to be released.</p>
+<p>The lock cannot be released because the coroutine already holds the lock. Therefore the coroutine has deadlocked.</p>
+<p>The program must be terminated forcefully, e.g. killed via Control-C.</p>
+<pre><code>Task acquiring lock...
+Task acquiring lock again...</code></pre>
+<p>This second scenario is an example of the same deadlock and may be an easier trap to fall into.</p>
+<p>In this scenario, you may have multiple coroutines that use the same lock to protect some program state. A deadlock arises if one coroutine that acquires the lock then awaits another coroutine that also uses the lock.</p>
+<p>The complete updated example with the two task functions is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by a coroutine waiting on itself
+import asyncio
+
+# coroutine that acquires the lock
+async def task2(lock):
+    print('Task2 acquiring lock again...')
+    async with lock:
+        # will never get here
+        pass
+
+# coroutine that acquires the lock
+async def task1(lock):
+    print('Task1 acquiring lock...')
+    async with lock:
+        await task2(lock)
+
+# main coroutine
+async def main():
+    # create the shared lock
+    lock = asyncio.Lock()
+    # execute and await the coroutine
+    await task1(lock)
+
+# entry point for the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine that is executed as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs, first creating the lock, then creating and awaiting the <strong>task1()</strong> coroutine, passing the lock as an argument.</p>
+<p>The <strong>task1()</strong> coroutine acquires the lock and then awaits <strong>task2()</strong>.</p>
+<p>The <strong>task2()</strong> coroutine runs and attempts to acquire the same lock and the program is stuck in a deadlock waiting for the lock to be released by itself so it can acquire it again.</p>
+<p>Again, the program must be terminated forcefully, e.g. killed via Control-C.</p>
+<pre><code>Task1 acquiring lock...
+Task2 acquiring lock again...</code></pre>
+<p>Next, let’s look at a deadlock caused by coroutines waiting on each other.</p>
+<h2>Deadlock: Coroutines Wait On Each Other</h2>
+<p>Another common deadlock is to have two (or more) coroutines waiting on each other.</p>
+<p>For example, Coroutine A is waiting on Coroutine B, and Coroutine B is waiting on Coroutine A.</p>
+<ul><li><strong>Coroutine A</strong>: Waiting on Coroutine B.</li><li><strong>Coroutine B</strong>: Waiting on Coroutine A.</li></ul>
+<p>Or with three coroutines, you could have a cycle of coroutines waiting on each other, for example:</p>
+<ul><li><strong>Coroutine A</strong>: Waiting on Coroutine B.</li><li><strong>Coroutine B</strong>: Waiting on Coroutine C.</li><li><strong>Coroutine C</strong>: Waiting on Coroutine A.</li></ul>
+<p>This deadlock is common if you set up coroutines to wait on the result from other coroutines, such as in a pipeline or workflow where some dependencies for subtasks are out of order.</p>
+<p>A simple way to demonstrate this type of deadlock is to create a new coroutine that takes an instance of an <strong>asyncio.Task</strong>, simulates work then awaits on the passed in <strong>asyncio.Task</strong>.</p>
+<p>We can then create a new <strong>asyncio.Task</strong> and have it call the function and pass it the asyncio.Task object for the <strong>main()</strong> coroutine. We can then have the main coroutine call the same coroutine and pass in an instance of the new <strong>asyncio.Task</strong> we created.</p>
+<p>For example:</p>
+<ul><li><strong>New Coroutine</strong>: Waiting on Main Coroutine.</li><li><strong>Main Coroutine</strong>: Waiting on New Coroutine.</li></ul>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by coroutines waiting on each other
+import asyncio
+
+# takes a task and awaits it
+async def task(other):
+    # report a message
+    print(f'awaiting the task: {other.get_name()}')
+    # wait for the task to finish
+    await other
+
+# main coroutine
+async def main():
+    # get the current task
+    task1 = asyncio.current_task()
+    # create and execute the first task
+    task2 = asyncio.create_task(task(task1))
+    # execute the task, which will await task2
+    await task(task2)
+
+# entry point for the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine that is executed as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and first gets the asyncio.Task instance for the <strong>main()</strong> coroutine.</p>
+<p>It then creates a new <strong>asyncio.Task</strong> and creates a new <strong>task()</strong> coroutine, passing in the <strong>asyncio.Task</strong> for the <strong>main()</strong> coroutine.</p>
+<p>Finally, it awaits the new <strong>asyncio.Task</strong>.</p>
+<p>The new coroutine then runs, reports a message, and waits for the main coroutine to terminate.</p>
+<p>We are now in a deadlock.</p>
+<p>Each coroutine is waiting on the other to terminate before itself can terminate.</p>
+<p>The program must be terminated forcefully, e.g. killed via Control-C.</p>
+<pre><code>awaiting the task: Task-2
+awaiting the task: Task-1</code></pre>
+<p>This type of deadlock can happen if coroutines are awaiting another coroutine in a way that results in a cycle.</p>
+<p>It may also happen for any type of wait operation, where coroutine dependencies create a cycle, such as waiting on a mutex lock, waiting on a semaphore, waiting to be notified on a condition, and so on.</p>
+<p>The waiting may also be less obvious given the level of indirection. For example, a coroutine may be waiting in a queue that itself is populated by another coroutine. The other coroutine may in turn be waiting on the first coroutine directly.</p>
+<p>Next, let's look at an example of a deadlock caused by coroutine acquiring locks in different orders.</p>
+<h2>Deadlock: Coroutines Acquiring Locks in the Wrong Order</h2>
+<p>A common cause of a deadlock is when two coroutines acquire locks in different orders at the same time.</p>
+<p>For example, we may have a critical section protected by a lock and within that critical section, we may have code or a function call that is protected by a second lock.</p>
+<p>We may have the situation where one coroutine acquires lock1, then attempts to acquire lock2, then has a second coroutine that calls functionality that acquires lock2, then attempts to acquire lock1. If this occurs concurrently where coroutine1 holds lock1 and coroutine2 holds lock2, then there will be a deadlock.</p>
+<ul><li><strong>Coroutine1</strong>: Holds Lock1, Waiting for Lock2.</li><li><strong>Coroutine2</strong>: Holds Lock2, Waiting for Lock1.</li></ul>
+<p>We can demonstrate this with a direct example.</p>
+<p>We can create a <strong>task()</strong> coroutine that takes both locks as arguments and then attempts to acquire the first lock and then the second lock. Two coroutines can then be created with the locks as arguments, but perhaps we make a typo and have the first coroutine take lock1 then lock2 as arguments, and the second coroutine takes lock2 then lock1 as arguments.</p>
+<p>The result will be a deadlock if each coroutine can first acquire a lock and then wait on the second lock.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by acquiring locks in a different order
+import asyncio
+
+# coroutine task operating the locks
+async def task(number, lock1, lock2):
+    # acquire the first lock
+    print(f'Task {number} acquiring lock 1...')
+    async with lock1:
+        # wait a moment
+        await asyncio.sleep(1)
+        # acquire the next lock
+        print(f'Task {number} acquiring lock 2...')
+        async with lock2:
+            # never gets here..
+            pass
+
+# main coroutine
+async def main():
+    # create the locks
+    lock1 = asyncio.Lock()
+    lock2 = asyncio.Lock()
+    # create the coroutines
+    coro1 = task(1, lock1, lock2)
+    coro2 = task(2, lock2, lock1)
+    # execute and await both coroutines
+    await asyncio.gather(coro1, coro2)
+
+# entry point for the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine that is executed as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates both locks. Then both coroutines are created and the main coroutine runs and waits for the coroutines to terminate.</p>
+<p>The first coroutine receives lock1 and lock2 as arguments. It acquires lock1 and sleeps.</p>
+<p>The second coroutine receives lock2 and lock1 as arguments. It acquires lock2 and sleeps.</p>
+<p>The first coroutine wakes and tries to acquire lock2, but it must wait as it is already acquired by the second coroutine.</p>
+<p>The second coroutine wakes and tries to acquire lock1, but it must wait as it is already acquired by the first coroutine.</p>
+<p>The result is a deadlock.</p>
+<p>The program must be terminated forcefully, e.g. killed via Control-C.</p>
+<pre><code>Task 1 acquiring lock 1...
+Task 2 acquiring lock 1...
+Task 1 acquiring lock 2...
+Task 2 acquiring lock 2...</code></pre>
+<p>The solution is to ensure locks are always acquired in the same order throughout the program.</p>
+<p>This is called lock ordering.</p>
+<p>Next, let's consider a deadlock by a coroutine failing to release a lock.</p>
+<h2>Deadlock: Failing to Release a Lock</h2>
+<p>Another common cause of a deadlock is by a coroutine failing to release a resource.</p>
+<p>This is typically caused by a coroutine raising an error or exception in a critical section, a way that prevents the coroutine from releasing a resource.</p>
+<p>Some examples include:</p>
+<ul><li>Failing to release a lock.</li><li>Failing to release a semaphore.</li><li>Failing to arrive at a barrier.</li><li>Failing to notify coroutines on a condition.</li><li>Failing to set an event.</li><li>And so on.</li></ul>
+<p>We can demonstrate this deadlock with an example.</p>
+<p>A coroutine may acquire a lock in order to execute a critical section, then raise an exception that prevents the coroutine from releasing the lock. Another coroutine may then try to acquire the same lock and must wait forever as the lock will never be released, resulting in a deadlock.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by a coroutine failing to release a lock
+import  asyncio
+
+# coroutine task that acquires a lock
+async def task(lock):
+    # acquire the lock
+    print('Task acquiring lock...')
+    await lock.acquire()
+    # fail
+    raise Exception('Something bad happened')
+    # release the lock (never gets here)
+    print('Task releasing lock...')
+    lock.release()
+
+# main coroutine
+async def main():
+    # create the mutex lock
+    lock = asyncio.Lock()
+    # create and start the new task
+    asyncio.create_task(task(lock))
+    # wait a moment
+    await asyncio.sleep(1)
+    # acquire the lock
+    print('Main acquiring lock...')
+    await lock.acquire()
+    # do something...
+    # release lock (never gets here)
+    lock.release()
+
+# entry point for the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine that is executed as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the lock. It then creates the task coroutine and runs it in the background as a task.</p>
+<p>The <strong>main()</strong> coroutine then sleeps, suspending and allowing the <strong>task()</strong> coroutine to run.</p>
+<p>The new coroutine runs. It first acquires the lock, then fails by raising an exception. The coroutine unwinds and never makes it to the line of code to release the lock. The new coroutine terminates.</p>
+<p>The main coroutine resumes, then attempts to acquire the lock. The main coroutine blocks forever as the lock will not be released, resulting in a deadlock.</p>
+<p>The program must be terminated forcefully, e.g. killed via Control-C.</p>
+<pre><code>Task acquiring lock...
+Task exception was never retrieved
+future: &lt;Task finished name='Task-2' coro=&lt;task() done, defined at ...&gt; exception=Exception('Something bad happened')&gt;
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened
+Main acquiring lock...
+</code></pre>
+<p>There are two aspects to avoiding this form of deadlock.</p>
+<p>The first is to follow best practices when acquiring and releasing locks.</p>
+<p>If the <strong>task()</strong> function acquired and released the lock using a context manager, then the <strong>release()</strong> function would have been called automatically when the exception was raised.</p>
+<p>Secondly, the main coroutine can use a timeout while waiting for the lock and give up after a few minutes and handle the failure case.</p>
+<p>Next, let's review a summary of useful tips for avoiding deadlocks.</p>
+<h2>Tips for Avoiding Deadlocks</h2>
+<p>The best approach for avoiding deadlocks is to try to follow best practices when using concurrency in your Python programs.</p>
+<p>A few simple tips will take you a long way.</p>
+<p>In this section we will review some of these important best practices for avoiding deadlocks.</p>
+<ol><li>Use context managers when acquiring and releasing locks.</li><li>Use timeouts when waiting.</li><li>Always acquire locks in the same order.</li></ol>
+<h3>Tip 1: Use Context Managers</h3>
+<p>Acquire and release locks using a context manager, wherever possible.</p>
+<p>Locks can be acquired manually via a call to <strong>acquire()</strong> at the beginning of the critical section followed by a call to <strong>release()</strong> at the end of the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock manually
+lock.acquire()
+# critical section...
+# release the lock
+lock.release()</code></pre>
+<p>This approach should be avoided wherever possible.</p>
+<p>Traditionally, it was recommended to always acquire and release a lock in a try-finally structure.</p>
+<p>The lock is acquired, the critical section is executed in the try block, and the lock is always released in the finally block.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+try:
+	# critical section...
+finally:
+	# always release the lock
+	lock.release()
+</code></pre>
+<p>This was since replaced with the context manager interface that achieves the same thing with less code.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# critical section...
+</code></pre>
+<p>The benefit of the context manager is that the lock is always released as soon as the block is exited, regardless of how it is exited, e.g. normally, a return, an error, or an exception.</p>
+<p>This applies to a number of concurrency primitives, such as:</p>
+<ul><li>Acquiring a mutex lock via the <strong>asyncio.Lock</strong> class.</li><li>Acquiring a semaphore via the <strong>asyncio.Semaphore</strong> class.</li><li>Acquiring a condition via the <strong>asyncio.Condition</strong> class.</li></ul>
+<h3>Tip 2: Use Timeouts When Waiting</h3>
+<p>Always use a timeout when waiting on a coroutine or task.</p>
+<p>Many calls made on concurrency primitives may block.</p>
+<p>For example:</p>
+<ul><li>Waiting to acquire a <strong>asyncio.Lock</strong> via <strong>acquire()</strong>.</li><li>Waiting for a coroutine to terminate via the await expression.</li><li>Waiting to be notified on an <strong>asyncio.Condition</strong> via <strong>wait()</strong>.</li></ul>
+<p>And more.</p>
+<p>Unlike threads and processes, blocking calls on asyncio concurrency primitives do not take a "timeout" argument.</p>
+<blockquote><p>methods of these synchronization primitives do not accept the timeout argument</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-sync.html">Asyncio Synchronization Primitives</a></cite></blockquote>
+<p>Instead, we must use the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for"><strong>asyncio.wait_for()</strong> function</a> to await an awaitable (coroutine or task) with a timeout.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+    await asyncio.wait_for(lock.acquire(), timeout=10)
+except asyncio.TimeoutError:
+    # ...
+</code></pre>
+<p>This will allow the waiting coroutine to give-up waiting after a fixed time limit and then attempt to rectify the situation, e.g. report an error, force termination, etc.</p>
+<p>You can learn more about the <strong>asyncio.wait_for()</strong> function in the tutorial:</p>
+<ul><li><a href="../asyncio-wait_for/">Asyncio wait_for() to Wait With a Timeout</a></li></ul>
+<h3>Tip 3: Acquire Locks in Order</h3>
+<p>Acquire locks in the same order throughout the application, wherever possible.</p>
+<p>This is called “<strong>lock ordering</strong>”.</p>
+<p>In some applications, you may be able to abstract the acquisition of locks using a list of <strong>asyncio.Lock</strong> objects that may be iterated and acquired in order, or a function call that acquires locks in a consistent order.</p>
+<p>When this is not possible, you may need to audit your code to confirm that all paths through the code acquire the locks in the same order.</p>
+<h2>Takeaways</h2>
+<p>You now know how to identify deadlocks with coroutines in asyncio programs.</p>
+</main>
+</body>
+</html>

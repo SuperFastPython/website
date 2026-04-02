@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool Get First Result – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool Get First Result</h1>
+<div class="post-meta">August 7, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>get the first result</strong> from tasks in the <strong><a href="../multiprocessing-pool-python/">multiprocessing.pool.Pool</a></strong> either via a shared <strong>multiprocessing.Queue</strong> or by issuing tasks via the <strong>imap_unordered()</strong> function and getting the first value from the iterable.</p>
+<p>In this tutorial you will discover how to <strong>get the first result</strong> from the <strong>multiprocessing pool</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>Need to Get the First Result</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as map().</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the process pool, we may issue many tasks and require the result from the first task to finish.</p>
+<p><strong>How can we get the first result from the process pool?</strong></p>
+<h2>How to Get The First Result</h2>
+<p>There are two main approaches we can use to get the result from the first task to complete in the process pool.</p>
+<p>They are:</p>
+<ol><li>Have tasks put their result on a shared queue.</li><li>Issue tasks using the <strong>imap_unordered()</strong> function.</li></ol>
+<p>Let's take a closer look at each approach in turn.</p>
+<h3>Put Results on a Shared Queue</h3>
+<p>A <strong>multiprocessing.Queue</strong> can be created and shared among all tasks issued to the process pool.</p>
+<p>As tasks finish, they can put their results on the queue.</p>
+<p>The parent process waiting for the first result can get the first result made available via the shared queue.</p>
+<p>A multiprocessing queue can be created as per normal.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared queue
+queue = multiprocessing.Queue()</code></pre>
+<p>We cannot share the queue directly with each task to the process pool as it will result in an error.</p>
+<p>Instead, we can share the queue with the initialization function for each child worker process. The queue can be stored in a global variable and made available to all tasks executed by all workers.</p>
+<p>This requires that we define a child worker initialization function that takes the queue as an argument, declares a global variable available to all tasks executed by the worker, then stores the queue in the global variable.</p>
+<p>For example:</p>
+<pre><code># worker process initialization
+def init_worker(arg_queue):
+    # define global variable for each worker
+    global queue
+    # store queue in global argument
+    queue = arg_queue
+</code></pre>
+<p>We can then configure a new process pool to use our worker initialization function and pass the queue as an argument.</p>
+<pre><code>...
+# create a process pool
+pool = Pool(initializer=init_worker, initargs=(queue,))</code></pre>
+<p>You can learn more about sharing global variables with all tasks executed by a worker in this tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-shared-global-variables/">Multiprocessing Pool Share Global Variable With All Workers</a></li></ul>
+<p>Tasks can then put results on the queue by calling the <strong>put()</strong> function and passing the result object.</p>
+<p>For example:</p>
+<pre><code>...
+# put result on the queue
+queue.put(result)</code></pre>
+<p>The main process can then retrieve the first result made available via the <strong>get()</strong> function on the queue. This call will block until a result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the first result
+result = queue.get()</code></pre>
+<p>You can learn more about using the multiprocessing queue in the tutorial:</p>
+<ul><li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li></ul>
+<h3>Issue Tasks Using imap_unordered()</h3>
+<p>Another approach to getting the first result from the process pool is to issue tasks using the <strong>imap_unordered()</strong>.</p>
+<p>This function will issue tasks in a lazy manner and will return an iterable that yields results in the order that tasks are completed, rather than the order that tasks were issued.</p>
+<p>Therefore, tasks can be issued as per normal via a call to the <strong>imap_unordered()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the process pool
+it = pool.imap_unordered(task, items)</code></pre>
+<p>We can then call the built-in <a href="https://docs.python.org/3/library/functions.html#next"><strong>next()</strong> function</a> on the returned iterable to get the result from the first task to complete in the process pool.</p>
+<p>Recall, the <strong>next()</strong> function returns the next item in an iterable.</p>
+<p>For example,</p>
+<pre><code>...
+# get the first result
+result = next(it)</code></pre>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-imap_unordered/">Multiprocessing Pool.imap_unordered() in Python</a></li></ul>
+<p>Now that we know how to get the first result from the process pool, let's look at some worked examples.</p>
+<h2>Example of Getting the First Result with a Queue</h2>
+<p>We can explore how to get the result from the first task to complete using a queue.</p>
+<p>In this example we will define a worker initialization function that will take the shared queue as an argument and store it in a global variable to make it available to all tasks in all workers in the pool. We will then define a target task function that will generate a random number, block, then store the result on the shared queue. The randomness will mean the task that finishes first will differ each time the code is run. Finally, we will issue many tasks and wait for and report the first result received in the main process.</p>
+<p>Firstly, we will define the function to initialize each child worker process.</p>
+<p>The function will take a shared queue, then defines a global variable and stores the argument in the global variable. This function is executed in each child worker process before it executes tasks. This means that the queue stored in the global variable will be available to all tasks executed by all workers in the process pool.</p>
+<p>The <strong>init_worker()</strong> function below implements this.</p>
+<pre><code># worker process initialization
+def init_worker(arg_queue):
+    # define global variable for each worker
+    global queue
+    # store queue in global argument
+    queue = arg_queue
+</code></pre>
+<p>Next, we can define the target task function.</p>
+<p>The function takes a unique integer identifier for the task. It then generates a random number between 2 and 12, reports the value, then blocks for that many seconds. Finally, a tuple of the integer identifier for the task and the generated value are put on the shared queue.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    # generate a value
+    value = 2 + random() * 10
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    queue.put((identifier, value))
+</code></pre>
+<p>Next, in the main process we first create a shared queue.</p>
+<p>In this case, we will use a <strong>multiprocessing.SimpleQueue</strong> type queue as we do not need to limit the capacity of the queue.</p>
+<pre><code>...
+# create the shared queue
+queue = SimpleQueue()</code></pre>
+<p>You can learn more about the <strong>SimpleQueue</strong> in the tutorial:</p>
+<ul><li><a href="../multiprocessing-simplequeue-in-python/">Multiprocessing SimpleQueue in Python</a></li></ul>
+<p>We can then create the process pool and configure it to use the custom worker initialization function.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool(initializer=init_worker, initargs=(queue,)) as pool:
+	# ...
+</code></pre>
+<p>You can learn more about initializing process pools in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-initializer/">Multiprocessing Pool Initializer in Python</a></li></ul>
+<p>We then issue 30 tasks to the process pool asynchronously using the <strong>map_async()</strong> function.</p>
+<pre><code>...
+# issue many tasks
+_ = pool.map_async(task, range(30))</code></pre>
+<p>You can learn more about issuing tasks to the process pool using the <strong>map_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li></ul>
+<p>The main process then gets the first result from the queue.</p>
+<p>This blocks until a result is available by the first task to complete.</p>
+<pre><code>...
+# get the first result, blocking
+identifier, value = queue.get()</code></pre>
+<p>The result is then reported.</p>
+<pre><code>...
+# report the first result
+print(f'First result: identifier={identifier}, value={value}')</code></pre>
+<p>Finally, the process pool is terminated by the context manager interface. This forcefully stops all tasks in the pool automatically.</p>
+<p>We report a message to this effect.</p>
+<pre><code>...
+# terminate remaining tasks
+print('Terminating remaining tasks')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting the first result from the process pool with a queue
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+from multiprocessing import SimpleQueue
+
+# worker process initialization
+def init_worker(arg_queue):
+    # define global variable for each worker
+    global queue
+    # store queue in global argument
+    queue = arg_queue
+
+# task executed in a worker process
+def task(identifier):
+    # generate a value
+    value = 2 + random() * 10
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    queue.put((identifier, value))
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared queue
+    queue = SimpleQueue()
+    # create and configure the process pool
+    with Pool(initializer=init_worker, initargs=(queue,)) as pool:
+        # issue many tasks
+        _ = pool.map_async(task, range(30))
+        # get the first result, blocking
+        identifier, value = queue.get()
+        # report the first result
+        print(f'First result: identifier={identifier}, value={value}')
+        # terminate remaining tasks
+        print('Terminating remaining tasks')
+</code></pre>
+<p>Running the example first creates the shared queue.</p>
+<p>The process pool is then created, configured with the custom initialization function that shares the queue with each child worker process.</p>
+<p>The tasks are then issued to the pool asynchronously. The main process then blocks, waiting for the first result to be retrieved from the shared queue.</p>
+<p>Only a subset of the tasks is able to run at a time. Each task generates a random number, reports a message, blocks, then stores its result in the queue.</p>
+<p>The main process gets the result from the first task to complete. It reports the value, then exits the context manager block for the pool.</p>
+<p>This terminates the pool and all running tasks, then the program ends.</p>
+<p>This highlights one approach we can use to get the first result from tasks in the multiprocessing pool.</p>
+<p>Note, results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>Task 0 executing with 5.636381601220135
+Task 1 executing with 6.939226960253943
+Task 2 executing with 4.11833591204181
+Task 3 executing with 10.302360850894589
+Task 4 executing with 6.247353496296375
+Task 5 executing with 4.551726400980119
+Task 6 executing with 5.076364406901675
+Task 7 executing with 10.959613172165605
+Task 8 executing with 5.762465637162721
+First result: identifier=2, value=4.11833591204181
+Terminating remaining tasks</code></pre>
+<p>Next, let's explore how we might get the first result using the <strong>imap_unordered()</strong> function.</p>
+<h2>Example of Getting the First Result with imap_unordered()</h2>
+<p>We can explore how to issue tasks with the <strong>imap_unordered()</strong> function and get the first result.</p>
+<p>In this example, we can update the previous example to no longer initialize the child worker processes and use a queue. Instead, we can issue all tasks using the <strong>imap_unordered()</strong> function. This will return an iterable that will yield results in the order that the tasks have completed. We can then get the first value from the iterable in order to get the first result.</p>
+<p>Firstly, we can define the process pool using the default configuration with the context manager interface.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>You can learn more about the process pool context manager interface in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Multiprocessing Pool Context Manager</a></li></ul>
+<p>Next, we can issue all tasks using the <strong>imap_unordered()</strong> function and retrieve the iterable.</p>
+<pre><code>...
+# issue many tasks
+it = pool.imap_unordered(task, range(30))</code></pre>
+<p>Finally, we can call the built-in <strong>next()</strong> function in order to traverse the iterable one step and get the first result.</p>
+<p>This call will block until the first result is available.</p>
+<pre><code>...
+# get the first result, blocking
+identifier, value = next(it)</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting the first result from the process pool with imap_unordered
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier):
+    # generate a value
+    value = 2 + random() * 10
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue many tasks
+        it = pool.imap_unordered(task, range(30))
+        # get the first result, blocking
+        identifier, value = next(it)
+        # report the first result
+        print(f'First result: identifier={identifier}, value={value}')
+        # terminate remaining tasks
+        print('Terminating remaining tasks')
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>It then issues all tasks to the process pool and returns an iterable for task results.</p>
+<p>The main process then blocks, waiting for the first result to be made available.</p>
+<p>A subset of the tasks begin executing. Each task generates a random number, reports the value, blocks, then returns a tuple of the integer value and generated random number.</p>
+<p>A result is received by the main process and is reported.</p>
+<p>THe process pool and all remaining tasks are then forcefully terminated.</p>
+<p>This highlights a simple way to get the first result from multiple tasks in the process pool.</p>
+<p>Note, results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>Task 0 executing with 2.4591115237324237
+Task 1 executing with 6.5464709230061455
+Task 2 executing with 2.847775172423446
+Task 3 executing with 5.482376922246911
+Task 4 executing with 7.11178723756704
+Task 5 executing with 3.6949780247040525
+Task 6 executing with 5.3101695644764915
+Task 7 executing with 2.6110942609971746
+Task 8 executing with 4.104337058058016
+First result: identifier=0, value=2.4591115237324237
+Terminating remaining tasks</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to get the first available result from the process pool.</p>
+</main>
+</body>
+</html>

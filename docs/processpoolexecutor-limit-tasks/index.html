@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Limit Pending Tasks In The ProcessPoolExecutor – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Limit Pending Tasks In The ProcessPoolExecutor</h1>
+<div class="post-meta">February 5, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>You can <strong>limit the number of waiting tasks</strong> in the <strong><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor</a></strong> by using a Semaphore.</p>
+<p>In this tutorial you will discover how to limit the number of waiting tasks in the Python process pool.</p>
+<p>Let's get started.</p>
+<h2 id="need-to-limit-the-number-of-waiting-tasks">Need to Limit The Number of Waiting Tasks</h2>
+<p>The <strong>ProcessPoolExecutor</strong> in Python provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>You can submit tasks to the process pool by calling the <strong>submit()</strong> function and passing in the name of the function you wish to execute on another process.</p>
+<p>Calling the <strong>submit()</strong> function will return a <strong>Future</strong> object that allows you to check on the status of the task and get the result from the task once it completes.</p>
+<p>We can limit the total number of active processes in the process pool by setting the max_worker argument when constructing the <strong>ProcessPoolExecutor</strong>.</p>
+<p>Nevertheless, it is possible to continually add tasks to the process pool, which are queued up or scheduled for execution once worker processes become available.</p>
+<p>This can be a problem if each task holds a modest amount of memory and thousands or hundreds of thousands of tasks are queued up. THere is a need to bound or limit the number of waiting tasks.</p>
+<p><strong>How can we limit the total number of queued or waiting tasks in the ProcessPoolExecutor?</strong></p>
+<h2 id="how-to-limit-the-number-of-waiting-tasks">How to Limit The Number of Waiting Tasks</h2>
+<p>The number of waiting tasks in the <strong>ProcessPoolExecutor</strong> can be limited by using multiprocessing.Semaphore.</p>
+<p>You may recall that a <strong>Semaphore</strong> is a synchronization primitive that allows a fixed number of resources to be acquired before blocking until a resource becomes available. This is achieved by setting the number of resources when constructing the <strong>Semaphore</strong> then calling the <strong>acquire()</strong> function when a resource is required and <strong>release()</strong> once the resource is finished with.</p>
+<p>For example:</p>
+<pre><code>...
+# create a semaphore
+semaphore = Semaphore(10)
+# acquire a resource
+semaphore.acquire()
+# do something...
+# release the resource
+semaphore.release()</code></pre>
+<p>We cannot create <strong>Semaphore</strong> objects directly and pass them around when working with processes, as we can when working with threads. Instead, we must use a <strong>Manager</strong> to create the <strong>Semaphore</strong> object for us.</p>
+<p>Managers are used to create and manage shared state between processes, like data and variables.</p>
+<p>You can learn more about <strong>Semaphores</strong> and <strong>Managers</strong> here:</p>
+<ul><li><a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></li></ul>
+<p><strong>Managers</strong> have to be created and closed which can be achieved seamlessly using the context manager, for example:</p>
+<pre><code>...
+# create the manager used for sharing state between processes
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>Next, we can use the <strong>Manager</strong> to create the <strong>Semaphore</strong>:</p>
+<pre><code>...
+# create a semaphore to limit the number of pending tasks
+semaphore = manager.Semaphore()</code></pre>
+<p>We can use a semaphore to limit the total number of tasks submitted to the <strong>ProcessPoolExecutor</strong>.</p>
+<p>This can be achieved by defining a proxy <strong>submit()</strong> function that we call to execute tasks instead of the <strong>submit() </strong>function on the <strong>ProcessPoolExecutor</strong>.</p>
+<p>This proxy function would be responsible for acquiring a resource from the semaphore, submitting the task on the executor, then adding a done callback function that will release the <meta/><strong>Semaphore</strong> once the task is done.</p>
+<p>Let's look at each element in turn.</p>
+<p>Firstly, a <strong>Semaphore</strong> object must be created that specifies the total number of tasks that can be submitted to the <strong>ProcessPoolExecutor</strong>. This includes the total number of tasks that may be queued and those that may be executing.</p>
+<pre><code>...
+# semaphore to limit the queue size to the pool
+semaphore = manager.Semaphore(100)</code></pre>
+<p>The proxy <strong>submit()</strong> function would take the name of the target task function and any arguments to that function, just like the <strong>submit()</strong> function on the <strong>Executor</strong> class (the parent class of the <strong>ProcessPoolExecutor</strong>).</p>
+<pre><code># proxy for submitting tasks that imposes a limit on the queue size
+def task_proxy(function, *args, **kwargs):
+	# ...
+</code></pre>
+<p>Next, we would acquire the resource via the <strong>Semaphore</strong>.</p>
+<pre><code>...
+# acquire the semaphore, blocks if occupied
+semaphore.acquire()</code></pre>
+<p>This will return immediately if a resource is available otherwise it will block until a resource becomes available via another task finishing and calling <strong>release()</strong>.</p>
+<p>We can then submit the task as per normal on the <strong>ProcessPoolExecutor</strong> by calling the actual <strong>submit()</strong> function.</p>
+<pre><code>...
+# submit the task normally
+future = executor.submit(function, *args, **kwargs)</code></pre>
+<p>Finally, we would add a done callback function to the task's <strong>Future</strong> object.</p>
+<p>This can be achieved by first defining a callback function that takes a Future object and will release the semaphore.</p>
+<pre><code># callback for completed tasks
+def task_complete_callback(future):
+    global semaphore
+    # release the semaphore
+    semaphore.release()
+</code></pre>
+<p>This function can then be registered on the <strong>Future</strong> object by calling the <strong>add_done_callback()</strong> function and passing the name of the function.</p>
+<pre><code>...
+# add the custom done callback
+future.add_done_callback(task_complete_callback)</code></pre>
+<p>And that's it.</p>
+<p>The function must return the <strong>Future</strong> object so that the caller can collect <strong>Futures</strong> if needed.</p>
+<p>The complete proxy task function is listed below.</p>
+<pre><code># proxy for submitting tasks that imposes a limit on the queue size
+def submit_proxy(function, *args, **kwargs):
+    global semaphore, executor
+    # acquire the semaphore, blocks if occupied
+    semaphore.acquire()
+    # submit the task normally
+    future = executor.submit(function, *args, **kwargs)
+    # add the custom done callback
+    future.add_done_callback(task_complete_callback)
+    return future
+</code></pre>
+<p>This function will limit the total number of tasks that can be submitted to the <strong>ProcessPoolExecutor</strong>.</p>
+<p>A downside of this approach is that both the <strong>submit_proxy() </strong>function and the <strong>task_complete_callback()</strong> callback function both require access to global state, such as the Semaphore in both functions and the <strong>ProcessPoolExecutor</strong> in the proxy function.</p>
+<p>This could be avoided if we wrapped this functionality into a class instead of standalone functions.</p>
+<p>Now that we know how to bound the number of tasks in the <strong>ProcessPoolExecutor</strong>, let's look at a worked example.</p>
+<h2 id="example-of-limiting-the-number-of-waiting-tasks">Example of Limiting The Number of Waiting Tasks</h2>
+<p>Let's explore an example of bounding the total number of tasks in the <strong>ProcessPoolExecutor</strong>.</p>
+<p>First, let's define a task that takes a unique identifier, like an integer, blocks for a fraction of a second and reports a message that the task is done.</p>
+<pre><code># task that sleeps for a moment
+def work(identifier):
+    sleep(random())
+    print(f'Done: {identifier}', flush=True)
+    return identifier
+</code></pre>
+<p>We can then define the done callback function for releasing the <meta/><strong>Semaphore</strong> when the task is completed, prepared in the previous section.</p>
+<pre><code># callback for completed tasks
+def task_complete_callback(future):
+    # release the semaphore
+    semaphore.release()
+</code></pre>
+<p>Then the proxy submit function will acquire the <strong>Semaphore</strong> before submitting the task to the process pool, and will add the done callback function.</p>
+<pre><code># proxy for submitting tasks that imposes a limit on the queue size
+def submit_proxy(function, *args, **kwargs):
+    # acquire the semaphore, blocks if occupied
+    semaphore.acquire()
+    # submit the task normally
+    future = executor.submit(function, *args, **kwargs)
+    # add the custom done callback
+    future.add_done_callback(task_complete_callback)
+    return future
+</code></pre>
+<p>All that is left is to submit tasks via the proxy.</p>
+<p>First, let's define the number of worker processes in the process pool and the total number of tasks in the process pool.</p>
+<p>We will use two workers and a total of ten tasks (e.g. 2 executing and 8 waiting).</p>
+<pre><code>...
+# number of works in the pool
+n_workers = 2
+# max number of queued tasks
+n_queue = 10</code></pre>
+<p>We can then define the <strong>Semaphore</strong> used to bound the total number of tasks in the ProcessPoolExecutor.</p>
+<p>First, we create the <strong>Manager</strong> object used for creating synchronization primitive objects to be explicitly shared between processes.</p>
+<pre><code>...
+# create a manager for sharing the semaphore
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>We can then use the manager to create the <strong>Semaphore</strong> object.</p>
+<pre><code>...
+# semaphore to limit the queue size to the pool
+semaphore = manager.Semaphore(n_queue)</code></pre>
+<p>Finally, we can create the process pool and submit 50 tasks using the proxy submit function <strong>submit_proxy()</strong> specifying the name of our target task function and a unique integer argument.</p>
+</main>
+</body>
+</html>

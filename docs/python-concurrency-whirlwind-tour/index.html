@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python Concurrency: A Whirlwind Tour – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Python Concurrency: A Whirlwind Tour</h1>
+<div class="post-meta">January 4, 2022&ensp;<a class="category" href="../tutorial-archive.html">Concurrent File I/O</a></div>
+
+<p>You can implement <strong>concurrency in Python</strong> using <strong>threads</strong>, <strong>processes</strong>, and <strong>asyncio</strong>.</p>
+<p>In this tutorial you will take a whirlwind tour of Python concurrency.</p>
+<p>Let's get started.</p>
+<h2>Python Concurrency Overview</h2>
+<p><a href="https://en.wikipedia.org/wiki/Concurrent_computing">Concurrency</a> refers to parts of a program that are independent and can be executed out of order.</p>
+<p>For example, a part in your program may comprise multiple tasks that do not need to interact with each other and can be completed in any order as long as they are all completed, such as downloading multiple separate files.</p>
+<p>Concurrent tasks may or may not be executed in parallel. <a href="https://en.wikipedia.org/wiki/Parallel_computing">Parallelism</a> refers explicitly to the ability to execute tasks simultaneously, such as with multiple CPU cores.</p>
+<p>The reference Python interpreter, CPython provides four main modules for concurrency, they are:</p>
+<ul>
+<li><strong>multiprocessing</strong>: for process-based concurrency with the <strong>multiprocessing.Process</strong> class.</li>
+<li><strong>threading</strong>: for thread-based concurrency with the <strong>threading.Thread</strong> class.</li>
+<li><strong>concurrent.futures</strong>: for thread and process pools that extend the <strong>concurrent.futures.Executor</strong> class.</li>
+<li><strong>asyncio</strong>: for coroutine-based concurrency with the <strong>async</strong>/<strong>await</strong> keywords.</li>
+</ul>
+<p>Only Processes provide true parallelism in Python, that is the ability to execute tasks simultaneously on multiple CPUs. This is achieved by starting new child instances of the Python interpreter process for executing tasks. Data sharing between processes is achieved via inter-process communication in which data must be serialized at added computational cost.</p>
+<p>Python Threads provide concurrency, but only limited parallelism. This is because of the Global Interpreter Lock (GIL) that ensures the Python interpreter is thread safe by limiting only a single thread to execute at any one time within a Python process. The GIL is released in some situations, such as performing IO operations, allowing modest parallel execution when interacting with files, sockets, and devices.</p>
+<p>Asynchronous I/O, or AsyncIO for short, is an implementation of asynchronous programming that provides the ability to create and run coroutines within an event-loop. A coroutine is a type of routine that can be suspended and resumed, allowing the asyncio event loop to jump from one to another when instructed via the await keyword. The paradigm provides a limited set of non-blocking IO operations.</p>
+<p>Each of processes, threads, and asyncio has a sweet spot.</p>
+<ul>
+<li><strong>Processes</strong> are suited for CPU-bound tasks, but are limited to perhaps tens of tasks and overhead in sharing data between processes.</li>
+<li><strong>Threads</strong> are suited to IO-bound tasks, but are limited to perhaps thousands of tasks.</li>
+<li><strong>AsyncIO</strong> is suited to large-scale IO-bound tasks, e.g. perhaps tens of thousands of tasks, but are limited to a subset of non-blocking IO operations and require adopting the asynchronous programming paradigm.</li>
+</ul>
+<p>Now that we have a high-level understanding of the concurrency capabilities provided by the Python standard library, let's take a whirlwind tour of how we might use each in turn to execute concurrent tasks.</p>
+<h2>Threads and Processes</h2>
+<p>Threads and Processes provides a similar interface for executing ad hoc tasks defined by a function.</p>
+<p>Both threads and processes are constructs created and managed by the underlying operating system. Threads are light-weight, they belong to a process and allow data sharing within the process. A process is more heavy weight, has at least one thread, and requires inter-process communication to share data.</p>
+<p>Let's take a closer look at how we might execute ad hoc tasks with threads and processes in Python.</p>
+<h3>Thread</h3>
+<p>A <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread</a> refers to a thread of execution by a computer program.</p>
+<p>Every Python program is a process with one thread called the main thread used to execute your program instructions. Each process is in fact one instance of the Python interpreter that executes Python instructions (Python byte-code), which is a slightly lower level than the code you type into your Python program.</p>
+<p>Python provides real or native (system-level) threads via the <a href="https://docs.python.org/3/library/threading.html">threading.Thread</a> class.</p>
+<p>A task can be run in a new thread by creating an instance of the <strong>Thread</strong> class and specifying the function to run in the new thread via the <strong>target</strong> argument.</p>
+<pre><code>...
+# create and configure a new thread to run a function
+thread = Thread(target=task)</code></pre>
+<p>Once the thread is created, it must be started by calling the <strong>start()</strong> function.</p>
+<pre><code>...
+# start the task in a new thread
+thread.start()</code></pre>
+<p>We can then wait around for the task to complete by joining the thread by calling the <strong>join()</strong> function, for example:</p>
+<pre><code>...
+# wait for the task to complete
+thread.join()</code></pre>
+<p>We can demonstrate this with a complete example with a task that sleeps for a moment and prints a message.</p>
+<p>The complete example of executing a target task function in a separate thread is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of executing a target task function in a separate thread
+from time import sleep
+from threading import Thread
+
+# a simple task that blocks for a moment and prints a message
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print('This is coming from another thread')
+
+# create and configure a new thread to run a function
+thread = Thread(target=task)
+# start the task in a new thread
+thread.start()
+# display a message
+print('Waiting for the new thread to finish...')
+# wait for the task to complete
+thread.join()
+</code></pre>
+<p>Running the example creates the thread object to run the <strong>task()</strong> function.</p>
+<p>The thread is started and the <strong>task()</strong> function is executed in another thread. The task sleeps for a moment, meanwhile in the main thread a message is printed that we are waiting around and the main thread joins the new thread.</p>
+<p>Finally, the new thread finishes sleeping, prints a message and closes. The main thread then carries on and also closes as there are no more instructions to execute.</p>
+<pre><code>Waiting for the new thread to finish...
+This is coming from another thread</code></pre>
+<h3>Process</h3>
+<p>A <strong>process</strong> refers to a computer program.</p>
+<p>Every Python program is a process and has one thread called the main thread used to execute your program instructions. Each process is in fact one instance of the Python interpreter that executes Python instructions (Python byte-code), which is a slightly lower level than the code you type into your Python program.</p>
+<p>Python provides real system-level processes via the <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing.Process</a> class.</p>
+<p>The underlying operating system controls how new processes are created. On some systems that may require spawning a new process and on others it may require that the process is forked. The operating-specific method used for creating new processes in Python is not something we need to worry about as it is managed by your installed Python interpreter.</p>
+<p>A task can be run in a new process by creating an instance of the <strong>Process</strong> class and specifying the function to run in the new process via the "<strong>target</strong>" argument.</p>
+<pre><code>...
+# define a task to run in a new process
+process = Process(target=task)</code></pre>
+<p>Once the process is created, it must be started by calling the <strong>start()</strong> function.</p>
+<pre><code>...
+# start the task in a new process
+process.start()</code></pre>
+<p>We can then wait around for the task to complete by joining the process with the <strong>join()</strong> function, for example:</p>
+<pre><code>...
+# wait for the task to complete
+process.join()</code></pre>
+<p>Whenever we create new processes, we must protect the entry point of the program.</p>
+<pre><code># entry point for the program
+if __name__ == '__main__':
+	# do things...
+</code></pre>
+<p>Tying this together, the complete example of creating a <strong>Process</strong> to run an ad hoc task function is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of running a function in a new process
+from time import sleep
+from multiprocessing import Process
+
+# a simple task that blocks for a moment and prints a message
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print('This is coming from another process', flush=True)
+
+# entry point for the program
+if __name__ == '__main__':
+    # define a task to run in a new process
+    process = Process(target=task)
+    # start the task in a new process
+    process.start()
+    # display a message
+    print('Waiting for the new process to finish...')
+    # wait for the task to complete
+    process.join()
+</code></pre>
+<p>Running the example creates the process object to run the <strong>task()</strong> function.</p>
+<p>The process is started and the <strong>task()</strong> function is executed in the child process. The task sleeps for a moment, meanwhile in the main thread in the parent process a message is printed that we are waiting around and the main process joins the new child process.</p>
+<p>Finally, the child process finishes sleeping, prints a message and closes. The main thread in the parent process then carries on and also closes as there are no more instructions to execute.</p>
+<pre><code>Waiting for the new process to finish...
+This is coming from another process</code></pre>
+<h2>Thread Pools and Process Pools</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Thread_pool">thread pool</a> is a programming pattern for automatically managing a pool of workers.</p>
+<p>Although they are generally referred to as thread pools, they may use either threads or processes internally.</p>
+<p>The pool is responsible for a fixed number of workers.</p>
+<ul>
+<li>It controls when the worker threads or processes are created, such as just-in-time when they are needed.</li>
+<li>It also controls what threads or processes should do when they are not being used, such as making them wait without consuming computational resources.</li>
+</ul>
+<p>Each worker is agnostic to the type of tasks that are executed. Workers are designed to be re-used once the task is completed and provide protection against the unexpected failure of the task, such as raising an exception, without impacting the worker itself.</p>
+<p>This is unlike a single thread or process that is configured for the single execution of one specific task.</p>
+<p>Python provides thread pools via the <strong>concurrent.futures.ThreadPoolExecutor</strong> class and process pools via the <strong>concurrent.futures.ProcessPoolExecutor</strong>.</p>
+<p>Both classes extend the class <strong>concurrent.futures.Executor</strong> class and provide a generic interface.</p>
+<h3>Executors</h3>
+<p>The <strong>concurrent.futures.Executor</strong> class is an abstract class, meaning that it cannot be instantiated.</p>
+<p>The <strong>Executor</strong> class defines three methods used to control our thread pool; they are: <strong>submit()</strong>, <strong>map()</strong>, and <strong>shutdown()</strong>.</p>
+<p>The <strong>Executor</strong> is started when the class is created and must be shut down explicitly by calling the <strong>shutdown()</strong> function, which will release any resources held by the <strong>Executor</strong>. We can also shut down automatically by using the context manager interface to the class.</p>
+<p>The <strong>submit()</strong> and <strong>map() </strong>functions are used to submit tasks to the <strong>Executor</strong> for asynchronous execution.</p>
+<p>The <strong>map()</strong> function operates just like the built-in <strong>map()</strong> function and is used to apply a function to each element in an iterable object, like a list. Unlike the built-in <strong>map()</strong> function, each application of the function to an element will happen asynchronously instead of sequentially.</p>
+<p>The <strong>submit()</strong> function takes a function as well as any arguments and will execute it asynchronously, although the call returns immediately and provides a Future object.</p>
+<p>Next, let’s take a closer look at <strong>Future</strong> objects.</p>
+<h3>Futures</h3>
+<p>A <a href="https://en.wikipedia.org/wiki/Futures_and_promises">future</a> is a programming pattern that represents a delayed result for an asynchronous task.</p>
+<p>It is also sometimes called a promise or a delay. It provides a context for the result of a task that may or may not be executing and a way of getting a result once it is available.</p>
+<p>In Python, the <strong>concurrent.futures.Future</strong> object is returned from an <strong>Executor</strong>, such as a <strong>ThreadPoolExecutor</strong> when calling the <strong>submit()</strong> function to dispatch a task to be executed asynchronously.</p>
+<p>In general, we do not create <strong>Future</strong> objects objects; we only receive them, and we may need to call functions on them.</p>
+<p>There is always one <strong>Future</strong> object for each task sent into the <strong>Executor</strong> via a call to <strong>submit()</strong>.</p>
+<p>The <strong>Future</strong> object provides a number of helpful functions for inspecting the status of the task, such as: <strong>cancelled()</strong>, <strong>running()</strong>, and <strong>done()</strong> to determine if the task was cancelled, is currently running, or has finished execution.</p>
+<p>A <strong>Future</strong> object also provides access to the result of the task via the <strong>result()</strong> function. If an exception was raised while executing the task, it will be re-raised when calling the <strong>result()</strong> function, or can be accessed via the <strong>exception()</strong> function.</p>
+<p>Both the <strong>result()</strong> and <strong>exception()</strong> functions allow a "<strong>timeout</strong>" to be specified as an argument, which is the number of seconds to wait for a return value if the task is not yet complete. If the timeout expires, then a <strong>TimeoutError</strong> will be thrown.</p>
+<p>Now that we are familiar with the <strong>Executor</strong> and <strong>Future</strong> classes, let’s take a closer look at the <strong>ThreadPoolExecutor</strong>.</p>
+<h3>ThreadPoolExecutor</h3>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of generic worker threads in Python.</p>
+<p>Executing functions using worker threads in the <strong>ThreadPoolExecutor</strong> involves first creating the thread pool, then submitting the task into the pool. If the task returns a value, we can then retrieve it when the task is completed.</p>
+<p>We can demonstrate this with a small example.</p>
+<p>The example below defines a target task function that blocks for a moment, prints a message and returns a string.</p>
+<pre><code># a simple task that blocks for a moment and prints a message
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print(f'Task running in a worker thread')
+    # return a message
+    return 'All done'
+</code></pre>
+<p>We create the thread pool using the context manager ensuring that the pool is shutdown automatically once we are finished using it.</p>
+<pre><code>...
+# create the pool of worker threads
+with ThreadPoolExecutor() as executor:
+	# ...
+</code></pre>
+<p>Once created, we submit a task to the pool and get a <strong>Future</strong> object that provides a handle on the task. We then attempt to get the result from the task that blocks until the task is completed and returns a value.</p>
+<pre><code>...
+# execute a task in another thread
+future = executor.submit(task)
+# display a message
+print('Waiting for the task to finish...')
+# wait for the task to finish and get the result
+result = future.result()
+# report the result
+print(result)
+</code></pre>
+<p>Tying this together, the complete example of using the <strong>ThreadPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# demonstration with the thread pool life-cycle
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# a simple task that blocks for a moment and prints a message
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print(f'Task running in a worker thread')
+    # return a message
+    return 'All done'
+
+# create the pool of worker threads
+with ThreadPoolExecutor() as executor:
+    # execute a task in another thread
+    future = executor.submit(task)
+    # display a message
+    print('Waiting for the task to finish...')
+    # wait for the task to finish and get the result
+    result = future.result()
+    # report the result
+    print(result)
+</code></pre>
+<p>Running the example creates the thread pool, submits the task, and waits for the result in the main thread.</p>
+<p>The thread pool creates the default number of worker threads and waits for a task. The task is submitted and is consumed by a worker thread in the pool and begins executing.</p>
+<p>The task blocks for a moment, reports a message, and returns a value.</p>
+<p>Finally, the main thread retrieves the result of the task and closes the thread pool.</p>
+<pre><code>Waiting for the new thread to finish...
+Task running in a worker thread
+All done</code></pre>
+<p>Next, let's look at an example of using the process pool.</p>
+<h3>ProcessPoolExecutor</h3>
+<p>The <strong>ProcessPoolExecutor</strong> provides a pool of generic worker processes in Python.</p>
+<p>Executing functions using worker processes in the <strong>ProcessPoolExecutor</strong> involves first creating the process pool, then submitting the task into the pool. If the task returns a value, we can then retrieve it when the task is completed.</p>
+<p>We can demonstrate this with a small example.</p>
+<p>The example below defines a target task function that blocks for a moment, prints a message and returns a string. Importantly, calls to <strong>print()</strong> from child processes will buffer messages by default. Therefore it is important to flush output each call to the <strong>print()</strong> function by setting the "<strong>flush</strong>" argument to <strong>True</strong>.</p>
+<pre><code># a simple task that blocks for a moment and prints a message
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print(f'Task running in a worker process', flush=True)
+    # return a message
+    return 'All done'
+</code></pre>
+<p>We create the process pool using the context manager ensuring that the pool is shutdown automatically once we are finished using it.</p>
+<pre><code>...
+# create the pool of worker processes
+with ProcessPoolExecutor() as executor:
+	# ...
+</code></pre>
+<p>Once created, we submit a task to the pool and get a <strong>Future</strong> object that provides a handle on the task. We then attempt to get the result from the task that blocks until the task is completed and returns a value.</p>
+<pre><code>...
+# execute a task in another process
+future = executor.submit(task)
+# display a message
+print('Waiting for the task to finish...')
+# wait for the task to finish and get the result
+result = future.result()
+# report the result
+print(result)
+</code></pre>
+<p>When using processes, we must protect the entry point of the program.</p>
+<pre><code>...
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Tying this together, the complete example of using the <strong>ProcessPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# demonstration with the process pool life-cycle
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# a simple task that blocks for a moment and prints a message
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print(f'Task running in a worker process', flush=True)
+    # return a message
+    return 'All done'
+
+# demonstrate the process pool
+def main():
+    # create the pool of worker processes
+    with ProcessPoolExecutor() as executor:
+        # execute a task in another process
+        future = executor.submit(task)
+        # display a message
+        print('Waiting for the task to finish...')
+        # wait for the task to finish and get the result
+        result = future.result()
+        # report the result
+        print(result)
+
+# entry point
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example creates the process pool, submits the task, and waits for the result in the main process.</p>
+<p>The process pool creates the default number of worker processes and waits for a task. The task is submitted and is consumed by a worker process in the pool and begins executing.</p>
+<p>The task blocks for a moment, reports a message, and returns a value.</p>
+<p>Finally, the main process retrieves the result of the task and closes the process pool.</p>
+<pre><code>Waiting for the task to finish...
+Task running in a worker process
+All done</code></pre>
+<p>Next, let's look at AsyncIO.</p>
+<h2>Asynchronous IO</h2>
+<p>Python provides an asyncio module for <a href="https://en.wikipedia.org/wiki/Asynchronous_I/O">Asynchronous Programming</a> and specifically Asynchronous Input/Output (AsyncIO).</p>
+<p>It primarily provides a way to create and run coroutines using the <strong>async/await</strong> syntax.</p>
+<p>A coroutine is a programming pattern that generalizes routines (e.g. subroutines, functions, or blocks of code) to allow them to be suspended and resumed. Coroutines use cooperative multitasking, requiring threads of execution to explicitly yield control.</p>
+<p>A coroutine can be defined by adding the “<strong>async</strong>” keyword prior to a function definition; for example:</p>
+<pre><code># define a coroutine
+async def task():
+    # do things...
+</code></pre>
+<p>This syntax defines an awaitable, which is a unit of execution that can be awaited, e.g. waited for.</p>
+<p>A program can wait on an awaitable asynchronous task to complete using the “<strong>await</strong>” keyword; for example:</p>
+<pre><code>...
+# create and schedule the coroutine and wait for it to return,
+await task()
+</code></pre>
+<p>This will do two things:</p>
+<ul>
+<li>Create a coroutine and schedule it for execution.</li>
+<li>Yield execution until the coroutine returns.</li>
+</ul>
+<p>It is also possible to define a collection of coroutines, such as in a list.</p>
+<p>For example:</p>
+</main>
+</body>
+</html>

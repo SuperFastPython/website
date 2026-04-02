@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Cancel Task and Wait – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Cancel Task and Wait</h1>
+<div class="post-meta">December 24, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can develop a helper function to <strong>cancel an asyncio task and wait for it to be cancelled</strong>.</p>
+<p>In this tutorial, you will discover how to cancel a task and wait for it to be cancelled.</p>
+<p>Let's get started.</p>
+<h2>What is Asyncio Task Cancellation?</h2>
+<p>Asyncio tasks can be canceled.</p>
+<p>This can be achieved by calling the <strong>cancel()</strong> method on the <strong>asyncio.Task</strong>. This will request that the task cancel as soon as possible and returns <strong>True</strong> if the request was successful or <strong>False</strong> if it was not, e.g. the task is already done.</p>
+<blockquote>
+<p>Request the Task to be cancelled. This arranges for a CancelledError exception to be thrown into the wrapped coroutine on the next cycle of the event loop.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+if task.cancel():
+	# request successful
+</code></pre>
+<p>The next time that the target task that was cancelled resumes, a <strong>CancelledError</strong> exception will be raised.</p>
+<p>This exception will bubble up to the top level of the task and cause it to stop running.</p>
+<p>You can learn more about the mechanics of cancellation a task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<h2>Need to Cancel Task And Wait</h2>
+<p>We may need to cancel a task and then wait for the target task to be done.</p>
+<p>The caller that cancels the target task needs to wait and know that the target task is cancelled before resuming.</p>
+<p>It assumes that cancellation of the target task is a blocking call, and that the request for cancellation and the completion of cancellation is synchronous.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>The target task is sensitive and must be cancelled for safety reasons.</li>
+<li>The application is unable to progress until the target task is in the done state.</li>
+<li>The target task has resources required by the calling task.</li>
+</ul>
+<p>Therefore, we need a consistent way to cancel a target task and then await that task to cancel.</p>
+<p>This is a common pattern, typically referred to as "<em>cancel and wait</em>" or "<em>cancel and await</em>".</p>
+<p>Note, if behavior is required and does not need to be synchronous, then a done callback function can be used to execute some behavior when the target task is indeed cancelled. This should generally be preferred if possible.</p>
+<h2>How to Cancel Task and Wait</h2>
+<p>Canceling a task and waiting is relatively straightforward.</p>
+<p>Nevertheless, the closer you look at this pattern, the more important details surface.</p>
+<p>Let's look at how we might work through this pattern.</p>
+<h3>Naive Cancel And Wait</h3>
+<p>A naive way to implement this pattern is to call the <strong>cancel()</strong> method on the target task and then await the task directly.</p>
+<p>This would require handling an <strong>asyncio.CancelledError</strong> that is expected to bubble up from the target task.</p>
+<p>For example, we can implement this in a simple helper function:</p>
+<pre><code># cancel task and wait for it to complete
+async def cancel_and_wait(task, msg=None):
+	# cancel the task
+	task.cancel(msg)
+	try:
+	    # wait for the task to be done
+	    await task
+	except asyncio.CancelledError:
+		# the target was canceled, perhaps log
+		pass</code></pre>
+<p>This is straightforward and is probably how most asyncio developers implement the cancel and await pattern.</p>
+<p>It is even suggested in the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.Task.cancel">asyncio API documentation</a> for the <strong>Task.cancel()</strong> method.</p>
+<p>One problem with this approach is that it may consume requests of the cancel task to cancel.</p>
+<h3>Better Cancel And Wait</h3>
+<p>In the above example, the helper function handles the <strong>asyncio.CancelledError</strong> expected to bubble up from the cancelled target task.</p>
+<p>As is, this could be a problem if the caller, the task calling <strong>cancel()</strong>, is itself cancelled while waiting on the target task to cancel.</p>
+<p>If the caller is cancelled while waiting, it will resume after the await, and raise an <strong>asyncio.CancelledError</strong>, which will be consumed and handled by the try-except.</p>
+<p>This may have the undesirable effect of consuming or shielding the caller from cancellation.</p>
+<p>A solution is to have the helper function check for this case when handling the <strong>asyncio.CancelledError</strong>.</p>
+<p>For example, it can check if the current task was canceled, and if so re-raise the exception to allow the caller of the <strong>cancel_and_wait()</strong> to handle the cancellation request normally.</p>
+<p>This can be achieved by first calling the <strong>asyncio.current_task()</strong> function to get access to the current task object, then calling the <strong>cancelling()</strong> method which will return the number of cancel requests the task has received.</p>
+<p>If this value is greater than zero, it can re-raise the <strong>CancelledError</strong>.</p>
+<p>For example:</p>
+<pre><code># cancel task and wait for it to complete
+async def cancel_and_wait(task, msg=None):
+	# cancel the task
+	task.cancel(msg)
+	try:
+	    # wait for the task to be done
+	    await task
+	except asyncio.CancelledError:
+		# check if the current task was cancelled
+		if asyncio.current_task().cancelling() &gt; 0:
+			raise
+		else:
+			# the target was canceled, perhaps log
+			pass</code></pre>
+<p>The <strong>cancel_and_wait()</strong> helper will return normally if the target is done and raise a <strong>CancelledError</strong> only if the caller has a request to cancel.</p>
+<p>This is better, but we can change it further.</p>
+<p>The issue comes down to the contact with the <strong>Task.cancel()</strong> method and our expectations.</p>
+<h3>Even Better Cancel And Wait</h3>
+<p>The <strong>cancel()</strong> method is that it will request the target task to cancel.</p>
+<p>The expectation of a cancelled task is that it will cancel at some point by raising a <strong>CancelledError</strong>. Awaiting a cancelled task is therefore expected to raise a <strong>CancelledError</strong>.</p>
+<p>Put another way, a canceled task not raising a <strong>CancelledError</strong> is unexpected behavior.</p>
+<blockquote>
+<p>... suppressing cancellation completely is not common and is actively discouraged.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>We can make our helper function better by enforcing this expectation, and flip the outcomes of the previous helper function.</p>
+<p>Note, I did not come to this solution myself, instead, I learned about it from Evgeny Osipenko in his discussion and sample code in the GitHub Issue titled "<a href="https://github.com/python/cpython/issues/103486">Safe synchronous cancellation in asyncio</a>", April 2023.</p>
+<blockquote>
+<p>I propose adding a function to asyncio to cancel a task and then safely wait for the cancellation to complete.</p>
+<cite>-- <a href="https://github.com/python/cpython/issues/103486">Safe synchronous cancellation in asyncio</a>.</cite></blockquote>
+<p>We can update our helper function to enforce this expectation in a few ways:</p>
+<ol>
+<li>If the target task does not raise a <strong>CancelledError</strong>, we can treat this as a <strong>RuntimeError</strong> (our code is broken).</li>
+<li>If the target task raises a <strong>CancelledError</strong>, we can let it bubble up to be handled by the caller.</li>
+<li>If the calling task is canceled, do nothing and just return.</li>
+</ol>
+<p>Tying this together, the updated helper with these changes is listed below (it's Evgeny's code snippet, I just added comments).</p>
+<pre><code># cancel task and wait for it to complete
+async def cancel_and_wait(task, msg=None):
+    # cancel the task
+    task.cancel(msg)
+    try:
+        # wait for the task to be done
+        await task
+    except asyncio.CancelledError:
+        # check that the current task is not cancelled
+        if asyncio.current_task().cancelling() == 0:
+            # bubble the exception up
+            raise
+        else:
+            # the current task is canceling
+            return
+    else:
+        # an expected CancelledError was not seen
+        raise RuntimeError("Cancelled task did not end with an exception")
+</code></pre>
+<p>Not bad.</p>
+<p>This means that the normal case is that the target is cancelled and the helper awaits until the target is done, after which the <strong>CancelledError</strong> is bubbled up and can be handled normally, e.g. by logging and getting on with things.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel and wait for task to be done
+try:
+    await cancel_and_wait(task)
+except asyncio.CancelledError:
+    # task was canceled as expected
+</code></pre>
+<p>The unexpected case that the target task does not raise a <strong>CancelledError</strong> when canceled, causes a program fault in the case of a <strong>RuntimeError</strong>.</p>
+<p>The unusual case that the caller is cancelled, such as while awaiting the target task, results in a normal return, which can be checked.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel and wait for task to be done
+try:
+    await cancel_and_wait(task)
+except asyncio.CancelledError:
+    # task was canceled as expected
+else:
+	# current task was cancelled
+</code></pre>
+<p>We can go even further of course, but not now.</p>
+<p>See the <strong>cancel()</strong> function developed by <a href="https://github.com/facebookincubator/later/blob/main/later/task.py#L59">Jason Fried</a> and used at Meta, and the <a href="https://discuss.python.org/t/asyncio-cancel-a-cancellation-utility-as-a-coroutine-this-time-with-feeling/26304">associated discussion</a>. It's pretty cool.</p>
+<p>Now that we know how to reasonably safely cancel a target task, let's look at some worked examples.</p>
+<h2>Example of Cancel and Wait</h2>
+<p>We can explore a simple case of canceling a long-running task and waiting for it to cancel, using our new shiny helper function developed above.</p>
+<p>In this case, we will develop a long-running task that sleeps for 5 seconds and then reports a message.</p>
+<pre><code># task that take a long time
+async def work():
+    # sleep a long time
+    await asyncio.sleep(5)
+    # report a message
+    print('Task sleep completed normally')
+</code></pre>
+<p>We can then schedule this task and allow it to begin, then cancel and wait, and handle the expected <strong>CancelledError</strong>.</p>
+<pre><code># main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to run a moment
+    await asyncio.sleep(1)
+    # cancel and wait for task to be done
+    try:
+        await cancel_and_wait(task)
+    except asyncio.CancelledError:
+        print('Target is closed')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of cancel and wait helper
+import asyncio
+
+# cancel task and wait for it to complete
+async def cancel_and_wait(task, msg=None):
+    # cancel the task
+    task.cancel(msg)
+    try:
+        # wait for the task to be done
+        await task
+    except asyncio.CancelledError:
+        # check that the current task is not cancelled
+        if asyncio.current_task().cancelling() == 0:
+            # bubble the exception up
+            raise
+        else:
+            # the current task is canceling
+            return
+    else:
+        # an expected CancelledError was not seen
+        raise RuntimeError("Cancelled task did not end with an exception")
+
+# task that take a long time
+async def work():
+    # sleep a long time
+    await asyncio.sleep(5)
+    # report a message
+    print('Task sleep completed normally')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to run a moment
+    await asyncio.sleep(1)
+    # cancel and wait for task to be done
+    try:
+        await cancel_and_wait(task)
+    except asyncio.CancelledError:
+        print('Target is cancelled')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>work()</strong> task is created and scheduled and the <strong>main()</strong> coroutine suspends and allows it to begin.</p>
+<p>The <strong>work()</strong> task runs and suspends on a call to sleep.</p>
+<p>The <strong>main()</strong> coroutine runs and awaits the <strong>cancel_and_wait()</strong> helper coroutine, suspending until the target task is cancelled.</p>
+<p>The <strong>cancel_and_wait()</strong> helper coroutine runs and calls <strong>cancel()</strong> on the target task. It then awaits the target task, suspending until it is done.</p>
+<p>The <strong>work()</strong> task resumes and raises a <strong>CancelledError</strong>. This bubbles up and causes the <strong>work()</strong> task to terminate.</p>
+<p>The <strong>CancelledError</strong> bubbles up through the <strong>cancel_and_wait()</strong> coroutine and is handled. The caller has not been requested to cancel, therefore the <strong>CancelledError</strong> is re-raised. It bubbles up and causes the <strong>cancel_and_wait()</strong> to terminate.</p>
+<p>The <strong>main()</strong> coroutine resumes and the <strong>CancelledError</strong> is handled, reporting a message.</p>
+<p>This highlights how we can cancel a target task and wait for it to be canceled, in the normal case.</p>
+<pre><code>Target is cancelled</code></pre>
+<p>Next, let's explore an example where the target task consumes the <strong>CancelledError</strong>.</p>
+<h2>Example of Cancel and Wait, Target Suppresses CancelledError</h2>
+<p>We can explore an example where the target task unexpectedly consumes the <strong>CancelledError</strong> when cancelled.</p>
+<p>This does not meet the expected contact for canceled tasks enforced by our helper coroutine and will raise a RuntimeError exception.</p>
+<p>In this case, we can update our <strong>work()</strong> coroutine from the previous section to handle the <strong>CancelledError</strong> and not re-raise it, effectively suppressing it.</p>
+<pre><code># task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        # report a message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        pass
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of cancel and wait where target suppresses CancelledError
+import asyncio
+
+# cancel task and wait for it to complete
+async def cancel_and_wait(task, msg=None):
+    # cancel the task
+    task.cancel(msg)
+    try:
+        # wait for the task to be done
+        await task
+    except asyncio.CancelledError:
+        # check that the current task is not cancelled
+        if asyncio.current_task().cancelling() == 0:
+            # bubble the exception up
+            raise
+        else:
+            # the current task is canceling
+            return
+    else:
+        # an expected CancelledError was not seen
+        raise RuntimeError("Cancelled task did not end with an exception")
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        # report a message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        pass
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to run a moment
+    await asyncio.sleep(1)
+    # cancel and wait for task to be done
+    try:
+        await cancel_and_wait(task)
+    except asyncio.CancelledError:
+        print('Target is cancelled')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>work()</strong> task is created and scheduled and the <strong>main()</strong> coroutine suspends and allows it to begin.</p>
+<p>The <strong>work()</strong> task runs and suspends on a call to sleep.</p>
+<p>The <strong>main()</strong> coroutine runs and awaits the <strong>cancel_and_wait()</strong> helper coroutine, suspending until the target task is cancelled.</p>
+<p>The <strong>cancel_and_wait()</strong> helper coroutine runs and calls <strong>cancel()</strong> on the target task. It then awaits the target task, suspending until it is done.</p>
+<p>The <strong>work()</strong> task resumes and raises a <strong>CancelledError</strong>, which is handled and suppressed.</p>
+<p>The <strong>cancel_and_wait()</strong> helper coroutine resumes and the <strong>CancelledError</strong> is not observed as it expects. Therefore a <strong>RuntimeError</strong> is raised, terminating the coroutine.</p>
+<p>The <strong>RuntimeError</strong> bubbles up and terminates the asyncio event loop.</p>
+<p>This highlights how we can enforce the expectation on tasks to raise a <strong>CancelledError</strong> when cancelled.</p>
+<pre><code>Traceback (most recent call last):
+  File "...", line 47, in &lt;module&gt;
+    asyncio.run(main())
+  File ".../asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File ".../asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "...", line 42, in main
+    await cancel_and_wait(task)
+  File "...", line 22, in cancel_and_wait
+    raise RuntimeError("Cancelled task did not end with an exception")
+RuntimeError: Cancelled task did not end with an exception
+</code></pre>
+<p>Next, let's look at an example of the caller task being cancelled while awaiting the canceled target task.</p>
+<h2>Example of Cancel and Wait, Caller is Cancelled</h2>
+<p>We can explore the case where the current calling task was cancelled while waiting for the target task to cancel.</p>
+<p>In this case, we can update the <strong>work()</strong> task to take a reference to the current task.</p>
+<p>When the <strong>work()</strong> task is cancelled, it can handle the <strong>CancelledError</strong>, cancel the provided task, then re-raised the <strong>CancelledError</strong>.</p>
+<p>The updated work() coroutine is listed below.</p>
+<pre><code># task that take a long time
+async def work(other):
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        # report a message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        # request that the other task cancels
+        other.cancel()
+        # re-raise the cancellation exception
+        raise
+</code></pre>
+<p>We can then create the <strong>work()</strong> coroutine and pass the current coroutine (the caller) as an argument.</p>
+<pre><code>...
+# create the work coroutine
+coro = work(asyncio.current_task())
+# create and schedule work as a task
+task = asyncio.create_task(coro)</code></pre>
+<p>Finally, we can handle the case that the current task was cancelled while waiting for the target task to cancel.</p>
+<pre><code>...
+# cancel and wait for task to be done
+try:
+    await cancel_and_wait(task)
+except asyncio.CancelledError:
+    print('Target is cancelled')
+else:
+    print('Current task was cancelled')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of cancel and wait where the caller is cancelled
+import asyncio
+
+# cancel task and wait for it to complete
+async def cancel_and_wait(task, msg=None):
+    # cancel the task
+    task.cancel(msg)
+    try:
+        # wait for the task to be done
+        await task
+    except asyncio.CancelledError:
+        # check that the current task is not cancelled
+        if asyncio.current_task().cancelling() == 0:
+            # bubble the exception up
+            raise
+        else:
+            # the current task is canceling
+            return
+    else:
+        # an expected CancelledError was not seen
+        raise RuntimeError("Cancelled task did not end with an exception")
+
+# task that take a long time
+async def work(other):
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        # report a message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        # request that the other task cancels
+        other.cancel()
+        # re-raise the cancellation exception
+        raise
+
+# main coroutine
+async def main():
+    # create the work coroutine
+    coro = work(asyncio.current_task())
+    # create and schedule work as a task
+    task = asyncio.create_task(coro)
+    # allow the task to run a moment
+    await asyncio.sleep(1)
+    # cancel and wait for task to be done
+    try:
+        await cancel_and_wait(task)
+    except asyncio.CancelledError:
+        print('Target is cancelled')
+    else:
+        print('Current task was cancelled')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>work()</strong> task is created and passed as a reference to the current task. It is scheduled and the <strong>main()</strong> coroutine suspends and allows it to begin.</p>
+<p>The <strong>work()</strong> task runs and suspends on a call to sleep.</p>
+<p>The <strong>main()</strong> coroutine runs and awaits the <strong>cancel_and_wait()</strong> helper coroutine, suspending until the target task is cancelled.</p>
+<p>The <strong>cancel_and_wait()</strong> helper coroutine runs and calls <strong>cancel()</strong> on the target task. It then awaits the target task, suspending until it is done.</p>
+<p>The <strong>work()</strong> task resumes and raises a <strong>CancelledError</strong> which is handled and calls cancel on the calling task. It then allows the <strong>CancelledError</strong> to bubble up.</p>
+<p>The <strong>CancelledError</strong> bubbles up through the <strong>cancel_and_wait()</strong> coroutine and is handled, or it raises its own <strong>CancelledError</strong>. Either way, both <strong>CancelledError</strong> exceptions are handled.</p>
+<p>The caller has been requested to cancel, therefore it returns directly.</p>
+<ul>
+<li>The bubbled-up <strong>CancelledError</strong> is consumed.</li>
+<li>The <strong>CancelledError</strong> raised by itself (or potentially raised) is consumed.</li>
+</ul>
+<p>The <strong>main()</strong> coroutine resumes and a <strong>CancelledError</strong> exception was not raised, executing the else clause and reporting a message.</p>
+<pre><code>Current task was cancelled</code></pre>
+<p>This highlights how we can detect and handle the case of the caller being canceled while awaiting a target task being cancelled.</p>
+<p>At the very least, this could give ideas for writing unit tests on our own code.</p>
+<h2>Takeaways</h2>
+<p>You now know how to cancel and wait for a task in asyncio.</p>
+</main>
+</body>
+</html>

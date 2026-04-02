@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Race Condition With a Shared Variable in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Race Condition With a Shared Variable in Python</h1>
+<div class="post-meta">March 10, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can fix <strong>race conditions</strong> with <strong>shared variables</strong> using a <strong>mutual exclusion lock</strong>.</p>
+<p>In this tutorial you will discover race conditions with shared variables in Python.</p>
+<p>Let's get started.</p>
+<h2>Race Condition with a Shared Variable</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Race_condition">race condition</a> is a bug in concurrency programming.</p>
+<p>It is a failure case where the behavior of the program is dependent upon the order of execution by two or more threads. This means, the behavior of the program will not be predictable, possibly changing each time it is run.</p>
+<p>There are many types of race conditions, although a common type of race condition is when two or more threads attempt to change the same data variable.</p>
+<p><strong>NOTE</strong>: Race conditions are a real problem in Python when using threads, even in the presence of the global interpreter lock (GIL). <strong>The refrain that there are no race conditions in Python because of the GIL is dangerously wrong.</strong></p>
+<p>For example, one thread may be adding values to a variable, while another thread is subtracting values from the same variable.</p>
+<p>Let's call them an adder thread and a subtractor thread.</p>
+<p>At some point, the operating system may context switch from the adding thread to the subtracting thread in the middle of updating the variable. Perhaps right at the point where it was about to write an updated value with an addition, say from the current value of 100 to the new value of 110.</p>
+<pre><code>...
+# add to the variable
+variable = variable + 10</code></pre>
+<p>You may recall that the operating system controls what threads execute and when, and that a <a href="https://en.wikipedia.org/wiki/Context_switch">context switch</a> refers to pausing the execution of a thread and storing its state, while unpausing another thread and restoring its state.</p>
+<p>You may also notice that the adding or subtracting from the variable is composed of at least three steps:</p>
+<ol><li>Read the current value of the variable.</li><li>Calculate a new value for the variable.</li><li>Write a new value for the variable.</li></ol>
+<p>A context switch between threads may occur at any point in this task.</p>
+<p>Back to our threads. The subtracting thread runs and reads the current value as 100 and reduces the value from 100 to 90.</p>
+<pre><code>...
+# subtract from the variable
+variable = variable - 10</code></pre>
+<p>This subtraction is performed as per normal and the variable value is now 90.</p>
+<p>The operating system context switches back to the adding thread and it picks up where it left off writing the value 110.</p>
+<p>This means that in this case, one subtraction operation was lost and the shared balance variable has an inconsistent value. A race condition.</p>
+<p>Next, let's look at how we might fix this race condition.</p>
+<h2>Fix a Race Condition with a Shared Variable</h2>
+<p>There are many ways to fix a race condition between two or more threads with a shared variable.</p>
+<p>The approach taken may depend on the specifics of the application.</p>
+<p>Nevertheless, a common approach is to protect the critical section of code. This may be achieved with a mutual exclusion lock, sometimes simply called a mutex.</p>
+<p>If you are new to the mutex lock, you can learn more here:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>You may recall that a critical section of code is code that may be executed by two or more threads concurrently and may be at risk of a race condition.</p>
+<p>Updating a variable shared between threads is an example of a critical section of code.</p>
+<p>A critical section can be protected by a mutex lock which will ensure that one and only one thread can access the variable at a time.</p>
+<p>This can be achieved by first creating a <strong>threading.Lock</strong> instance.</p>
+<pre><code>...
+# create a lock
+lock = threading.Lock()</code></pre>
+<p>When a thread is about to execute the critical section, it can acquire the lock by calling the <strong>acquire()</strong> function. It can then execute the critical section and release the lock by calling the <strong>release()</strong> function on the lock.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+# add to the variable
+variable = variable + 10
+# release the lock
+lock.release()
+</code></pre>
+<p>We might also use the context manager on the lock, which will acquire and release the lock automatically for us.</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# add to the variable
+	variable = variable + 10
+# release the lock automatically
+</code></pre>
+<p>If one thread has acquired the lock, another thread cannot acquire it, therefore cannot execute a critical section and in turn cannot update the shared variable.</p>
+<p>Instead, any threads attempting to acquire the lock while it is acquired must wait until the lock is released. This waiting for the lock to be released is performed automatically within the call to <strong>acquire()</strong>, no need to do anything special.</p>
+<p>Now that we know how to fix a race condition with a shared variable, let's look at a worked example.</p>
+<h2>Example of a Race Condition With a Shared Variable</h2>
+<p>We can explore how to create a race condition with a shared variable and multiple threads.</p>
+<p>In this example, we will have a shared variable that maintains the final value and two threads that change the value.</p>
+<p>One thread will make additions and other subtractions. The additions and subtractions will be the same amount and will be symmetric so that we expect the final value of the shared variable to be 0.</p>
+<p>First, let's define a function for making additions. It will take the amount to add and the number of times to add the value in a loop.</p>
+<p>The shared variable will be a global variable named "<strong>value</strong>".</p>
+<pre><code># make additions into the global variable
+def adder(amount, repeats):
+    global value
+    for _ in range(repeats):
+        value += amount
+</code></pre>
+<p>Next, we can define a function to subtract from the shared variable, also taking the amount and number of times to repeat the operation.</p>
+<pre><code># make subtractions from the global variable
+def subtractor(amount, repeats):
+    global value
+    for _ in range(repeats):
+        value -= amount
+</code></pre>
+<p>In the main thread we can first define our global variable.</p>
+<pre><code>...
+# define the global variable
+value = 0</code></pre>
+<p>Next, we can create a <a href="../threading-in-python/"><strong>threading.Thread</strong> instance</a> and configure it to execute our <strong>adder()</strong> function passing in the amount of 100 and 1,000,000 iterations.</p>
+<pre><code>...
+# start a thread making additions
+adder_thread = Thread(target=adder, args=(100, 1000000))
+adder_thread.start()</code></pre>
+<p>We need many iterations of each add and subtract operation to give the operating system a chance to context switch between the threads and force a race condition.</p>
+<p>Next, we can configure and start a thread for making subtractions with the same amount and number of iterations, ensuring symmetry in the updates to the shared value. This symmetry is not required, but it keeps things simple. It means that we expect the final value of the "<strong>value</strong>" variable to be zero.</p>
+<pre><code>...
+# start a thread making subtractions
+subtractor_thread = Thread(target=subtractor, args=(100, 1000000))
+subtractor_thread.start()</code></pre>
+<p>Finally, the main thread will wait for both adder and subtractor threads to finish before reporting the final value of the shared variable.</p>
+<pre><code>...
+# wait for both threads to finish
+print('Waiting for threads to finish...')
+adder_thread.join()
+subtractor_thread.join()
+# report the value
+print(f'Value: {value}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a race condition with a shared variable
+from threading import Thread
+
+# make additions into the global variable
+def adder(amount, repeats):
+    global value
+    for _ in range(repeats):
+        value += amount
+
+# make subtractions from the global variable
+def subtractor(amount, repeats):
+    global value
+    for _ in range(repeats):
+        value -= amount
+
+# define the global variable
+value = 0
+# start a thread making additions
+adder_thread = Thread(target=adder, args=(100, 1000000))
+adder_thread.start()
+# start a thread making subtractions
+subtractor_thread = Thread(target=subtractor, args=(100, 1000000))
+subtractor_thread.start()
+# wait for both threads to finish
+print('Waiting for threads to finish...')
+adder_thread.join()
+subtractor_thread.join()
+# report the value
+print(f'Value: {value}')
+</code></pre>
+<p>Running the example first starts the adder and subtractor threads then waits for both threads to finish.</p>
+<p>Both threads run as fast as possible. Because there are many iterations within each thread, there are enough operations for the operating system to context switch between the threads many times.</p>
+<p>All it takes is for once a case where a thread calculates a new value but is context switched before it can write.</p>
+<p>In this case, we can see that many context switches occurred. We expect the final value of the shared variable to be zero given the symmetrical number of additions and subtractions. In this case the final value was 34,751,200.</p>
+<p>Note, your specific final value will differ. And this too is a problem, highlighting the non-deterministic behavior of the program. We expect a final value of zero each time and in fact have no idea what the actual value will be.</p>
+<pre><code>Waiting for threads to finish...
+Balance: 34751200</code></pre>
+<p>Run the program again, and you will see a different final value.</p>
+<pre><code>Waiting for threads to finish...
+Balance: 9893100</code></pre>
+<p>Now that we are familiar with a race condition with a shared variable in Python, let's look at how we might fix it.</p>
+<p><strong>Update</strong>, the above example does cause a race condition in Python 3.9 and below, but not in Python 3.10 and above. The next section addresses this directly.</p>
+<h2>Example of Race Condition in Python 3.10+</h2>
+<p>A change was made to the CPython interpreter in Python 3.10.</p>
+<p>Race conditions that used to readily occur in Python 3.9 and below no longer seem to occur as readily.</p>
+<p>If you know the detailed reason, please let me know in the comments.</p>
+<p>Nevertheless, the example above that generates a race condition in earlier Python versions, no longer causes a race condition in modern Python versions, 3.10+.</p>
+<p>Therefore, we can update the example to force a race condition.</p>
+<p>This involves two parts.</p>
+<p>Firstly, we can unroll the variable increment and decrement operations into separate Python expressions.</p>
+<p>For example:</p>
+<pre><code>...
+value += amount</code></pre>
+<p>Becomes:</p>
+<pre><code>...
+# copy the value
+tmp = value
+# change the copy
+tmp = tmp + amount
+# copy the value back
+value = tmp</code></pre>
+<p>The updated <strong>adder()</strong> and <strong>subtractor()</strong> functions with these changes look as follows:</p>
+<pre><code># make additions into the global variable
+def adder(amount, repeats):
+    global value
+    for _ in range(repeats):
+        # copy the value
+        tmp = value
+        # change the copy
+        tmp = tmp + amount
+        # copy the value back
+        value = tmp
+
+# make subtractions from the global variable
+def subtractor(amount, repeats):
+    global value
+    for _ in range(repeats):
+        # copy the value
+        tmp = value
+        # change the copy
+        tmp = tmp - amount
+        # copy the value back
+        value = tmp</code></pre>
+<p>Secondly, we need to give the underlying operating system a good reason to choose to context switch between the operations.</p>
+<p>This can be achieved by adding a sleep between each operation.</p>
+<p>A sleep for zero seconds should be sufficient on many platforms.</p>
+<p>For example:</p>
+<pre><code>...
+# copy the value
+tmp = value
+# suggest a context switch
+sleep(0)
+# change the copy
+tmp = tmp + amount
+# suggest a context switch
+sleep(0)
+# copy the value back
+value = tmp
+</code></pre>
+<p>This works fine on most Unix-based systems I've tested it on.</p>
+<p>If this is optimized away or ignored on some platforms, like Windows, then the sleep can be increased to a tiny fraction of a second.</p>
+<p>The updated functions with these changes are listed below.</p>
+<pre><code># make additions into the global variable
+def adder(amount, repeats):
+    global value
+    for _ in range(repeats):
+        # copy the value
+        tmp = value
+        # suggest a context switch
+        sleep(0)
+        # change the copy
+        tmp = tmp + amount
+        # suggest a context switch
+        sleep(0)
+        # copy the value back
+        value = tmp
+
+# make subtractions from the global variable
+def subtractor(amount, repeats):
+    global value
+    for _ in range(repeats):
+        # copy the value
+        tmp = value
+        # suggest a context switch
+        sleep(0)
+        # change the copy
+        tmp = tmp - amount
+        # suggest a context switch
+        sleep(0)
+        # copy the value back
+        value = tmp</code></pre>
+<p>Tying this together, the complete updated example that will force a race condition on more recent versions of Python is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a race condition with a shared variable (Python 3.10+)
+from time import sleep
+from threading import Thread
+
+# make additions into the global variable
+def adder(amount, repeats):
+    global value
+    for _ in range(repeats):
+        # copy the value
+        tmp = value
+        # suggest a context switch
+        sleep(0)
+        # change the copy
+        tmp = tmp + amount
+        # suggest a context switch
+        sleep(0)
+        # copy the value back
+        value = tmp
+
+# make subtractions from the global variable
+def subtractor(amount, repeats):
+    global value
+    for _ in range(repeats):
+        # copy the value
+        tmp = value
+        # suggest a context switch
+        sleep(0)
+        # change the copy
+        tmp = tmp - amount
+        # suggest a context switch
+        sleep(0)
+        # copy the value back
+        value = tmp
+
+# define the global variable
+value = 0
+# start a thread making additions
+adder_thread = Thread(target=adder, args=(100, 1000000))
+adder_thread.start()
+# start a thread making subtractions
+subtractor_thread = Thread(target=subtractor, args=(100, 1000000))
+subtractor_thread.start()
+# wait for both threads to finish
+print('Waiting for threads to finish...')
+adder_thread.join()
+subtractor_thread.join()
+# report the value
+print(f'Value: {value}')</code></pre>
+<p>Running the example, we can see that the global variable is left in an inconsistent state each time the code is run.</p>
+<p>This race occurs on Python 3.9 and below, as well as Python 3.10 and above.</p>
+<p><strong>Did it trigger a race condition for you?</strong><br/>Let me know in the comments below. Post your result.</p>
+<pre><code>Waiting for threads to finish...
+Value: -99997400</code></pre>
+<p>Next, let's look at how we might fix a general race condition using a mutex lock</p>
+<h2>Example of Fixing a Race Condition With a Shared Variable</h2>
+<p>We can fix a race condition with a shared variable by protecting the shared variable with a mutex lock.</p>
+<p>The example from the previous section with a race condition can be updated to use a lock which will fix the race condition. We will know that the race condition is fixed if the program reports the expected value of zero each time it is run.</p>
+<p>Firstly, we can update the <strong>adder()</strong> function to take a shared <strong>threading.Lock</strong> instance as an argument and to then ensure that the lock is acquired for each update to the shared variable.</p>
+<p>You can learn more about mutex locks in the tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">Threading Mutex Lock in Python</a></li></ul>
+<p>The updated version of the <strong>adder()</strong> function with this change is listed below.</p>
+<pre><code># make additions into the global variable
+def adder(amount, repeats, lock):
+    global value
+    for _ in range(repeats):
+        with lock:
+            value += amount
+</code></pre>
+<p>We can then make the same change to the <strong>subtractor()</strong> function.</p>
+<pre><code># make subtractions from the global variable
+def subtractor(amount, repeats, lock):
+    global value
+    for _ in range(repeats):
+        with lock:
+            value -= amount
+</code></pre>
+<p>Finally, we can define the shared <strong>threading.Lock</strong> instance in the main thread.</p>
+<pre><code>...
+# define a lock to protect the shared variable
+lock = Lock()</code></pre>
+<p>And pass it to each new thread as an argument.</p>
+<pre><code>...
+# start a thread making additions
+adder_thread = Thread(target=adder, args=(100, 1000000, lock))
+adder_thread.start()
+# start a thread making subtractions
+subtractor_thread = Thread(target=subtractor, args=(100, 1000000, lock))
+subtractor_thread.start()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of fixing a race condition with a shared variable
+from threading import Thread
+from threading import Lock
+
+# make additions into the global variable
+def adder(amount, repeats, lock):
+    global value
+    for _ in range(repeats):
+        with lock:
+            value += amount
+
+# make subtractions from the global variable
+def subtractor(amount, repeats, lock):
+    global value
+    for _ in range(repeats):
+        with lock:
+            value -= amount
+
+# define the global variable
+value = 0
+# define a lock to protect the shared variable
+lock = Lock()
+# start a thread making additions
+adder_thread = Thread(target=adder, args=(100, 1000000, lock))
+adder_thread.start()
+# start a thread making subtractions
+subtractor_thread = Thread(target=subtractor, args=(100, 1000000, lock))
+subtractor_thread.start()
+# wait for both threads to finish
+print('Waiting for threads to finish...')
+adder_thread.join()
+subtractor_thread.join()
+# report the value
+print(f'Value: {value}')
+</code></pre>
+<p>Running the example creates and starts the adder and subtractor threads.</p>
+<p>Each thread runs as fast as possible making changes to the shared variable.</p>
+<p>Importantly, only one thread is able to make a change to the variable at a time given the protection offered by the mutex lock.</p>
+<p>As such once both threads finish, the final value of the shared variable is reported as zero. In fact, every time the program is run, a value of zero will now be reported, making the program entirely deterministic as intended.</p>
+<pre><code>Waiting for threads to finish...
+Balance: 0</code></pre>
+<p>This shows how we might fix a race condition with a shared variable using a mutex lock.</p>
+<h2>Takeaways</h2>
+<p>You now know about race conditions with shared variables in Python.</p>
+</main>
+</body>
+</html>

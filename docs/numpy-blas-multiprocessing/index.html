@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Combine NumPy BLAS Threads and Multiprocessing – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Combine NumPy BLAS Threads and Multiprocessing</h1>
+<div class="post-meta">May 4, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>combine BLAS threads and multiprocessing</strong> in a NumPy program.</p>
+<p>Maximizing these types of parallelism can help you fully utilize your CPU cores for a given application and achieve a speed-up compared to not using any or only one level of parallelism. It can also be tricky as sometimes combining multiprocessing with NumPy BLAS threads as <strong>it can result in no benefit or even worse performance</strong>.</p>
+<p>In this tutorial, you will discover how to combine and test multiprocessing and NumPy-based parallelism in order to achieve the best performance in Python.</p>
+<p>Let's get started.</p>
+<h2>Parallelism in Python and NumPy</h2>
+<p>Python supports parallelism using process-based concurrency via the multiprocessing module.</p>
+<p>Work can be partitioned into subtasks and each subtask can be executed in a separate Python process in parallel.</p>
+<p>Parallelism is supported by Python threads, but only under special circumstances such as when performing IO. This is due to the lack of thread safety in the Python interpreter.</p>
+<p>You can learn more about parallelism in Python using the multiprocessing module in the guide:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Python Multiprocessing: The Complete Guide</a></li>
+</ul>
+<p>NumPy supports parallelism for some operations that use third-party libraries such as BLAS, LINPACK, and LAPACK.</p>
+<p>Examples include matrix multiplication via <strong>numpy.dot()</strong> and matrix decomposition like SVD via <strong>numpy.linalg.svd()</strong>. These functions call the BLAS library API, the implementation of which (such as OpenBLAS) is likely implemented in C or FORTRAN and uses threads.</p>
+<p>As such, some NumPy functions support parallelism automatically.</p>
+<p>You can learn more about BLAS threads in NumPy in the tutorial:</p>
+<ul>
+<li><a href="../what-is-blas-and-lapack-in-numpy/">What is BLAS and LAPACK in NumPy</a></li>
+</ul>
+<p>Which type of parallelism should we use in a given program?</p>
+<h2>Case Study Parallelism With Matrix Data</h2>
+<p>Consider a situation where we load data as NumPy arrays and need to process each array in some way.</p>
+<p>Assume that the data is numerical and that the operation is a NumPy function that calls down to BLAS and can leverage threads.</p>
+<p>For example:</p>
+<ul>
+<li>Perhaps we need to load image data, video data, or numerical data as arrays.</li>
+<li>Perhaps each array needs a matrix operation applied, such as fit a model or computing a decomposition.</li>
+</ul>
+<p>We can simplify this to a contrived situation that involves creating a square matrix of random numbers and multiplying the matrix with another matrix.</p>
+<ul>
+<li><strong>How should we structure the program to best take advantage of parallelism on one machine?</strong></li>
+</ul>
+<p>Put another way:</p>
+<ul>
+<li><strong>How can we use all CPU cores in this use case?</strong></li>
+</ul>
+<p>I would argue that we cannot know. We must discover what works well or best for a specific program. It depends on the number of matrices, the size of the matrices, and the complexity of the operation to be performed.</p>
+<p>There are perhaps 4 main approaches to test, they are:</p>
+<ol>
+<li><strong>No multiprocessing and no BLAS threads</strong>. This is the default or naive approach that assumes we have a single CPU core. Whatever we do should be better than this case, but we need to know what the worst case is so we can beat it.</li>
+<li><strong>No multiprocessing with NumPy threads</strong>. This delegates all parallelism to NumPy and BLAS, which really means that we only get parallelism for the operation on the loaded data. This is a naive implementation and will do better than the above baseline. We could attempt to tweak it by specifying the number of threads to create to match the number of physical rather than logical CPU cores. This can help sometimes.</li>
+<li><strong>Multiprocessing with no BLAS threads</strong>. This turns off the parallelism in NumPy and focuses efforts on parallelism at a high level in the application, the task level.</li>
+<li><strong>Multiprocessing with BLAS threads</strong>. This combines parallelism at the task level using multiprocessing and at the operation level using NumPy. The risk is that the threads may step on each other, fighting for execution time and threading the operating system with excessive context switching.</li>
+</ol>
+<p>If you are faced with the situation described above (and are running on one multi-core machine), I'd recommend testing each of these general approaches to parallelism and discovering what works well or best on your system.</p>
+<p>Next, let's explore each of these cases with a simplified version of the case study.</p>
+<h2>Example of No Threads</h2>
+<p>The first case is the baseline.</p>
+<p>This case involves not using task-level parallelism via the multiprocessing module and not using threads in BLAS.</p>
+<p>We can configure the number of threads used by the BLAS library implementation via an environment variable, such as the OMP_NUM_THREADS if you have OpenBLAS installed (the most common).</p>
+<p>You can find what BLAS library is installed by calling <strong>numpy.show_config()</strong> then look up the API documentation for that library to check the environment variable to set.</p>
+<p>An environment variable can be set prior to running the Python program, or from within Python via the <strong>os.environ()</strong> function prior to importing NumPy.</p>
+<p>Learn more about how to configure the number BLAS threads in the tutorial:</p>
+<ul>
+<li><a href="../numpy-number-blas-threads/">Configure the Number of BLAS/LAPACK Threads for NumPy</a></li>
+</ul>
+<p>The example below disables NumPy BLAS multithreading. It then creates two lists of 100 matrices. Each matrix is a square 2,000 x 2,000 element matrix of random floating point values.</p>
+<p>Am operation is then applied to each pair of 100 matrices, in this case, a simple matrix multiplication.</p>
+<p>This is a contrived test case, but we can see how creating random matrices could be replaced with loading datasets or images, and how the matrix multiplication operation could be applied with some relevant operation required on the loaded data supported by NumPy that calls down into BLAS.</p>
+<p>The complete example is listed below.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,3183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python Multiprocessing: The Complete Guide – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Python Multiprocessing: The Complete Guide</h1>
+<div class="post-meta">October 19, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p><strong>Python Multiprocessing</strong> provides parallelism in Python with processes.</p>
+<p>The multiprocessing API uses <strong>process-based concurrency</strong> and is the preferred way to implement parallelism in Python. With multiprocessing, we can use all CPU cores on one system, whilst avoiding Global Interpreter Lock.</p>
+<p>This book-length guide provides a detailed and comprehensive walkthrough of the <strong>Python Multiprocessing API</strong>.</p>
+<p>Some tips:</p>
+<ol>
+<li>You may want to bookmark this guide and read it over a few sittings.</li>
+<li>You can <a href="../zips/superfastpython-multiprocessing-guide.zip">download a zip</a> of all code used in this guide.</li>
+<li>You can get help, ask a question in the comments or <a href="../contact/">email me</a>.</li>
+<li>You can jump to the topics that interest you via the table of contents (below).</li>
+</ol>
+<p>Let's dive in.</p>
+<figure><img alt="Python Multiprocessing: The Complete Guide" loading="lazy" src="../pics/Multiprocessing-Guide-600px.png"/><figcaption>Python Multiprocessing: The Complete Guide</figcaption></figure>
+<h2>Python Processes</h2>
+<p>So what are processes and why do we care?</p>
+<h3>What Are Processes</h3>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> refers to a computer program.</p>
+<p>Every Python program is a process and has one default thread called the main thread used to execute your program instructions. Each process is, in fact, one instance of the Python interpreter that executes Python instructions (Python byte-code), which is a slightly lower level than the code you type into your Python program.</p>
+<p>Sometimes we may need to create new processes to run additional tasks concurrently.</p>
+<p>Python provides real system-level processes via the <strong>multiprocessing.Process</strong> class in the <a href="https://docs.python.org/3/library/multiprocessing.html"><strong>multiprocessing</strong> module</a>.</p>
+<p>The underlying operating system controls how new processes are created. On some systems, that may require spawning a new process, and on others, it may require that the process is forked. The operating-specific method used for creating new processes in Python is not something we need to worry about as it is managed by your installed Python interpreter.</p>
+<p>The code in new child processes may or may not be executed in parallel (at the same time), even though the threads are executed concurrently.</p>
+<p>There are a number of reasons for this, such as the underlying hardware may or may not support parallel execution (e.g. one vs multiple CPU cores).</p>
+<p>This highlights the distinction between code that can run out of order (concurrent) from the capability to execute simultaneously (parallel).</p>
+<ul>
+<li><strong>Concurrent</strong>: Code that can be executed out of order.</li>
+<li><strong>Parallel</strong>: Capability to execute code simultaneously.</li>
+</ul>
+<p>Processes and threads are different.</p>
+<p>Next, let's consider the important differences between processes and threads.</p>
+<h3>Thread vs Process</h3>
+<p>A process refers to a computer program.</p>
+<p>Each process is in fact one instance of the Python interpreter that executes Python instructions (Python byte-code), which is a slightly lower level than the code you type into your Python program.</p>
+<blockquote>
+<p>Process: The operating system's spawned and controlled entity that encapsulates an executing application. A process has two main functions. The first is to act as the resource holder for the application, and the second is to execute the instructions of the application.</p>
+<cite>-- PAGE 271, <a href="https://amzn.to/3J74TRr">THE ART OF CONCURRENCY</a>, 2009.</cite></blockquote>
+<p>The underlying operating system controls how new processes are created. On some systems, that may require spawning a new process, and on others, it may require that the process is forked. The operating-specific method used for creating new processes in Python is not something we need to worry about as it is managed by your installed Python interpreter.</p>
+<p>A thread always exists within a process and represents the manner in which instructions or code is executed.</p>
+<p>A process will have at least one thread, called the main thread. Any additional threads that we create within the process will belong to that process.</p>
+<p>The Python process will terminate once all (non background threads) are terminated.</p>
+<ul>
+<li><strong>Process</strong>: An instance of the Python interpreter has at least one thread called the <em>MainThread</em>.</li>
+<li><strong>Thread</strong>: A thread of execution within a Python process, such as the <em>MainThread</em> or a new thread.</li>
+</ul>
+<p>You can learn more about the differences between processes and threads in the tutorial:</p>
+<ul>
+<li><a href="../thread-vs-process/">Thread vs Process in Python</a></li>
+</ul>
+<p>Next, let's take a look at processes in Python.</p>
+<h3>Life-Cycle of a Process</h3>
+<p>A process in Python is represented as an instance of the <strong>multiprocessing.Process</strong> class.</p>
+<p>Once a process is started, the Python runtime will interface with the underlying operating system and request that a new native process be created. The <strong>multiprocessing.Process</strong> instance then provides a Python-based reference to this underlying native process.</p>
+<p>Each process follows the same life cycle. Understanding the stages of this life-cycle can help when getting started with concurrent programming in Python.</p>
+<p>For example:</p>
+<ul>
+<li>The difference between creating and starting a process.</li>
+<li>The difference between run and start.</li>
+<li>The difference between blocked and terminated</li>
+</ul>
+<p>And so on.</p>
+<p>A Python process may progress through three steps of its life cycle: a new process, a running process, and a terminated process.</p>
+<p>While running, the process may be executing code or may be blocked, waiting on something such as another process or an external resource. Although not all processes may block, it is optional based on the specific use case for the new process.</p>
+<ol>
+<li>New Child Process.</li>
+<li>Running Process.
+<ol>
+<li>Blocked Process (optional).</li>
+</ol>
+</li>
+<li>Terminated Process.</li>
+</ol>
+<p>A new process is a process that has been constructed and configured by creating an instance of the <strong>multiprocessing.Process</strong> class.</p>
+<p>A new process can transition to a running process by calling the <strong>start()</strong> method. This also creates and starts the main thread for the process that actually executes code in the process.</p>
+<p>A running process may block in many ways if its main thread is blocked, such as reading or writing from a file or a socket or by waiting on a concurrency primitive such as a semaphore or a lock. After blocking, the process will run again.</p>
+<p>Finally, a process may terminate once it has finished executing its code or by raising an error or exception.</p>
+<p>A process cannot terminate until:</p>
+<ul>
+<li>All non-daemon threads have terminated, including the main thread.</li>
+<li>All non-daemon child processes have terminated, including the main process.</li>
+</ul>
+<p>You can learn more about the life-cycle of processes in the tutorial:</p>
+<ul>
+<li><a href="../process-life-cycle/">Process Life-Cycle in Python</a></li>
+</ul>
+<p>Next, let's take a closer look at the difference between parent and child processes.</p>
+<h3>Child vs Parent Process</h3>
+<p>Parent processes have one or more child processes, whereas child processes is created by a parent process.</p>
+<h4>Parent Process</h4>
+<p>A parent process is a process that is capable of starting child processes. </p>
+<p>Typically, we would not refer to a process as a parent process until it has created one or more child processes. This is the commonly accepted definition.</p>
+<ul>
+<li><strong>Parent Process</strong>: Has one or more child processes. May have a parent process, e.g. may also be a child process.</li>
+</ul>
+<p>Recall, a process is an instance of a computer program. In Python, a process is an instance of the Python interpreter that executes Python code.</p>
+<p>In Python, the first process created when we run our program is called the ‘MainProcess‘. It is also a parent process and may be called the main parent process.</p>
+<p>The main process will create the first child process or processes.</p>
+<p>A child process may also become a parent process if it in turn creates and starts a child process.</p>
+<h4>Child Process</h4>
+<p>A child process is a process that was created by another process.</p>
+<p>A child process may also be called a subprocess, as it was created by another process rather than by the operating system directly. That being said, the creation and management of all processes is handled by the underlying operating system.</p>
+<ul>
+<li><strong>Child Process</strong>: Has a parent process. May have its own child processes, e.g. may also be a parent.</li>
+</ul>
+<p>The process that creates a child process is called a parent process. A child process only ever has one parent process.</p>
+<p>There are three main techniques used to create a child process, referred to as process start methods.</p>
+<p>They are: fork, spawn, and fork server.</p>
+<p>Depending on the technique used to start the child, the child process may or may not inherit properties of the parent process. For example, a forked process may inherit a copy of the global variables from the parent process.</p>
+<p>A child process may become orphaned if the parent process that created it is terminated.</p>
+<p>You can learn more about the differences between child and parent processes in the tutorial:</p>
+<ul>
+<li><a href="../parent-process-vs-child-process-in-python/">Parent Process vs Child Process in Python</a></li>
+</ul>
+<p>Now that we are familiar with child and parent processes, let's look at how to run code in new processes.</p>
+<h2>Run a Function in a Process</h2>
+<p>Python functions can be executed in a separate process using the <strong>multiprocessing.Process</strong> class.</p>
+<p>In this section we will look at a few examples of how to run functions in a child process.</p>
+<h3>How to Run a Function In a Process</h3>
+<p>To run a function in another process:</p>
+<ol>
+<li>Create an instance of the <strong>multiprocessing.Process</strong> class.</li>
+<li>Specify the name of the function via the “<strong>target</strong>” argument.</li>
+<li>Call the <strong>start()</strong> function.</li>
+</ol>
+<p>First, we must create a new instance of the <strong>multiprocessing.Process</strong> class and specify the function we wish to execute in a new process via the “<strong>target</strong>” argument.</p>
+<pre><code>...
+# create a process
+process = multiprocessing.Process(target=task)</code></pre>
+<p>The function executed in another process may have arguments in which case they can be specified as a tuple and passed to the “<strong>args</strong>” argument of the <strong>multiprocessing.Process</strong> class constructor or as a dictionary to the “<strong>kwargs</strong>” argument.</p>
+<pre><code>...
+# create a process
+process = multiprocessing.Process(target=task, args=(arg1, arg2))</code></pre>
+<p>We can then start executing the process by calling the <strong>start()</strong> function.</p>
+<p>The <strong>start()</strong> function will return immediately and the operating system will execute the function in a separate process as soon as it is able.</p>
+<pre><code>...
+# run the new process
+process.start()</code></pre>
+<p>A new instance of the Python interpreter will be created and a new thread within the new process will be created to execute our target function.</p>
+<p>And that's all there is to it.</p>
+<p>We do not have control over when the process will execute precisely or which CPU core will execute it. Both of these are low-level responsibilities that are handled by the underlying operating system.</p>
+<p>Next, let's look at a worked example of executing a function in a new process.</p>
+<h3>Example of Running a Function in a Process</h3>
+<p>First, we can define a custom function that will be executed in another process.</p>
+<p>We will define a simple function that blocks for a moment then prints a statement.</p>
+<p>The function can have any name we like, in this case we'll name it “<strong>task</strong>“.</p>
+<pre><code># a custom function that blocks for a moment
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print('This is from another process')
+</code></pre>
+<p>Next, we can create an instance of the <strong>multiprocessing.Process</strong> class and specify our function name as the “<strong>target</strong>” argument in the constructor.</p>
+<pre><code>...
+# create a process
+process = Process(target=task)</code></pre>
+<p>Once created we can run the process which will execute our custom function in a new native process, as soon as the operating system can.</p>
+<pre><code>...
+# run the process
+process.start()</code></pre>
+<p>The <strong>start()</strong> function does not block, meaning it returns immediately.</p>
+<p>We can explicitly wait for the new process to finish executing by calling the <strong>join()</strong> function.</p>
+<pre><code>...
+# wait for the process to finish
+print('Waiting for the process...')
+process.join()</code></pre>
+<p>Tying this together, the complete example of executing a function in another process is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of running a function in another process
+from time import sleep
+from multiprocessing import Process
+
+# a custom function that blocks for a moment
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print('This is from another process')
+
+# entry point
+if __name__ == '__main__':
+    # create a process
+    process = Process(target=task)
+    # run the process
+    process.start()
+    # wait for the process to finish
+    print('Waiting for the process...')
+    process.join()
+</code></pre>
+<p>Running the example first creates the <strong>multiprocessing.Process</strong> then calls the <strong>start()</strong> function. This does not start the process immediately, but instead allows the operating system to schedule the function to execute as soon as possible.</p>
+<p>At some point a new instance of the Python interpreter is created that has a new thread which will execute our target function.</p>
+<p>The main thread of our initial process then prints a message waiting for the new process to complete, then calls the <strong>join()</strong> function to explicitly block and wait for the new process to terminate.</p>
+<p>Once the custom function returns, the new process is closed. The <strong>join()</strong> function then returns and the main thread exits.</p>
+<pre><code>Waiting for the process...
+This is from another process</code></pre>
+<p>Next, let's look at how we might run a function with arguments in a new process.</p>
+<h3>Example of Running a Function in a Process With Arguments</h3>
+<p>We can execute functions in another process that takes arguments.</p>
+<p>This can be demonstrated by first updating our <strong>task()</strong> function from the previous section to take two arguments, one for the time in seconds to block and the second for a message to display.</p>
+<pre><code># a custom function that blocks for a moment
+def task(sleep_time, message):
+    # block for a moment
+    sleep(sleep_time)
+    # display a message
+    print(message)
+</code></pre>
+<p>Next, we can update the call to the <strong>multiprocessing.Process</strong> constructor to specify the two arguments in the order that our <strong>task()</strong> function expects them as a tuple via the “<strong>args</strong>” argument.</p>
+<pre><code>...
+# create a process
+process = Process(target=task, args=(1.5, 'New message from another process'))</code></pre>
+<p>Tying this together, the complete example of executing a custom function that takes arguments in a separate process is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of running a function with arguments in another process
+from time import sleep
+from multiprocessing import Process
+
+# a custom function that blocks for a moment
+def task(sleep_time, message):
+    # block for a moment
+    sleep(sleep_time)
+    # display a message
+    print(message)
+
+# entry point
+if __name__ == '__main__':
+    # create a process
+    process = Process(target=task, args=(1.5, 'New message from another process'))
+    # run the process
+    process.start()
+    # wait for the process to finish
+    print('Waiting for the process...')
+    process.join()
+</code></pre>
+<p>Running the example creates the process specifying the function name and the arguments to the function.</p>
+<p>The new process is started and the function blocks for the parameterized number of seconds and prints the parameterized message.</p>
+<pre><code>Waiting for the process...
+New message from another process</code></pre>
+<p>You can learn more about running functions in new processes in this tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<p>Next let's look at how we might run a function in a child process by extending the <strong>multiprocessing.Process</strong> class.</p>
+<h2>Extend the Process Class</h2>
+<p>We can also execute functions in a child process by extending the <strong>multiprocessing.Process</strong> class and overriding the <strong>run()</strong> function.</p>
+<p>In this section we will look at some examples of extending the <strong>multiprocessing.Process</strong> class.</p>
+<h3>How to Extend the Process Class</h3>
+<p>The <strong>multiprocessing.Process</strong> class can be extended to run code in another process.</p>
+<p>This can be achieved by first extending the class, just like any other Python class.</p>
+<p>For example:</p>
+<pre><code># custom process class
+class CustomProcess(multiprocessing.Process):
+    # ...
+</code></pre>
+<p>Then the <strong>run()</strong> function of the <strong>multiprocessing.Process</strong> class must be overridden to contain the code that you wish to execute in another process.</p>
+<p>For example:</p>
+<pre><code># override the run function
+def run(self):
+    # ...
+</code></pre>
+<p>And that's it.</p>
+<p>Given that it is a custom class, you can define a constructor for the class and use it to pass in data that may be needed in the <strong>run()</strong> function, stored such as instance variables (attributes).</p>
+<p>You can also define additional functions in the class to split up the work you may need to complete in another process.</p>
+<p>Finally, attributes can also be used to store the results of any calculation or IO performed in another process that may need to be retrieved afterward.</p>
+<p>Next, let's look at a worked example of extending the <strong>multiprocessing.Process</strong> class.</p>
+<h3>Example of Extending the Process Class</h3>
+<p>First, we can define a class that extends the <strong>multiprocessing.Process</strong> class.</p>
+<p>We will name the class something arbitrary such as “<strong>CustomProcess</strong>“.</p>
+<p>We can then override the <strong>run()</strong> instance method and define the code that we wish to execute in another process.</p>
+<p>In this case, we will block for a moment and then print a message.</p>
+<pre><code># override the run function
+def run(self):
+    # block for a moment
+    sleep(1)
+    # display a message
+    print('This is coming from another process')
+</code></pre>
+<p>Next, we can create an instance of our <strong>CustomProcess</strong> class and call the <strong>start()</strong> function to begin executing our <strong>run()</strong> function in another process. Internally, the <strong>start()</strong> function will call the <strong>run()</strong> function.</p>
+<p>The code will then run in a new process as soon as the operating system can schedule it.</p>
+<pre><code>...
+# create the process
+process = CustomProcess()
+# start the process
+process.start()</code></pre>
+<p>Finally, we wait for the new process to finish executing.</p>
+<pre><code>...
+# wait for the process to finish
+print('Waiting for the process to finish')
+process.join()</code></pre>
+<p>Tying this together, the complete example of executing code in another process by extending the <strong>multiprocessing.Process</strong> class is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of extending the Process class
+from time import sleep
+from multiprocessing import Process
+
+# custom process class
+class CustomProcess(Process):
+    # override the run function
+    def run(self):
+        # block for a moment
+        sleep(1)
+        # display a message
+        print('This is coming from another process')
+
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = CustomProcess()
+    # start the process
+    process.start()
+    # wait for the process to finish
+    print('Waiting for the process to finish')
+    process.join()
+</code></pre>
+<p>Running the example first creates an instance of the process, then executes the content of the <strong>run()</strong> function.</p>
+<p>Meanwhile, the main thread waits for the new process to finish its execution, before exiting.</p>
+<pre><code>Waiting for the process to finish
+This is coming from another process</code></pre>
+<p>You can learn more about extending the <strong>multiprocessing.Process</strong> class in this tutorial:</p>
+<ul>
+<li><a href="../extend-process-class/">How to Extend the Process Class in Python</a></li>
+</ul>
+<p>Next, let's look at how we might return values from a child process.</p>
+<h3>Example of Extending the Process Class and Returning Values</h3>
+<p>Instance variable attributes can be shared between processes via the <strong>multiprocessing.Value</strong> and <strong>multiprocessing.Array</strong> classes.</p>
+<p>These classes explicitly define data attributes designed to be shared between processes in a process-safe manner.</p>
+<p>Shared variables mean that changes made in one process are always propagated and made available to other processes.</p>
+<p>An instance of the <strong>multiprocessing.Value</strong> can be defined in the constructor of a custom class as a shared instance variable.</p>
+<p>The constructor of the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Value"><strong>multiprocessing.Value</strong> class</a> requires that we specify the data type and an initial value.</p>
+<p>The data type can be specified using ctype “type” or a typecode.</p>
+<p>We can define an instance attribute as an instance of the <strong>multiprocessing.Value</strong> which will automatically and correctly be shared between processes.</p>
+<p>We can update the above example to use a <strong>multiprocessing.Value</strong> directly.</p>
+<p>Firstly, we must update the constructor of the <strong>CustomProcess</strong> class to initialize the <strong>multiprocessing.Value</strong> instance. We will define it to be an integer with an initial value of zero.</p>
+<pre><code>...
+# initialize integer attribute
+self.data = Value('i', 0)</code></pre>
+<p>A class constructor with this addition is listed below.</p>
+<pre><code># override the constructor
+def __init__(self):
+    # execute the base constructor
+    Process.__init__(self)
+    # initialize integer attribute
+    self.data = Value('i', 0)
+</code></pre>
+<p>We can then update the <strong>run()</strong> method to change the “<strong>value</strong>” attribute on the “<strong>data</strong>” instance variable and then to report this value via a print statement.</p>
+<pre><code>...
+# store the data variable
+self.data.value = 99
+# report stored value
+print(f'Child stored: {self.data.value}')</code></pre>
+<p>The updated <strong>run()</strong> function with this change is listed below.</p>
+<pre><code># override the run function
+def run(self):
+    # block for a moment
+    sleep(1)
+    # store the data variable
+    self.data.value = 99
+    # report stored value
+    print(f'Child stored: {self.data.value}')
+</code></pre>
+<p>Tying this together, the updated <strong>CustomProcess</strong> class is listed below.</p>
+<pre><code># custom process class
+class CustomProcess(Process):
+    # override the constructor
+    def __init__(self):
+        # execute the base constructor
+        Process.__init__(self)
+        # initialize integer attribute
+        self.data = Value('i', 0)
+
+    # override the run function
+    def run(self):
+        # block for a moment
+        sleep(1)
+        # store the data variable
+        self.data.value = 99
+        # report stored value
+        print(f'Child stored: {self.data.value}')
+</code></pre>
+<p>Finally, in the parent process, we can update the print statement to correctly access the value of the shared instance variable attribute.</p>
+<pre><code>...
+# report the process attribute
+print(f'Parent got: {process.data.value}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of extending the Process class and adding shared attributes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Value
+
+# custom process class
+class CustomProcess(Process):
+    # override the constructor
+    def __init__(self):
+        # execute the base constructor
+        Process.__init__(self)
+        # initialize integer attribute
+        self.data = Value('i', 0)
+
+    # override the run function
+    def run(self):
+        # block for a moment
+        sleep(1)
+        # store the data variable
+        self.data.value = 99
+        # report stored value
+        print(f'Child stored: {self.data.value}')
+
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = CustomProcess()
+    # start the process
+    process.start()
+    # wait for the process to finish
+    print('Waiting for the child process to finish')
+    # block until child process is terminated
+    process.join()
+    # report the process attribute
+    print(f'Parent got: {process.data.value}')
+</code></pre>
+<p>Running the example first creates an instance of the custom class then starts the child process.</p>
+<p>The constructor initializes the instance variable to be a <strong>multiprocessing.Value</strong> instance with an initial value of zero.</p>
+<p>The parent process blocks until the child process terminates.</p>
+<p>The child process blocks, then changes the value of the instance variable and reports the change. The change to the instance variable is propagated back to the parent process.</p>
+<p>The child process terminates and the parent process continues on. It reports the value of the instance variable which correctly reflects the change made by the child process.</p>
+<p>This demonstrates how to share instance variable attributes among parents via the <strong>multiprocessing.Value</strong> class.</p>
+<pre><code>Waiting for the child process to finish
+Child stored: 99
+Parent got: 99</code></pre>
+<p>You can learn more about returning values from a child process in this tutorial:</p>
+<ul>
+<li><a href="../share-process-attributes/">Shared Process Class Attributes in Python</a></li>
+</ul>
+<p>Next, let's take a closer look at process start methods.</p>
+<h2>Process Start Methods</h2>
+<p>In multiprocessing, we may need to change the technique used to start child processes.</p>
+<p>This is called the start method.</p>
+<h3>What is a Start Method</h3>
+<p>A start method is the technique used to start child processes in Python.</p>
+<p>There are three start methods, they are:</p>
+<ul>
+<li><strong>spawn</strong>: start a new Python process.</li>
+<li><strong>fork</strong>: copy a Python process from an existing process.</li>
+<li><strong>forkserver</strong>: new process from which future forked processes will be copied.</li>
+</ul>
+<p>Each platform has a default start method.</p>
+<p>The following lists the major platforms and the default start methods.</p>
+<ul>
+<li><strong>Windows</strong> (<em>win32</em>): spawn</li>
+<li><strong>macOS</strong> (<em>darwin</em>): spawn</li>
+<li><strong>Linux</strong> (<em>unix</em>): fork</li>
+</ul>
+<p>Not all platforms support all start methods.</p>
+<p>The following lists the major platforms and the start methods that are supported.</p>
+<ul>
+<li><strong>Windows</strong> (<em>win32</em>): spawn</li>
+<li><strong>macOS</strong> (<em>darwin</em>): spawn, fork, forkserver.</li>
+<li><strong>Linux</strong> (<em>unix</em>): spawn, fork, forkserver.</li>
+</ul>
+<h3>How to Change The Start Method</h3>
+<p>The <strong>multiprocessing</strong> module provides functions for getting and setting the start method for creating child processes.</p>
+<p>The list of supported start methods can be retrieved via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.get_all_start_methods"><strong>multiprocessing.get_all_start_methods()</strong> function</a>.</p>
+<p>The function returns a list of string values, each representing a supported start method.</p>
+<p>For example:</p>
+<pre><code>...
+# get supported start methods
+methods = multiprocessing.get_all_start_methods()</code></pre>
+<p>The current start method can be retrieved via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.get_start_method"><strong>multiprocessing.get_start_method()</strong> function</a>.</p>
+<p>The function returns a string value for the currently configured start method.</p>
+<p>For example:</p>
+<pre><code>...
+# get the current start method
+method = multiprocessing.get_start_method()</code></pre>
+<p>The start method can be set via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.set_start_method"><strong>multiprocessing.set_start_method()</strong> function</a>.</p>
+<p>The function takes a string argument indicating the start method to use.</p>
+<p>This must be one of the methods returned from the <strong>multiprocessing.get_all_start_methods()</strong> for your platform.</p>
+<p>For example:</p>
+<pre><code>...
+# set the start method
+multiprocessing.set_start_method('spawn')</code></pre>
+<p>It is a best practice, and required on most platforms that the start method be set first, prior to any other code, and to be done so within a <strong>if __name__ == ‘__main__'</strong> check called a <a href="https://docs.python.org/3/library/__main__.html">protected entry point or top-level code environment</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# protect the entry point
+if __name__ == '__main__':
+	# set the start method
+	multiprocessing.set_start_method('spawn')
+</code></pre>
+<p>If the start method is not set within a protected entry point, it is possible to get a RuntimeError such as:</p>
+<pre><code>RuntimeError: context has already been set</code></pre>
+<p>It is also a good practice and required on some platforms that the start method only be set once.</p>
+<p>In summary, the rules for setting the start method are as follows:</p>
+<ul>
+<li>Set the start method first prior to all other code.</li>
+<li>Set the start method only once in a program.</li>
+<li>Set the start method within a protected entry point.</li>
+</ul>
+<h3>How to Set Start Method Via Context</h3>
+<p>A multiprocessing context configured with a given start method can be retrieved via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.get_context"><strong>multiprocessing.get_context()</strong> function</a>.</p>
+<p>This function takes the name of the start method as an argument, then returns a multiprocessing context that can be used to create new child processes.</p>
+<p>For example:</p>
+<pre><code>...
+# get a context configured with a start method
+context = multiprocessing.get_context('fork')</code></pre>
+<p>The context can then be used to create a child process, for example:</p>
+<pre><code>...
+# create a child process via a context
+process = context.Process(...)</code></pre>
+<p>It may also be possible to force the start method.</p>
+<p>This can be achieved via the “<strong>force</strong>” argument provided on the <strong>set_start_method()</strong> implementation in the <strong>DefaultContext</strong>, although not documented.</p>
+<p>For example:</p>
+<pre><code>...
+# set the start method
+context.set_start_method('spawn', force=True)</code></pre>
+<p>You can learn more about setting the process start method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-start-method/">Multiprocessing Start Methods</a></li>
+</ul>
+<p>Next, let's look at some properties of processes instances.</p>
+<h2>Process Instance Attributes</h2>
+<p>An instance of the <strong>multiprocessing.Process</strong> class provides a handle of a new instance of the Python interpreter.</p>
+<p>As such, it provides attributes that we can use to query properties and the status of the underlying process.</p>
+<p>Let's look at some examples.</p>
+<h3>Query Process Name</h3>
+<p>Each process has a name.</p>
+<p>The parent process has the name “MainProcess“.</p>
+<p>Child processes are named automatically in a somewhat unique manner within each process with the form “<strong>Process-%d</strong>” where <strong>%d</strong> is the integer indicating the process number created by the parent process, e.g. <strong>Process-1</strong> for the first process created.</p>
+<p>We can access the name of a process via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.name"><strong>multiprocessing.Process.name</strong> attribute</a>, for example:</p>
+<pre><code>...
+# report the process name
+print(process.name)</code></pre>
+<p>The example below creates an instance of the <strong>multiprocessing.Process</strong> class and reports the default name of the process.</p>
+<pre><code># SuperFastPython.com
+# example of accessing the child process name
+from multiprocessing import Process
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = Process()
+    # report the process name
+    print(process.name)
+</code></pre>
+<p>Running the example creates a child process and reports the default name assigned to the process.</p>
+<pre><code>Process-1</code></pre>
+<p>You can learn more about configuring the process name in the tutorial:</p>
+<ul>
+<li><a href="../process-name/">How to Change the Process Name in Python</a></li>
+</ul>
+<h3>Query Process Daemon</h3>
+<p>A process may be a daemon.</p>
+<p>Daemon process is the name given to the background process. By default, processes are non-daemon processes because they inherit the daemon value from the parent process, which is set <strong>False</strong> for the <em>MainProcess</em>.</p>
+<p>A Python parent process will only exit when all non-daemon processes have finished exiting. For example, the <em>MainProcess</em> is a non-daemon process. This means that the daemon process can run in the background and do not have to finish or be explicitly excited for the program to end.</p>
+<p>We can determine if a process is a daemon process via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.daemon"><strong>multiprocessing.Process.daemon</strong> attribute</a>.</p>
+<pre><code>...
+# report the daemon attribute
+print(process.daemon)</code></pre>
+<p>The example creates an instance of the <strong>multiprocessing.Process</strong> class and reports whether the process is a daemon or not.</p>
+<pre><code># SuperFastPython.com
+# example of assessing whether a process is a daemon
+from multiprocessing import Process
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = Process()
+    # report the daemon attribute
+    print(process.daemon)
+</code></pre>
+<p>Running the example reports that the process is not a daemon process, the default for new child processes.</p>
+<pre><code>False</code></pre>
+<p>You can learn more about configuring daemon processes in the tutorial:</p>
+<ul>
+<li><a href="../daemon-process-in-python/">Daemon Process in Python</a></li>
+</ul>
+<h3>Query Process PID</h3>
+<p>Each process has a unique process identifier, called the PID, assigned by the operating system.</p>
+<p>Python processes are real native processes, meaning that each process we create is actually created and managed by the underlying operating system. As such, the operating system will assign a unique integer to each process that is created on the system (across processes).</p>
+<p>The process identifier can be accessed via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.pid"><strong>multiprocessing.Process.pid</strong> property</a> and is assigned after the process has been started.</p>
+<pre><code>...
+# report the pid
+print(process.pid)</code></pre>
+<p>The example below creates an instance of a <strong>multiprocessing.Process</strong> and reports the assigned PID.</p>
+<pre><code># SuperFastPython.com
+# example of reporting the native process identifier
+from multiprocessing import Process
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = Process()
+    # report the process identifier
+    print(process.pid)
+    # start the process
+    process.start()
+    # report the process identifier
+    print(process.pid)
+</code></pre>
+<p>Running the example first creates the process and confirms that it does not have a native PID before it was started.</p>
+<p>The process is then started and the assigned PID is reported.</p>
+<p>Note, your PID will differ as the process will have a different identifier each time the code is run.</p>
+<pre><code>None
+16302</code></pre>
+<h3>Query Process Alive</h3>
+<p>A process instance can be alive or dead.</p>
+<p>An alive process means that the <strong>run()</strong> method of the <strong>multiprocessing.Process</strong> instance is currently executing.</p>
+<p>This means that before the <strong>start() </strong>method is called and after the <strong>run()</strong> method has completed, the process will not be alive.</p>
+<p>We can check if a process is alive via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.is_alive"><strong>multiprocessing.Process.is_alive()</strong> method</a>.</p>
+<pre><code>...
+# report the process is alive
+print(process.is_alive())</code></pre>
+<p>The example below creates a <strong>multiprocessing.Process</strong> instance then checks whether it is alive.</p>
+<pre><code># SuperFastPython.com
+# example of assessing whether a process is alive
+from multiprocessing import Process
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = Process()
+    # report the process is alive
+    print(process.is_alive())
+</code></pre>
+<p>Running the example creates a new <strong>multiprocessing.Process</strong> instance then reports that the process is not alive.</p>
+<pre><code>False</code></pre>
+<h3>Query Process Exit Code</h3>
+<p>A child process will have an exit code once it has terminated.</p>
+<p>An exit code provides an indication of whether processes completed successfully or not, and if not, the type of error that occurred that caused the termination.</p>
+<p>Common exit codes include:</p>
+<ul>
+<li>0: Normal (exit success)</li>
+<li>1: Error (exit failure)</li>
+</ul>
+<p>We can write the exit code for a child process via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.exitcode"><strong>multiprocessing.Process.exitcode</strong> attribute</a>.</p>
+<pre><code>...
+# report the process exit code
+print(process.exitcode)</code></pre>
+<p>A process will not have an exit code until the process is terminated. This means, checking the exit code of a process before it has started or while it is running will return a None value.</p>
+<p>We can demonstrate this with a worked example that executes a custom target function that blocks for one second.</p>
+<p>First, we create a new process instance to execute our <strong>task()</strong> function, report the exit code, then start the process and report the exit code while the process is running.</p>
+<pre><code>...
+# create the process
+process = Process(target=task)
+# report the exit status
+print(process.exitcode)
+# start the process
+process.start()
+# report the exit status
+print(process.exitcode)</code></pre>
+<p>We can then block until the child process has terminated, then report the exit code.</p>
+<pre><code>...
+# wait for the process to finish
+process.join()
+# report the exit status
+print(process.exitcode)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of checking the exit status of a child process
+from time import sleep
+from multiprocessing import Process
+
+# function to execute in a new process
+def task():
+    sleep(1)
+
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = Process(target=task)
+    # report the exit status
+    print(process.exitcode)
+    # start the process
+    process.start()
+    # report the exit status
+    print(process.exitcode)
+    # wait for the process to finish
+    process.join()
+    # report the exit status
+    print(process.exitcode)
+</code></pre>
+<p>Running the example first creates a new process to execute our custom task function.</p>
+<p>The status code of the child process is reported, which is <strong>None</strong> as expected. The process is started and blocked for one second. While running, the exit code is reported again, which again is <strong>None</strong> as expected.</p>
+<p>The parent process then blocks until the child process terminates. The exit code is reported, and in this case we can see that a value of zero is reported indicating a normal or successful exit.</p>
+<pre><code>None
+None
+0
+</code></pre>
+<p>The exit code for a process can be set by calling <strong><a href="https://docs.python.org/3/library/sys.html#sys.exit">sys.exit()</a></strong> and specifying an integer value, such as 1 for a non-successful exit.</p>
+<p>You can learn more about how to set exit codes in the tutorial:</p>
+<ul>
+<li><a href="../exit-codes-in-python/">Exit Codes in Python</a></li>
+</ul>
+<p>Next, let's look at how we might configure new child processes.</p>
+<h2>Configure Processes</h2>
+<p>Instances of the <strong>multiprocessing.Process</strong> class can be configured.</p>
+<p>There are two properties of a process that can be configured, they are the name of the process and whether the process is a daemon or not.</p>
+<p>Let's take a closer look at each.</p>
+<h3>How to Configure Process Name</h3>
+<p>Processes can be assigned custom names.</p>
+<p>The name of a process can be set via the “<strong>name</strong>” argument in the <strong>multiprocessing.Process</strong> constructor.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process with a custom name
+process = Process(name='MyProcess')</code></pre>
+<p>The example below demonstrates how to set the name of a process in the process class constructor.</p>
+<pre><code># SuperFastPython.com
+# example of setting the process name in the constructor
+from multiprocessing import Process
+# entry point
+if __name__ == '__main__':
+    # create a process with a custom name
+    process = Process(name='MyProcess')
+    # report process name
+    print(process.name)
+</code></pre>
+<p>Running the example creates the child process with the custom name then reports the name of the process.</p>
+<pre><code>MyProcess</code></pre>
+<p>The name of the process can also be set via the “<strong>name</strong>” property.</p>
+<p>For example:</p>
+<pre><code>...
+# set the name
+process.name = 'MyProcess'</code></pre>
+<p>The example below demonstrates this by creating an instance of a process and then setting the name via the property.</p>
+<pre><code># SuperFastPython.com
+# example of setting the process name via the property
+from multiprocessing import Process
+# entry point
+if __name__ == '__main__':
+    # create a process
+    process = Process()
+    # set the name
+    process.name = 'MyProcess'
+    # report process name
+    print(process.name)
+</code></pre>
+<p>Running the example creates the process and sets the name then reports that the new name was assigned correctly.</p>
+<pre><code>MyProcess</code></pre>
+<p>You can learn more about how to configure the process name in this tutorial:</p>
+<ul>
+<li><a href="../process-name/">How to Change the Process Name in Python</a></li>
+</ul>
+<p>Next, let's take a closer look at daemon processes.</p>
+<h3>How to Configure a Daemon Process</h3>
+<p>Processes can be configured to be “<em>daemon</em>” or “<em>daemonic</em>”, that is, they can be configured as background processes.</p>
+<p>A parent Python process can only exit once all non-daemon child processes have exited.</p>
+<p>This means that daemon child processes can run in the background and do not prevent a Python program from exiting when the “<em>main parts of the program</em>” have finished.</p>
+<p>A process can be configured to be a daemon by setting the “<strong>daemon</strong>” argument to <strong>True</strong> in the <strong>multiprocessing.Process</strong> constructor.</p>
+<p>For example:</p>
+<pre><code>...
+# create a daemon process
+process = Process(daemon=True)</code></pre>
+<p>The example below shows how to create a new daemon process.</p>
+<pre><code># SuperFastPython.com
+# example of setting a process to be a daemon via the constructor
+from multiprocessing import Process
+# entry point
+if __name__ == '__main__':
+    # create a daemon process
+    process = Process(daemon=True)
+    # report if the process is a daemon
+    print(process.daemon)
+</code></pre>
+<p>Running the example creates a new process and configures it to be a daemon process via the constructor.</p>
+<pre><code>True</code></pre>
+<p>We can also configure a process to be a daemon process after it has been constructed via the “<strong>daemon</strong>” property.</p>
+<p>For example:</p>
+<pre><code>...
+# configure the process to be a daemon
+process.daemon = True</code></pre>
+<p>The example below creates a new <strong>multiprocessing.Process</strong> instance then configures it to be a daemon process via the property.</p>
+<pre><code># SuperFastPython.com
+# example of setting a process to be a daemon via the property
+from multiprocessing import Process
+# entry point
+if __name__ == '__main__':
+    # create a process
+    process = Process()
+    # configure the process to be a daemon
+    process.daemon = True
+    # report if the process is a daemon
+    print(process.daemon)
+</code></pre>
+<p>Running the example creates a new process instance then configures it to be a daemon process, then reports the daemon status.</p>
+<pre><code>True</code></pre>
+<p>You can learn more about daemon processes in this tutorial:</p>
+<ul>
+<li><a href="../daemon-process-in-python/">Daemon Process in Python</a></li>
+</ul>
+<p>Now that we are familiar with how to configure new child processes, let's take a closer look at the built-in main process.</p>
+<h2>Main Process</h2>
+<p>The main process is the parent process that executes your program.</p>
+<p>In this section we will take a closer look at the main process in Python.</p>
+<h3>What is the Main Process?</h3>
+<p>The main process in Python is the process started when you run your Python program.</p>
+<p>Recall that a process in Python is an instance of the Python interpreter. We can create and run new child processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process"><strong>multiprocessing.Process</strong> class.</a></p>
+<p>What makes the main process unique is that it is the first process created when you run your program and the main thread of the process executes the entry point of your program.</p>
+<p>As such the main process does not have a parent process.</p>
+<p>The main process also has a distinct name, specifically “<em>MainProcess</em>“.</p>
+<h3>How Can the Main Process Be Identified</h3>
+<p>There are a number of ways that the main process can be identified.</p>
+<p>They are:</p>
+<ul>
+<li>The main process has a distinct name of “<em>MainProcess</em>“.</li>
+<li>The main process does not have a parent process.</li>
+<li>The main process is an instance of the <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/process.py#L391"><strong>multiprocessing.process._MainProcess</strong> class</a>.</li>
+</ul>
+<h3>How to Get the Main Process?</h3>
+<p>We can get a multiprocessing.Process instance for the main process.</p>
+<p>There are a number of ways that we can do this, depending on where exactly we are in the code.</p>
+<p>For example, if we are running code in the main process, we can get a multiprocessing.Process instance for the main process via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.current_process"><strong>multiprocessing.current_process()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of getting the main process from the main process
+from multiprocessing import current_process
+# get the process instance
+process = current_process()
+# report details of the main process
+print(process)
+</code></pre>
+<p>Running the example gets the process instance for the main process.</p>
+<pre><code>&lt;_MainProcess name='MainProcess' parent=None started&gt;</code></pre>
+<p>If we are in a child process of the main process then we can get the main process via the <strong>multiprocessing.parent_process()</strong> function.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of getting the main process from a child of the main process
+from multiprocessing import parent_process
+from multiprocessing import Process
+
+# function executed in a child process
+def task():
+    # get the parent process instance
+    process = parent_process()
+    # report details of the main process
+    print(process)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # wait for the new process to terminate
+    process.join()
+</code></pre>
+<p>Running the example starts a new child process to execute a custom <strong>task()</strong> function.</p>
+<p>The child process gets the parent process instance which is the main process and reports its details.</p>
+<pre><code>&lt;_ParentProcess name='MainProcess' parent=None unknown&gt;</code></pre>
+<h3>What is the Name of the Main Process?</h3>
+<p>The main process is assigned a distinct name when it is created.</p>
+<p>The name of the parent process is ‘<em>MainProcess</em>‘.</p>
+<p>It is distinct from the default name of child processes, that are named ‘<em>Process-%d</em>‘, where <em>%d</em> is an integer starting from 1 to indicate the child number created by the parent process, e.g. <em>Process-1</em>.</p>
+<p>Nevertheless, process names can be changed any time and should not be relied upon to identify processes uniquely.</p>
+<p>We can confirm the name of the main process by getting the parent process instance via the <strong>multiprocessing.current_process()</strong> function and getting the “<strong>name</strong>” attribute.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of reporting the name of the main process
+from multiprocessing import current_process
+# get the main process
+process = current_process()
+# report the name of the main process
+print(process.name)</code></pre>
+<p>Running the example gets the <strong>multiprocessing.Process</strong> instance for the main process, then reports the name of the process.</p>
+<pre><code>MainProcess</code></pre>
+<p>You can learn more about the main process in the tutorial:</p>
+<ul>
+<li><a href="../main-process-in-python/">Main Process in Python</a></li>
+</ul>
+<p>Now that we are familiar with the main process, let's look at some additional multiprocessing utilities.</p>
+<h2>Process Utilities</h2>
+<p>There are a number of utilities we can use when working with processes within a Python process.</p>
+<p>These utilities are provided as multiprocessing module functions.</p>
+<p>We have already seen two of these functions in the previous section, specifically <strong>multiprocessing.current_thread()</strong> and <strong>multiprocessing.main_thread()</strong>.</p>
+<p>In this section we will review a number of additional utility functions.</p>
+<h3>Active Child Processes</h3>
+<p>We can get a list of all active child processes for a parent process.</p>
+<p>This can be achieved via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.active_children"><strong>multiprocessing.active_children()</strong> function</a> that returns a list of all child processes that are currently running.</p>
+<pre><code>...
+# get a list of all active child processes
+children = active_children()</code></pre>
+<p>We can demonstrate this with a short example.</p>
+<pre><code># SuperFastPython.com
+# list all active child processes
+from multiprocessing import active_children
+# get a list of all active child processes
+children = active_children()
+# report a count of active children
+print(f'Active Children Count: {len(children)}')
+# report each in turn
+for child in children:
+    print(child)
+</code></pre>
+<p>Running the example reports the number of active child processes.</p>
+<p>In this case, there are no active children processes.</p>
+<pre><code>Active Children Count: 0</code></pre>
+<p>We can update the example so that we first start a number of children processes, have the children processes block for a moment, then get the list of active children.</p>
+<p>This can be achieved by first defining a function to execute in a new process that blocks for a moment.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># function to execute in a new process
+def task():
+    # block for a moment
+    sleep(1)
+</code></pre>
+<p>Next, we can create a number of processes configured to run our <strong>task()</strong> function, then start them.</p>
+<pre><code>...
+# create a number of child processes
+processes = [Process(target=task) for _ in range(5)]
+# start the child processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>We can then report the active child processes as before.</p>
+<pre><code>...
+# get a list of all active child processes
+children = active_children()
+# report a count of active children
+print(f'Active Children Count: {len(children)}')
+# report each in turn
+for child in children:
+    print(child)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# list all active child processes
+from time import sleep
+from multiprocessing import active_children
+from multiprocessing import Process
+
+# function to execute in a new process
+def task():
+    # block for a moment
+    sleep(1)
+
+# entry point
+if __name__ == '__main__':
+    # create a number of child processes
+    processes = [Process(target=task) for _ in range(5)]
+    # start the child processes
+    for process in processes:
+        process.start()
+    # get a list of all active child processes
+    children = active_children()
+    # report a count of active children
+    print(f'Active Children Count: {len(children)}')
+    # report each in turn
+    for child in children:
+        print(child)
+</code></pre>
+<p>Running the example first creates five processes to run our <strong>task()</strong> function, then starts them.</p>
+<p>A list of all active child processes is then retrieved.</p>
+<p>The count is reported, which is shown as five, as we expect, then the details of each process are then reported.</p>
+<p>This highlights how we can access all active child processes from a parent process.</p>
+<pre><code>Active Children Count: 5
+&lt;Process name='Process-3' pid=16853 parent=16849 started&gt;
+&lt;Process name='Process-4' pid=16854 parent=16849 started&gt;
+&lt;Process name='Process-2' pid=16852 parent=16849 started&gt;
+&lt;Process name='Process-1' pid=16851 parent=16849 started&gt;
+&lt;Process name='Process-5' pid=16855 parent=16849 started&gt;
+</code></pre>
+<h3>Get The Number of CPU Cores</h3>
+<p>We may want to know the number of CPU cores available.</p>
+<p>This can be determined via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.cpu_count"><strong>multiprocessing.cpu_count()</strong> function</a>.</p>
+<p>The function returns an integer that indicates the number of logical CPU cores available in the system running the Python program.</p>
+<p>Recall that a central processing unit or CPU executes program instructions. A CPU may have one or more physical CPU cores for executing code in parallel. Modern CPU cores may make use of <a href="https://en.wikipedia.org/wiki/Hyper-threading">hyperthreading</a>, allowing each physical CPU core to operate like two (or more) logical CPU cores.</p>
+<p>Therefore, a computer system with a CPU with four physical cores may report eight logical CPU cores via the <strong>multiprocessing.cpu_count()</strong> function function.</p>
+<p>It may be useful to know the number of CPU cores available to configure a thread pool or the number of processes to create to execute tasks in parallel.</p>
+<p>The example below demonstrates how to use the number of CPU cores.</p>
+<pre><code># SuperFastPython.com
+# example of reporting the number of logical cpu cores
+from multiprocessing import cpu_count
+# get the number of cpu cores
+num_cores = cpu_count()
+# report details
+print(num_cores)</code></pre>
+<p>Running the example reports the number of logical CPU cores available in the system.</p>
+<p>In this case, my system provides eight logical CPU cores, your result may differ.</p>
+<pre><code>8</code></pre>
+<p>You can learn more about getting the number of CPU Cores in the tutorial:</p>
+<ul>
+<li><a href="../number-of-cpus-python/">Number of CPUs in Python</a></li>
+</ul>
+<h3>The Current Process</h3>
+<p>We can get a <strong>multiprocessing.Process</strong> instance for the process running the current code.</p>
+<p>This can be achieved via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.current_process"><strong>multiprocessing.current_process()</strong> function</a> that returns a <strong>multiprocessing.Process</strong> instance.</p>
+<pre><code>...
+# get the current process
+thread = current_process()</code></pre>
+<p>We can use this function to access the <strong>multiprocessing.Process</strong> for the <em>MainProcess</em>.</p>
+<p>This can be demonstrated with a short example, listed below.</p>
+<pre><code># SuperFastPython.com
+# example of executing the current process
+from multiprocessing import current_process
+# get the current process
+process = current_process()
+# report details
+print(process)</code></pre>
+<p>Running the example gets the process instance for the currently running process.</p>
+<p>The details are then reported, showing that we have accessed the main process that has no parent process.</p>
+<pre><code>&lt;_MainProcess name='MainProcess' parent=None started&gt;</code></pre>
+<p>We can use this function within a child process, allowing the child process to access a process instance for itself.</p>
+<p>First, we can define a custom function that gets the current process and reports its details.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># function executed in a new process
+def task():
+    # get the current process
+    process = current_process()
+    # report details
+    print(process)
+</code></pre>
+<p>Next, we can create a new process to execute our custom <strong>task()</strong> function. Then start the process and wait for it to terminate.</p>
+<pre><code>...
+# create a new process
+process = Process(target=task)
+# start the new process
+process.start()
+# wait for the child process to terminate
+process.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of executing the current process within a child process
+from multiprocessing import Process
+from multiprocessing import current_process
+
+# function executed in a new process
+def task():
+    # get the current process
+    process = current_process()
+    # report details
+    print(process)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # wait for the child process to terminate
+    process.join()
+</code></pre>
+<p>Running the example first creates a new process instance, then starts the process and waits for it to finish.</p>
+<p>The new process then gets an instance of its own <strong>multiprocessing.Process</strong> instance and then reports the details.</p>
+<h3>The Parent Process</h3>
+<p>We may need to access the parent process for a current child process.</p>
+<p>This can be achieved via the <strong>multiprocessing.parent_process()</strong> function. This will return a multiprocessing.Process instance for the parent of the current process.</p>
+<p>The <em>MainProcess</em> does not have a parent, therefore attempting to get the parent of the MainProcess will return None.</p>
+<p>We can demonstrate this with a worked example.</p>
+<pre><code># SuperFastPython.com
+# example of getting the parent process of the main process
+from multiprocessing import parent_process
+# get the the parent process
+process = parent_process()
+# report details
+print(process)
+</code></pre>
+<p>Running the example attempts the <strong>multiprocessing.Process</strong> instance for the <em>MainProcess</em>.</p>
+<p>The function returns None, as expected as the <em>MainProcess</em> does not have a parent process.</p>
+<pre><code>None</code></pre>
+<p>We can make the example more interesting by creating a new child process, then getting the parent of the child process, which will be the <em>MainProcess</em>.</p>
+<p>This can be achieved by first defining a function to get the parent process and then report its details.</p>
+<p>The <em>task()</em> function below implements this.</p>
+<pre><code># function to execute in a new process
+def task():
+    # get the the parent process
+    process = parent_process()
+    # report details
+    print(process)
+</code></pre>
+<p>Next, we can create a new process instance and configure it to execute our <strong>task()</strong> function. We can then start the new process and wait for it to terminate.</p>
+<pre><code>...
+# create a new process
+process = Process(target=task)
+# start the new process
+process.start()
+# wait for the new process to terminate
+process.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting the parent process of a child process
+from multiprocessing import parent_process
+from multiprocessing import Process
+
+# function to execute in a new process
+def task():
+    # get the the parent process
+    process = parent_process()
+    # report details
+    print(process)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # wait for the new process to terminate
+    process.join()
+</code></pre>
+<p>Running the example first creates a new process configured to execute our task function, then starts the process and waits for it to terminate.</p>
+<p>The new child process then gets a <strong>multiprocessing.Process</strong> instance for the parent process, then reports its details.</p>
+<p>We can see that the parent of the new process is the MainProcess, as we expected.</p>
+<pre><code>&lt;_ParentProcess name='MainProcess' parent=None unknown&gt;</code></pre>
+<h2>Process Mutex Lock</h2>
+<p>A mutex lock is used to protect critical sections of code from concurrent execution.</p>
+<p>You can use a mutual exclusion (mutex) lock in Python via the <strong>multiprocessing.Lock</strong> class.</p>
+<h3>What is a Mutual Exclusion Lock</h3>
+<p>A <a href="https://en.wikipedia.org/wiki/Mutual_exclusion">mutual exclusion lock</a> or mutex lock is a synchronization primitive intended to prevent a race condition.</p>
+<p>A race condition is a concurrency failure case when two processes (or threads) run the same code and access or update the same resource (e.g. data variables, stream, etc.) leaving the resource in an unknown and inconsistent state.</p>
+<p>Race conditions often result in unexpected behavior of a program and/or corrupt data.</p>
+<p>These sensitive parts of code that can be executed by multiple processes concurrently and may result in race conditions are called critical sections. A critical section may refer to a single block of code, but it also refers to multiple accesses to the same data variable or resource from multiple functions.</p>
+<p>A mutex lock can be used to ensure that only one process at a time executes a critical section of code at a time, while all other processes trying to execute the same code must wait until the currently executing process is finished with the critical section and releases the lock.</p>
+<p>Each process must attempt to acquire the lock at the beginning of the critical section. If the lock has not been obtained, then a process will acquire it and other processes must wait until the process that acquired the lock releases it.</p>
+<p>If the lock has not been acquired, we might refer to it as being in the “unlocked” state. Whereas if the lock has been acquired, we might refer to it as being in the “locked” state.</p>
+<ul>
+<li><strong>Unlocked</strong>: The lock has not been acquired and can be acquired by the next process that makes an attempt.</li>
+<li><strong>Locked</strong>: The lock has been acquired by process thread and any process that makes an attempt to acquire it must wait until it is released.</li>
+</ul>
+<p>Locks are created in the unlocked state.</p>
+<p>Now that we know what a mutex lock is, let's take a look at how we can use it in Python.</p>
+<h3>How to Use a Mutex Lock</h3>
+<p>Python provides a mutual exclusion lock for use with processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Lock"><strong>multiprocessing.Lock</strong> class</a>.</p>
+<p>An instance of the lock can be created and then acquired by processes before accessing a critical section, and released after the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = multiprocessing.Lock()
+# acquire the lock
+lock.acquire()
+# ...
+# release the lock
+lock.release()</code></pre>
+<p>Only one process can have the lock at any time. If a process does not release an acquired lock, it cannot be acquired again.</p>
+<p>The process attempting to acquire the lock will block until the lock is acquired, such as if another process currently holds the lock then releases it.</p>
+<p>We can attempt to acquire the lock without blocking by setting the “<strong>block</strong>” argument to <strong>False</strong>. If the lock cannot be acquired, a value of False is returned.</p>
+<pre><code>...
+# acquire the lock without blocking
+lock.acquire(block=false)</code></pre>
+<p>We can also attempt to acquire the lock with a timeout, that will wait the set number of seconds to acquire the lock before giving up. If the lock cannot be acquired, a value of <strong>False</strong> is returned.</p>
+<pre><code>...
+# acquire the lock with a timeout
+lock.acquire(timeout=10)</code></pre>
+<p>We can also use the lock via the context manager protocol via the with statement, allowing the critical section to be a block within the usage of the lock and for the lock to be released automatically once the block has completed.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = multiprocessing.Lock()
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>This is the preferred usage as it makes it clear where the protected code begins and ends, and ensures that the lock is always released, even if there is an exception or error within the critical section.</p>
+<p>We can also check if the lock is currently acquired by a process via the <strong>locked()</strong> function.</p>
+<pre><code>...
+# check if a lock is currently acquired
+if lock.locked():
+    # ...
+</code></pre>
+<p>Now that we know how to use the <strong>multiprocessing.Lock</strong> class, let's look at a worked example.</p>
+<h3>Example of Using a Mutex Lock</h3>
+<p>We can develop an example to demonstrate how to use the mutex lock.</p>
+<p>First, we can define a target task function that takes a lock as an argument and uses the lock to protect a critical section.</p>
+<p>In this case, the critical section involves reporting a message and blocking for a fraction of a second.</p>
+<pre><code># work function
+def task(lock, identifier, value):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} got the lock, sleeping for {value}')
+        sleep(value)
+</code></pre>
+<p>Next, we can then create one instance of the <strong>multiprocessing.Lock</strong> to be shared among the processes.</p>
+<pre><code>...
+# create the shared lock
+lock = Lock()</code></pre>
+<p>We can then create many processes, each configured to execute our <strong>task()</strong> function and compete to execute the critical section.</p>
+<p>Each process will receive the shared lock as an argument as well as an integer id between 0 and 9 and a random time to sleep in seconds between 0 and 1.</p>
+<p>We can implement this via a list comprehension, creating a list of ten configured <strong>multiprocessing.Process</strong> instances.</p>
+<pre><code>...
+# create a number of processes with different sleep times
+processes = [Process(target=task, args=(lock, i, random())) for i in range(10)]</code></pre>
+<p>Next, we can start all of the processes.</p>
+<pre><code>...
+# start the processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>Finally, we can wait for all of the new child processes to terminate.</p>
+<pre><code>...
+# wait for all processes to finish
+for process in processes:
+    process.join()
+</code></pre>
+<p>Tying this together, the complete example of using a lock is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a mutual exclusion (mutex) lock for processes
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# work function
+def task(lock, identifier, value):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} got the lock, sleeping for {value}')
+        sleep(value)
+
+# entry point
+if __name__ == '__main__':
+    # create the shared lock
+    lock = Lock()
+    # create a number of processes with different sleep times
+    processes = [Process(target=task, args=(lock, i, random())) for i in range(10)]
+    # start the processes
+    for process in processes:
+        process.start()
+    # wait for all processes to finish
+    for process in processes:
+        process.join()
+</code></pre>
+<p>Running the example starts ten processes that are all configured to execute our custom function.</p>
+<p>The child processes are then started and the main process blocks until all child processes finish.</p>
+<p>Each child process attempts to acquire the lock within the <strong>task()</strong> function. Only one process can acquire the lock at a time and once they do, they report a message including their id and how long they will sleep. The process then blocks for a fraction of a second before releasing the lock.</p>
+<p>Your specific results may vary given the use of random numbers. Try running the example a few times</p>
+<pre><code>&gt;process 2 got the lock, sleeping for 0.34493199862842716
+&gt;process 0 got the lock, sleeping for 0.1690829274493061
+&gt;process 1 got the lock, sleeping for 0.586700038562483
+&gt;process 3 got the lock, sleeping for 0.8439760508777033
+&gt;process 4 got the lock, sleeping for 0.49642440261633747
+&gt;process 6 got the lock, sleeping for 0.7291278047802177
+&gt;process 5 got the lock, sleeping for 0.4495745681185115
+&gt;process 7 got the lock, sleeping for 0.6844618818829677
+&gt;process 8 got the lock, sleeping for 0.21518155457911792
+&gt;process 9 got the lock, sleeping for 0.30577395898093285
+</code></pre>
+<p>You can learn more about mutex locks in this tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<p>Now that we are familiar with multiprocessing mutex locks, let's take a look at the reentrant lock.</p>
+<h2>Process Reentrant Lock</h2>
+<p>A reentrant lock is a lock that can be acquired more than once by the same process.</p>
+<p>You can use reentrant locks in Python via the <strong>multiprocessing.RLock</strong> class.</p>
+<h3>What is a Reentrant Lock</h3>
+<p>A reentrant mutual exclusion lock, “<em>reentrant mutex</em>” or “<em>reentrant lock</em>” for short, is like a mutex lock except it allows a process (or thread) to acquire the lock more than once.</p>
+<p>A process may need to acquire the same lock more than once for many reasons.</p>
+<p>We can imagine critical sections spread across a number of functions, each protected by the same lock. A process may call across these functions in the course of normal execution and may call into one critical section from another critical section.</p>
+<p>A limitation of a (non-reentrant) mutex lock is that if a process has acquired the lock that it cannot acquire it again. In fact, this situation will result in a deadlock as it will wait forever for the lock to be released so that it can be acquired, but it holds the lock and will not release it.</p>
+<p>A reentrant lock will allow a process to acquire the same lock again if it has already acquired it. This allows the process to execute critical sections from within critical sections, as long as they are protected by the same reentrant lock.</p>
+<p>Each time a process acquires the lock it must also release it, meaning that there are recursive levels of acquire and release for the owning process. As such, this type of lock is sometimes called a “<em>recursive mutex lock</em>“.</p>
+<p>Now that we are familiar with the reentrant lock, let's take a closer look at the difference between a lock and a reentrant lock in Python.</p>
+<h3>How to Use the Reentrant Lock</h3>
+<p>Python provides a reentrant lock for processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.RLock"><strong>multiprocessing.RLock</strong> class</a>.</p>
+<p>An instance of the <strong>multiprocessing.RLock</strong> can be created and then acquired by processes before accessing a critical section, and released after the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# create a reentrant lock
+lock = multiprocessing.RLock()
+# acquire the lock
+lock.acquire()
+# ...
+# release the lock
+lock.release()
+</code></pre>
+<p>The process attempting to acquire the lock will block until the lock is acquired, such as if another process currently holds the lock (once or more than once) then releases it.</p>
+<p>We can attempt to acquire the lock without blocking by setting the “<strong>block</strong>” argument to <strong>False</strong>. If the lock cannot be acquired, a value of <strong>False</strong> is returned.</p>
+<pre><code>...
+# acquire the lock without blocking
+lock.acquire(block=false)</code></pre>
+<p>We can also attempt to acquire the lock with a timeout, that will wait the set number of seconds to acquire the lock before giving up. If the lock cannot be acquired, a value of False is returned.</p>
+<pre><code>...
+# acquire the lock with a timeout
+lock.acquire(timeout=10)</code></pre>
+<p>We can also use the reentrant lock via the context manager protocol via the with statement, allowing the critical section to be a block within the usage of the lock and for the lock to be released once the block is exited.</p>
+<p>For example:</p>
+<pre><code>...
+# create a reentrant lock
+lock = multiprocessing.RLock()
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>Now that we know how to use the <strong>multiprocessing.RLock</strong> class, let's look at a worked example.</p>
+<h3>Example of Using a Reentrant Lock</h3>
+<p>We can develop an example to demonstrate how to use the <strong>multiprocessing.RLock</strong> for processes.</p>
+<p>First, we can define a function to report that a process is done that protects the <strong>print()</strong> statement with a lock.</p>
+<pre><code># reporting function
+def report(lock, identifier):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} done')
+</code></pre>
+<p>Next, we can define a task function that reports a message, blocks for a moment, then calls the reporting function. All of the work is protected with the lock.</p>
+<pre><code># work function
+def task(lock, identifier, value):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} sleeping for {value}')
+        sleep(value)
+        # report
+        report(lock, identifier)
+</code></pre>
+<p>Given that the target task function is protected with a lock and calls the reporting function that is also protected by the same lock, we can use a reentrant lock so that if a process acquires the lock in <strong>task()</strong>, it will be able to re-enter the lock in the <strong>report()</strong> function.</p>
+<p>Next, we can create the reentrant lock.</p>
+<pre><code>...
+# create a shared reentrant lock
+lock = RLock()</code></pre>
+<p>We can then create many processes, each configured to execute our <strong>task()</strong> function.</p>
+<p>Each process will receive the shared <strong>multiprocessing.RLock</strong> as an argument as well as an integer id between 0 and 9 and a random time to sleep in seconds between 0 and 1.</p>
+<p>We can implement this via a list comprehension, creating a list of ten configured <strong>multiprocessing.Process</strong> instances.</p>
+<pre><code>...
+# create processes
+processes = [Process(target=task, args=(lock, i, random())) for i in range(10)]</code></pre>
+<p>Next, we can start all of the processes.</p>
+<pre><code>...
+# start child processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>Finally, we can wait for all of the new child processes to terminate.</p>
+<pre><code>...
+# wait for child processes to finish
+for process in processes:
+    process.join()
+</code></pre>
+<p>Tying this together, the complete example of using a lock is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a reentrant lock for processes
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import RLock
+
+# reporting function
+def report(lock, identifier):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} done')
+
+# work function
+def task(lock, identifier, value):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} sleeping for {value}')
+        sleep(value)
+        # report
+        report(lock, identifier)
+
+# entry point
+if __name__ == '__main__':
+    # create a shared reentrant lock
+    lock = RLock()
+    # create processes
+    processes = [Process(target=task, args=(lock, i, random())) for i in range(10)]
+    # start child processes
+    for process in processes:
+        process.start()
+    # wait for child processes to finish
+    for process in processes:
+        process.join()
+</code></pre>
+<p>Running the example starts up ten processes that execute the target task function.</p>
+<p>Only one process can acquire the lock at a time, and then once acquired, blocks and then reenters the same lock again to report the done message via the <strong>report()</strong> function.</p>
+<p>If a non-reentrant lock, e.g. a <strong>multiprocessing.Lock</strong> was used instead, then the process would block forever waiting for the lock to become available, which it can't because the process already holds the lock.</p>
+<p>Note, your specific results will differ given the use of random numbers. Try running the example a few times.</p>
+<pre><code>&gt;process 0 sleeping for 0.9703475136810683
+&gt;process 0 done
+&gt;process 1 sleeping for 0.10372469305828702
+&gt;process 1 done
+&gt;process 2 sleeping for 0.26627777997152036
+&gt;process 2 done
+&gt;process 3 sleeping for 0.9821832886127358
+&gt;process 3 done
+&gt;process 6 sleeping for 0.005591916432016064
+&gt;process 6 done
+&gt;process 5 sleeping for 0.6150762561153148
+&gt;process 5 done
+&gt;process 4 sleeping for 0.3145220383413917
+&gt;process 4 done
+&gt;process 7 sleeping for 0.8961655132345371
+&gt;process 7 done
+&gt;process 8 sleeping for 0.5968254072867757
+&gt;process 8 done
+&gt;process 9 sleeping for 0.8139723778675512
+&gt;process 9 done
+</code></pre>
+<p>You can learn more about reentrant locks in this tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-rlock-in-python/">Multiprocessing RLock in Python</a></li>
+</ul>
+<p>Now that we are familiar with the reentrant lock, let's look at condition variables.</p>
+<h2>Process Condition Variable</h2>
+<p>A condition allows processes to wait and be notified.</p>
+<p>You can use a process condition object in Python via the <strong>multiprocessing.Condition</strong> class.</p>
+<h3>What is a Process Condition Variable</h3>
+<p>In concurrency, a condition variable (also called a <a href="https://en.wikipedia.org/wiki/Monitor_(synchronization)">monitor</a>) allows multiple processes (or threads) to be notified about some result.</p>
+<p>It combines both a mutual exclusion lock (mutex) and a conditional variable.</p>
+<p>A mutex can be used to protect a critical section, but it cannot be used to alert other processes that a condition has changed or been met.</p>
+<p>A condition can be acquired by a process (like a mutex) after which it can wait to be notified by another process that something has changed. While waiting, the process is blocked and releases the lock for other processes to acquire.</p>
+<p>Another process can then acquire the condition, make a change, and notify one, all, or a subset of processes waiting on the condition that something has changed. The waiting process can then wake-up (be scheduled by the operating system), re-acquire the condition (mutex), perform checks on any changed state and perform required actions.</p>
+<p>This highlights that a condition makes use of a mutex internally (to acquire/release the condition), but it also offers additional features such as allowing processes to wait on the condition and to allow processes to notify other processes waiting on the condition.</p>
+<p>Now that we know what a condition is, let's look at how we might use it in Python.</p>
+<h3>How to Use a Condition Variable</h3>
+<p>Python provides a condition variable via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Condition"><strong>multiprocessing.Condition</strong> class</a>.</p>
+<p>We can create a condition variable and by default it will create a new reentrant mutex lock (<strong>multiprocessing.RLock</strong> class) by default which will be used internally.</p>
+<pre><code>...
+# create a new condition variable
+condition = multiprocessing.Condition()</code></pre>
+<p>We may have a reentrant mutex or a non-reentrant mutex that we wish to reuse in the condition for some good reason, in which case we can provide it to the constructor.</p>
+<p>I don't recommend this unless you know your use case has this requirement. The chance of getting into trouble is high.</p>
+<pre><code>...
+# create a new condition with a custom lock
+condition = multiprocessing.Condition(lock=my_lock)</code></pre>
+<p>In order for a process to make use of the condition, it must acquire it and release it, like a mutex lock.</p>
+<p>This can be achieved manually with the <strong>acquire()</strong> and <strong>release() </strong>functions.</p>
+<p>For example, we can acquire the condition and then wait on the condition to be notified and finally release the condition as follows:</p>
+<pre><code>...
+# acquire the condition
+condition.acquire()
+# wait to be notified
+condition.wait()
+# release the condition
+condition.release()</code></pre>
+<p>An alternative to calling the <strong>acquire()</strong> and <strong>release()</strong> functions directly is to use the context manager, which will perform the acquire/release automatically for us, for example:</p>
+<pre><code>...
+# acquire the condition
+with condition:
+    # wait to be notified
+    condition.wait()
+</code></pre>
+<p>The <strong>wait()</strong> function will wait forever until notified by default. We can also pass a “<strong>timeout</strong>” argument which will allow the process to stop blocking after a time limit in seconds.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the condition
+with condition:
+    # wait to be notified
+    condition.wait(timeout=10)
+</code></pre>
+<p>The <strong>multiprocessing.Condition</strong> class also provides a <strong>wait_for()</strong> function that can be used to only unlock the waiting process if a condition is met, such as calling a function that returns a boolean value.</p>
+<p>The name of the function that returns a boolean value can be provided to the <strong>wait_for()</strong> function directly, and the function also takes a “<strong>timeout</strong>” argument in seconds.</p>
+<pre><code>...
+# acquire the condition
+with condition:
+    # wait to be notified and a function to return true
+    condition.wait_for(all_data_collected)
+</code></pre>
+<p>We also must acquire the condition in a process if we wish to notify waiting processes. This too can be achieved directly with the acquire/release function calls or via the context manager.</p>
+<p>We can notify a single waiting process via the <strong>notify()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the condition
+with condition:
+    # notify a waiting process
+    condition.notify()
+</code></pre>
+<p>The notified process will stop-blocking as soon as it can re-acquire the mutex within the condition. This will be attempted automatically as part of its call to <strong>wait()</strong> or <strong>wait_for()</strong>, you do not need to do anything extra.</p>
+<p>If there are more than one process waiting on the condition, we will not know which process will be notified.</p>
+<p>We can also notify a subset of waiting processes by setting the “<strong>n</strong>” argument to an integer number of processes to notify, for example:</p>
+<pre><code>...
+# acquire the condition
+with condition:
+    # notify 3 waiting processes
+    condition.notify(n=3)
+</code></pre>
+<p>Finally, we can notify all processes waiting on the condition via the <strong>notify_all()</strong> function.</p>
+<pre><code>...
+# acquire the condition
+with condition:
+    # notify all processes waiting on the condition
+    condition.notify_all()
+</code></pre>
+<p>A final reminder, a process must acquire the condition before waiting on it or notifying waiting processes. A failure to acquire the condition (the lock within the condition) before performing these actions will result in a <strong>RuntimeError</strong>.</p>
+<p>Now that we know how to use the <strong>multiprocessing.Condition</strong> class, let's look at some worked examples.s</p>
+<h3>Example of Wait and Notify With a Condition Variable</h3>
+<p>In this section we will explore using a <strong>multiprocessing.Condition</strong> to notify a waiting process that something has happened.</p>
+<p>We will create a new child process to simulate performing some work that the main process is dependent upon. Once prepared, the child process will notify the waiting main process, then the main process will continue on.</p>
+<p>First, we will define a target task function to execute in a new child process.</p>
+<p>The function will take the condition variable. The function will block for a moment to simulate performing a task, then notify the waiting main process.</p>
+<p>The complete target <strong>task()</strong> function is listed below.</p>
+<pre><code># target function to prepare some work
+def task(condition):
+    # block for a moment
+    sleep(1)
+    # notify a waiting process that the work is done
+    print('Child process sending notification...', flush=True)
+    with condition:
+        condition.notify()
+    # do something else...
+    sleep(1)
+</code></pre>
+<p>In the main process, first we can create the shared condition variable.</p>
+<pre><code>...
+# create a condition
+condition = Condition()</code></pre>
+<p>Next, we can acquire the condition variable, so that we can wait on it later.</p>
+<pre><code>...
+# wait to be notified that the data is ready
+print('Main process waiting for data...')
+with condition:
+    # ...
+</code></pre>
+<p>The main process will then create a new child process to perform some work, then notify the main process once the work is prepared.</p>
+<p>Next, we can start a new child process calling our target task function and wait on the condition variable to be notified of the result.</p>
+<pre><code>...
+# start a new process to perform some work
+worker = Process(target=task, args=(condition,))
+worker.start()
+# wait to be notified
+condition.wait()
+</code></pre>
+<p>Note, we must start the new process after we have acquired the mutex lock in the condition variable in this example.</p>
+<p>If we did not acquire the lock first, it is possible that there would be a race condition. Specifically, if we started the new child process before acquiring the condition and waiting in the main process, then it is possible for the new process to execute and notify before the main process has had a chance to start waiting. In which case the main process would wait forever to be notified.</p>
+<p>Finally, we can report that the main process is all done.</p>
+<pre><code>...
+# we know the data is ready
+print('Main process all done')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of wait/notify with a condition for processes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Condition
+
+# target function to prepare some work
+def task(condition):
+    # block for a moment
+    sleep(1)
+    # notify a waiting process that the work is done
+    print('Child process sending notification...', flush=True)
+    with condition:
+        condition.notify()
+    # do something else...
+    sleep(1)
+
+# entry point
+if __name__ == '__main__':
+    # create a condition
+    condition = Condition()
+    # wait to be notified that the data is ready
+    print('Main process waiting for data...')
+    with condition:
+        # start a new process to perform some work
+        worker = Process(target=task, args=(condition,))
+        worker.start()
+        # wait to be notified
+        condition.wait()
+    # we know the data is ready
+    print('Main process all done')
+</code></pre>
+<p>Running the example first creates the condition variable.</p>
+<p>The condition variable is acquired, then a new child process is created and started.</p>
+<p>The child process blocks for a moment to simulate work, then notifies the waiting main process.</p>
+<p>Meanwhile the main process waits to be notified by the child process, then once notified it continues on.</p>
+<pre><code>Main process waiting for data...
+Child process sending notification...
+All done
+</code></pre>
+<p>You can learn more about condition variables in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-condition-variable-in-python/">Multiprocessing Condition Variable in Python</a></li>
+</ul>
+<p>Next, let's look at how to use a semaphore.</p>
+<h2>Process Semaphore</h2>
+<p>A semaphore is essentially a counter protected by a mutex lock, used to limit the number of processes that can access a resource.</p>
+<p>You can use a semaphore in Python by <strong>multiprocessing.Semaphore</strong> class.</p>
+<h3>What is a Semaphore</h3>
+<p>A semaphore is a concurrency primitive that allows a limit on the number of processes (or threads) that can acquire a lock protecting a critical section.</p>
+<p>It is an extension of a mutual exclusion (mutex) lock that adds a count for the number of processes that can acquire the lock before additional processes will block. Once full, new processes can only acquire access on the semaphore once an existing process holding the semaphore releases access.</p>
+<p>Internally, the semaphore maintains a counter protected by a mutex lock that is incremented each time the semaphore is acquired and decremented each time it is released.</p>
+<p>When a semaphore is created, the upper limit on the counter is set. If it is set to be 1, then the semaphore will operate like a mutex lock.</p>
+<p>A semaphore provides a useful concurrency tool for limiting the number of processes that can access a resource concurrently. Some examples include:</p>
+<ul>
+<li>Limiting concurrent socket connections to a server.</li>
+<li>Limiting concurrent file operations on a hard drive.</li>
+<li>Limiting concurrent calculations.</li>
+</ul>
+<p>Now that we know what a semaphore is, let's look at how we might use it in Python.</p>
+<h3>How to Use a Semaphore</h3>
+<p>Python provides a semaphore for processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Semaphore"><strong>multiprocessing.Semaphore</strong> class</a>.</p>
+<p>The <strong>multiprocessing.Semaphore</strong> instance must be configured when it is created to set the limit on the internal counter. This limit will match the number of concurrent processes that can hold the semaphore.</p>
+<p>For example, we might want to set it to 100:</p>
+<pre><code>...
+# create a semaphore with a limit of 100
+semaphore = multiprocessing.Semaphore(100)</code></pre>
+<p>In this implementation, each time the semaphore is acquired, the internal counter is decremented. Each time the semaphore is released, the internal counter is incremented. The semaphore cannot be acquired if the semaphore has no available access in which case, processes attempting to acquire it must block until access becomes available.</p>
+<p>The semaphore can be acquired by calling the <strong>acquire() </strong>function, for example:</p>
+<pre><code>...
+# acquire the semaphore
+semaphore.acquire()</code></pre>
+<p>By default, it is a blocking call, which means that the calling process will block until access becomes available on the semaphore.</p>
+<p>The “<strong>block</strong>” argument can be set to <strong>False</strong> in which case, if access is not available on the semaphore, the process will not block and the function will return immediately, returning a <strong>False</strong> value indicating that the semaphore was not acquired or a <strong>True</strong> value if access could be acquired.</p>
+<pre><code>...
+# acquire the semaphore without blocking
+semaphore.acquire(block=False)</code></pre>
+<p>The “<strong>timeout</strong>” argument can be set to a number of seconds that the calling process is willing to wait for access to the semaphore if one is not available, before giving up. Again, the <strong>acquire()</strong> function will return a value of <strong>True</strong> if access could be acquired or <strong>False</strong> otherwise.</p>
+<pre><code>...
+# acquire the semaphore with a timeout
+semaphore.acquire(timeout=10)</code></pre>
+<p>Once acquired, the semaphore can be released again by calling the <strong>release()</strong> function.</p>
+<pre><code>...
+# release the semaphore
+semaphore.release()</code></pre>
+<p>More than one position can be made available by calling release and setting the “<strong>n</strong>” argument to an integer number of positions to release on the semaphore.</p>
+<p>This might be helpful if it is known a process has died without correctly releasing the semaphore, or if one process acquires the same semaphore more than once.</p>
+<p>Do not use this argument unless you have a clear use case, it is likely to get you into trouble with a semaphore left in an inconsistent state.</p>
+<pre><code>...
+# release three positions on the semaphore
+semaphore.release(n=3)</code></pre>
+<p>Finally, the <strong>multiprocessing.Semaphore</strong> class supports usage via the context manager, which will automatically acquire and release the semaphore for you. As such it is the preferred usage, if appropriate for your program.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the semaphore
+with semaphore:
+    # ...
+</code></pre>
+<p>Now that we know how to use the <strong>multiprocessing.Semaphore</strong> in Python, let's look at a worked example.</p>
+<h3>Example of Using a Semaphore</h3>
+<p>We can explore how to use a <strong>multiprocessing.Semaphore</strong> with a worked example.</p>
+<p>We will develop an example with a suite of processes but a limit on the number of processes that can perform an action simultaneously. A semaphore will be used to limit the number of concurrent processes which will be less than the total number of processes, allowing some processes to block, wait for access, then be notified and acquire access.</p>
+<p>First, we can define a target task function that takes the shared semaphore and a unique integer as arguments. The function will attempt to acquire the semaphore, and once access is acquired it will simulate some processing by generating a random number and blocking for a moment, then report its data and release the semaphore.</p>
+<p>The complete <strong>task()</strong> function is listed below.</p>
+<pre><code># target function
+def task(semaphore, number):
+    # attempt to acquire the semaphore
+    with semaphore:
+        # simulate computational effort
+        value = random()
+        sleep(value)
+        # report result
+        print(f'Process {number} got {value}')
+</code></pre>
+<p>The main process will first create the <strong>multiprocessing.Semaphore</strong> instance and limit the number of concurrent processes to 2.</p>
+<pre><code>...
+# create the shared semaphore
+semaphore = Semaphore(2)</code></pre>
+<p>Next, we will create and start 10 processes and pass each the shared semaphore instance and a unique integer to identify the process.</p>
+<p>We can implement this via a list comprehension, creating a list of ten configured <strong>multiprocessing.Process</strong> instances.</p>
+<pre><code>...
+# create processes
+processes = [Process(target=task, args=(semaphore, i)) for i in range(10)]</code></pre>
+<p>Next, we can start all of the processes.</p>
+<pre><code>...
+# start child processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>Finally, we can wait for all of the new child processes to terminate.</p>
+<pre><code>...
+# wait for child processes to finish
+for process in processes:
+    process.join()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a semaphore
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import Semaphore
+
+# target function
+def task(semaphore, number):
+    # attempt to acquire the semaphore
+    with semaphore:
+        # simulate computational effort
+        value = random()
+        sleep(value)
+        # report result
+        print(f'Process {number} got {value}')
+
+# entry point
+if __name__ == '__main__':
+    # create the shared semaphore
+    semaphore = Semaphore(2)
+    # create processes
+    processes = [Process(target=task, args=(semaphore, i)) for i in range(10)]
+    # start child processes
+    for process in processes:
+        process.start()
+    # wait for child processes to finish
+    for process in processes:
+        process.join()
+</code></pre>
+<p>Running the example first creates the shared semaphore instance then starts ten child processes.</p>
+<p>All ten processes attempt to acquire the semaphore, but only two processes are granted access at a time. The processes on the semaphore do their work and release the semaphore when they are done, at random intervals.</p>
+<p>Each release of the semaphore (via the context manager) allows another process to acquire access and perform its simulated calculation, all the while allowing only two of the processes to be running within the critical section at any one time, even though all ten processes are executing their run methods.</p>
+<p>Note, your specific values will differ given the use of random numbers.</p>
+<pre><code>Process 3 got 0.18383690831569133
+Process 2 got 0.6897978479922813
+Process 1 got 0.9585657826673842
+Process 6 got 0.1590348392237605
+Process 0 got 0.49322767126623646
+Process 4 got 0.5704432231809451
+Process 5 got 0.3505128460341568
+Process 7 got 0.3135061835434463
+Process 8 got 0.47103805023306533
+Process 9 got 0.21838069804132387</code></pre>
+<p>You can learn more about semaphores in this tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-semaphore-in-python/">Multiprocessing Semaphore in Python</a></li>
+</ul>
+<p>Next, let's look at event objects.</p>
+<h2>Process Event</h2>
+<p>An event is a process-safe boolean flag.</p>
+<p>You can use an Event Object in Python via the <strong>multiprocessing.Event</strong> class.</p>
+<h3>How to Use an Event Object</h3>
+<p>Python provides an event object for processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Event"><strong>multiprocessing.Event</strong> class</a>.</p>
+<p>An event is a simple concurrency primitive that allows communication between processes.</p>
+<p>A multiprocessing.Event object wraps a boolean variable that can either be “<strong><em>set</em></strong>” (<strong>True</strong>) or “<em>not set</em>” (<strong>False</strong>). Processes sharing the event instance can check if the event is set, set the event, clear the event (make it not set), or wait for the event to be set.</p>
+<p>The <strong>multiprocessing.Event</strong> provides an easy way to share a boolean variable between processes that can act as a trigger for an action.</p>
+<p>First, an event object must be created and the event will be in the “<em>not set</em>” state.</p>
+<pre><code>...
+# create an instance of an event
+event = multiprocessing.Event()</code></pre>
+<p>Once created we can check if the event has been set via the <strong>is_set()</strong> function which will return <strong>True</strong> if the event is set, or <strong>False</strong> otherwise.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the event is set
+if event.is_set():
+    # do something...
+</code></pre>
+<p>The event can be set via the <strong>set()</strong> function. Any processes waiting on the event to be set will be notified.</p>
+<p>For example:</p>
+<pre><code>...
+# set the event
+event.set()</code></pre>
+<p>The event can be marked as “not set” (whether it is currently set or not) via the <strong>clear()</strong> function.</p>
+<pre><code>...
+# mark the event as not set
+event.clear()</code></pre>
+<p>Finally, processes can wait for the event to set via the <strong>wait()</strong> function. Calling this function will block until the event is marked as set (e.g. another process calling the <strong>set()</strong> function). If the event is already set, the <strong>wait()</strong> function will return immediately.</p>
+<pre><code>...
+# wait for the event to be set
+event.wait()</code></pre>
+<p>A “<strong>timeout</strong>” argument can be passed to the <strong>wait()</strong> function which will limit how long a process is willing to wait in seconds for the event to be marked as set.</p>
+<p>The <strong>wait()</strong> function will return <strong>True</strong> if the event was set while waiting, otherwise a value of False returned indicates that the event was not set and the call timed-out.</p>
+<pre><code>...
+# wait for the event to be set with a timeout
+event.wait(timeout=10)</code></pre>
+<p>Now that we know how to use a <strong>multiprocessing.Event</strong>, let's look at a worked example.</p>
+<h3>Example of Using an Event Object</h3>
+<p>We can explore how to use a <strong>multiprocessing.Event</strong> object.</p>
+<p>In this example we will create a suite of processes that each will perform some processing and report a message. All processes will use an event to wait to be set before starting their work. The main process will set the event and trigger the child processes to start work.</p>
+<p>First, we can define a target task function that takes the shared <strong>multiprocessing.Event </strong>instance and a unique integer to identify the process.</p>
+<pre><code># target task function
+def task(event, number):
+    # ...
+</code></pre>
+<p>Next, the function will wait for the event to be set before starting the processing work.</p>
+<pre><code>...
+# wait for the event to be set
+print(f'Process {number} waiting...', flush=True)
+event.wait()</code></pre>
+<p>Once triggered, the process will generate a random number, block for a moment and report a message.</p>
+<pre><code>...
+# begin processing
+value = random()
+sleep(value)
+print(f'Process {number} got {value}', flush=True)</code></pre>
+<p>Tying this together, the complete target task function is listed below.</p>
+<pre><code># target task function
+def task(event, number):
+    # wait for the event to be set
+    print(f'Process {number} waiting...', flush=True)
+    event.wait()
+    # begin processing
+    value = random()
+    sleep(value)
+    print(f'Process {number} got {value}', flush=True)
+</code></pre>
+<p>The main process will first create the shared <strong>multiprocessing.Event</strong> instance, which will be in the “<em>not set</em>” state by default.</p>
+<pre><code>...
+# create a shared event object
+event = Event()</code></pre>
+<p>Next, we can create and configure five new processes specifying the target <strong>task()</strong> function with the event object and a unique integer as arguments.</p>
+<p>This can be achieved in a list comprehension.</p>
+<pre><code>...
+# create a suite of processes
+processes = [Process(target=task, args=(event, i)) for i in range(5)]</code></pre>
+<p>We can then start all child processes.</p>
+<pre><code>...
+# start all processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>Next, the main process will block for a moment, then trigger the processing in all of the child processes via the event object.</p>
+<pre><code>...
+# block for a moment
+print('Main process blocking...')
+sleep(2)
+# trigger all child processes
+event.set()
+</code></pre>
+<p>The main process will then wait for all child processes to terminate.</p>
+<pre><code>...
+# wait for all child processes to terminate
+for process in processes:
+    process.join()
+</code></pre>
+<p>Tying this all together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using an event object with processes
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import Event
+
+# target task function
+def task(event, number):
+    # wait for the event to be set
+    print(f'Process {number} waiting...', flush=True)
+    event.wait()
+    # begin processing
+    value = random()
+    sleep(value)
+    print(f'Process {number} got {value}', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create a shared event object
+    event = Event()
+    # create a suite of processes
+    processes = [Process(target=task, args=(event, i)) for i in range(5)]
+    # start all processes
+    for process in processes:
+        process.start()
+    # block for a moment
+    print('Main process blocking...')
+    sleep(2)
+    # trigger all child processes
+    event.set()
+    # wait for all child processes to terminate
+    for process in processes:
+        process.join()
+</code></pre>
+<p>Running the example first creates and starts five child processes.</p>
+<p>Each child process waits on the event before it starts its work, reporting a message that it is waiting.</p>
+<p>The main process blocks for a moment, allowing all child processes to begin and start waiting on the event.</p>
+<p>The main process then sets the event. This triggers all five child processes that perform their simulated work and report a message.</p>
+<p>Note, your specific results will differ given the use of random numbers.</p>
+<pre><code>Main process blocking...
+Process 0 waiting...
+Process 1 waiting...
+Process 2 waiting...
+Process 3 waiting...
+Process 4 waiting...
+Process 0 got 0.06198821143561384
+Process 4 got 0.219334069761699
+Process 3 got 0.7335552378594119
+Process 1 got 0.7948771419640999
+Process 2 got 0.8713839353896263
+</code></pre>
+<p>You can learn more about event objects in this tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-event-object-in-python/">Multiprocessing Event Object In Python</a></li>
+</ul>
+<p>Next, let's take a closer look at process barriers.</p>
+<h2>Process Barrier</h2>
+<p>A barrier allows you to coordinate child processes.</p>
+<p>You can use a process barrier in Python via the <strong>multiprocessing.Barrier</strong> class.</p>
+<h3>What is a Barrier</h3>
+<p>A barrier is a synchronization primitive.</p>
+<p>It allows multiple processes (or threads) to wait on the same barrier object instance (e.g. at the same point in code) until a predefined fixed number of processes arrive (e.g. the barrier is full), after which all processes are then notified and released to continue their execution.</p>
+<p>Internally, a barrier maintains a count of the number of processes waiting on the barrier and a configured maximum number of parties (processes) that are expected. Once the expected number of parties reaches the pre-defined maximum, all waiting processes are notified.</p>
+<p>This provides a useful mechanism to coordinate actions between multiple processes.</p>
+<p>Now that we know what a barrier is, let's look at how we might use it in Python.</p>
+<h3>How to Use a Barrier</h3>
+<p>Python provides a barrier via the <strong>multiprocessing.Barrier</strong> class.</p>
+<p>A barrier instance must first be created and configured via the constructor specifying the number of parties (processes) that must arrive before the barrier will be lifted.</p>
+<p>For example:</p>
+<pre><code>...
+# create a barrier
+barrier = multiprocessing.Barrier(10)</code></pre>
+<p>We can also perform an action once all processes reach the barrier which can be specified via the “<em>action</em>” argument in the constructor.</p>
+<p>This action must be a callable such as a function or a lambda that does not take any arguments and will be executed by one process once all processes reach the barrier but before the processes are released.</p>
+<pre><code>...
+# configure a barrier with an action
+barrier = multiprocessing.Barrier(10, action=my_function)</code></pre>
+<p>We can also set a default timeout used by all processes that reach the barrier and call the <strong>wait()</strong> function.</p>
+<p>The default timeout can be set via the “<em>timeout</em>” argument in seconds in the constructor.</p>
+<pre><code>...
+# configure a barrier with a default timeout
+barrier = multiprocessing.Barrier(10, timeout=5)</code></pre>
+<p>Once configured, the barrier instance can be shared between processes and used.</p>
+<p>A process can reach and wait on the barrier via the <strong>wait()</strong> function, for example:</p>
+<pre><code>...
+# wait on the barrier for all other processes to arrive
+barrier.wait()</code></pre>
+<p>This is a blocking call and will return once all other processes (the pre-configured number of parties) have reached the barrier.</p>
+<p>The wait function returns an integer indicating the number of parties remaining to arrive at the barrier. If a process was the last to arrive, then the return value will be zero. This is helpful if you want the last process or one process to perform an action after the barrier is released, an alternative to using the “<strong>action</strong>” argument in the constructor.</p>
+<pre><code>...
+# wait on the barrier
+remaining = barrier.wait()
+# after released, check if this was the last party
+if remaining == 0:
+    print('I was last...')
+</code></pre>
+<p>A timeout can be set on the call to wait in second via the “<strong>timeout</strong>” argument. If the timeout expires before all parties reach the barrier, a <strong>BrokenBarrierError</strong> will be raised in all processes waiting on the barrier and the barrier will be marked as broken.</p>
+<p>If a timeout is used via the “<strong>timeout</strong>” argument or the default timeout in the constructor, then all calls to the <strong>wait() </strong>function may need to handle the <strong>BrokenBarrierError</strong>.</p>
+<pre><code>...
+# wait on the barrier for all other processes to arrive
+try:
+    barrier.wait()
+except BrokenBarrierError:
+    # ...
+</code></pre>
+<p>We can also abort the barrier.</p>
+<p>Aborting the barrier means that all processes waiting on the barrier via the <strong>wait()</strong> function will raise a <strong>BrokenBarrierError</strong> and the barrier will be put in the broken state.</p>
+<p>This might be helpful if you wish to cancel the coordination effort.</p>
+<pre><code>...
+# abort the barrier
+barrier.abort()</code></pre>
+<p>A broken barrier cannot be used. Calls to <strong>wait()</strong> will raise a <strong>BrokenBarrierError</strong>.</p>
+<p>A barrier can be fixed and made ready for use again by calling the <strong>reset()</strong> function.</p>
+<p>This might be helpful if you cancel a coordination effort although you wish to retry it again with the same barrier instance.</p>
+<pre><code>...
+# reset a broken barrier
+barrier.reset()</code></pre>
+<p>Finally, the status of the barrier can be checked via attributes.</p>
+<ul>
+<li><strong>parties</strong>: reports the configured number of parties that must reach the barrier for it to be lifted.</li>
+<li><strong>n_waiting</strong>: reports the current number of processes waiting on the barrier.</li>
+<li><strong>broken</strong>: attribute indicates whether the barrier is currently broken or not.</li>
+</ul>
+<p>Now that we know how to use the barrier in Python, let's look at some worked examples.</p>
+<h3>Example of Using a Process Barrier</h3>
+<p>We can explore how to use a <strong>multiprocessing.Barrier</strong> with a worked example.</p>
+<p>In this example we will create a suite of processes, each required to perform some blocking calculation. We will use a barrier to coordinate all processes after they have finished their work and perform some action in the main process. This is a good proxy for the types of coordination we may need to perform with a barrier.</p>
+<p>First, let's define a target task function to execute by each process. The function will take the barrier as an argument as well as a unique identifier for the process.</p>
+<p>The process will generate a random value between 0 and 10, block for that many seconds, report the result, then wait on the barrier for all other processes to perform their computation.</p>
+<p>The complete target task function is listed below.</p>
+<pre><code># target function to prepare some work
+def task(barrier, number):
+    # generate a unique value
+    value = random() * 10
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'Process {number} done, got: {value}', flush=True)
+    # wait on all other processes to complete
+    barrier.wait()
+</code></pre>
+<p>Next in the main process we can create the barrier.</p>
+<p>We need one party for each process we intend to create, five in this place, as well as an additional party for the main process that will also wait for all processes to reach the barrier.</p>
+<pre><code>...
+# create a barrier
+barrier = Barrier(5 + 1)</code></pre>
+<p>Next, we can create and start our five child processes executing our target <strong>task()</strong> function.</p>
+<pre><code>...
+# create the worker processes
+for i in range(5):
+    # start a new process to perform some work
+    worker = Process(target=task, args=(barrier, i))
+    worker.start()
+</code></pre>
+<p>Finally, the main process can wait on the barrier for all processes to perform their calculation.</p>
+<pre><code>...
+# wait for all processes to finish
+print('Main process waiting on all results...')
+barrier.wait()</code></pre>
+<p>Once the processes are finished, the barrier will be lifted and the worker processes will exit and the main process will report a message.</p>
+<pre><code>...
+# report once all processes are done
+print('All processes have their result')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a barrier with processes
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import Barrier
+
+# target function to prepare some work
+def task(barrier, number):
+    # generate a unique value
+    value = random() * 10
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'Process {number} done, got: {value}', flush=True)
+    # wait on all other processes to complete
+    barrier.wait()
+
+# entry point
+if __name__ == '__main__':
+    # create a barrier
+    barrier = Barrier(5 + 1)
+    # create the worker processes
+    for i in range(5):
+        # start a new process to perform some work
+        worker = Process(target=task, args=(barrier, i))
+        worker.start()
+    # wait for all processes to finish
+    print('Main process waiting on all results...')
+    barrier.wait()
+    # report once all processes are done
+    print('All processes have their result')
+</code></pre>
+<p>Running the example first creates the barrier then creates and starts the worker processes.</p>
+<p>Each worker process performs its calculation and then waits on the barrier for all other processes to finish.</p>
+<p>Finally, the processes finish and are all released, including the main process, reporting a final message.</p>
+<p>Note, your specific results will differ given the use of random numbers. Try running the example a few times.</p>
+<pre><code>Main process waiting on all results...
+Process 3 done, got: 0.19554467220314398
+Process 4 done, got: 0.345718981628913
+Process 2 done, got: 2.37158455232798
+Process 1 done, got: 5.970308025592141
+Process 0 done, got: 7.102904442921531
+All processes have their result
+</code></pre>
+<p>You can learn more about how to use process barriers in this tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-barrier-in-python/">Multiprocessing Barrier in Python</a></li>
+</ul>
+<p>Next, let's look at best practices when using multiprocessing.</p>
+<h2>Python Multiprocessing Best Practices</h2>
+<p>Now that we know processes work and how to use them, let's review some best practices to consider when bringing multiprocessing into our Python programs.</p>
+<p>Some best practices when using processes in Python are as follows:</p>
+<ol>
+<li>Use Context Managers</li>
+<li>Use Timeouts When Waiting</li>
+<li>Use Main Module Idiom</li>
+<li>Use Shared ctypes</li>
+<li>Use Pipes and Queues</li>
+</ol>
+<p>Following best practices will help you avoid common concurrency failure modes like race conditions and deadlocks.</p>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Tip 1: Use Context Managers</h3>
+<p>Acquire and release locks using a <a href="https://docs.python.org/3.10/library/stdtypes.html#typecontextmanager">context manager</a>, wherever possible.</p>
+<p>Locks can be acquired manually via a call to <strong>acquire()</strong> at the beginning of the critical section followed by a call to <strong>release() </strong>at the end of the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock manually
+lock.acquire()
+# critical section...
+# release the lock
+lock.release()</code></pre>
+<p>This approach should be avoided wherever possible.</p>
+<p>Traditionally, it was recommended to always acquire and release a lock in a try-finally structure.</p>
+<p>The lock is acquired, the critical section is executed in the try block, and the lock is always released in the finally block.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+try:
+    # critical section...
+finally:
+    # always release the lock
+    lock.release()
+</code></pre>
+<p>This was since replaced with the context manager interface that achieves the same thing with less code.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+    # critical section...
+</code></pre>
+<p>The benefit of the context manager is that the lock is always released as soon as the block is exited, regardless of how it is exited, e.g. normally, a return, an error, or an exception.</p>
+<p>This applies to a number of synchronization primitives, such as:</p>
+<ul>
+<li>Acquiring a mutex lock via the <strong>multiprocessing.Lock</strong> class.</li>
+<li>Acquiring a reentrant mutex lock via the <strong>multiprocessing.RLock</strong> class.</li>
+<li>Acquiring a semaphore via the <strong>multiprocessing.Semaphore</strong> class.</li>
+<li>Acquiring a condition via the <strong>multiprocessing.Condition</strong> class.</li>
+</ul>
+<p>The context manager interface is also supported on other multiprocessing utilities, such as:</p>
+<ul>
+<li>Opening a connection via the multiprocessing.<strong>connection.Connection</strong> class</li>
+<li>Creating a manager via the <strong>multiprocessing.Manager</strong> class</li>
+<li>Creating a process pool via the <strong>multiprocessing.pool.Pool</strong> class.</li>
+<li>Creating a listener via the <strong>multiprocessing.connection.Listener</strong> class.</li>
+</ul>
+<h3>Tip 2: Use Timeouts When Waiting</h3>
+<p>Always use a timeout when waiting on a blocking call.</p>
+<p>Many calls made on synchronization primitives may block.</p>
+<p>For example:</p>
+<ul>
+<li>Waiting to acquire a <strong>multiprocessing.Lock</strong> via <strong>acquire()</strong>.</li>
+<li>Waiting for a process to terminate via <strong>join()</strong>.</li>
+<li>Waiting to be notified on a <strong>multiprocessing.Condition</strong> via <strong>wait()</strong>.</li>
+</ul>
+<p>And more.</p>
+<p>All blocking calls on concurrency primitives take a “<strong>timeout</strong>” argument and return <strong>True</strong> if the call was successful or <strong>False</strong> otherwise.</p>
+<p>Do not call a blocking call without a timeout, wherever possible.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+if not lock.acquire(timeout=2*60):
+    # handle failure case...
+</code></pre>
+<p>This will allow the waiting process to give-up waiting after a fixed time limit and then attempt to rectify the situation, e.g. report an error, force termination, etc.</p>
+<h3>Tip 3: Use Main Module Idiom</h3>
+<p>A Python program that uses multiprocessing should protect the entry point of the program.</p>
+<p>This can be achieved by using an if-statement to check that the entry point is the top-level environment.</p>
+<p>For example:</p>
+<pre><code>...
+# check for top-level environment
+if __name__ == '__main__':
+    # ...
+</code></pre>
+<p>This will help to avoid a RuntimeError when creating child processes using the '<strong>spawn</strong>' start method, the default on Windows and MacOS.</p>
+<p>You can learn more about protecting the entry point when using multiprocessing in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-spawn-runtimeerror/">Fix RuntimeError When Spawning a Child Process</a></li>
+</ul>
+<p>Additionally, it is a good practice to add freeze support as the first line of a Python program that uses multiprocessing.</p>
+<p>Freezing a Python program is a process that transforms the Python code into C code for packaging and distribution.</p>
+<p>When a program is frozen in order to be distributed, some features of Python are not included or disabled by default.</p>
+<p>This is for performance and/or security reasons.</p>
+<p>One feature that is disabled when freezing a Python program is multiprocessing.</p>
+<p>That is, we cannot create new python processes via multiprocessing.Process instances when freezing our program for distribution.</p>
+<p>Creating a process in a frozen application results in a <strong>RuntimeError</strong>.</p>
+<p>We can add support for multiprocessing in our program when freezing code via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.freeze_support"><strong>multiprocessing.freeze_support()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# enable support for multiprocessing
+multiprocessing.freeze_support()</code></pre>
+<p>This will have no effect on programs that are not frozen.</p>
+<p>You can learn more about adding freeze support in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-freeze-support-in-python/">Multiprocessing Freeze Support in Python</a></li>
+</ul>
+<p>Protecting the entry point and adding freeze support together are referred to as the "<em>main module</em>" idiom when using multiprocessing.</p>
+<p>Using this idiom is a best practice when using multiprocessing.</p>
+<pre><code>An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+</code></pre>
+<h3>Tip 4: Use Shared ctypes</h3>
+<p>Processes do not have shared memory.</p>
+<p>Instead, shared memory must be simulated using sockets and/or files.</p>
+<p>If you need to share simple data variables or arrays of variables between processes, this can be achieved using shared ctypes.</p>
+<p>Shared ctypes provide a mechanism to share data safely between processes in a process-safe manner.</p>
+<p>You can share ctypes among processes using the multiprocessing.Value and <strong>multiprocessing.Array</strong> classes.</p>
+<ul>
+<li>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Value"><strong>multiprocessing.Value</strong> class</a> is used to share a ctype of a given type among multiple processes.</li>
+<li>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Array"><strong>multiprocessing.Array</strong> class</a> is used to share an array of ctypes of a given type among multiple processes.</li>
+</ul>
+<p>Share ctypes provide a simple and easy to use way of sharing data between processes.</p>
+<p>For example, a shared ctype value can be defined in a parent process, then shared with multiple child processes. All child processes and the parent process can then safely read and modify the data within the shared value.</p>
+<p>This can be useful in a number of use cases, such as:</p>
+<ul>
+<li>A counter shared among multiple processes.</li>
+<li>Returning data from a child process to a parent process.</li>
+<li>Sharing results of computation among processes.</li>
+</ul>
+<p>Shared ctypes can only be shared among processes on the one system. For sharing data across processes on multiple systems, a <strong>multiprocessing.Manager</strong> should be used.</p>
+<p>The multiprocessing.Value class will create a shared ctype with a specified data type and initial value.</p>
+<p>For example:</p>
+<pre><code>...
+# create a value
+value = multiprocessing.Value(...)</code></pre>
+<p>The first argument defines the data type for the value. It may be a string type code or a Python ctype class. The second argument may be an initial value.</p>
+<p>For example, we can define a signed integer type with the ‘i' type code and an initial value of zero as follows:</p>
+<pre><code>...
+# create a integer value
+variable = multiprocessing.Value('i', 0)</code></pre>
+<p>We can define the same signed integer shared ctype using the <strong>ctypes.c_int</strong> class.</p>
+<p>For example:</p>
+<p>Once defined, the value can then be shared and used within multiple processes, such as between a parent and a child process.</p>
+<p>Internally, the <strong>multiprocessing.Value</strong> makes use of a <strong>multiprocessing.RLock</strong> that ensures that access and modification of the data inside the class is mutually exclusive, e.g. process-safe.</p>
+<p>This means that only one process at a time can access or change the data within the <strong>multiprocessing.Value</strong> object.</p>
+<p>The data within the <strong>multiprocessing.Value</strong> object can be accessed via the “<strong>value</strong>” attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# get the data
+data = variable.value</code></pre>
+<p>The data within the <strong>multiprocessing.Value</strong> can be changed by the same “<strong>value</strong>” attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# change the data
+variable.value = 100</code></pre>
+<p>You can learn more about using shared ctypes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<h3>Tip 5: Use Pipes and Queues</h3>
+<p>Processes can share messages with each other directly using pipes or queues.</p>
+<p>These are process-safe data structures that allow processes to send or receive pickleable Python objects.</p>
+<p>In multiprocessing, a pipe is a connection between two processes in Python.</p>
+<p>Python provides a simple queue in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Pipe"><strong>multiprocessing.Pipe</strong> class</a>.</p>
+<p>A pipe can be created by calling the constructor of the <strong>multiprocessing.Pipe</strong> class, which returns two <strong>multiprocessing.connection.Connection</strong> objects.</p>
+<p>For example:</p>
+<pre><code>...
+# create a pipe
+conn1, conn2 = multiprocessing.Pipe()</code></pre>
+<p>Objects can be shared between processes using the Pipe.</p>
+<p>The <strong>Connection.send()</strong> function can be used to send objects from one process to another.</p>
+<p>The objects sent must be picklable.</p>
+<p>For example:</p>
+<pre><code>...
+# send an object
+conn2.send('Hello world')</code></pre>
+<p>The <strong>Connection.recv()</strong> function can be used to receive objects in one process sent by another.</p>
+<p>The objects received will be automatically un-pickled.</p>
+<p>For example:</p>
+<pre><code>...
+# receive an object
+object = conn1.recv()</code></pre>
+<p>You can learn more about multiprocessing pipes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pipe-in-python/">Multiprocessing Pipe in Python</a></li>
+</ul>
+<p>Python provides a process-safe queue in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue"><strong>multiprocessing.Queue</strong> class</a>.</p>
+<p>A queue is a data structure on which items can be added by a call to put() and from which items can be retrieved by a call to get().</p>
+<p>The <strong>multiprocessing.Queue</strong> provides a first-in, first-out FIFO queue, which means that the items are retrieved from the queue in the order they were added. The first items added to the queue will be the first items retrieved. This is opposed to other queue types such as last-in, first-out and priority queues.</p>
+<p>The <strong>multiprocessing.Queue</strong> can be used by first creating an instance of the class. This will create an unbounded queue by default, that is, a queue with no size limit.</p>
+<p>For example:</p>
+<pre><code>...
+# created an unbounded queue
+queue = multiprocessing.Queue()</code></pre>
+<p>Items can be added to the queue via a call to <strong>put()</strong>, for example:</p>
+<pre><code>...
+# add an item to the queue
+queue.put(item)</code></pre>
+<p>Items can be retrieved from the queue by calls to <strong>get()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# get an item from the queue
+item = queue.get()</code></pre>
+<p>You can learn more about multiprocessing queues in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li>
+</ul>
+<p>Next, let's look at common errors when using multiprocessing in Python.</p>
+<h2>Python Multiprocessing Common Errors</h2>
+<p>When you are getting started with multiprocessing in Python, you may encounter one of many common errors.</p>
+<p>These errors are typically made because of bugs introduced by copy-and-pasting code, or from a slight misunderstanding in how new child processes work.</p>
+<p>We will take a closer look at some of the more common errors made when creating new child processes; they are:</p>
+<ul>
+<li><strong>Error 1</strong>: RuntimeError Starting New Processes</li>
+<li><strong>Error 2</strong>: print() Does Not Work In Child Processes</li>
+<li><strong>Error 3</strong>: Adding Attributes to Classes that Extend Process</li>
+</ul>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Error 1: RuntimeError Starting New Processes</h3>
+<p>It is common to get a <strong>RuntimeError</strong> when starting a new Process in Python.</p>
+<p>The content of the error often looks as follows:</p>
+<pre><code>    An attempt has been made to start a new process before the
+    current process has finished its bootstrapping phase.
+
+    This probably means that you are not using fork to start your
+    child processes and you have forgotten to use the proper idiom
+    in the main module:
+
+        if __name__ == '__main__':
+            freeze_support()
+            ...
+
+    The "freeze_support()" line can be omitted if the program
+    is not going to be frozen to produce an executable.
+</code></pre>
+<p>This will happen on Windows and MacOS where the default start method is ‘<strong>spawn</strong>‘. It may also happen when you configure your program to use the ‘<strong>spawn</strong>‘ start method on other platforms.</p>
+<p>This is a common error and is easy to fix.</p>
+<p>The fix involves checking if the code is running in the top-level environment and only then, attempt to start a new process.</p>
+<p>This is a best practice.</p>
+<p>The idiom for this fix, as stated in the message of the <strong>RuntimeError</strong>, is to use an if-statement and check if the name of the module is equal to the string ‘<strong>__main__</strong>‘.</p>
+<p>For example:</p>
+<pre><code>...
+# check for top-level environment
+if __name__ == '__main__':
+	# ...
+</code></pre>
+<p>This is called “<em>protecting the entry point</em>” of the program.</p>
+<p>Recall, that <strong>__name__</strong> is a variable that refers to the name of the module executing the current code.</p>
+<p>Also, recall that ‘<strong>__main__</strong>‘ is the name of the top-level environment used to execute a Python program.</p>
+<p>Using an if-statement to check if the module is the top-level environment and only starting child processes within that block will resolve the RuntimeError.</p>
+<p>It means that if the Python file is imported, then the code protected by the if-statement will not run. It will only run when the Python file is run directly, e.g. is the top-level environment.</p>
+<p>The if-statement idiom is required, even if the entry point of the program calls a function that itself starts a child process.</p>
+<p>You can learn more about this common error in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-spawn-runtimeerror/">Fix RuntimeError When Spawning a Child Process</a></li>
+</ul>
+<h3>Error 2: print() Does Not Work In Child Processes</h3>
+<p>Printing to standard out (stdout) with the built-in <a href="https://docs.python.org/3/library/functions.html#print"><strong>print()</strong> function</a> may not work property from child processes.</p>
+<p>For example, you may print output messages for the user or debug messages from a child process and they may never appear, or may only appear when the child process is terminated.</p>
+<p>For example:</p>
+<pre><code>...
+# report a message from a child process
+print('Hello from the child process')</code></pre>
+<p>This is a very common situation and the cause is well understood and easy to workaround.</p>
+<p>The <strong>print()</strong> function is a built-in function for displaying messages on standard output or stdout.</p>
+<p>When you call <strong>print()</strong> from a child process created using the ‘<strong>spawn</strong>‘ start method, the message will not appear.</p>
+<p>This is because the messages are block buffered by default and the buffer is not flushed by default after every message. This is unlike the main process that is interactive and will flush messages after each line, e.g. line buffered.</p>
+<p>Instead, the buffered messages are only flushed occasionally, such as when the child process terminates and the buffer is garbage collected.</p>
+<p>We can flush stdout automatically with each call to <strong>print()</strong>.</p>
+<p>This can be achieved by setting the ‘<strong>flush</strong>‘ argument to <strong>True</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# report a message from a child process
+print('Hello from the child process', flush=True)</code></pre>
+<p>An alternate approach is to call the <strong>flush()</strong> function on the <strong>sys.stdout</strong> object directly.</p>
+<p>For example:</p>
+<pre><code>...
+# report a message from a child process
+print('Hello from the child process')
+# flush output
+sys.stdout.flush()</code></pre>
+<p>The problem with the <strong>print()</strong> function only occurs when using the ‘<strong>spawn</strong>‘ start method.</p>
+<p>You can change the start method to ‘<strong>fork</strong>‘ which will cause <strong>print()</strong> to work as expected.</p>
+<p>Note, the ‘<strong>fork</strong>‘ start method is not supported on Windows at the time of writing.</p>
+<p>You can set the start method via the <strong>multiprocessing.set_start_method()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# set the start method to fork
+set_start_method('fork')</code></pre>
+<p>You can learn more about process start methods in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-start-method/">Multiprocessing Start Methods</a></li>
+</ul>
+<p>You can learn more about fixing <strong>print()</strong> from child processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-print/">How to print() from a Child Process in Python</a></li>
+</ul>
+<h3>Error 3: Adding Attributes to Classes that Extend Process</h3>
+<p>Python provides the ability to create and manage new processes via the <strong>multiprocessing.Process</strong> class.</p>
+<p>We can extend this class and override the <strong>run()</strong> function in order to run code in a new child process.</p>
+<p>You can learn more about extending the the <strong>multiprocessing.Process</strong> class in the tutorial:</p>
+<ul>
+<li><a href="../extend-process-class/">How to Extend the Process Class in Python</a></li>
+</ul>
+<p>Extending the <strong>multiprocessing.Process</strong> and adding attributes that are shared among multiple processes will fail with an error.</p>
+<p>For example, if we define a new class that extends the <strong>multiprocessing.Process</strong> class that sets an attribute on the class instance from the <strong>run()</strong> method executed in a new child process, then this attribute will not be accessible by other processes, such as the parent process.</p>
+<p>This is the case even if both parent and child processes share access to the “<em>same</em>” object.</p>
+<p>This is because class instance variables are not shared among processes by default. Instead, instance variables added to the <strong>multiprocessing.Process</strong> are private to the process that added them.</p>
+<p>Each process operates on a serialized copy of the object and any changes made to that object are local to that process only, by default.</p>
+<p>If you set class attributes in the child process and try to access them in the parent process or another process, you will get an error.</p>
+<p>For example:</p>
+<pre><code>...
+Traceback (most recent call last):
+...
+AttributeError: 'CustomProcess' object has no attribute 'data'</code></pre>
+<p>This error occurred because the child process operates on a copy of the class instance that is different from the copy of the class instance used in the parent process.</p>
+<p>Instance variable attributes can be shared between processes via the <strong>multiprocessing.Value</strong> and <strong>multiprocessing.Array</strong> classes.</p>
+<p>These classes explicitly define data attributes designed to be shared between processes in a process-safe manner.</p>
+<p>Shared variables mean that changes made in one process are always propagated and made available to other processes.</p>
+<p>An instance of the <strong>multiprocessing.Value</strong> can be defined in the constructor of a custom class as a shared instance variable.</p>
+<p>The constructor of the <strong>multiprocessing.Value</strong> class requires that we specify the data type and an initial value.</p>
+<p>The data type can be specified using ctype “<strong>type</strong>” or a typecode.</p>
+<p>Typecodes are familiar and easy to use, for example ‘<strong>i</strong>' for a signed integer or ‘<strong>f</strong>' for a single floating-point value.</p>
+<p>For example, we can define a <strong>multiprocessing.Value</strong> shared memory variable that holds a signed integer and is initialized to the value zero.</p>
+<pre><code>...
+# initialize an integer shared variable
+data = multiprocessing.Value('i', 0)</code></pre>
+<p>This can be initialized in the constructor of the class that extends the <strong>multiprocessing.Process</strong> class.</p>
+<p>We can change the value of the shared data variable via the “<strong>value</strong>” attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# change the value of the shared variable
+data.value = 100</code></pre>
+<p>We can access the value of the shared data variable via the same “<strong>value</strong>” attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# access the shared variable
+value = data.value</code></pre>
+<p>The propagation of changes to the shared variable and mutual exclusion locking of the shared variable is all performed automatically behind the scenes.</p>
+<p>You can learn more about this error and how to fix in the tutorial:</p>
+<ul>
+<li><a href="../share-process-attributes/">Shared Process Class Attributes in Python</a></li>
+</ul>
+<p>Next, let's look at common questions about multiprocessing in Python.</p>
+<h2>Python Multiprocessing Common Questions</h2>
+<p>This section answers common questions asked by developers when using multiprocessing in Python.</p>
+<p><strong>Do you have a question about processes?</strong><br/>Ask your question in the comments below and I will do my best to answer it and perhaps add it to this list of questions.</p>
+<h3>How to Safely Stop a Process?</h3>
+<p>A process can be stopped using a shared boolean variable such as a <strong>multiprocessing.Event</strong>.</p>
+<p>A <strong>multiprocessing.Event</strong> is a process-safe boolean variable flag that can be either set or not set. It can be shared between processes safely and correctly and checked and set without fear of a race condition.</p>
+<p>A new <strong>multiprocessing.Event</strong> can be created and then shared between processes, for example:</p>
+<pre><code>...
+# create a shared event
+event = multiprocessing.Event()</code></pre>
+<p>The event is created in the ‘<em>not set</em>' or <strong>False</strong> state.</p>
+<p>We may have a task in a custom function that is run in a new process. The task may iterate, such as in a while-loop or a for-loop.</p>
+<p>For example:</p>
+<pre><code># custom task function
+def task():
+	# perform task in iterations
+	while True:
+		# ...
+</code></pre>
+<p>We can update our task function to check the status of a <strong>multiprocessing.Event</strong> each iteration.</p>
+<p>If the event is set <strong>True</strong>, we can exit the task loop or return from the <strong>task()</strong> function, allowing the new child process to terminate.</p>
+<p>The status of the <strong>multiprocessing.Event</strong> can be checked via the <strong>is_set()</strong> function.</p>
+<p>For example:</p>
+<pre><code># custom task function
+def task():
+	# perform task in iterations
+	while True:
+		# ...
+        # check for stop
+        if event.is_set():
+            break
+</code></pre>
+<p>The main parent process, or another process, can then set the event in order to stop the new process from running.</p>
+<p>The <strong>multiprocessing.Event</strong> can be set or made <strong>True</strong> via the <strong>set()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# set the event
+event.set()
+# wait for the new process to stop
+process.join()
+</code></pre>
+<p>Now that we know how to stop a Python process, let's look at a worked example.</p>
+<pre><code># SuperFastPython.com
+# example of stopping a new process
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Event
+
+# custom task function
+def task(event):
+    # execute a task in a loop
+    for i in range(5):
+        # block for a moment
+        sleep(1)
+        # check for stop
+        if event.is_set():
+            break
+        # report a message
+        print('Worker process running...', flush=True)
+    print('Worker closing down', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create the event
+    event = Event()
+    # create and configure a new process
+    process = Process(target=task, args=(event,))
+    # start the new process
+    process.start()
+    # block for a while
+    sleep(3)
+    # stop the worker process
+    print('Main stopping process')
+    event.set()
+    # wait for the new process to finish
+    process.join()</code></pre>
+<p>Running the example first creates and starts the new child process.</p>
+<p>The main parent process then blocks for a few seconds.</p>
+<p>Meanwhile, the new process executes its task loop, blocking and reporting a message each iteration. It checks the event each iteration, which remains false and does not trigger the process to stop.</p>
+<p>The main parent process wakes up, and then sets the event. It then joins the new process, waiting for it to terminate.</p>
+<p>The task process checks the event which is discovered to be set (e.g. <strong>True</strong>). The process breaks the task loop, reports a final message then terminates the new process.</p>
+<p>The parent process then terminates, closing the Python program.</p>
+<p>You can learn more about safely stopping a process in this tutorial:</p>
+<ul>
+<li><a href="../safely-stop-a-process-in-python/">How to Safely Stop a Process in Python</a></li>
+</ul>
+<h3>How to Kill a Process?</h3>
+<p>Killing a process is drastic.</p>
+<p>If possible, it is better to safely stop a child process.</p>
+<p>Nevertheless, a process can be forcefully stopped immediately.</p>
+<p>The downside is that the process will not have an opportunity to clean-up, making it possibly unsafe.</p>
+<p>Specifically:</p>
+<ul>
+<li>The finally clauses in try-except-finally or try-finally patterns will not be executed.</li>
+<li>The exit handlers will not be executed.</li>
+</ul>
+<p>This means that open resources like files and sockets will not be closed in a safe and controlled manner. It also means that any application state will not be updated.</p>
+<p>Nevertheless, sometimes we may need to immediately kill a child process.</p>
+<p>There are two main approaches to kill a process, they are:</p>
+<ul>
+<li>Terminate a process via <strong>Process.terminate()</strong>.</li>
+<li>Kill a process via <strong>Process.kill()</strong>.</li>
+</ul>
+<p>Let's take a closer look at each in turn.</p>
+<p>A process can be killed by calling the <strong>Process.terminate()</strong> function.</p>
+<p>The call will only terminate the target process, not child processes.</p>
+<p>The method is called on the <strong>multiprocessing.Process</strong> instance for the process that you wish to terminate. You may have this instance from creating the process or it may be acquired via module methods such as the <strong>multiprocessing.active_children()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# terminate the process
+process.terminate()</code></pre>
+<p>The method takes no arguments and does not block.</p>
+<p>The function will terminate the process using the <strong>SIGTERM</strong> (signal terminate) signal on most platforms, or the equivalent on windows.</p>
+<p>A process can be killed by calling the <strong>Process.kill()</strong> function.</p>
+<p>The call will only terminate the target process, not child processes.</p>
+<p>The method is called on the <strong>multiprocessing.Process</strong> instance for the process that you wish to terminate. You may have this instance from creating the process or it may be acquired via module methods such as the <strong>multiprocessing.active_children()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# kill the process
+process.kill()</code></pre>
+<p>The method takes no arguments and does not block.</p>
+<p>The function will terminate the process using the <strong>SIGKILL</strong> (signal kill) signal on most platforms, or the equivalent on windows. This signal cannot be ignored and cannot be handled.</p>
+<p>You can learn more about forcefully killing a process in the tutorial:</p>
+<ul>
+<li><a href="../kill-a-process-in-python/">Kill a Process in Python</a></li>
+</ul>
+<h3>How Do You Wait for Processes to Finish?</h3>
+<p>A process can be joined in Python by calling the <strong>join()</strong> method on the process instance.</p>
+<p>For example:</p>
+<pre><code>...
+# join a process
+process.join()</code></pre>
+<p>This has the effect of blocking the current process until the target process that has been joined has terminated.</p>
+<p>The target process that is being joined may terminate for a number of reasons, such as:</p>
+<ul>
+<li>Finishes executing its target function.</li>
+<li>Finishes executing its <strong>run()</strong> method if it extends the Process class.</li>
+<li>Raised an error or exception.</li>
+</ul>
+<p>Once the target process has finished, the <strong>join()</strong> method will return and the current process can continue to execute.</p>
+<p>The <strong>join()</strong> method requires that you have a <strong>multiprocessing.Process</strong> instance for the process you wish to join.</p>
+<p>This means that if you created the process, you may need to keep a reference to the <strong>multiprocessing.Process</strong> instance.</p>
+<p>Alternatively, you may use a multiprocessing module function to get an instance for a process, such as <strong>multiprocessing.active_children()</strong> or <strong>multiprocessing.parent_process()</strong>.</p>
+<p>The <strong>join()</strong> method also takes a “<strong>timeout</strong>” argument that specifies how long the current process is willing to wait for the target process to terminate, in seconds.</p>
+<p>Once the timeout has expired and the target process has not terminated, the <strong>join()</strong> process will return.</p>
+<pre><code>...
+# join the process with a timeout
+process.join(timeout=10)</code></pre>
+<p>When using a timeout, it will not be clear whether the <strong>join()</strong> method returned because the target process terminated or because of the timeout. Therefore, we can call the <strong>Process.is_alive()</strong> function to confirm the target process is no longer running.</p>
+<p>For example:</p>
+<pre><code>...
+# join the process with a timeout
+process.join(timeout=10)
+# check if the target process is still running
+if process.is_alive():
+	# timeout expired, process is still running
+else:
+	# process has terminated
+</code></pre>
+<p>You can learn more about waiting for a process to finish in the tutorial:</p>
+<ul>
+<li><a href="../join-a-process-in-python/">How to Join a Process in Python</a></li>
+</ul>
+<h3>How to Restart a Process?</h3>
+<p>Python processes cannot be restarted or reused.</p>
+<p>In fact, this is probably a limitation of the capabilities of processes provided by the underlying operating system.</p>
+<p>Once a process has terminated you cannot call the <strong>start()</strong> method on it again to reuse it.</p>
+<p>Recall that a process may terminate for many reasons such as raising an error or exception, or when it finishes executing its <strong>run()</strong> function.</p>
+<p>Calling the <strong>start()</strong> function on a terminated process will result in an <strong>AssertionError</strong> indicating that the process can only be started once.</p>
+<pre><code>AssertionError: cannot start a process twice</code></pre>
+<p>Instead, to restart a process in Python, you must create a new instance of the process with the same configuration and then call the <strong>start()</strong> function.</p>
+<p>We can explore what happens when we attempt to start a terminated process in Python.</p>
+<p>In this example we will create a new process to execute a target task function, wait for the new process to terminate, then attempt to restart it again. We expect it to fail with an AssertionError.</p>
+<p>First, let's define a target task function to execute in a new process.</p>
+<p>The function will first block for a moment, then will report a message to let us know that the new process is executing.</p>
+<pre><code># custom target function
+def task():
+    # block for a moment
+    sleep(1)
+    # report a message
+    print('Hello from the new process')
+</code></pre>
+<p>Next, the main process will create an instance of the <strong>multiprocessing.Process</strong> class and configure it to execute our custom <strong>task()</strong> function via the “<strong>target</strong>” keyword.</p>
+<pre><code>...
+# create a new process
+process = Process(target=task)</code></pre>
+<p>We then start executing the process which will internally execute the <strong>run()</strong> function and in turn call our custom <strong>task()</strong> function.</p>
+<pre><code>...
+# start the process
+process.start()</code></pre>
+<p>Next, the parent process joins the new child process which will block (not return) until the new process has terminated.</p>
+<pre><code>...
+# wait for the process to finish
+process.join()</code></pre>
+<p>Finally, the parent process will attempt to start the terminated process again.</p>
+<pre><code>...
+# try and start the process again
+process.start()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of restarting a process
+from time import sleep
+from multiprocessing import Process
+
+# custom target function
+def task():
+    # block for a moment
+    sleep(1)
+    # report a message
+    print('Hello from the new process')
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=task)
+    # start the process
+    process.start()
+    # wait for the process to finish
+    process.join()
+    # try and start the process again
+    process.start()
+</code></pre>
+<p>Running the example first creates a process instance then starts its execution.</p>
+<p>The new process is started, blocks for a moment then reports a message.</p>
+<p>The parent process joins the new process and waits for it to terminate. Once terminated, the parent process attempts to start the same process again.</p>
+<p>The result is an <strong>AssertionError</strong>, as we expected.</p>
+<pre><code>Hello from the new process
+Traceback (most recent call last):
+  ...
+AssertionError: cannot start a process twice
+</code></pre>
+<p>This highlights that indeed we cannot call the <strong>start()</strong> method (e.g. restart) a process that has already terminated.</p>
+<p>You can learn more about restarting a process in the tutorial:</p>
+<ul>
+<li><a href="../restart-a-process-in-python/">How to Restart a Process in Python</a></li>
+</ul>
+<h3>How to Return a Value From a Process?</h3>
+<p>There are no direct methods to return a value from a process.</p>
+<p>Instead, it can be achieved using indirect methods.</p>
+<p>There are a number of indirect methods to choose from.</p>
+<p>The three most convenient and widely used methods to return a value from a process are as follows:</p>
+<ol>
+<li>Use a <strong>multiprocessing.Value</strong> object.</li>
+<li>Use a <strong>multiprocessing.Pipe</strong> object.</li>
+<li>Use a <strong>multiprocessing.Queue</strong> object.</li>
+</ol>
+<p>You can learn more about techniques for returning a value from a process in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-return-value-from-process/">Multiprocessing Return Value From Process</a></li>
+</ul>
+<p>Let's take a look at some of these approaches for returning a value.</p>
+<p>We can return a variable from a process using a <strong>multiprocessing.Value</strong> object.</p>
+<p>These classes explicitly define data attributes designed to be shared between processes in a process-safe manner.</p>
+<p>A process-safe manner means that only one process can read or access the variable at a time. Shared variables mean that changes made in one process are always propagated and made available to other processes.</p>
+<p>An instance of the <strong>multiprocessing.Value</strong> can be defined in the constructor of a custom class as a shared instance variable.</p>
+<p>The constructor of the <strong>multiprocessing.Value</strong> class requires that we specify the data type and an initial value.</p>
+<p>The data type can be specified using ctype “<strong>type</strong>” or a typecode.</p>
+<p>Typecodes are familiar and easy to use, for example ‘i' for a signed integer or ‘f' for a single floating-point value.</p>
+<p>For example, we can define a Value shared memory variable that holds a signed integer and is initialized to the value zero.</p>
+<pre><code>...
+# initialize an integer shared variable
+data = multiprocessing.Value('i', 0)</code></pre>
+<p>This variable can then be initialized in a parent process and shared with a child process</p>
+<p>We can change the value of the shared data variable via the “<strong>value</strong>” attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# change the value of the shared variable
+data.value = 100</code></pre>
+<p>We can access the value of the shared data variable via the same “<strong>value</strong>” attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# access the shared variable
+value = data.value</code></pre>
+<p>The propagation of changes to the shared variable and mutual exclusion locking of the shared variable is all performed automatically behind the scenes.</p>
+<p>You can learn more about using shared ctypes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>We can return a variable from a process using the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue"><strong>multiprocessing.Queue</strong> class</a>.</p>
+<p>A <a href="https://en.wikipedia.org/wiki/Queue_(abstract_data_type)">queue is a data structure</a> on which items can be added by a call to <strong>put()</strong> and from which items can be retrieved by a call to <strong>get()</strong>.</p>
+<p>The <strong>multiprocessing.Queue</strong> provides a first-in, first-out FIFO queue, which means that the items are retrieved from the queue in the order they were added. The first items added to the queue will be the first items retrieved. This is opposed to other queue types such as last-in, first-out and priority queues.</p>
+<p>The <strong>multiprocessing.Queue</strong> can be used by first creating an instance of the class. This will create an unbounded queue by default, that is, a queue with no size limit.</p>
+<p>For example:</p>
+<pre><code>...
+# created an unbounded queue
+queue = multiprocessing.Queue()</code></pre>
+<p>Items can be added to the queue via a call to <strong>put()</strong>, for example:</p>
+<pre><code>...
+# add an item to the queue
+queue.put(item)</code></pre>
+<p>By default, the call to <strong>put()</strong> will block and will not use a timeout.</p>
+<p>Items can be retrieved from the queue by calls to <strong>get()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# get an item from the queue
+item = queue.get()</code></pre>
+<p>By default, the call to <strong>get()</strong> will block until an item is available to retrieve from the queue and will not use a timeout.</p>
+<p>You can learn more about multiprocessing queues in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li>
+</ul>
+<h3>How to Share Data Between Processes?</h3>
+<p>In multiprocessing programming, we typically need to share data and program state between processes.</p>
+<p>This can be achieved using shared memory via shared ctypes.</p>
+<p>The <a href="https://docs.python.org/3/library/ctypes.html"><strong>ctypes</strong> module</a> provides tools for working with C data types.</p>
+<p>The C programming language and related languages like C++ underlie many modern programming languages and are the languages used to implement most modern operating systems.</p>
+<p>As such, the data types used in C are somewhat standardized across many platforms.</p>
+<p>The ctypes module allows Python code to read, write, and generally interoperate with data using standard C data types.</p>
+<p>Python provides the capability to share ctypes between processes on one system.</p>
+<p>This is primarily achieved via the following classes:</p>
+<ul>
+<li><strong>multiprocessing.Value</strong>: manage a shared value.</li>
+<li><strong>multiprocessing.Array</strong>: manage an array of shared values.</li>
+</ul>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Value"><strong>multiprocessing.Value</strong> class</a> is used to share a ctype of a given type among multiple processes.</p>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Array"><strong>multiprocessing.Array</strong> class</a> is used to share an array of ctypes of a given type among multiple processes.</p>
+<p>Share ctypes provide a simple and easy to use way of sharing data between processes.</p>
+<p>For example, a shared ctype value can be defined in a parent process, then shared with multiple child processes. All child processes and the parent process can then safely read and modify the data within the shared value.</p>
+<p>This can be useful in a number of use cases, such as:</p>
+<ul>
+<li>A counter shared among multiple processes.</li>
+<li>Returning data from a child process to a parent process.</li>
+<li>Sharing results of computation among processes.</li>
+</ul>
+<p>Shared ctypes can only be shared among processes on the one system. For sharing data across processes on multiple systems, a <strong>multiprocessing.Manager</strong> should be used.</p>
+<p>You can learn more about how to share data between processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<h3>How Do You Exit a Process?</h3>
+<p>The <a href="https://docs.python.org/3/library/sys.html#sys.exit"><strong>sys.exit()</strong> function</a> will exit the Python interpreter.</p>
+<p>When called, the <strong>sys.exit()</strong> function will raise a <strong>SystemExit</strong> exception.</p>
+<p>This exception is (typically) not caught and bubbles up to the top of a stack of the running thread, causing it and the process to exit.</p>
+<p>The <strong>sys.exit()</strong> function takes an argument that indicates the success or failure of the exit status.</p>
+<p>A value of None (the default) or zero indicates a successful , whereas a larger value indicates an unsuccessful exit.</p>
+<p>Importantly, finally operations in try-except-finally and try-finally patterns are executed. This allows a program to clean-up before exiting.</p>
+<p>In concurrency programming, we may make calls to <strong>sys.exit()</strong> to close our program.</p>
+<p>Each Python process has an exit code.</p>
+<p>The exit code of a process is accessible via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.exitcode"><strong>multiprocessing.Process.exitcode</strong> attribute</a>.</p>
+<p>The process exitcode is set automatically, for example:</p>
+<ul>
+<li>If the process is still running, the exitcode will be None.</li>
+<li>If the process exited normally, the exitcode will be 0.</li>
+<li>If the process terminated with an uncaught exception, the exitcode will be 1.</li>
+</ul>
+<p>The exitcode can also be set via a call to <strong>sys.exit()</strong>.</p>
+<p>For example, a child process may exit with a call to <strong>sys.exit()</strong> with no arguments.</p>
+<p>The child process will terminate and the exitcode will be set to 0.</p>
+<p>The <strong>sys.exit()</strong> function is used by simply making the function call.</p>
+<p>A normal exit can be achieved by calling the function with no argument, e.g. defaulting to a value of <strong>None</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# exit normally
+sys.exit()</code></pre>
+<p>A normal exit can also be achieved by passing the value of None or 0 as an argument.</p>
+<pre><code>...
+# exit normally
+sys.exit(0)</code></pre>
+<p>An unsuccessful exit can be signaled by passing a value other than 0 or None.</p>
+<p>This may be an integer exit code, such as 1.</p>
+<p>For example:</p>
+<pre><code>...
+# exit with error
+sys.exit(1)</code></pre>
+<p>You can learn more about calling <strong>sys.exit()</strong> in child processes in the tutorial:</p>
+<ul>
+<li><a href="../exit-process/">Exit a Process with sys.exit() in Python</a></li>
+</ul>
+<h3>What is the Main Process?</h3>
+<p>The main process in Python is the process started when you run your Python program.</p>
+<p>There are a number of ways that the main process can be identified.</p>
+<p>They are:</p>
+<ul>
+<li>The main process has a distinct name of “<em>MainProcess</em>“.</li>
+<li>The main process does not have a parent process.</li>
+<li>The main process is an instance of the <strong>multiprocessing.process._MainProcess</strong> class.</li>
+</ul>
+<p>You can learn more about the main process in the tutorial:</p>
+<ul>
+<li><a href="../main-process-in-python/">Main Process in Python</a></li>
+</ul>
+<h3>How Do You Use a Multiprocessing Queue?</h3>
+<p>Python provides a process-safe queue in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue"><strong>multiprocessing.Queue</strong> class</a>.</p>
+<p>A <a href="https://en.wikipedia.org/wiki/Queue_(abstract_data_type)">queue is a data structure</a> on which items can be added by a call to <strong>put()</strong> and from which items can be retrieved by a call to <strong>get()</strong>.</p>
+<p>The <strong>multiprocessing.Queue</strong> provides a first-in, first-out FIFO queue, which means that the items are retrieved from the queue in the order they were added. The first items added to the queue will be the first items retrieved. This is opposed to other queue types such as last-in, first-out and priority queues.</p>
+<p>The <strong>multiprocessing.Queue</strong> can be used by first creating an instance of the class. This will create an unbounded queue by default, that is, a queue with no size limit.</p>
+<p>For example:</p>
+<pre><code>...
+# created an unbounded queue
+queue = multiprocessing.Queue()</code></pre>
+<p>A create can be created with a size limit by specifying the “<strong>maxsize</strong>” argument to a value larger than zero.</p>
+<p>For example:</p>
+<pre><code>...
+# created a size limited queue
+queue = multiprocessing.Queue(maxsize=100)</code></pre>
+<p>Once a size limited queue is full, new items cannot be added and calls to <strong>put()</strong> will block until space becomes available.</p>
+<p>Items can be added to the queue via a call to <strong>put()</strong>, for example:</p>
+<pre><code>...
+# add an item to the queue
+queue.put(item)</code></pre>
+<p>By default, the call to <strong>put()</strong> will block and will not use a timeout.</p>
+<p>For example, the above is equivalent to the following:</p>
+<pre><code>...
+# add an item to the queue
+queue.put(item, block=True, timeout=None)</code></pre>
+<p>The call to <strong>put()</strong> will block if the queue is full. We can choose to not block when adding items by setting the “<strong>block</strong>” argument to <strong>False</strong>. If the queue is full, then a <strong>queue.Full</strong> exception will be raised which may be handled.</p>
+<p>For example:</p>
+<pre><code>...
+# add an item to a size limited queue without blocking
+try:
+    queue.put(item, block=False)
+except queue.Full:
+    # ...
+</code></pre>
+<p>This can also be achieved with the <strong>put_nowait()</strong> function that does the same thing.</p>
+<p>For example:</p>
+<pre><code>...
+# add an item to a size limited queue without blocking
+try:
+    queue.put_nowait(item)
+except queue.Full:
+    # ...
+</code></pre>
+<p>Alternatively we may wish to add an item to a size limited queue and block with a timeout. This can be achieved by setting the “<strong>timeout</strong>” argument to a positive value in seconds. If an item cannot be added before the timeout expires, then a queue.Full exception will be raised which may be handled.</p>
+<p>For example:</p>
+<pre><code>...
+# add an item to a size limited queue with a timeout
+try:
+    queue.put(item, timeout=5)
+except queue.Full:
+    # ...
+</code></pre>
+<p>Items can be retrieved from the queue by calls to <strong>get()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# get an item from the queue
+item = queue.get()</code></pre>
+<p>By default, the call to <strong>get()</strong> will block until an item is available to retrieve from the queue and will not use a timeout. Therefore, the above call is equivalent to the following:</p>
+<pre><code>...
+# get an item from the queue
+item = queue.get(block=True, timeout=0)</code></pre>
+<p>We can retrieve items from the queue without blocking by setting the “<strong>block</strong>” argument to <strong>False</strong>. If an item is not available to retrieve, then a <strong>queue.Empty</strong> exception will be raised and may be handled.</p>
+<pre><code>...
+# get an item from the queue without blocking
+try:
+    item = queue.get(block=False)
+except queue.Empty:
+    # ...
+</code></pre>
+<p>This can also be achieved with the <strong>get_nowait()</strong> function that does the same thing.</p>
+<p>For example:</p>
+<pre><code>...
+# get an item from the queue without blocking
+try:
+    item = queue.get_nowait()
+except queue.Empty:
+    # ...
+</code></pre>
+<p>Alternatively, we may wish to retrieve items from the queue and block with a time limit. This can be achieved by setting the “<strong>timeout</strong>” argument to a positive value in seconds. If the timeout expires before an item can be retrieved, then a <strong>queue.Empty</strong> exception will be raised and may be handled.</p>
+<p>For example:</p>
+<pre><code>...
+# get an item from the queue with a timeout
+try:
+    item = queue.get(timeout=10)
+except queue.Empty:
+    # ...
+</code></pre>
+<p>The number of items in the queue can be checked by the <strong>qsize()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# check the size of the queue
+size = queue.qsize()</code></pre>
+<p>We can check if the queue contains no values via the <strong>empty()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the queue is empty
+if queue.empty():
+    # ...
+</code></pre>
+<p>We may also check if the queue is full via the <strong>full()</strong> function, if it is size limited when configured.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the queue is full
+if queue.full():
+    # ...
+</code></pre>
+<p>You can learn more about how to use process-safe queues in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li>
+</ul>
+<h3>How Do You Use a Multiprocessing Pipe?</h3>
+<p>In multiprocessing, a pipe is a connection between two processes in Python.</p>
+<p>It is used to send data from one process which is received by another process.</p>
+<p>Under the covers, a pipe is implemented using a pair of connection objects, provided by the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.connection.Connection"><strong>multiprocessing.connection.Connection</strong> class</a>.</p>
+<p>Creating a pipe will create two connection objects, one for sending data and one for receiving data. A pipe can also be configured to be duplex so that each connection object can both send and receive data.</p>
+<p>Python provides a simple queue in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Pipe"><strong>multiprocessing.Pipe</strong> class</a>.</p>
+<p>A pipe can be created by calling the constructor of the <strong>multiprocessing.Pipe</strong> class, which returns two <strong>multiprocessing.connection.Connection</strong> objects.</p>
+<p>For example:</p>
+<pre><code>...
+# create a pipe
+conn1, conn2 = multiprocessing.Pipe()</code></pre>
+<p>By default, the first connection (conn1) can only be used to receive data, whereas the second connection (conn2) can only be used to send data.</p>
+<p>The connection objects can be made duplex or bidirectional.</p>
+<p>This can be achieved by setting the “<strong>duplex</strong>” argument to the constructor to <strong>True</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create a duplex pipe
+conn1, conn2 = multiprocessing.Pipe(duplex=True)</code></pre>
+<p>In this case, both connections can be used to send and receive data.</p>
+<p>Objects can be shared between processes using the Pipe.</p>
+<p>The <strong>Connection.send()</strong> function can be used to send objects from one process to another.</p>
+<p>The objects sent must be picklable.</p>
+<p>For example:</p>
+<pre><code>...
+# send an object
+conn2.send('Hello world')</code></pre>
+<p>The <strong>Connection.recv()</strong> function can be used to receive objects in one process sent by another.</p>
+<p>The objects received will be automatically un-pickled.</p>
+<p>For example:</p>
+<pre><code>...
+# receive an object
+object = conn1.recv()</code></pre>
+<p>The function call will block until an object is received.</p>
+<p>The status of the pipe can be checked via the <strong>Connection.poll()</strong> function.</p>
+<p>This will return a boolean as to whether three is data to be received and read from the pipe.</p>
+<p>For example:</p>
+<pre><code>...
+# check if there is data to receive
+if conn1.poll():
+    # ...
+</code></pre>
+<p>A timeout can be set via the “<strong>timeout</strong>” argument. If specified, the call will block until data is available. If no data is available before the timeout number of seconds has elapsed, then the function will return.</p>
+<p>For example:</p>
+<pre><code>...
+# check if there is data to receive
+if conn1.poll(timeout=5):
+    # ...
+</code></pre>
+<p>You can learn more about multiprocessing pipes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pipe-in-python/">Multiprocessing Pipe in Python</a></li>
+</ul>
+<h3>How Do You Change The Process Start Method?</h3>
+<p>A start method is the technique used to start child processes in Python.</p>
+<p>There are three start methods, they are:</p>
+<ul>
+<li><strong>spawn</strong>: start a new Python process.</li>
+<li><strong>fork</strong>: copy a Python process from an existing process.</li>
+<li><strong>forkserver</strong>: new process from which future forked processes will be copied.</li>
+</ul>
+<p>The start method can be set via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.set_start_method"><strong>multiprocessing.set_start_method()</strong> function</a>.</p>
+<p>The function takes a string argument indicating the start method to use.</p>
+<p>This must be one of the methods returned from the <strong>multiprocessing.get_all_start_methods()</strong> for your platform.</p>
+<p>For example:</p>
+<pre><code>...
+# set the start method
+multiprocessing.set_start_method('spawn')</code></pre>
+<p>It is a best practice, and required on most platforms that the start method be set first, prior to any other code, and to be done so within a <strong>if __name__ == ‘__main__'</strong> check called a <a href="https://docs.python.org/3/library/__main__.html">protected entry point or top-level code environment</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# protect the entry point
+if __name__ == '__main__':
+    # set the start method
+    multiprocessing.set_start_method('spawn')
+</code></pre>
+<p>If the start method is not set within a protected entry point, it is possible to get a <strong>RuntimeError</strong> such as:</p>
+<pre><code>RuntimeError: context has already been set</code></pre>
+<p>It is also a good practice and required on some platforms that the start method only be set once.</p>
+<p>You can learn more about setting the start method in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-start-method/">Multiprocessing Start Methods</a></li>
+</ul>
+<h3>How Do You Get The Process PID?</h3>
+<p>PID is an acronym for Process ID or Process identifier.</p>
+<p>A process identifier is a unique number assigned to a process by the underlying operating system.</p>
+<p>Each time a process is started, it is assigned a unique positive integer identifier and the identifier may be different each time the process is started.</p>
+<p>The pod uniquely identifies one process among all active processes running on the system, managed by the operating system.</p>
+<p>As such, the pid can be used to interact with a process, e.g. to send a signal to the process to interrupt or kill a process.</p>
+<p>We can get the pid of a process via its <strong>multiprocessing.Process</strong> instance.</p>
+<p>When we create a child process, we may hang on to the process instance.</p>
+<p>Alternatively, we may get the process instance for the parent process via the <strong>multiprocessing.parent_process()</strong> function or for child process via the <strong>multiprocessing.active_children()</strong> function.</p>
+<p>We may also get the process instance for the current process via the <strong>multiprocessing.current_process()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# get the process instance
+process = multiprocessing.current_process()</code></pre>
+<p>Once we have the process instance, we get the pid via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.pid"><strong>multiprocessing.Process.pid</strong> attribute</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# get the pid
+pid = process.pid</code></pre>
+<p>We can also get the pid for the current process via the <a href="https://docs.python.org/3/library/os.html#os.getpid"><strong>os.getpid()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# get the pid for the current process
+pid = os.getpid()</code></pre>
+<p>We may also get the pid for the parent process via the <a href="https://docs.python.org/3/library/os.html#os.getppid"><strong>os.getppid()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# get the pid for the parent process
+pid = os.getppid()</code></pre>
+<h3>Do We Need to Check for __main__?</h3>
+<p>Yes, when using the '<strong>spawn</strong>' start method.</p>
+<p>It is common to get a <strong>RuntimeError</strong> when starting a new Process in Python.</p>
+<p>The content of the error often looks as follows:</p>
+<pre><code>    An attempt has been made to start a new process before the
+    current process has finished its bootstrapping phase.
+
+    This probably means that you are not using fork to start your
+    child processes and you have forgotten to use the proper idiom
+    in the main module:
+
+        if __name__ == '__main__':
+            freeze_support()
+            ...
+
+    The "freeze_support()" line can be omitted if the program
+    is not going to be frozen to produce an executable.
+</code></pre>
+<p>This will happen on Windows and MacOS where the default start method is ‘<strong>spawn</strong>‘. It may also happen when you configure your program to use the ‘spawn‘ start method on other platforms.</p>
+<p>This is a common error and is easy to fix.</p>
+<p>The fix involves checking if the code is running in the top-level environment and only then, attempt to start a new process.</p>
+<p>This is a best practice.</p>
+<p>The idiom for this fix, as stated in the message of the <strong>RuntimeError</strong>, is to use an if-statement and check if the name of the module is equal to the string ‘<strong>__main__</strong>‘.</p>
+<p>For example:</p>
+<pre><code>...
+# check for top-level environment
+if __name__ == '__main__':
+    # ...
+</code></pre>
+<p>This is called “<em>protecting the entry point</em>” of the program.</p>
+<p>Recall, that <strong>__name__</strong> is a variable that refers to the name of the module executing the current code.</p>
+<p>Also, recall that ‘<strong>__main__</strong>‘ is the name of the top-level environment used to execute a Python program.</p>
+<p>Using an if-statement to check if the module is the top-level environment and only starting child processes within that block will resolve the <strong>RuntimeError</strong>.</p>
+<p>It means that if the Python file is imported, then the code protected by the if-statement will not run. It will only run when the Python file is run directly, e.g. is the top-level environment.</p>
+<p>The if-statement idiom is required, even if the entry point of the program calls a function that itself starts a child process.</p>
+<p>This is only used for child processes created by the main process. Child processes themselves can create child processes without this check.</p>
+<p>You can learn more about protecting the entry point when using multiprocessing in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-spawn-runtimeerror/">Fix RuntimeError When Spawning a Child Process</a></li>
+</ul>
+<h3>How Do You Use Process Pools?</h3>
+<p>You can use process pools in Python via the <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ProcessPoolExecutor"><strong>concurrent.futures.ProcessPoolExecutor</strong> class</a>.</p>
+<p>The <strong>ProcessPoolExecutor</strong> in Python provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>You can submit tasks to the process pool by calling the <strong>submit()</strong> function and passing in the name of the function you wish to execute on another process.</p>
+<p>Calling the <strong>submit()</strong> function will return a <strong>Future</strong> object that allows you to check on the status of the task and get the result from the task once it completes.</p>
+<p>You can also submit tasks by calling the <strong>map()</strong> function and specifying the name of the function to execute and the iterable of items to which your function will be applied.</p>
+<p>You can learn more about process pools in Python via the tutorial:</p>
+<ul>
+<li><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor in Python: The Complete Guide</a></li>
+</ul>
+<h3>How to Log From Multiple Processes?</h3>
+<p>Logging is a way of tracking events within a program.</p>
+<p>The <a href="https://docs.python.org/3/library/logging.html"><strong>logging</strong> module</a> provides infrastructure for logging within Python programs.</p>
+<p>There are perhaps three main approaches to logging from multiple processes, they are:</p>
+<ul>
+<li>Use the logging module separately from each process.</li>
+<li>Use <strong>multiprocessing.get_logger()</strong>.</li>
+<li>Use custom process-safe logging.</li>
+</ul>
+<p>We can log directly from each process using the logging module.</p>
+<p>This requires that you configure the logger in each process, including the target (e.g. stream or file) and log level.</p>
+<p>For example:</p>
+<pre><code>...
+# create a logger
+logger = logging.getLogger()
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>Messages can then be logged directly.</p>
+<p>For example:</p>
+<pre><code>...
+# report a message
+logging.info('Hello world.')</code></pre>
+<p>This is an easy approach in that it does not require anything sophisticated.</p>
+<p>The downside is that you have to duplicate code in order to configure a separate logger for each new process.</p>
+<p>The major limitation of this approach is that log messages may be lost or corrupted. This is because multiple processes will attempt to write log messages to the same target, e.g. stream or file.</p>
+<p>I don't recommend this approach.</p>
+<p>Alternately, the multiprocessing module has its own logger with the name “<strong>multiprocessing</strong>“.</p>
+<p>This logger is used within objects and functions within the multiprocessing module to log messages, such as debug messages that processes are running or have shutdown.</p>
+<p>We can get this logger and use it for logging.</p>
+<p>The logger used by the multiprocessing module can be acquired via the <strong>multiprocessing.get_logger()</strong> function. Once acquired, it can be configured, e.g. to specify a handler and a log level.</p>
+<p>For example:</p>
+<pre><code>...
+# get the multiprocessing logger
+logger = get_logger()
+# configure a stream handler
+logger.addHandler(logging.StreamHandler())
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>Messages logged by the multiprocessing module itself will appear in this log at the appropriate log level, e.g. there are many debug messages in the module.</p>
+<p>This logger is not shared among processes and is not process-safe.</p>
+<p>It is simply using the logger module directly as in the previous example, although for the “<strong>multiprocessing</strong>” logging namespace.</p>
+<p>As such it has the same downside that the logger must be configured again within each child process and that log messages may be lost or corrupted.</p>
+<p>I don't recommend this approach either.</p>
+<p>Effective logging from multiple processes requires custom code and message passing between processes.</p>
+<p>For example, a robust and easy to maintain approach involves sending all log messages to one process and configuring one process to be responsible for receiving log messages and storing them in a central location.</p>
+<p>This can be achieved using a <strong>multiprocessing.Queue</strong> and a <strong>logging.handlers.QueueHandler</strong>.</p>
+<p>For an example of how to log safely from multiple processes, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-logging-in-python/">Multiprocessing Logging in Python</a></li>
+</ul>
+<h3>What is Process-Safe?</h3>
+<p>Process-safe refers to program code that can be executed free of concurrency errors by multiple processes concurrently.</p>
+<p>It is the concept of "<em>thread-safe</em>" applied to processes, where processes are the unit of concurrency instead of threads.</p>
+<p>Thread-safety is a major concern of concurrent programming using threads. This is because threads have shared memory within the process, meaning that concurrent access of the same data or variables can lead to race conditions.</p>
+<p>Processes do not have direct shared memory and therefore are not subject to the same concerns of race conditions.</p>
+<p>Nevertheless, processes do simulate shared memory using socket connections and files and may need to protect simulated shared program state or data from race conditions due to timing and concurrent modification.</p>
+<p>Happily some tools used for inter-process communication provide some process-safety, such as queues.</p>
+<p>You can learn more about process-safety in the tutorial:</p>
+<ul>
+<li><a href="../process-safe-in-python/">Process-Safe in Python</a></li>
+</ul>
+<h3>Why Not Always Use Processes?</h3>
+<p>Thread-based concurrency in Python is limited.</p>
+<p>Only a single thread is able to execute at a time.</p>
+<p>This is because of the <a href="https://wiki.python.org/moin/GlobalInterpreterLock">Global Interpreter Lock or GIL</a> that requires that each thread acquire a lock on the interpreter before executing, preventing all other threads executing at the same time.</p>
+<p>This means that although we may have tens, hundreds, or even thousands of concurrent threads in our Python application, only one thread may execute in parallel.</p>
+<p>Process-based concurrency is not limited in the same way as thread-based concurrency.</p>
+<p>Both threads and processes can execute concurrently (out of order), but only python processes are able to execute in parallel (simultaneously), not Python threads (with some caveats).</p>
+<p>This means that if we want out Python code to run on all CPU cores and make the best use of our system hardware, we should use process-based concurrency.</p>
+<p>If process-based concurrency offers true parallelism in Python, why not always use processes?</p>
+<p>Firstly, only one thread can run at a time within a Python process under most situations, except:</p>
+<ol>
+<li>When you are using a Python interpreter that does not use a GIL.</li>
+<li>When you are performing IO-bound tasks that release the GIL.</li>
+<li>When you are performing CPU-bound tasks that release the GIL.</li>
+</ol>
+<p>For example, when you are reading or writing from a file or socket the GIL is released allowing multiple threads to run in parallel.</p>
+<p>Common examples include:</p>
+<ul>
+<li><strong>Hard disk drive</strong>: Reading, writing, appending, renaming, deleting, etc. files.</li>
+<li><strong>Peripherals</strong>: mouse, keyboard, screen, printer, serial, camera, etc.</li>
+<li>Internet: Downloading and uploading files, getting a webpage, querying RSS, etc.</li>
+<li><strong>Database</strong>: Select, update, delete, etc. SQL queries.</li>
+<li><strong>Email</strong>: Send mail, receive mail, query inbox, etc.</li>
+</ul>
+<p>Additionally, many CPU-bound tasks that are known to not rely on state in the Python interpreter will release the GIL, such as C-code in third-party libraries called from Python.</p>
+<p>For example:</p>
+<ul>
+<li>When performing compression operations, e.g. in zlib.</li>
+<li>When calculating cryptographic hashes, e.g. in hashlib.</li>
+<li>When performing encoding/decoding images and video, e.g, in OpenCV.</li>
+<li>When performing matrix operations, e.g. in NumPy and SciPy.</li>
+<li>And many more.</li>
+</ul>
+<p>Secondly, processes and process-based concurrency also have limitations compared to threads.</p>
+<p>For example:</p>
+<ol>
+<li>We may have thousands of threads, but perhaps only tens of processes.</li>
+<li>Threads are small and fast, whereas processes are large and slow to create and start.</li>
+<li>Threads can share data quickly and directly, whereas processes must pickle and transmit data to each other.</li>
+</ol>
+<p>You can learn more about why we should not always use process-based concurrency in Python in the tutorial:</p>
+<ul>
+<li><a href="../why-not-always-use-processes-in-python/">Why Not Always Use Processes in Python</a></li>
+</ul>
+<h2>Common Objections to Using Python Multiprocessing</h2>
+<p>Processes may not be the best solution for all concurrency problems in your program.</p>
+<p>That being said, there may also be some misunderstandings that are preventing you from making full and best use of the capabilities of the processes in Python.</p>
+<p>In this section, we review some of the common objections seen by developers when considering using the processes in their code.</p>
+<h3>What About the Global Interpreter Lock (GIL)?</h3>
+<p>The GIL is generally not relevant when using processes such as the Process class.</p>
+<p>The <a href="https://wiki.python.org/moin/GlobalInterpreterLock">Global Interpreter Lock, or GIL for short</a>, is a design decision with the reference Python interpreter.</p>
+<p>It refers to the fact that the implementation of the Python interpreter makes use of a master lock that prevents more than one Python instruction executing at the same time.</p>
+<p>This prevents more than one thread of execution within Python programs, specifically within each Python process, that is each instance of the Python interpreter.</p>
+<p>The implementation of the GIL means that Python threads may be concurrent, but cannot run in parallel. Recall that concurrent means that more than one task can be in progress at the same time, parallel means more than one task actually executing at the same time. Parallel tasks are concurrent;, concurrent tasks may or may not execute in parallel.</p>
+<p>It is the reason behind the heuristic that Python threads should only be used for IO-bound tasks, and not CPU-bound tasks, as IO-bound tasks will wait in the operating system kernel for remote resources to respond (not executing Python instructions), allowing other Python threads to run and execute Python instructions.</p>
+<p>As such, the GIL is a consideration when using threads in Python such as the <strong>threading.Thread</strong> class. It is not a consideration when using the multiprocessing.Process class (unless you use additional threads within each task).</p>
+<h3>Are Python Processes "Real Processes"?</h3>
+<p>Yes.</p>
+<p>Python makes use of real system-level processes, also called spawning processes or forking processes, a capability provided by modern operating systems like Windows, Linux, and MacOS.</p>
+<h3>Are Python Processes Buggy?</h3>
+<p>No.</p>
+<p>Python processes are not buggy.</p>
+<p>Python processes are a first-class capability of the Python platform and have been for a very long time.</p>
+<h3>Isn't Python a Bad Choice for Concurrency?</h3>
+<p>No.</p>
+<p>Developers love python for many reasons, most commonly because it is easy to use and fast for development.</p>
+<p>Python is commonly used for glue code, one-off scripts, but more and more for large scale software systems.</p>
+<p>If you are using Python and then you need concurrency, then you work with what you have. The question is moot.</p>
+<p>If you need concurrency and you have not chosen a language, perhaps another language would be more appropriate, or perhaps not. Consider the full scope of functional and non-functional requirements (or user needs, wants, and desires) for your project and the capabilities of different development platforms.</p>
+<h3>Why Not Use Threads?</h3>
+<p>Threads and processes are quite different and choosing one over the other must be quite intentional.</p>
+<p>A Python program is a process that has a main thread. You can create many additional threads in a Python process. You can also fork or spawn many Python processes, each of which will have one main thread, and may spawn additional threads.</p>
+<p>More broadly, threads are lightweight and can share memory (data and variables) within a process whereas processes are heavyweight and require more overhead and impose more limits on sharing memory (data and variables).</p>
+<p>Typically in Python, processes are used for CPU-bound tasks and threads are used for IO-bound tasks, and this is a good heuristic, but this does not have to be the case.</p>
+<p>You can learn more about threads in the tutorial:</p>
+<ul>
+<li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li>
+</ul>
+<h3>Why Not Use AsyncIO?</h3>
+<p>AsyncIO can be an alternative to using a <strong>threading.Thread</strong>, but is probably not a good alternative for the multiprocessing.Process class.</p>
+<p>AsyncIO is designed to support large numbers of IO operations, perhaps thousands to tens of thousands, all within a single Thread.</p>
+<p>It requires an alternate programming paradigm, called reactive programming, which can be challenging for beginners.</p>
+<p>When using the <strong>multiprocessing.Process</strong> class, you are typically executing CPU-bound tasks, which are not appropriate when using the AsyncIO module.</p>
+<h2>Conclusions</h2>
+<p>This is a large guide, and you have discovered in great detail how multiprocessing works in Python and how to best use processes in your project.</p>
+</main>
+</body>
+</html>

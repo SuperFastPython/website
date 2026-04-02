@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Task Cancellation Best Practices – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Task Cancellation Best Practices</h1>
+<div class="post-meta">December 19, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>Tasks in asyncio can be canceled manually and automatically.</p>
+<p>Therefore, we must develop asyncio programs with the expectation that our custom <strong>tasks may be canceled at any time</strong>. This requires a certain level of robustness.</p>
+<p>Thankfully there are common task cancellation idioms and best practices that we can use throughout our asyncio programs.</p>
+<p>In this tutorial, you will discover <strong>best practices for canceling asyncio tasks</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>What is Task Cancellation?</h2>
+<p>Asyncio tasks can be canceled.</p>
+<p>This can be achieved by calling the <strong>cancel()</strong> method on the <strong>asyncio.Task</strong>. This will request that the task be canceled as soon as possible and returns <strong>True</strong> if the request was successful or <strong>False</strong> if it was not, e.g. the task is already done.</p>
+<blockquote>
+<p>Request the Task to be cancelled. This arranges for a CancelledError exception to be thrown into the wrapped coroutine on the next cycle of the event loop.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+if task.cancel():
+	# request successful
+</code></pre>
+<p>The next time that the target task that was canceled resumes, a <strong>CancelledError</strong> exception will be raised.</p>
+<p>If the target task is awaiting another task, the request to cancel will propagate down.</p>
+<blockquote>
+<p>If a coroutine is awaiting on a Future object during cancellation, the Future object will be cancelled.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>This exception will bubble up to the top level of the task and cause it to stop running.</p>
+<p>Therefore, any users of the task that get a return value, result, or exception should handle a possible exception.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# await a task
+	result = await task
+except asyncio.CancelledError:
+	# handle cancellation
+</code></pre>
+<p>We can check if a task has successfully been requested to cancel via the <strong>cancelling()</strong> method. This will return the number of requests for cancellation the task has received as an integer.</p>
+<pre><code>...
+# check if requested to cancel
+if task.cancelling():
+	# has had at least one request to cancel
+</code></pre>
+<blockquote>
+<p>Return the number of pending cancellation requests to this Task, i.e., the number of calls to cancel() less the number of uncancel() calls.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>We can check if a task was canceled via the <strong>cancelled()</strong> method, which will return true if the task failed with a <strong>CancelledError</strong>.</p>
+<blockquote>
+<p>Return True if the Task is cancelled.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# check if cancelled
+if task.cancelled():
+	# was cancelled
+</code></pre>
+<p>You can learn more about the mechanics of cancellation a task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<p>Next, let's consider when a task can be canceled.</p>
+<h2>When Are Tasks Cancelled?</h2>
+<p>A task can be canceled only if it is pending (scheduled) or running.</p>
+<p>A done task cannot be canceled.</p>
+<p>There are two ways a task may be canceled:</p>
+<ol>
+<li>Manually</li>
+<li>Automatically
+<ol>
+<li>Timeouts</li>
+<li>Failure in Group</li>
+<li>Event Loop Shutdown</li>
+</ol>
+</li>
+</ol>
+<h3>Manually Cancelling a Task</h3>
+<p>A task can be canceled manually by another task calling the <strong>cancel()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+_ = task.cancel()</code></pre>
+<p>That's about it.</p>
+<p>Next, let's consider some of the ways that a task may be automatically canceled.</p>
+<h3>Automatically Cancelling a Task</h3>
+<p>A task may be canceled automatically by infrastructure in the asyncio module.</p>
+<p>This includes:</p>
+<ol>
+<li>Tasks are canceled automatically after a timeout.</li>
+<li>Tasks are canceled automatically when another task in the group fails.</li>
+<li>Tasks are canceled automatically when the event loop is terminated.</li>
+</ol>
+<p>A task may be canceled automatically by a timeout.</p>
+<p>This can be achieved via the <strong>asyncio.wait_for()</strong> call which will cancel the target task after a fixed number of seconds by raising a <strong>CancelledError</strong> in the task and transforming it into a TimeoutError.</p>
+<blockquote>
+<p>If a timeout occurs, it cancels the task and raises TimeoutError.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# handle timeout
+try:
+	# cancel task after a timeout
+	asyncio.wait_for(task, timeout=5)
+except asyncio.TimeoutError:
+	# handle timeout
+</code></pre>
+<p>You can learn more about the <strong>asyncio.wait_for()</strong> call in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait_for/">Asyncio wait_for() to Wait With a Timeout</a></li>
+</ul>
+<p>A task may also be canceled by a timeout when using the <strong>asyncio.timeout()</strong> or <strong>asyncio.timeout_at()</strong> context managers.</p>
+<p>Like <strong>asyncio.wait_for()</strong>, the timeout context managers will cancel the target task and raise an <strong>asyncio.TimeoutError</strong> if the timeout or deadline elapses. The difference is the context manager allows multiple tasks to be created and canceled.</p>
+<blockquote>
+<p>the context manager will cancel the current task and handle the resulting asyncio.CancelledError internally, transforming it into a TimeoutError which can be caught and handled.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# handle timeout
+try:
+	# run tasks with timeout
+	asyncio with asyncio.timeout(5):
+		await task1
+		await task2
+		await task3
+except asyncio.TimeoutError:
+	# handle timeout
+</code></pre>
+<p>You can learn more about the <strong>asyncio.timeout()</strong> context manager in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-timeout/">Wait and Cancel Tasks With asyncio.timeout()</a></li>
+</ul>
+<p>Tasks may also be canceled automatically if they are part of a group and one task in the group is canceled.</p>
+<p>This can be achieved by creating tasks as part of an <strong>asyncio.TaskGroup</strong>. If one task in the group fails with an unhandled exception, all remaining tasks in the group will be canceled.</p>
+<blockquote>
+<p>The first time any of the tasks belonging to the group fails with an exception other than asyncio.CancelledError, the remaining tasks in the group are cancelled.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# handle exceptions
+try:
+    # create task group
+    async with asyncio.TaskGroup() as group:
+    	await group.create_task(task1())
+    	await group.create_task(task2())
+    	await group.create_task(task3())
+except asyncio.CancelledError:
+	# handle timeout
+</code></pre>
+<p>You can learn more about how to use <strong>asyncio.TaskGroup</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-taskgroup/">How to use asyncio.TaskGroup</a></li>
+</ul>
+<p>Finally, tasks will also be canceled when the asyncio event loop is shut down.</p>
+<p>This may be when the main coroutine terminates normally, or it may be when the event loop is terminated via an unexpected exception.</p>
+<p>You can learn more about when asyncio tasks are canceled in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-when-are-tasks-cancelled/">When Are Asyncio Tasks Cancelled</a></li>
+</ul>
+<p>Now that we know about task cancellation and when tasks are canceled, let's consider some common misunderstandings.</p>
+<h2>Task Cancellation Misunderstandings</h2>
+<p>This section considers some common task cancellation misunderstandings, they are:</p>
+<ol>
+<li>Calling <strong>Task.cancel()</strong> does not cancel the task.</li>
+<li>Calling <strong>Task.cancel()</strong> does not block until the task is canceled.</li>
+</ol>
+<p>Let's take a closer look at each of these practices in turn.</p>
+<h3>Calling cancel() Does Not Cancel The Task</h3>
+<p>Calling the <strong>cancel()</strong> method will not cancel the task.</p>
+<p>Instead, the <strong>cancel()</strong> method will request that the target task cancel.</p>
+<p>This request may succeed or fail.</p>
+<p>For example, if the task is already done, it cannot be canceled, and this request to cancel will fail.</p>
+<p>We know if the request to cancel succeeded or failed via the return value.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+if task.cancel():
+	# request successful
+</code></pre>
+<h3>Calling cancel() Does Not Block Until The Task is Cancelled</h3>
+<p>The call to <strong>cancel()</strong> will return immediately.</p>
+<p>It does not block until the target task is canceled.</p>
+<p>The call is a request to cancel the target task and returns a boolean <strong>True</strong> if the request was successful, <strong>False</strong> otherwise.</p>
+<p>If the caller needs to know the task is canceled and done, it could await for the target to respond to the request for cancellation (e.g. actually cancel or handle the cancellation).</p>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+if task.cancel():
+	# handle cancellation
+	try:
+		await task
+	except asyncio.CancelledError:
+		pass</code></pre>
+<p>Although this is a synchronous dependency and is not recommended.</p>
+<p>See best practices.</p>
+<h2>Task Cancellation Best Practices</h2>
+<p>This section lists some best practices related to task cancellation in asyncio, they are:</p>
+<ol>
+<li>Do not consume the <strong>CancelledError</strong> (without a good reason).</li>
+<li>Assume a task will be canceled from the outside.</li>
+<li>Assume a task will be canceled from the inside.</li>
+<li>Use the message argument when manually canceling a task.</li>
+<li>Don't cancel then wait to cancel (without a good reason).</li>
+<li>Don't assume requests to cancel actually cancel the task.</li>
+</ol>
+<p>Some of these are pretty opinionated. </p>
+<p>Perhaps consider them as recommendations (or land mines) if you're chafing.</p>
+<p>Let's take a closer look at each of these practices in turn.</p>
+<h2>Practice #1: Do Not Consume CancelledError</h2>
+<p>Generally consuming a <strong>CancelledError</strong> is not a good practice.</p>
+<blockquote>
+<p>It is recommended that coroutines use try/finally blocks to robustly perform clean-up logic. In case asyncio.CancelledError is explicitly caught, it should generally be propagated when clean-up is complete.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>There are two main cases when we might try and consume a <strong>CancelledError</strong> exception, they are:</p>
+<ol>
+<li>Consume a <strong>CancelledError</strong> outside the task.</li>
+<li>Consume a <strong>CancelledError</strong> within the task.</li>
+</ol>
+<p>Let's consider each case.</p>
+<h3>Consume a CancelledError Outside The Task</h3>
+<p>A good practice when working with an asyncio task is to assume it is going to be canceled.</p>
+<p>Therefore, we wrap working with the task in a try-except block for the <strong>CancelledError</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# operate on task
+except asyncio.CancelledError:
+	# handle
+</code></pre>
+<p>The problem with this idiom is that the current task may also be canceled at any time.</p>
+<p>If the current task is canceled while operating on the task, it will raise a <strong>CancelledError</strong> which will be consumed by the try-except block.</p>
+<p>Therefore when handling an <strong>asyncio.CancelledError</strong> we should confirm the desired state.</p>
+<p>For example, we could check that the target task has indeed been canceled.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# operate on task
+except asyncio.CancelledError:
+	if task.done():
+		# handle cancellation of task</code></pre>
+<p>We might also want to check if the current task has been requested to cancel and we may have accidentally consumed this exception.</p>
+<p>This can be achieved by calling the <strong>current_task()</strong> function to get the current task and the <strong>cancelling()</strong> method which will return the number of requests the current task has received to cancel.</p>
+<p>If the current task has been requested to cancel and we consumed it, we can let that exception propagate up normally.</p>
+<p>For example, it could look something like:</p>
+<pre><code>...
+try:
+	# operate on task
+except asyncio.CancelledError:
+	# confirm the target task is done
+	if task.done():
+		# handle cancellation of task
+	# check if the current task has been requested to cancel
+	if asyncio.current_task().cancelling() &gt; 0:
+		# propagate the exception up normally
+		raise</code></pre>
+<h3>Consume a CancelledError Inside The Task</h3>
+<p>We may want to wrap the body of a task with a try-except and handle the <strong>CancelledError</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# custom coroutine task
+async def task():
+	try:
+		# body...
+	except asyncio.CancelledError
+		# clean up</code></pre>
+<p>The problem with this pattern is that the task will consume the <strong>CancelledError</strong>.</p>
+<p>This may cause unexpected behavior outside the task for other tasks that may expect the task to cancel or be canceled.</p>
+<p>For example, another task may cancel the task and wait for it to be canceled. The target task will never cancel in this case because it cannot raise the expected <strong>asyncio.CancelledError</strong> (except if it was canceled while pending).</p>
+<p>Calls to the <strong>cancelled()</strong> method on the task will return <strong>False</strong> for a task that was "cancelled" externally, which internally consumed the <strong>CancelledError</strong> exception.</p>
+<p>Therefore, we only want to catch the <strong>asyncio.CancelledError</strong> if we have a good reason, e.g. ensure the task can never be canceled after it has started running.</p>
+<p>If that was the case, we should consider using a shield via <strong>asyncio.shield()</strong>, negating the need for this pattern.</p>
+<p>You can learn more about <strong>asyncio.shield()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-shield/">Asyncio Shield From Cancellation</a></li>
+</ul>
+<p>If you need to perform cleanup within a task when it is canceled, you could use a try-finally block.</p>
+<p>For example:</p>
+<pre><code># custom coroutine task
+async def task():
+	try:
+		# body...
+	finally
+		# clean up</code></pre>
+<p>Or, you could handle the <strong>CancelledError</strong>, and then re-raise it.</p>
+<p>For example:</p>
+<pre><code># custom coroutine task
+async def task():
+	try:
+		# body...
+	except asyncio.CancelledError
+		# clean up
+		# ...
+		# re-raise the cancellation
+		raise</code></pre>
+<h3>When to Consume the CancelledError</h3>
+<p>So, when should we handle <strong>CancelledError</strong>?</p>
+<p>This is application-specific.</p>
+<p>The general rule for exception handling holds:</p>
+<ul>
+<li>Handle the <strong>CancelledError</strong> at the scope at which the application can take action.</li>
+</ul>
+<p>The most reasonable answer is to handle the <strong>CancelledError</strong> at the scope that made the request to cancel.</p>
+<p>This applies if the request came from asyncio infrastructure, such as timeouts and failures in a task group.</p>
+<h2>Practice #2: Assume a Task Will Be Canceled From The Outside</h2>
+<p>When working with an asyncio task, assume that it will be canceled.</p>
+<p>This is a good practice because:</p>
+<ol>
+<li>It forces us to handle the <strong>CancelledError</strong>.</li>
+<li>It forces consideration of what cancellation means in the program</li>
+<li>It forces some cancellation activity (e.g. retry, log, shutdown, etc.)</li>
+</ol>
+<p>Recall, a task may be canceled both manually and automatically, such as via a timeout, via another task failure, and when shutting down the event loop. It is reasonable to think a given task could be canceled at any time.</p>
+<p>Assuming a task will be canceled, means we need to handle a <strong>CancelledError</strong> exception when working with the task.</p>
+<p>There are three main areas when working with the task from the outside when we should expect a <strong>CancelledError</strong> exception, they are:</p>
+<ol>
+<li>When awaiting the task. e.g. await task</li>
+<li>When getting the result from the task, e.g. <strong>task.result()</strong></li>
+<li>When getting the error from the task, e.g. <strong>task.exception()</strong></li>
+</ol>
+<p>Let's take a closer look at each.</p>
+<h3>How to Try CancelledError</h3>
+<p>We can wrap these external task activities in a try-except block and handle <strong>CancelledError</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# operate on task
+except asyncio.CancelledError:
+	# handle
+</code></pre>
+<p>A problem with this is it may consume requests for the current task to cancel.</p>
+<p>You should consider checking for this case (described above).</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# operate on task
+except asyncio.CancelledError:
+	# confirm the target is done
+	if task.done():
+		# handle cancellation of task
+	# check if the current task has been requested to cancel
+	if asyncio.current_task().cancelling() &gt; 0:
+		# propagate the exception up normally
+		raise</code></pre>
+<p>This does feel heavy.</p>
+<p>Perhaps consider this carefully and whether you need to be so defensive.</p>
+<h3>Check CancelledError When Awaiting</h3>
+<p>When awaiting a task, we should expect that it will fail and raise a <strong>CancelledError</strong>.</p>
+<pre><code>...
+try:
+	# await the task
+	await task
+except asyncio.CancelledError:
+	# confirm the target is done
+	if task.done():
+		# handle cancellation of task
+	# check if the current task has been requested to cancel
+	if asyncio.current_task().cancelling() &gt; 0:
+		# propagate the exception up normally
+		raise
+</code></pre>
+<h3>Check CancelledError When Getting Result</h3>
+<p>When getting a result from a done task, we should expect that it will fail and raise a <strong>CancelledError</strong>.</p>
+<pre><code>...
+try:
+	# get the result from a done task
+	result = task.result()
+except asyncio.CancelledError:
+	# confirm the target is done
+	if task.done():
+		# handle cancellation of task
+	# check if the current task has been requested to cancel
+	if asyncio.current_task().cancelling() &gt; 0:
+		# propagate the exception up normally
+		raise</code></pre>
+<h3>Check CancelledError When Getting Exception</h3>
+<p>When getting an exception from a done task, we should expect that it will fail and raise a <strong>CancelledError</strong>.</p>
+<pre><code>...
+try:
+	# get the exception from a done task
+	result = task.exception()
+except asyncio.CancelledError:
+	# confirm the target is done
+	if task.done():
+		# handle cancellation of task
+	# check if the current task has been requested to cancel
+	if asyncio.current_task().cancelling() &gt; 0:
+		# propagate the exception up normally
+		raise</code></pre>
+<h2>Practice #3: Assume a Task Will Be Canceled From The Inside</h2>
+<p>It is reasonable to expect that a given custom task may be canceled at any time.</p>
+<p>Therefore, we should consider any cleanup to perform when the task is canceled.</p>
+<p>This might involve:</p>
+<ul>
+<li>Logging</li>
+<li>Canceling subtasks manually</li>
+<li>Closing resources manually</li>
+<li>etc...</li>
+</ul>
+<p>The intuition might be to wrap the body of the custom task with a try-except and handle the <strong>CancelledError</strong>.</p>
+<blockquote>
+<p>The coroutine then has a chance to clean up or even deny the request by suppressing the exception with a try ..., ... except CancelledError ... finally block.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# custom coroutine task
+async def task():
+	try:
+		# body...
+	except asyncio.CancelledError
+		# clean up</code></pre>
+<p>This is not recommended</p>
+<p>The reason is that the task will consume the <strong>CancelledError</strong>.</p>
+<p>This means that other tasks and asyncio infrastructure that may try to cancel the task and hope/expect that it is canceled may be misled.</p>
+<blockquote>
+<p>The asyncio components that enable structured concurrency, like asyncio.TaskGroup and asyncio.timeout(), are implemented using cancellation internally and might misbehave if a coroutine swallows asyncio.CancelledError.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>Instead, it is a better practice to wrap the body of the custom task with a try-finally block.</p>
+<p>For example:</p>
+<pre><code># custom coroutine task
+async def task():
+	try:
+		# body...
+	finally
+		# clean up</code></pre>
+<p>This will ensure that the final activity is always performed, regardless of cancellation or fault.</p>
+<p>It also allows <strong>CancelledError</strong> to be propagated up normally.</p>
+<p>This means that if the task is canceled, it will still have the state "cancelled", e.g. the <strong>cancelled()</strong> method will return <strong>True</strong>.</p>
+<p>It also allows tasks at the scope above the canceled tasks to also consider and respond to the cancellation event (if needed).</p>
+<h2>Practice #4: Provide A "message" Argument To cancel()</h2>
+<p>If a task is manually requested to cancel, we will call the <strong>cancel()</strong> method.</p>
+<p>This method takes a "<strong>message</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# request a task to cancel
+task.cancel('Result no longer needed')</code></pre>
+<p>Always provide a value to the <strong>cancel()</strong> method.</p>
+<p>The message must explain why the request was made and will probably be specific to the result expected from the target task, or the event that triggered the cancellation.</p>
+<p>This message will then be populated into the <strong>CancelledError</strong> that is propagated and may be retrieved and logged.</p>
+<h2>Practice #5: Don't Cancel a Task and Wait For It To Cancel</h2>
+<p>Calling the <strong>cancel()</strong> method does not cancel the task, it requests the task be canceled.</p>
+<p>After learning this fact, the intuition may be to request the cancellation and then wait for the task to be canceled.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel the task
+task.cancel()
+# handle cancellation
+try:
+	# wait for task to be done
+	await task
+except asyncio.CancelledError:
+	# task is cancelled
+</code></pre>
+<p>The problem is, the task may perform many activities when canceled or when stopped generally.</p>
+<p>For example, the body of the task may have a try-finally block and may involve much logging, canceling subtasks, and closing resources.</p>
+<p>This could all take a long time.</p>
+<p>In turn, this will suspend the current task until all of that is done.</p>
+<p>Therefore, if there are activities to perform once the task is canceled, they can be added as done callback functions.</p>
+<p>This can be achieved via the <strong>Task.add_done_callback()</strong> method.</p>
+<p>These functions will be executed as soon as the task is done, or immediately if the task is already done.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel the task
+task.cancel()
+# do special stuff after it is done
+task.add_done_callback(special_cancel_tasks())</code></pre>
+<p>You can learn more about adding done callback functions to asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-done-callback-functions/">How to Use Asyncio Task Done Callback Functions</a></li>
+</ul>
+<p>Sometimes we really need to await the cancellation before resuming the current task.</p>
+<p>This can be achieved by handling the <strong>CancelledError</strong> in a safe manner, e.g. ensuring we do not consume requests for the current task to also cancel.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel the task
+task.cancel()
+# handle cancellation
+try:
+	# wait for task to be done
+	await task
+except asyncio.CancelledError:
+	# confirm the target is done
+	if task.done():
+		# handle cancellation of task
+	# check if the current task has been requested to cancel
+	if asyncio.current_task().cancelling() &gt; 0:
+		# propagate the exception up normally
+		raise</code></pre>
+<p>Recall, the task itself may be shielded or may consume the <strong>CancelledError</strong>. This means that although you may await for the task to be done, it may or may not have a status of canceled.</p>
+<h2>Practice #6: Don't Assume Tasks Will Actually Cancel</h2>
+<p>We can request a task to be canceled via a call to the <strong>cancel()</strong> method.</p>
+<p>If this method returns <strong>True</strong>, we may assume that we're done. The task will be canceled.</p>
+<p>This is not the case.</p>
+<blockquote>
+<p>Therefore, unlike Future.cancel(), Task.cancel() does not guarantee that the Task will be cancelled</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>A task may consume the <strong>CancelledError</strong>.</p>
+<ul>
+<li>The task may decide to continue running and ignore the cancellation.</li>
+<li>The task may choose to clean up ready for cancellation and take a long time.</li>
+<li>The task may try and cancel and fail with an unexpected error.</li>
+</ul>
+<p>Additionally, the task may be shielded.</p>
+<p>This means that it will look like the request for cancellation was successful and that the task will be canceled, but the shield will consume the request.</p>
+<p>This means that the inner-wrapped task will never see the request for cancellation.</p>
+<p>Therefore, writing code that assumes a task was canceled via the <strong>cancelled()</strong> method can be problematic, e..g assuming it has a canceled status.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel the task
+task.cancel()
+try:
+	# wait for task to be done
+	await task
+except asyncio.CancelledError:
+	# confirm the target task was canceled
+	if task.cancelled():
+		# ...</code></pre>
+<p>Instead, it may be safer to check that a canceled task is done, not canceled, such as via the <strong>done()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel the task
+task.cancel()
+try:
+	# wait for task to be done
+	await task
+except asyncio.CancelledError:
+	# confirm the target task is now done
+	if task.done():
+		# ...</code></pre>
+<p>There is a good discussion of this pattern and patterns like it here:</p>
+<ul>
+<li><a href="https://github.com/python/cpython/issues/103486">Safe synchronous cancellation in asyncio</a></li>
+<li><a href="https://discuss.python.org/t/asyncio-cancel-a-cancellation-utility-as-a-coroutine-this-time-with-feeling/26304">Asyncio.cancel() a cancellation utility as a coroutine [This time with feeling]</a></li>
+</ul>
+<p>The pattern advocated in the discussion is to expect a <strong>CancelledError</strong> and raise a <strong>RuntimeError</strong> if one is not observed.</p>
+<p>For example:</p>
+<pre><code>async def cancel_and_wait(task, msg=None):
+    task.cancel(msg)
+    try:
+        await task
+    except asyncio.CancelledError:
+        if asyncio.current_task().cancelling() == 0:
+            raise
+        else:
+            return # this is the only non-exceptional return
+    else:
+        raise RuntimeError("Cancelled task did not end with an exception")
+</code></pre>
+<p>I'm not sure I want this contract often.</p>
+<h2>Takeaways</h2>
+<p>You now know the best practices for canceling asyncio tasks in Python.</p>
+</main>
+</body>
+</html>

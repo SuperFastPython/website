@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Using Multiprocessing With Numpy Results in Worse Performance – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Using Multiprocessing With Numpy Results in Worse Performance</h1>
+<div class="post-meta">June 25, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>parallelize numpy programs using multiprocessing</strong>.</p>
+<p>It is likely that using process-based concurrency via multiprocessing to parallelize a numpy program will <strong>result in worse overall performance</strong>.</p>
+<p>In this tutorial, you will discover the impact of using processing-based concurrency to parallelize numpy programs.</p>
+<p>Let's get started.</p>
+<h2>Should We Use Multiprocessing to Parallelize NumPy?</h2>
+<p>It is good practice to use process-based concurrency for CPU-bound tasks in Python.</p>
+<p>Process-based concurrency is provided via the multiprocessing module, allowing functions to run in new processes via the <strong>Process</strong> class or a reusable pool of workers via the <strong>ProcessPoolExecutor</strong> or <strong>Pool</strong> classes.</p>
+<p>You can learn more about using multiprocessing for concurrency in the guide:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing: The Complete Guide</a></li>
+</ul>
+<p>CPU-bound tasks are those tasks that do not wait on input or output but rather run as fast as the CPU can execute instructions.</p>
+<p>Examples of CPU-bound tasks include mathematical calculations, such as those we may perform on arrays with numpy.</p>
+<p>Processes are preferred for CPU-bound tasks because they are able to achieve full parallelism. This is unlike threads in Python that are typically limited by the global interpreter lock (GIL).</p>
+<p>As such, we may naively parallelize numpy tasks using multiprocessing.</p>
+<p><strong>Should we use process-based concurrency via the multiprocessing module to parallelize numpy programs in Python?</strong></p>
+<h2>Performance of Adding Multiprocessing to NumPy Programs is Typically Worse</h2>
+<p>Using process-based concurrency to parallelize numpy programs typically results in worse performance.</p>
+<p>The reason for this is that typically we want to parallelize operations on numpy arrays.</p>
+<p>This means that numpy arrays need to be shared among processes, such as via a function argument or via a <strong>Queue</strong>.</p>
+<p>This is slow because the numpy array data must be transmitted between processes using inter-process communication. It requires that a copy of the array be created and pickled, transmitted via a socket connection or file, then unpickled by the receiving process.</p>
+<p>This can be up to 4-times slower than sharing data between threads.</p>
+<p>You can learn more about the slow speed of transferring data between processes in the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>As such, the computational cost of sharing numpy arrays between processes for the purpose of achieving a speedup via parallelism often overwhelms any speed benefit you might achieve.</p>
+<p>You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multiprocessing-random-numbers/">Numpy Parallel Random Numbers with Multiprocessing (up to 28x slower)</a></li>
+</ul>
+<p>Using smaller arrays of data may not help.</p>
+<p>At worst, using multiprocessing to parallelize a numpy program on modestly sized arrays offers little or no speedup.</p>
+<p>You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-blas-multiprocessing/">Combine NumPy BLAS Threads and Multiprocessing</a></li>
+</ul>
+<p>There are workarounds for sharing numpy arrays between processes efficiently, such as using an array backed by a <strong>RawArray</strong> or <strong>SharedMemory</strong>, or using an array hosted in a <strong>Manager</strong> server process.</p>
+<p>You can learn more about these workarounds in the tutorial:</p>
+<ul>
+<li><a href="../numpy-share-array-processes/">7 Ways to Share a Numpy Array Between Processes</a></li>
+</ul>
+<p>Using these more efficient methods for sharing numpy arrays between processes can add significant complexity to a program.</p>
+<p>One area where using multiprocessing may help is if each that is parallelized to separate processes is independent and does not involve sharing numpy arrays.</p>
+<p>For example, perhaps each task loads an array from a file or a database, performs mathematical operations upon it or uses it in modeling, then stores the result directly.</p>
+<p>A task of this type might be a good candidate for parallelizing via multiprocessing.</p>
+<p>Generally, threads are a better candidate for multiprocessing.</p>
+<p>This is because most numpy functions release the global interpreter lock, allowing tasks that operate on numpy arrays to achieve full parallelism.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-vs-gil/">NumPy vs the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<p>You can see an example of this speed-up in the tutorial:</p>
+<ul>
+<li><a href="../numpy-blas-threading/">Speed-Up NumPy With Threads in Python (up to 3.41x faster)</a></li>
+</ul>
+<p>Now that we know that multiprocessing is probably a poor choice for parallelism with numpy, let's look at a worked example.</p>
+<h2>Example Multiprocessing Slower Due to Copying Arrays</h2>
+<p>We can explore an example where parallelizing a simple numpy program results in worse performance, even with modestly sized arrays.</p>
+<p>In this example, we will create two lists of numpy arrays then apply a mathematical operation to each pair.</p>
+<p>We will then explore different versions of this program, first with no multiprocessing (but with default BLAS multithreading), a parallelized version with multiprocessing, then various tuned versions of the multiprocessing example that attempt to achieve better performance.</p>
+<p>These examples clearly demonstrate that although the example is simple and the size of data shared between processes is small, we cannot achieve better performance using process-based parallelism.</p>
+<h3>Single-Threaded Example (with BLAS threads)</h3>
+<p>We can develop a simple numpy program that has a series of tasks that can be parallelized.</p>
+<p>In this example, we will create two lists of arrays filled with dummy values. Each array will be 2,000 x 2,000 units and each list will have 100 arrays.</p>
+<p>We will then multiply each pair of arrays together using matrix multiplication to produce a result array. We Will define a separate function to perform the multiplication on each pair of arrays as this will help with parallelizing the task later.</p>
+<p>Matrix multiplication is implemented using a multithreaded algorithm via a BLAS library, which is installed along with numpy on most systems.</p>
+<p>You can learn more about numpy and BLAS in the tutorial:</p>
+<ul>
+<li><a href="../what-is-blas-and-lapack-in-numpy/">What is BLAS and LAPACK in NumPy</a></li>
+</ul>
+<p>The complete example is listed below.</p>
+</main>
+</body>
+</html>

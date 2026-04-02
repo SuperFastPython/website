@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Queue task_done() and join() in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Queue task_done() and join() in Python</h1>
+<div class="post-meta">April 13, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can mark queue tasks done via <strong>task_done()</strong> and be notified when all tasks are done via <strong>join()</strong>.</p>
+<p>In this tutorial you will discover how to use <strong>queue task done and join in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need To Know When All Tasks are Done</h2>
+<p>A thread is a <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread of execution</a> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>Threads can share data with each other using thread-safe queues, such as the <a href="https://docs.python.org/3/library/queue.html"><strong>queue.Queue</strong> class</a>.</p>
+<p>A problem when using queues is knowing when all items in the queue have been processed by consumer threads.</p>
+<p>How can we know when all items have been processed in a queue?</p>
+<h2>Why Care When All Tasks Are Done</h2>
+<p>There are many reasons why a thread may want to know when all tasks in a queue have been processed.</p>
+<p>For example:</p>
+<ul><li>A producer thread may want to wait until all work is done before adding new work.</li><li>A producer thread may want to wait for all tasks to be done before sending a shutdown signal.</li><li>A main thread may want to wait for all tasks to be done before terminating the program.</li></ul>
+<p>There are two aspects to this, they are:</p>
+<ul><li>A thread blocking until tasks are done.</li><li>A task being done is more than being retrieved from the queue.</li></ul>
+<p>Specifically, waiting means that the thread is blocked until the condition is met.</p>
+<p>The condition of all tasks being processed is not only the case that all items put on the queue have been retrieved, but have been processed by the thread that retrieved them.</p>
+<p>Next, let's look at how we might do this in Python.</p>
+<h2>How to Know When All Tasks Are Done</h2>
+<p>Python provides thread-safe queue data structures in the queue module, such as the <strong>queue.Queue</strong>, <strong>queue.LifoQueue</strong> and <strong>queue.PriorityQueue</strong> classes.</p>
+<p>Objects can be added to the queue via calls to <strong>Queue.put()</strong> and removed from the queue via calls to <strong>Queue.get()</strong>.</p>
+<p>Thread-safe means that multiple threads may put and get items from the queue concurrently without fear of a race condition or corruption of the internal data structure.</p>
+<p>A thread can block and be notified when all current items or tasks on the queue are done by calling the <a href="https://docs.python.org/3/library/queue.html#queue.Queue.join"><strong>Queue.join()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# block until all tasks are done
+queue.join()</code></pre>
+<p>Block means that the calling thread will wait until the condition is met, specifically that all tasks are done. The <strong>Queue.join()</strong> function will not return until then.</p>
+<p>Notified means that the blocked thread will be woken up and allowed to proceed when all tasks are done. This means that the <strong>join()</strong> function will return at this time allowing the thread to continue on with the next instructions.</p>
+<p>Multiple different threads may join the queue and await the state that all tasks are marked done.</p>
+<p>If there are no tasks in the queue, e.g. the queue is empty, then the join() function will return immediately.</p>
+<blockquote><p>The count of unfinished tasks goes up whenever an item is added to the queue. The count goes down whenever a consumer thread calls <strong>task_done()</strong> to indicate that the item was retrieved and all work on it is complete. When the count of unfinished tasks drops to zero, <strong>join()</strong> unblocks.</p><cite>-- <a href="https://docs.python.org/3/library/queue.html">queue — A synchronized queue class</a></cite></blockquote>
+<p>The <strong>Queue.join()</strong> function only works if threads retrieving items or tasks from the queue via <strong>Queue.get()</strong> also call the <a href="https://docs.python.org/3/library/queue.html#queue.Queue.task_done"><strong>Queue.task_done()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# get an item from the queue
+item = queue.get()
+# process the item
+# ...
+# mark the task as done or processed
+queue.task_done()</code></pre>
+<p>The <strong>Queue.task_done()</strong> function is called by the consumer thread (e.g. the thread that calls <strong>Queue.get()</strong>) only after the thread has finished processing the task retrieved from the queue.</p>
+<p>This will be application specific, but is more than simply retrieving the task from the queue.</p>
+<blockquote><p>Indicate that a formerly enqueued task is complete. Used by queue consumer threads. For each get() used to fetch a task, a subsequent call to task_done() tells the queue that the processing on the task is complete.</p><cite>-- <a href="https://docs.python.org/3/library/queue.html">queue — A synchronized queue class</a></cite></blockquote>
+<p>If there are multiple consumer threads, then for <strong>join()</strong> to function correctly, each consumer thread must mark tasks as done.</p>
+<p>If processing the task may fail with an unexpected <strong>Error</strong> or <strong>Exception</strong>, it is a good practice to wrap the processing of the task in a try-finally pattern.</p>
+<p>For example:</p>
+<pre><code>...
+# get an item from the queue
+item = queue.get()
+try:
+	# process the item
+	# ...
+finally:
+	# mark the task as done or processed
+	queue.task_done()
+</code></pre>
+<p>This ensures that the task is marked done in the queue, even if processing the task fails.</p>
+<p>In turn, it allows any threads blocked by calling <strong>Queue.join()</strong> to be appropriately notified when all items are retrieved from the queue, avoiding a possible deadlock concurrency failure mode.</p>
+<p>Now that we are familiar with the <strong>Queue.task_done()</strong> and <strong>Queue.join()</strong> functions, let's look at some worked examples.</p>
+<h2>Example of Queue Join and Task Done</h2>
+<p>We can explore an example of how to use <strong>join()</strong> and <strong>task_done()</strong>.</p>
+<p>In this example we will have a producer thread that will add ten tasks to the queue and then signal that no further tasks are to be expected. The consumer thread will get the tasks, process them and mark them as done. When the signal to exit is received, the consumer thread will terminate. The main thread will wait for the producer thread to add all items to the queue, and will wait for all items on the queue to be processed before moving on.</p>
+<p>Let's dive in.</p>
+<h3>Producer Thread</h3>
+<p>First, we can define the function to be executed by the producer thread.</p>
+<p>The task will iterate ten times in a loop.</p>
+<pre><code>...
+print('Producer starting')
+# add tasks to the queue
+for i in range(10):
+	# ...
+</code></pre>
+<p>Each iteration, it will generate a new random value between 0 and 1 via the <strong>random.random()</strong> function. It will then pair the generated value with an integer timestamp from 0 to 9 into a tuple and put the value on the queue.</p>
+<pre><code>...
+# generate a task
+task = (i, random())
+print(f'.producer added {task}')
+# add it to the queue
+queue.put(task)</code></pre>
+<p>Finally, the producer will put the value None on the queue to signal to the consumer that there are no further tasks.</p>
+<p>This is <a href="https://en.wikipedia.org/wiki/Sentinel_value">called a Sentinel Value</a> and is a common way for threads to communicate via queues to signal an important event, like a shutdown.</p>
+<pre><code>...
+# send a signal that no further tasks are coming
+queue.put(None)
+print('Producer finished')</code></pre>
+<p>The <strong>producer()</strong> function below implements this by taking the queue instance as an argument.</p>
+<pre><code># task for the producer thread
+def producer(queue):
+    print('Producer starting')
+    # add tasks to the queue
+    for i in range(10):
+        # generate a task
+        task = (i, random())
+        print(f'.producer added {task}')
+        # add it to the queue
+        queue.put(task)
+    # send a signal that no further tasks are coming
+    queue.put(None)
+    print('Producer finished')
+</code></pre>
+<h3>Consumer Thread</h3>
+<p>Next, we can define the function to be executed by the consumer thread.</p>
+<p>The consumer thread will loop forever.</p>
+<pre><code>...
+print('Consumer starting')
+# process items from the queue
+while True:
+	# ...
+</code></pre>
+<p>Each iteration, it will get an item from the queue and block if there is no item yet available.</p>
+<pre><code>...
+# get a task from the queue
+task = queue.get()</code></pre>
+<p>If the item retrieved from the queue is the value <strong>None</strong>, then the task will break the loop and terminate the thread.</p>
+<pre><code>...
+# check for signal that we are done
+if task is None:
+    break
+</code></pre>
+<p>Otherwise, the fractional value is used to block with a call to <strong>time.sleep()</strong> and is then reported. The item is then marked as processed via a call to <strong>task_done()</strong>.</p>
+<pre><code>...
+# process the item
+sleep(task[1])
+print(f'.consumer got {task}')
+# mark the unit of work as processed
+queue.task_done()</code></pre>
+<p>Finally, just prior to the thread exiting, it will mark the signal to terminate as processed.</p>
+<pre><code>...
+# mark the signal as processed
+queue.task_done()
+print('Consumer finished')</code></pre>
+<p>The <strong>consumer()</strong> function below implements this and takes the queue instance as an argument.</p>
+<pre><code># task for the consumer thread
+def consumer(queue):
+    print('Consumer starting')
+    # process items from the queue
+    while True:
+        # get a task from the queue
+        task = queue.get()
+        # check for signal that we are done
+        if task is None:
+            break
+        # process the item
+        sleep(task[1])
+        print(f'.consumer got {task}')
+        # mark the unit of work as processed
+        queue.task_done()
+    # mark the signal as processed
+    queue.task_done()
+    print('Consumer finished')
+</code></pre>
+<h3>Create Queue and Threads</h3>
+<p>In the main thread we can create the shared queue instance.</p>
+<pre><code>...
+# create the shared queue
+queue = Queue()</code></pre>
+<p>Then we can configure and start the producer thread, which will generate tasks and add them to the queue for the consumer to retrieve.</p>
+<pre><code>...
+# create and start the producer thread
+producer = Thread(target=producer, args=(queue,))
+producer.start()</code></pre>
+<p>We can then configure and start the consumer thread, which will patiently wait for work to arrive on the queue.</p>
+<pre><code>...
+# create and start the consumer thread
+consumer = Thread(target=consumer, args=(queue,))
+consumer.start()</code></pre>
+<p>The main thread will then block until the producer thread has added all work to the queue and the thread has terminated.</p>
+<pre><code>...
+# wait for the producer to finish
+producer.join()
+print('Main found that the producer has finished')</code></pre>
+<p>The main thread will then block on the queue with a call to <strong>join()</strong> until the consumer has retrieved all values from the queue and processed them appropriately. This includes the final signal that there are no further task items to process.</p>
+<pre><code>...
+# wait for the queue to empty
+queue.join()
+print('Main found that all tasks are processed')</code></pre>
+<p>It is important that the main thread blocks on the producer thread first, before blocking on the queue. This is to avoid a possible race condition.</p>
+<p>For example, if the main thread blocked on the queue directly, it is possible that at that time for the queue to be empty, in which case the call would return immediately. Alternatively, it may join at a time when there are only a few tasks on the queue, they are consumed by the consumer thread and the join call returns.</p>
+<p>The problem is that in both of these cases, we don't know if the call to join returned because all tasks were marked done or just a subset of tasks that had been added to the queue at the time join was called.</p>
+<p>By waiting for the producer thread to terminate first, we know that all tasks that could be added to the queue have been added to the queue. By blocking on the queue after the producer has finished, we know that when the call to join returns, that all tasks were added to the queue, all tasks were retrieved from the queue and all retrieved tasks were marked as done.</p>
+<h3>Complete Example</h3>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of join and task done for a thread queue
+from time import sleep
+from random import random
+from queue import Queue
+from threading import Thread
+
+# task for the producer thread
+def producer(queue):
+    print('Producer starting')
+    # add tasks to the queue
+    for i in range(10):
+        # generate a task
+        task = (i, random())
+        print(f'.producer added {task}')
+        # add it to the queue
+        queue.put(task)
+    # send a signal that no further tasks are coming
+    queue.put(None)
+    print('Producer finished')
+
+# task for the consumer thread
+def consumer(queue):
+    print('Consumer starting')
+    # process items from the queue
+    while True:
+        # get a task from the queue
+        task = queue.get()
+        # check for signal that we are done
+        if task is None:
+            break
+        # process the item
+        sleep(task[1])
+        print(f'.consumer got {task}')
+        # mark the unit of work as processed
+        queue.task_done()
+    # mark the signal as processed
+    queue.task_done()
+    print('Consumer finished')
+
+# create the shared queue
+queue = Queue()
+# create and start the producer thread
+producer = Thread(target=producer, args=(queue,))
+producer.start()
+# create and start the consumer thread
+consumer = Thread(target=consumer, args=(queue,))
+consumer.start()
+# wait for the producer to finish
+producer.join()
+print('Main found that the producer has finished')
+# wait for the queue to empty
+queue.join()
+print('Main found that all tasks are processed')
+</code></pre>
+<p>Running the example first creates the queue to be shared between the producer and consumer threads.</p>
+<p>Then the producer thread is created and configured to execute our producer() function and passed in the shared queue instance. The producer thread is then started.</p>
+<p>Next, the consumer thread is configured to execute our consumer() function and is then started.</p>
+<p>The producer thread runs as fast as it is able, each iteration generating a random number and adding it along with the task number to the queue. Once all ten tasks have been added to the queue, a None message is sent to the queue to indicate no further messages are to be expected and the producer thread terminates.</p>
+<p>The main thread notices that the producer thread has terminated, then blocks on the queue itself waiting for all tasks to be retrieved and marked as done.</p>
+<p>The consumer thread retrieves tasks one at a time from the queue, blocks and reports their value, then marks the task as done. This is repeated until the sentinel message is received and the loop is broken. Just before the consumer thread is terminated, the final sentinel message is marked as done.</p>
+<p>The main thread notices that all tasks were marked done and is then free to continue on with other tasks. In this case, the main thread reports a message and terminates.</p>
+<p>A sample of the output from the program is listed below. Note, your specific results will differ given the use of random numbers.</p>
+<p>In this case, we can see that the producer ran first, adding all tasks to the queue. Then the consumer thread ran, reading off each value. After all tasks are marked done, finally the main thread continues on.</p>
+<pre><code>Producer starting
+.producer added (0, 0.28872499722981937)
+.producer added (1, 0.3550399584093443)
+.producer added (2, 0.26390707899153476)
+.producer added (3, 0.824020601129119)
+.producer added (4, 0.6694888538902768)
+.producer added (5, 0.849513498553388)
+.producer added (6, 0.2664456911379752)
+.producer added (7, 0.08127443075397023)
+.producer added (8, 0.33470326350900137)
+.producer added (9, 0.005206803840811625)
+Producer finished
+Consumer starting
+Main found that the producer has finished
+.consumer got (0, 0.28872499722981937)
+.consumer got (1, 0.3550399584093443)
+.consumer got (2, 0.26390707899153476)
+.consumer got (3, 0.824020601129119)
+.consumer got (4, 0.6694888538902768)
+.consumer got (5, 0.849513498553388)
+.consumer got (6, 0.2664456911379752)
+.consumer got (7, 0.08127443075397023)
+.consumer got (8, 0.33470326350900137)
+.consumer got (9, 0.005206803840811625)
+Consumer finished
+Main found that all tasks are processed</code></pre>
+<p>This highlights how to use <strong>task_done()</strong> and <strong>join()</strong> on a thread queue.</p>
+<p>Next, let's look at what happens if all tasks are already marked as done on the queue.</p>
+<h2>Example of Join When All Tasks Are Already Done</h2>
+<p>If all tasks on the thread queue have been marked as done, then any call to <strong>join()</strong> will return immediately.</p>
+<p>This can happen if the queue is empty, for example no tasks were added to the queue.</p>
+<p>For example:</p>
+<pre><code>...
+# create a queue
+queue = Queue()
+# block until all tasks are done
+queue.join() # returns immediately</code></pre>
+<p>This can also happen if tasks were added to the queue, then retrieved and marked done and no further tasks were added.</p>
+<p>We can update the example from the previous section to demonstrate this case.</p>
+<p>Specifically, after the main thread is notified that all tasks were marked as done by the consumer thread, it can then attempt to join the queue again.</p>
+<p>For example:</p>
+<pre><code>...
+# try joining again
+queue.join()
+print('Tried joining again')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of join on a thread queue after all tasks are done
+from time import sleep
+from random import random
+from queue import Queue
+from threading import Thread
+
+# task for the producer thread
+def producer(queue):
+    print('Producer starting')
+    # add tasks to the queue
+    for i in range(10):
+        # generate a task
+        task = (i, random())
+        print(f'.producer added {task}')
+        # add it to the queue
+        queue.put(task)
+    # send a signal that no further tasks are coming
+    queue.put(None)
+    print('Producer finished')
+
+# task for the consumer thread
+def consumer(queue):
+    print('Consumer starting')
+    # process items from the queue
+    while True:
+        # get a task from the queue
+        task = queue.get()
+        # check for signal that we are done
+        if task is None:
+            break
+        # process the item
+        sleep(task[1])
+        print(f'.consumer got {task}')
+        # mark the unit of work as processed
+        queue.task_done()
+    # mark the signal as processed
+    queue.task_done()
+    print('Consumer finished')
+
+# create the shared queue
+queue = Queue()
+# create and start the producer thread
+producer = Thread(target=producer, args=(queue,))
+producer.start()
+# create and start the consumer thread
+consumer = Thread(target=consumer, args=(queue,))
+consumer.start()
+# wait for the producer to finish
+producer.join()
+print('Main found that the producer has finished')
+# wait for the queue to empty
+queue.join()
+print('Main found that all tasks are processed')
+# try joining again
+queue.join()
+print('Tried joining again')
+</code></pre>
+<p>Running the example creates the shared queue, then creates and starts the producer and consumer threads.</p>
+<p>The producer thread puts ten tasks to the queue, then the sentinel message. The consumer thread gets the ten tasks and marks each as done, then gets the sentinel message and marks it as done.</p>
+<p>The main thread is then notified that all tasks on the queue are done.</p>
+<p>The main thread then attempts to block on the queue again until all tasks are done. There are no tasks on the queue, therefore the call to <strong>join()</strong> returns immediately.</p>
+<p>A sample of the output from the program is listed below. Note, your specific results will differ given the use of random numbers.</p>
+<pre><code>Producer starting
+.producer added (0, 0.8035836748847393)
+.producer added (1, 0.33666098167059233)
+.producer added (2, 0.4520998845104912)
+.producer added (3, 0.18490109918532738)
+.producer added (4, 0.4515820360797962)
+.producer added (5, 0.35465194721393)
+.producer added (6, 0.29102171031802837)
+.producer added (7, 0.12298364974886544)
+.producer added (8, 0.9406798868626429)
+.producer added (9, 0.843344957321916)
+Producer finished
+Consumer starting
+Main found that the producer has finished
+.consumer got (0, 0.8035836748847393)
+.consumer got (1, 0.33666098167059233)
+.consumer got (2, 0.4520998845104912)
+.consumer got (3, 0.18490109918532738)
+.consumer got (4, 0.4515820360797962)
+.consumer got (5, 0.35465194721393)
+.consumer got (6, 0.29102171031802837)
+.consumer got (7, 0.12298364974886544)
+.consumer got (8, 0.9406798868626429)
+.consumer got (9, 0.843344957321916)
+Consumer finished
+Main found that all tasks are processed
+Tried joining again
+</code></pre>
+<p>This example highlights that a call to <strong>join()</strong> will only block if there is at least one task that has not been marked as done.</p>
+<p>Next, let's look at what happens if we call the <strong>task_done()</strong> function too many times.</p>
+<h2>Example of Too Many Calls to Task Done</h2>
+<p>The <strong>task_done()</strong> function may be called more times than there are tasks on the queue.</p>
+<p>This will result in a <strong>ValueError</strong> being raised.</p>
+<p>This can happen if <strong>task_done()</strong> is called when there are no items in the queue.</p>
+<p>For example:</p>
+<pre><code>...
+# create a queue
+queue = Queue()
+# mark the task as done
+queue.task_done()</code></pre>
+<p>It can also happen if all tasks in the queue have been retrieved and marked as done.</p>
+<p>We can update the above example to demonstrate this case.</p>
+<p>Consider if the consumer thread marked the sentinel message as done just prior to breaking the loop, and again after the loop.</p>
+<pre><code>...
+# check for signal that we are done
+if task is None:
+    # mark the signal as processed
+    queue.task_done()
+    break
+...
+# mark the signal as processed
+queue.task_done()
+</code></pre>
+<p>This would be one too many calls to <strong>task_done()</strong> compared to tasks on the queue and will result in a <strong>ValueError</strong>.</p>
+<p>The updated version of the <strong>consumer()</strong> function with this change is listed below.</p>
+<pre><code># task for the consumer thread
+def consumer(queue):
+    print('Consumer starting')
+    # process items from the queue
+    while True:
+        # get a task from the queue
+        task = queue.get()
+        # check for signal that we are done
+        if task is None:
+            # mark the signal as processed
+            queue.task_done()
+            break
+        # process the item
+        sleep(task[1])
+        print(f'.consumer got {task}')
+        # mark the unit of work as processed
+        queue.task_done()
+    # mark the signal as processed
+    queue.task_done()
+    print('Consumer finished')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of too many calls to task_done for a thread queue
+from time import sleep
+from random import random
+from queue import Queue
+from threading import Thread
+
+# task for the producer thread
+def producer(queue):
+    print('Producer starting')
+    # add tasks to the queue
+    for i in range(10):
+        # generate a task
+        task = (i, random())
+        print(f'.producer added {task}')
+        # add it to the queue
+        queue.put(task)
+    # send a signal that no further tasks are coming
+    queue.put(None)
+    print('Producer finished')
+
+# task for the consumer thread
+def consumer(queue):
+    print('Consumer starting')
+    # process items from the queue
+    while True:
+        # get a task from the queue
+        task = queue.get()
+        # check for signal that we are done
+        if task is None:
+            # mark the signal as processed
+            queue.task_done()
+            break
+        # process the item
+        sleep(task[1])
+        print(f'.consumer got {task}')
+        # mark the unit of work as processed
+        queue.task_done()
+    # mark the signal as processed
+    queue.task_done()
+    print('Consumer finished')
+
+# create the shared queue
+queue = Queue()
+# create and start the producer thread
+producer = Thread(target=producer, args=(queue,))
+producer.start()
+# create and start the consumer thread
+consumer = Thread(target=consumer, args=(queue,))
+consumer.start()
+# wait for the producer to finish
+producer.join()
+print('Main found that the producer has finished')
+# wait for the queue to empty
+queue.join()
+print('Main found that all tasks are processed')
+</code></pre>
+<p>Running the example creates the shared queue, then creates and starts the producer and consumer threads.</p>
+<p>The producer thread puts ten tasks to the queue, then the sentinel message.</p>
+<p>The consumer thread gets the ten tasks and marks each as done, then gets the sentinel message and marks it as done.</p>
+<p>The main thread is then notified that all tasks on the queue are done as per normal.</p>
+<p>The consumer thread breaks the loop, then marks the sentinel message as done again. This causes a <strong>ValueError</strong> to be raised, which unravels the stack and ultimately terminates consumer thread.</p>
+<p>A sample of the output from the program is listed below. Note, your specific results will differ given the use of random numbers.</p>
+<p>The program achieves the desired outcome, but the consumer thread does not terminate normally.</p>
+<pre><code>Producer starting
+.producer added (0, 0.32924547770163737)
+.producer added (1, 0.24588715644316705)
+.producer added (2, 0.20271066975539764)
+.producer added (3, 0.4343269311040271)
+.producer added (4, 0.59954639408808)
+.producer added (5, 0.37542677283488946)
+.producer added (6, 0.3799982006865581)
+.producer added (7, 0.5233369534357395)
+.producer added (8, 0.2602459165427916)
+.producer added (9, 0.4480714813483033)
+Producer finished
+Consumer starting
+Main found that the producer has finished
+.consumer got (0, 0.32924547770163737)
+.consumer got (1, 0.24588715644316705)
+.consumer got (2, 0.20271066975539764)
+.consumer got (3, 0.4343269311040271)
+.consumer got (4, 0.59954639408808)
+.consumer got (5, 0.37542677283488946)
+.consumer got (6, 0.3799982006865581)
+.consumer got (7, 0.5233369534357395)
+.consumer got (8, 0.2602459165427916)
+.consumer got (9, 0.4480714813483033)
+Exception in thread Thread-2:
+Traceback (most recent call last):
+  ...
+Main found that all tasks are processed
+    ...
+ValueError: task_done() called too many times
+</code></pre>
+<p>This example highlights what happens if too many calls are made to the <strong>task_done()</strong> function.</p>
+<p>Next, let's look at an example of a deadlock caused by too few calls to the <strong>task_done()</strong> function.</p>
+<h2>Example of Join Deadlock Due to Missed Task Done</h2>
+<p>A deadlock may result if there is at least one thread waiting on the queue via a call to <strong>join()</strong> and too few calls are made to the <strong>task_done()</strong> function.</p>
+<p>This can happen if an <strong>Error</strong> or <strong>Exception</strong> is raised by a consumer thread while processing a task. For example, between a call to <strong>get()</strong> and the call to <strong>task_done()</strong> on the queue.</p>
+<p>We can update the above example to demonstrate this case.</p>
+<p>Consider the loop in <strong>consumer()</strong> function. We can contrive a case where if a task has the identifier of five, to raise an exception.</p>
+<pre><code>...
+# check for a failure case
+if task[0] == 5:
+    raise Exception('Something bad happened')
+</code></pre>
+<p>An exception raised at this point will cause this item on the queue to not have the <strong>task_done()</strong> function called.</p>
+<p>Additionally, any items not retrieved from the queue will remain on the queue and will also not be marked as <strong>task_done()</strong>.</p>
+<p>The updated version of the <strong>consumer()</strong> function with this change is listed below.</p>
+<pre><code># task for the consumer thread
+def consumer(queue):
+    print('Consumer starting')
+    # process items from the queue
+    while True:
+        # get a task from the queue
+        task = queue.get()
+        # check for signal that we are done
+        if task is None:
+            break
+        # process the item
+        sleep(task[1])
+        print(f'.consumer got {task}')
+        # check for a failure case
+        if task[0] == 5:
+            raise Exception('Something bad happened')
+        # mark the unit of work as processed
+        queue.task_done()
+    # mark the signal as processed
+    queue.task_done()
+    print('Consumer finished')
+</code></pre>
+<p>The exception will cause the consumer thread to unravel the stack and to terminate. The result will be that the main thread will block and wait forever on the queue as the remaining tasks will never be marked done.</p>
+<p>This is a deadlock and the program must be terminated forcefully, such as via Control-C.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of deadlock with join on a thread queue
+from time import sleep
+from random import random
+from queue import Queue
+from threading import Thread
+
+# task for the producer thread
+def producer(queue):
+    print('Producer starting')
+    # add tasks to the queue
+    for i in range(10):
+        # generate a task
+        task = (i, random())
+        print(f'.producer added {task}')
+        # add it to the queue
+        queue.put(task)
+    # send a signal that no further tasks are coming
+    queue.put(None)
+    print('Producer finished')
+
+# task for the consumer thread
+def consumer(queue):
+    print('Consumer starting')
+    # process items from the queue
+    while True:
+        # get a task from the queue
+        task = queue.get()
+        # check for signal that we are done
+        if task is None:
+            break
+        # process the item
+        sleep(task[1])
+        print(f'.consumer got {task}')
+        # check for a failure case
+        if task[0] == 5:
+            raise Exception('Something bad happened')
+        # mark the unit of work as processed
+        queue.task_done()
+    # mark the signal as processed
+    queue.task_done()
+    print('Consumer finished')
+
+# create the shared queue
+queue = Queue()
+# create and start the producer thread
+producer = Thread(target=producer, args=(queue,))
+producer.start()
+# create and start the consumer thread
+consumer = Thread(target=consumer, args=(queue,))
+consumer.start()
+# wait for the producer to finish
+producer.join()
+print('Main found that the producer has finished')
+# wait for the queue to empty
+queue.join()
+print('Main found that all tasks are processed')
+</code></pre>
+<p>Running the example creates the shared queue, then creates and starts the producer and consumer threads.</p>
+<p>The producer thread puts ten tasks to the queue, then the sentinel message.</p>
+<p>The consumer thread gets the ten tasks and marks each as done. When a task is retrieved that has an integer value of 5, the Exception is triggered and the thread is terminated.</p>
+<p>The main thread continues to block, waiting for the consumer thread to mark all tasks as done.</p>
+<p>This will never happen and the main thread is stuck, blocking forever for a condition that will never be met. A deadlock.</p>
+<p>The program must then be forcefully terminated, such as via Control-C or via the kill command on POSIX operating systems like Linux or MacOS.</p>
+<p>A sample of the output from the program is listed below. Note, your specific results will differ given the use of random numbers.</p>
+<pre><code>Producer starting
+Consumer starting
+.producer added (0, 0.857837894040976)
+.producer added (1, 0.9848037154429664)
+.producer added (2, 0.12700351329522575)
+.producer added (3, 0.6515070937934918)
+.producer added (4, 0.545121803729179)
+.producer added (5, 0.4270992095754642)
+.producer added (6, 0.9544698294630786)
+.producer added (7, 0.881736189399228)
+.producer added (8, 0.5339142632137198)
+.producer added (9, 0.8849690544003713)
+Producer finished
+Main found that the producer has finished
+.consumer got (0, 0.857837894040976)
+.consumer got (1, 0.9848037154429664)
+.consumer got (2, 0.12700351329522575)
+.consumer got (3, 0.6515070937934918)
+.consumer got (4, 0.545121803729179)
+.consumer got (5, 0.4270992095754642)
+Exception in thread Thread-2:
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened
+</code></pre>
+<p>This highlights that a deadlock is possible in those cases where processing a task could result in an <strong>Error</strong> or <strong>Exception</strong>.</p>
+<p>A possible fix is to wrap the processing of the task in a try-catch-finally pattern.</p>
+<p>Specifically:</p>
+<ol><li>The call to <strong>Queue.get()</strong> occurs before the try block.</li><li>The processing of the task occurs within the try block.</li><li>The expected <strong>Error</strong> or <strong>Exception</strong> is handled in the except block.</li><li>The call to <strong>task_done()</strong> occurs within the finally block.</li></ol>
+<p>For example:</p>
+<pre><code>...
+# get a task from the queue
+task = queue.get()
+# ...
+try:
+    # process the item
+    sleep(task[1])
+    print(f'.consumer got {task}')
+    # check for a failure case
+    if task[0] == 5:
+        raise Exception('Something bad happened')
+except:
+    # carry on...
+    pass
+finally:
+    # mark the unit of work as processed
+    queue.task_done()
+</code></pre>
+<p>This approach ensures that even if the processing of a task fails, that the task is still marked as done and that any threads waiting on the queue will be appropriately notified.</p>
+<p>Next, let's look at some common questions about queue <strong>join()</strong> and <strong>task_done()</strong>.</p>
+<h2>Common Questions</h2>
+<p>This section lists some common questions about thread queue <strong>task_done()</strong> and <strong>join()</strong>.</p>
+<p><strong>Do you have any questions?</strong><br/>Let me know in the comments below and I may add your question to this section.</p>
+<h3>Why Not Just Use Queue.qsize() or Queue.empty()?</h3>
+<p>The <strong>Queue.qsize()</strong> function will report the number of items in the queue and will return a value of zero when there are no tasks in the queue at the time of calling.</p>
+<p>For example:</p>
+<pre><code>...
+# check for no items in the queue
+if not queue.qsize():
+	# ...
+</code></pre>
+<p>The <strong>Queue.empty()</strong> function will return <strong>True</strong> when there are no tasks in the queue at the time of calling.</p>
+<p>For example:</p>
+<pre><code>...
+# check for an empty queue
+if queue.empty():
+	# ...
+</code></pre>
+<p>Both functions can be used to report if there are no items on the queue, but neither have any way of determining if the tasks retrieved from the queue have been processed and marked done and neither have any way of notifung waiting threads.</p>
+<p>Nevertheless, these functions can be used instead of <strong>join()</strong> in some limited cases.</p>
+<p>If <strong>join()</strong> is called at a time when the thread knows that no further tasks will be added to the queue, such as in the above situations, then <strong>qsize()</strong> or <strong>empty()</strong> can be used instead within a busy wait loop.</p>
+<p>A busy wait loop or busy waiting is a way for a thread to block by repeatedly checking a condition. Once the condition is met, the thread may then proceed.</p>
+<p>For example, below is a busy wait loop using the <strong>qsize()</strong> function:</p>
+<pre><code>...
+# wait for all items in the queue to be processed
+while not queue.qsize():
+	pass
+</code></pre>
+<p>We can also use the <strong>empty()</strong> function in a busy wait loop.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all items in the queue to be processed
+while not queue.empty():
+	pass
+</code></pre>
+<p>The problem with the busy wait loop is that the thread will remain active and consume computational resources while waiting for the condition to be met.</p>
+<p>The <strong>join()</strong> function on the other hand will block until the condition is met (e.g. until it is notified), meaning that the thread will not consume any computational resources while waiting.</p>
+<p>You can learn more about busy wait loops in this tutorial:</p>
+<ul><li><a href="../thread-busy-waiting-in-python/">How to Use Busy Waiting in Python</a></li></ul>
+<h3>Is Queue.join() related to Thread.join()?</h3>
+<p>No.</p>
+<p>Calling <strong>join()</strong> on a queue will block and return once the number of calls to <strong>task_done()</strong> matches the number of calls to put() at the time that <strong>join()</strong> is called.</p>
+<p>Calling <strong>join()</strong> a thread will block until the target thread terminates.</p>
+<p>You can learn more about <strong>Thread.join()</strong> in the tutorial:</p>
+<ul><li><a href="../join-a-thread-in-python/">How to Join a Thread in Python</a></li></ul>
+<h3>Do All Consumer Threads Need To Call task_done()?</h3>
+<p>Yes.</p>
+<p>If a thread is blocked by calling <strong>join()</strong> on the queue, then all threads that are retrieving items from the queue via <strong>get()</strong> must call <strong>task_done()</strong> in order for the blocked thread to be notified correctly.</p>
+<h3>What if the Queue is Empty?</h3>
+<p>A thread may call <strong>join()</strong> on an empty thread.</p>
+<p>If a thread calls <strong>join()</strong> on a queue that is empty, then it will not block and the call will return immediately.</p>
+<h3>What if Tasks Are Put After a Call to Join?</h3>
+<p>Tasks may be put on the queue after a thread has called <strong>join()</strong>.</p>
+<p>Each call to <strong>put()</strong> will increment an internal counter in the queue. Each call to <strong>task_done()</strong> decrements the counter. A call to <strong>join()</strong> will return once the counter has reached zero.</p>
+<p>This means that any calls to <strong>put()</strong> while a thread is blocked on a call to join() will require a subsequent call to <strong>task_done()</strong> by a consumer thread in order for the blocked thread to be notified.</p>
+<h3>Can task_done() Be Called Without Calls to get()?</h3>
+<p>Yes.</p>
+<p>A thread blocked with a call to <strong>join()</strong> will be notified after a <strong>task_done()</strong> call has been made for each call to <strong>put()</strong>.</p>
+<p>Any calls to <strong>get()</strong> are not considered by the blocked thread.</p>
+<p>This means that a thread blocked by a call to <strong>join()</strong> may be notified by the correct number of calls to <strong>task_done()</strong>, even though all of the tasks may still remain on the queue given the absence of calls to <strong>get()</strong>.</p>
+<h3>When Should I Call join()?</h3>
+<p>The <strong>join()</strong> function should be called by a thread on a queue when the calling thread wants to be notified when all tasks on the queue have been marked as done.</p>
+<p>Ideally, the <strong>join()</strong> function would be called after all tasks that could be added to the queue have been added to the queue. This is to avoid a race condition where the blocked thread is notified because all tasks have been retrieved from the queue and marked as done, yet the producer thread has more tasks to add to the queue.</p>
+<h3>When Should I call task_done()?</h3>
+<p>The <strong>task_done()</strong> should be called on the queue after a thread has called <strong>get()</strong> to retrieve the item and after that retrieved item has been processed to the satisfaction of the application.</p>
+<h3>What if Processing a Task May Raise an Error or Exception?</h3>
+<p>Processing tasks retrieved from a queue may fail with an <strong>Error</strong> or <strong>Exception</strong>.</p>
+<p>If this is possible, a try-except-finally or try-finally pattern may be used.</p>
+<p>The call to <strong>get()</strong> on the queue would be made prior to the try block and the call to <strong>task_done()</strong> would be made in the finally block.</p>
+<p>For example:</p>
+<pre><code>...
+# get a task
+task = queue.get()
+try:
+	# ...
+finally:
+	# mark the task as done
+	queue.task_done()
+</code></pre>
+<p>This ensures that regardless of the success or failure of processing the task, the task is marked as done and any thread blocked until all tasks are done will be correctly notified.</p>
+<p>Otherwise, if a <strong>task_done()</strong> call is missed because of an error while processing, any threads waiting on the queue with a call to <strong>join()</strong> will block forever, resulting in a deadlock.</p>
+<h2>Takeaways</h2>
+<p>You now know how to wait for all tasks to be done on a thread queue.</p>
+</main>
+</body>
+</html>

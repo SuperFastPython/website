@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analyze HackerNews Posts Concurrently with Threads in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Analyze HackerNews Posts Concurrently with Threads in Python</h1>
+<div class="post-meta">November 5, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>The <a href="../threadpoolexecutor-in-python/"><strong>ThreadPoolExecutor</strong> class in Python</a> can be used to download and analyze multiple Hacker News articles at the same time.</p>
+<p>It can be interesting to analyze the factors of articles that battled their way to the front page of social news websites like Hacker News (<a href="https://news.ycombinator.com/">news.ycombinator.com</a>). One aspect to look at is the length of articles, such as the minimum, maximum, and average article length.</p>
+<p>We can develop a program to download all articles linked on the home page of Hacker News and calculate word count statistics. This is slow. If each article takes 1 second to download, then the 30 articles on the homepage will take half a minute to download for analysis.</p>
+<p>We can use a <strong>ThreadPoolExecutor</strong> to perform all downloads concurrently, shortening the entire process to the time it takes to download one article. This analysis can be extended, where a second thread pool can be used to download and extract links from each page of Hacker News articles.</p>
+<p>In this tutorial, you will discover how to develop a program to analyze multiple articles listed on Hacker News concurrently using thread pools.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul><li>How to develop a serial program to download and analyze the word count of articles listed on Hacker News.</li><li>How to use the ThreadPoolExecutor in Python to create and manage pools of worker threads for IO-bound tasks.</li><li>How to use ThreadPoolExecutor to download and analyze 30 to 90 Hacker News articles concurrently.</li></ul>
+<p>Let's dive in.</p>
+<h2 id="analysis-of-hackernews-front-page-articles">Analysis of HackerNews Front-Page Articles</h2>
+<p>Hacker news is a technology news website, mostly for developers interested in highly technical topics and business.</p>
+<p>Our goal is to summarize the word count or length of articles posted to Hacker News.</p>
+<p>This might be interesting if we think that article length is one important factor for articles to make it onto the front page of Hacker News.</p>
+<p>The website is available at:</p>
+<ul><li><a href="https://news.ycombinator.com">Hacker News</a></li></ul>
+<p>Below is a screenshot of what the site looks like at the time of writing (it has not changed noticeably in a decade).</p>
+<figure><img alt="" loading="lazy" src="../pics/Screenshot-of-Hacker-News-Website-1024x398.png"/><figcaption>Screenshot of Hacker News Website</figcaption></figure>
+<p>We can divide this task up into a few distinct pieces.</p>
+<ol><li>Download and Parse HTML Documents.</li><li>Download and Extract Links From Hacker News.</li><li>Download and Calculate Word Count of Articles.</li><li>Report Results.</li><li>Complete Example.</li></ol>
+<h3 id="download-and-parse-html-documents">Download and Parse HTML Documents</h3>
+<p>The first step is to develop code to download and parse HTML documents.</p>
+<p>We will need this to extract links from the Hacker News home page and to extract text from linked articles.</p>
+<p>The HTML can then be parsed and we can extract all links to articles.</p>
+<p>We can use the <code>urlopen()</code> function from the <code>urllib.request</code> module to open a connection to a webpage and download it.</p>
+<p>The safe way to do this is with the context manager so that the connection is closed once we download the webpage into memory.</p>
+<pre><code>...
+# open a connection to the server
+with urlopen(urlpath) as connection:
+    # read the contents of the html doc
+    data = connection.read()
+</code></pre>
+<p>We may be downloading all kinds of URLs; some might be unreachable or very slow to respond.</p>
+<p>We can address this by setting a timeout for the connection of a few seconds — three in this case. We can also wrap the entire operation in a <code>try...except</code> in case we get a timeout or some other kind of error downloading the URL.</p>
+<pre><code>...
+try:
+    # open a connection to the server
+    with urlopen(urlpath, timeout=3) as connection:
+        # read the contents of the html doc
+        data = connection.read()
+    # ...
+except:
+    # bad url, socket timeout, http forbidden, etc.
+</code></pre>
+<p>Next, we can parse the HTML in the document.</p>
+<p>I recommend the <a href="https://www.crummy.com/software/BeautifulSoup/">BeautifulSoup Python library</a> anytime HTML documents need to be parsed.</p>
+<p>If you're new to BeautifulSoup, you can install it easily with your Python package manager, such as pip:</p>
+<pre><code>pip install beautifulsoup4</code></pre>
+<p>First, we must decode the raw data downloaded into ASCII text.</p>
+<p>This can be achieved by calling the <code>decode()</code> function on the string of raw data and specifying a standard text format, such as UTF-8.</p>
+<pre><code>...
+# decode the provided content as ascii text
+html = content.decode('utf-8')
+</code></pre>
+<p>Next, we can parse the text of the HTML document using BeautifulSoup with the default parser.</p>
+<p>It is a good idea to use a more sophisticated parser that works the same on all platforms, but in this case, will use the default parser as it does not require you to install anything extra.</p>
+<pre><code>...
+# parse the document as best we can
+soup = BeautifulSoup(html, 'html.parser')
+</code></pre>
+<p>We can tie all this together into a function named <code>download_and_parse_url()</code> that will take the URL as an argument, then attempt to download and return the parsed HTML document or <code>None</code> if there is an error.</p>
+<pre><code># download html and return parsed doc or None on error
+def download_and_parse_url(urlpath):
+    try:
+        # open a connection to the server
+        with urlopen(urlpath, timeout=3) as connection:
+            # read the contents of the html doc
+            data = connection.read()
+        # decode the content as ascii txt
+        html = data.decode('utf-8')
+        # parse the content as html
+        return BeautifulSoup(html, features="html.parser")
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return None
+</code></pre>
+<p>We will use this function to download the Hacker News home page and to download articles listed on the homepage.</p>
+<h3 id="download-and-extract-links-from-hacker-news">Download and Extract Links From Hacker News</h3>
+<p>Next, we need to extract all of the URLs from the Hacker News home page.</p>
+<p>The Beautiful Soup library provides a <code>find_all()</code> function that we can use to locate all <code>&lt;a&gt;</code> HTML tags that contain links. We can then use the <code>get()</code> function on each tag to retrieve the content of the <code>html="..."</code> property.</p>
+<p>For example:</p>
+</main>
+</body>
+</html>

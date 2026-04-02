@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool Stop All Tasks If One Task Fails in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool Stop All Tasks If One Task Fails in Python</h1>
+<div class="post-meta">July 23, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>cancel all tasks</strong> in the <a href="../multiprocessing-pool-python/">multiprocessing pool</a> <strong>if one task fails</strong> using a shared <strong>multiprocessing.Event</strong> object.</p>
+<p>In this tutorial you will discover how to <strong>cancel all tasks in the Python process pool</strong> if <strong>one task fails</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need To Stop All Tasks on Exception</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the process pool, we may need to cancel or stop all tasks if one task fails with an exception.</p>
+<p>The process pool does not provide this capability.</p>
+<p><strong>How can we cancel all issued tasks if one task fails with an exception?</strong></p>
+<h2>How to Cancel All Tasks if One Task Fails</h2>
+<p>We can cancel all tasks if one task fails using a shared <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Event">multiprocessing.Event</a></strong>.</p>
+<p>This approach assumes a few things, such as:</p>
+<ul><li>Tasks know when they have failed, e.g. catch an exception or check state.</li><li>Tasks are able to check the status of a shared event periodically, e.g. each iteration of a loop.</li></ul>
+<p>Firstly, a shared event must be prepared in the main process.</p>
+<p>We cannot just create an Event object and share it with worker processes. This will result in an exception, such as:</p>
+<pre><code>RuntimeError: Condition objects should only be shared between processes through inheritance</code></pre>
+<p>Instead, we must create the event using a <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Manager">multiprocessing.Manager</a></strong>.</p>
+<p>A Manager allows us to create a single Event centralized in a process, then share a proxy object for the event that interacts with the single centralized event object in the manager behind the scenes.</p>
+<p>First, we can create a Manager instance. This can be achieved using the context manager interface to ensure the manager is closed once we are finished using it.</p>
+<pre><code>...
+# create a manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>We can then create the shared <strong>multiprocessing.Event</strong> instance using the manager.</p>
+<pre><code>...
+# create a shared event
+shared_event = manager.Event()
+</code></pre>
+<p>The Event instance can then be shared with each worker process.</p>
+<p>This can be achieved by defining a custom initialization function that takes the shared Event instance as an argument and stores it in a global variable for the worker process.</p>
+<pre><code># initialize worker processes
+def init_worker(shared_event):
+    # store the event as a global in the worker process
+    global event
+    event = shared_event
+</code></pre>
+<p>We can then create a <strong>multiprocessing.pool.Pool</strong> instance and configure it to call the custom worker child process initialization function and pass the shared event object as an argument.</p>
+<pre><code>...
+# create the process pool
+pool = Pool(initializer=init_worker, initargs=(shared_event,))</code></pre>
+<p>Finally, each custom task function executed by the process pool can check or set the status of the event.</p>
+<p>A task that fails can set the event via the <strong>set()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel all tasks
+event.set()</code></pre>
+<p>Then all tasks that can be canceled can check if the event has been set periodically, such as within each iteration of a loop.</p>
+<p>For example:</p>
+<pre><code>...
+# check for stop
+if event.is_set():
+    return
+</code></pre>
+<p>You can learn more about using a shared <strong>multiprocessing.Event</strong> in the tutorial:</p>
+<ul><li><a href="../multiprocessing-event-object-in-python/">Multiprocessing Event Object In Python</a></li></ul>
+<p>Now that we know how to cancel all tasks if one task fails in the process pool, we can look at a worked example.</p>
+<h2>Example of Canceling All Tasks If One Task Fails</h2>
+<p>We can explore how to cancel all tasks in the process pool if one task fails.</p>
+<p>In this example, we will define a custom task function that loops some number of times. One of the issued tasks will fail, report a message and signal all other tasks to stop. Each task will check if they should cancel each iteration and once canceled, they stop as soon as possible.</p>
+<p>Firstly, we can define a custom function used to initialize each child worker process.</p>
+<p>The initialization function will take a shared event object as an argument. It will then define a global variable and store the provided shared event object in the global variable.</p>
+<p>Importantly, the shared event stored in the global variable will be accessible to all tasks in the process pool that are executed by the process, and therefore all child worker processes as all workers are initialized the same way.</p>
+<p>The <strong>init_worker()</strong> function below implements this.</p>
+<pre><code># initialize worker processes
+def init_worker(shared_event):
+    # store the event as a global in the worker process
+    global event
+    event = shared_event
+</code></pre>
+<p>Next, we can define a custom function for executing tasks in the process pool.</p>
+<p>The task function will take a unique integer argument to identify the task.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+	# ...
+</code></pre>
+<p>The task will loop four times. Each iteration, it will first check the status of the shared event to see if the task should be canceled or not. If so, it will report a message and return from the task function immediately. It then blocks for a random fraction of a second to simulate computational effort.</p>
+<pre><code>...
+# loop for a while
+for i in range(4):
+    # check for stop
+    if event.is_set():
+        print(f'Task {identifier} stopped', flush=True)
+        return
+    # block for a moment
+    sleep(random())
+</code></pre>
+<p>One of the tasks will conditionally fail. Specifically, if the number of iterations is above 2 and if the task is number 5. If so, it will report a message and signal all tasks to cancel via the shared event.</p>
+<pre><code>...
+# conditionally fail
+if i &gt; 2 and identifier == 5:
+    print('Something bad happened!', flush=True)
+    # cancel all tasks
+    event.set()
+    return
+</code></pre>
+<p>Finally, if the task completes normally, it will report a message.</p>
+<pre><code>...
+# report done
+print(f'Task {identifier} done', flush=True)
+</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function is listed below.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    # loop for a while
+    for i in range(4):
+        # check for stop
+        if event.is_set():
+            print(f'Task {identifier} stopped', flush=True)
+            return
+        # block for a moment
+        sleep(random())
+        # conditionally fail
+        if i &gt; 2 and identifier == 5:
+            print('Something bad happened!', flush=True)
+            # cancel all tasks
+            event.set()
+            return
+    # report done
+    print(f'Task {identifier} done', flush=True)
+</code></pre>
+<p>Next, the main process will create a manager used to create and manage centralized objects, in this case a centralized Event object.</p>
+<pre><code>...
+# create a manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>We then use the manager to create a shared event that returns a proxy object that can be shared among all child worker processes safely and used to interact with the centralized event object.</p>
+<pre><code>...
+# create a shared event
+shared_event = manager.Event()</code></pre>
+<p>We can then create a process pool. We will configure it to initialize each child worker process with our custom initialization function and pass the shared event as an object.</p>
+<p>The process pool will be created using the context manager interface to ensure the pool is closed automatically for us once we are finished with it.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool(initializer=init_worker, initargs=(shared_event,)) as pool:
+	# ...
+</code></pre>
+<p>You can learn more about the context manager interface in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<p>We will then issue 10 tasks to the process pool, calling our custom <strong>task()</strong> function with numbers 0 through 9. We will use the <strong>map_async()</strong> to issue the tasks asynchronously, which will return an <strong>AsyncResult</strong> object.</p>
+<pre><code>...
+# issue tasks into the process pool
+result = pool.map_async(task, range(10))</code></pre>
+<p>You can learn more about issuing asynchronous tasks to the process pool with the <strong>map_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li></ul>
+<p>Finally, the main process will wait on the <strong>AsyncResult</strong> object for the issued tasks to complete, successfully or otherwise.</p>
+<pre><code>...
+# wait for tasks to complete
+result.wait()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling all tasks if one task fails with an exception
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+from multiprocessing import Manager
+
+# initialize worker processes
+def init_worker(shared_event):
+    # store the event as a global in the worker process
+    global event
+    event = shared_event
+
+# task executed in a worker process
+def task(identifier):
+    # loop for a while
+    for i in range(4):
+        # check for stop
+        if event.is_set():
+            print(f'Task {identifier} stopped', flush=True)
+            return
+        # block for a moment
+        sleep(random())
+        # conditionally fail
+        if i &gt; 2 and identifier == 5:
+            print('Something bad happened!', flush=True)
+            # cancel all tasks
+            event.set()
+            return
+    # report done
+    print(f'Task {identifier} done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a manager
+    with Manager() as manager:
+        # create a shared event
+        shared_event = manager.Event()
+        # create and configure the process pool
+        with Pool(initializer=init_worker, initargs=(shared_event,)) as pool:
+            # issue tasks into the process pool
+            result = pool.map_async(task, range(10))
+            # wait for tasks to complete
+            result.wait()
+        # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the manager. The manager is then used to create the shared event, returning proxy objects that can be shared safely with the child worker processes.</p>
+<p>The main process then creates the process pool and configures it to initialize each child worker process.</p>
+<p>The pool is started and each child worker process is initialized with the custom initialization function. Each child worker process stores the proxy for the shared event in a global variable, making it accessible to all tasks executed by the process, and in turn by all processes in the pool.</p>
+<p>The main process then issues ten tasks to the process pool and then blocks until the tasks are done.</p>
+<p>Tasks begin running in the process pool. Each task loops, checking the status of the shared event each iteration, then blocking for a random fraction of a second. Some tasks finish and report a message.</p>
+<p>One task conditionally fails. It reports a message, then signals all other tasks to cancel by setting the shared event.</p>
+<p>The running tasks check the status of the event on their next iteration. They notice that the shared event is set and then return immediately, canceling their tasks.</p>
+<p>All tasks are finished and the main process continues on and closes the process pool.</p>
+<p>Note, the specific tasks that finish and are canceled will differ each time the code is run given the use of random numbers.</p>
+<pre><code>Task 3 done
+Task 4 done
+Task 0 done
+Something bad happened!
+Task 8 stopped
+Task 6 done
+Task 2 stopped
+Task 1 done
+Task 9 stopped
+Task 7 done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to cancel all tasks in the Python process pool if one task fails.</p>
+</main>
+</body>
+</html>

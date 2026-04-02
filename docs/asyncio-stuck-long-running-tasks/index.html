@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Find Stuck and Long Running Tasks in Asyncio – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Find Stuck and Long Running Tasks in Asyncio</h1>
+<div class="post-meta">November 30, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can <strong>find all stuck long-running tasks in asyncio</strong> by manually tracking how long each task has been alive and reporting task details if a threshold "too long" time is exceeded.</p>
+<p>This approach can be used to find all stuck, hanging, and zombie asyncio tasks in the event loop, as well as those tasks that are blocked, but not yet not done.</p>
+<p>In this tutorial, you will discover how to <strong>detect and report stuck long-running asyncio tasks</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Find All Stuck and Long-Running Asyncio Tasks</h2>
+<p>Tasks can take too long in asyncio.</p>
+<p>A coroutine may get stuck, waiting forever for some condition that will never occur.</p>
+<ul>
+<li>Maybe a resource is broken, or a connection is hanging.</li>
+<li>Maybe there is a race condition.</li>
+<li>Maybe there is a bug in a third-party library.</li>
+</ul>
+<p>The Python asyncio module does provide some visibility of tasks that take too long. </p>
+<p>This can be achieved by running the event loop in debug mode.</p>
+<p>The problem is:</p>
+<ol>
+<li>Running the event loop in debug mode is slower, a lot slower on large systems with many tasks.</li>
+<li>Long-running tasks are only logged after they complete.</li>
+<li>"<em>Long-running</em>" means blocking the event loop, not a zombie still hanging around in the event loop.</li>
+</ol>
+<p>You can learn more about running the asyncio event loop in debug mode in the tutorial:</p>
+<ul>
+<li><a href="../debug-asyncio/">How to Debug Asyncio</a></li>
+</ul>
+<p>Therefore, we need ways of introspecting asyncio tasks that have been around for too long but have not stopped or been canceled.</p>
+<p>The API does not provide this ability (and I cannot find a good third-party library that does this, yet), therefore we must develop something ourselves.</p>
+<h2>How to Discover Long-Running Tasks</h2>
+<p>We can explore a series of examples to approach the problem of finding and reporting asyncio tasks that have been running for too long.</p>
+<p>Our approaches fall short of digging into the internals of event loops, we will stick with the simple task introspection tools provided by the high-level asyncio API.</p>
+<p>We can stagger this effort into three levels, they are:</p>
+<ol>
+<li>Report the details for all running tasks (e.g. names, stack traces, etc.)</li>
+<li>Explicitly record the start time for each task and monitor tasks that have been running too long.</li>
+<li>Monitor all active tasks and report on those running too long.</li>
+</ol>
+<p>Let's take a closer look at each step in turn.</p>
+<h3>Report Details of All Running Tasks</h3>
+<p>The first step is to introspect all running tasks.</p>
+<p>We can get a list of all tasks currently running in the event loop by calling <strong><a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.all_tasks">asyncio.all_tasks()</a></strong> and enumerating the result.</p>
+<p>For example:</p>
+<pre><code>...
+# get all tasks
+for task in asyncio.all_tasks():
+	# ...
+</code></pre>
+<p>You can learn more about this function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-all-tasks/">How to Get All Asyncio Tasks in Python</a></li>
+</ul>
+<p>For each task, we can report some information.</p>
+<p>We could print or log each task, which gives some useful information, such as:</p>
+<ol>
+<li>The task name</li>
+<li>The coroutine used to create it, the script, and the line number</li>
+<li>The status of the task</li>
+<li>...and more.</li>
+</ol>
+<p>For example:</p>
+<pre><code>...
+# get all tasks
+for task in asyncio.all_tasks():
+    # log the task
+    logging.debug(task)
+</code></pre>
+<p>Might give something like:</p>
+<pre><code>DEBUG:root:&lt;Task pending name='Task-2' coro=&lt;work() running at /...&gt; wait_for=&lt;Future pending cb=[Task.task_wakeup()]&gt; cb=[TaskGroup._on_task_done()]&gt;
+DEBUG:root:&lt;Task pending name='Task-4' coro=&lt;work() running at ...&gt; wait_for=&lt;Future pending cb=[Task.task_wakeup()]&gt; cb=[TaskGroup._on_task_done()]&gt;
+DEBUG:root:&lt;Task pending name='Task-3' coro=&lt;work() running at ...&gt; wait_for=&lt;Future pending cb=[Task.task_wakeup()]&gt; cb=[TaskGroup._on_task_done()]&gt;
+</code></pre>
+<p>Another approach is to report the full stack trace of each task.</p>
+<p>This can give an idea of where each task is currently at, such as the line on which it is stuck.</p>
+<p>We can achieve this via the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.Task.print_stack"><strong>Task.print_stack()</strong> method</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# get all tasks
+for task in asyncio.all_tasks():
+    # report the trace
+    task.print_stack()
+</code></pre>
+<p>We can also send the trace to the log by first capturing it in an <a href="https://docs.python.org/3/library/io.html#io.StringIO"><strong>io.StringIO</strong> buffer</a>, then writing the buffer to the logging infrastructure.</p>
+<p>For example:</p>
+<pre><code>...
+# get all tasks
+for task in asyncio.all_tasks():
+    # create a string buffer
+    buffer = io.StringIO("")
+    # print the task stack
+    task.print_stack(file=buffer)
+    # log the trace
+    logging.debug(buffer.getvalue())
+    # close the string buffer
+    buffer.close()
+</code></pre>
+<p>We can tie all of this together into a helper function that can exclude some tasks from the list (like the main task) and can be called whenever we want to dump the details of all tasks on demand, such as periodically every few minutes.</p>
+<pre><code># helper to log details of all tasks
+def log_all_tasks_helper(excluded=list()):
+    # get all tasks
+    for task in asyncio.all_tasks():
+        # skip excluded tasks
+        if task in excluded:
+            continue
+        # create a string buffer
+        buffer = io.StringIO("")
+        # print the task stack
+        task.print_stack(file=buffer)
+        # log the trace
+        logging.debug(buffer.getvalue())
+        # close the string buffer
+        buffer.close()
+</code></pre>
+<p>Next, let's look at monitoring how long all tasks have been running and only reporting the details that have been running too long.</p>
+<h3>Record When All Tasks Are Started And Monitor</h3>
+<p>Another approach is to explicitly record the start time for each task executed in the asyncio program.</p>
+<p>This is a big task but might be possible for small and moderately sized programs.</p>
+<p>It requires defining a helper function used to create and issue all tasks. It uses a dictionary global variable to store the task name and start time (using some reliable clock like the event loop time or similar).</p>
+<p>For example</p>
+</main>
+</body>
+</html>

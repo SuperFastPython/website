@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio gather() Exception in Task Does Not Cancel – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio gather() Exception in Task Does Not Cancel</h1>
+<div class="post-meta">May 7, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>We can execute coroutines concurrently with <strong>asyncio.gather()</strong>.</p>
+<p>By default, an exception in <strong>asyncio.gather()</strong> will be propagated to the caller immediately. The <strong>asyncio.gather()</strong> call will not wait for the other coroutines to complete, and it will not cancel the other tasks.</p>
+<p>It is critically important to understand the default behavior of <strong>asyncio.gather()</strong> because it is the most common way to run multiple coroutines concurrently.</p>
+<p>In this tutorial, you will discover that <strong>asyncio.gather()</strong> will <strong>not wait for or cancel other coroutines</strong> if one fails with an exception.</p>
+<p>Let's get started.</p>
+<h2>What Happens If There Is An Exception With asyncio.gather()</h2>
+<p>The <strong>asyncio.gather()</strong> function allows us to run multiple coroutines or tasks concurrently.</p>
+<p>Coroutines can be provided as positional arguments to <strong>asyncio.gather()</strong> and a list of return values is returned, for example:</p>
+<pre><code>...
+# execute coroutines concurrently
+results = await asyncio.gather(coro1(), coro2())</code></pre>
+<p>Alternately, we can create a list of coroutines or tasks and unpack them as positional arguments using the star operator (*), for example:</p>
+<pre><code>...
+# creates a list of coroutine objects
+coros = 
+# execute coroutines concurrently
+results = await asyncio.gather(*coros)</code></pre>
+<p>You can learn more about how to use <strong>asyncio.gather()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather/">How to Use asyncio.gather() in Python</a></li>
+</ul>
+<p>One or more coroutines or tasks provided to <strong>asyncio.gather()</strong> may fail with an exception.</p>
+<p>This raises a question as to what happens to <strong>asyncio.gather()</strong>.</p>
+<p>For example: </p>
+<p><strong>If a coroutine fails with an exception, does it unwind asyncio.gather()?</strong></p>
+<p><strong>Is the exception propagated to the caller?</strong></p>
+<p><strong>Are all other coroutines canceled?</strong></p>
+<p><strong>How does asyncio.gather() handle the case of a coroutine failing with an exception?</strong></p>
+<h2>Asyncio gather() Does Not Cancel Tasks On Exception</h2>
+<p>The default behavior of <strong>asyncio.gather()</strong> when a coroutine fails with an exception is as follows:</p>
+<ol>
+<li>The unhandled exception will unwind the coroutine or task in which it is raised.</li>
+<li>The <strong>asyncio.gather()</strong> call will not cancel other coroutines and tasks.</li>
+<li>The <strong>asyncio.gather()</strong> call will not wait for all other coroutines and tasks to be done.</li>
+<li>The exception will be propagated to the caller immediately.</li>
+</ol>
+<p>This default behavior assumes that the <strong>return_exceptions</strong> argument is <strong>False</strong>.</p>
+<p>Some idea of this behavior is described in the API documentation.</p>
+<p>For example:</p>
+<blockquote>
+<p>If return_exceptions is False (default), the first raised exception is immediately propagated to the task that awaits on gather(). Other awaitables in the aws sequence won't be cancelled and will continue to run.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>This behavior can be changed by setting the <strong>return_exceptions</strong> argument to <strong>True</strong>.</p>
+<p>The effect will be:</p>
+<ol>
+<li>The unhandled exception will unwind the coroutine or task in which it is raised.</li>
+<li>The <strong>asyncio.gather()</strong> call will not cancel other coroutines and tasks.</li>
+<li>The <strong>asyncio.gather()</strong> call will wait for all other coroutines and tasks to be done.</li>
+<li>The exception will not be propagated to the caller immediately.</li>
+<li>The exception will be provided as a return value for the failed coroutine or task.</li>
+</ol>
+<p>You can learn more about returning exceptions from <strong>asyncio.gather()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather-exception/">Asyncio gather() Handle Exceptions</a></li>
+</ul>
+<p>It is possible to cancel all coroutines and tasks if one task in <strong>asyncio.gather()</strong> fails with an exception, although this requires additional code.</p>
+<p>You can learn more about how to cancel all tasks if one task in <strong>asyncio.gather()</strong> fails in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather-cancel-all-if-one-fails/">Asyncio gather() Cancel All Tasks if One Task Fails</a></li>
+</ul>
+<p>Now that we know about the default behavior of <strong>asyncio.gather()</strong> with a coroutine that fails with an exception, let's look at a worked example.</p>
+<h2>Example of asyncio.gather() With Exception in One Task</h2>
+<p>We can explore an example that shows the default behavior of <strong>asyncio.gather()</strong> and an exception.</p>
+<p>In this case, we can define a coroutine that conditionally fails. We can then execute many examples of the coroutine concurrently and allow one to fail, then observe the behavior of the other coroutines still running and confirm the expected behavior of <strong>asyncio.gather()</strong>, specifically:</p>
+<ol>
+<li>That <strong>asyncio.gather()</strong> will not wait for all other coroutines to complete.</li>
+<li>That <strong>asyncio.gather()</strong> will not cancel all other coroutines.</li>
+<li>That the exception will be propagated to the caller immediately.</li>
+</ol>
+<p>Firstly, we can define a custom coroutine that will conditionally fail.</p>
+<p>In this case, the coroutine will take an integer argument. It will first suspend for 4 seconds, then resume and check if the provided argument was zero. If so, an exception is raised, otherwise, the coroutine will suspend for a further 2 seconds, report a final message, and then return the provided argument multiplied by 100.</p>
+<p>The <strong>task_coro()</strong> coroutine below implements this.</p>
+<pre><code># coroutine used for a task
+async def task_coro(value):
+    # sleep for a moment
+    await asyncio.sleep(4)
+    # check for failure
+    if value == 0:
+        raise Exception('Something Bad Happened')
+    # wait some more
+    await asyncio.sleep(2)
+    # report details
+    print(f'&gt;{value} done')
+    # return a result
+    return value * 100
+</code></pre>
+<p>Next, we can define the main coroutine.</p>
+<p>The main coroutine first reports a message and then creates 10 <strong>task_coro()</strong> objects with arguments from 0 to 9, meaning 1 of the 10 coroutines is expected to fail with an unhandled exception.</p>
+<p>Next, <strong>asyncio.gather()</strong> is used to execute all 10 coroutines concurrently which is wrapped in a try-except block. If/when an exception is raised, a message is reported and the coroutine suspends, allowing the other coroutines to complete.</p>
+<p>The <strong>main()</strong> coroutine below implements this.</p>
+<pre><code># coroutine used for the entry point
+async def main():
+    # report a message
+    print('Main starting')
+    # create many coroutines
+    coros = 
+    try:
+        # run the tasks
+        results = await asyncio.gather(*coros)
+        # report results
+        print(results)
+    except Exception as e:
+        print(f'Gather failed with exception: {e}')
+        # wait around...
+        await asyncio.sleep(2)
+    # report a message
+    print('Main done')
+</code></pre>
+<p>The expectation is that all coroutines will run normally, and then one will fail with an exception. The exception will be propagated to <strong>main()</strong> immediately, which will report a message and suspend. The other coroutines will complete and report their message before the main coroutine resumes and terminates the program. This will clearly show the default behavior of <strong>asyncio.gather()</strong> when a coroutine fails with an exception.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of gather() with one task that fails with an exception
+import asyncio
+
+# coroutine used for a task
+async def task_coro(value):
+    # sleep for a moment
+    await asyncio.sleep(4)
+    # check for failure
+    if value == 0:
+        raise Exception('Something Bad Happened')
+    # wait some more
+    await asyncio.sleep(2)
+    # report details
+    print(f'&gt;{value} done')
+    # return a result
+    return value * 100
+
+# coroutine used for the entry point
+async def main():
+    # report a message
+    print('Main starting')
+    # create many coroutines
+    coros = 
+    try:
+        # run the tasks
+        results = await asyncio.gather(*coros)
+        # report results
+        print(results)
+    except Exception as e:
+        print(f'Gather failed with exception: {e}')
+        # wait around...
+        await asyncio.sleep(2)
+    # report a message
+    print('Main done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the asyncio event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a message. It then creates a list of 10 <strong>task_coro()</strong> objects with arguments from 0 to 9.</p>
+<p>The list of coroutines is then expanded and provided to <strong>asyncio.gather()</strong> to be expected concurrently. The main coroutine then suspends and waits for <strong>gather()</strong> to complete.</p>
+<p>The coroutines run concurrently, each suspends for 4 seconds.</p>
+<p>The coroutines resume the object with the argument of 0 raising an exception. The exception bubbles up and causes the task to terminate. It immediately propagates to the <strong>main()</strong> coroutine where it is handled, a message is reported and the <strong>main()</strong> coroutine suspends again.</p>
+<p>The remaining coroutines suspend for 2 seconds, report a final message, and then return their result.</p>
+<p>The main coroutine results and reports a final message.</p>
+<p>This highlights the default behavior of <strong>asyncio.gather()</strong> when an exception is raised in one or more coroutines.</p>
+<pre><code>Main starting
+Gather failed with exception: Something Bad Happened
+&gt;1 done
+&gt;2 done
+&gt;3 done
+&gt;4 done
+&gt;5 done
+&gt;6 done
+&gt;7 done
+&gt;8 done
+&gt;9 done
+Main done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how that <strong>asyncio.gather()</strong> will not wait for or cancel other coroutines if one fails with an exception.</p>
+</main>
+</body>
+</html>

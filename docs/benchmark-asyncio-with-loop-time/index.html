@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmark Asyncio with loop.time() – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Benchmark Asyncio with loop.time()</h1>
+<div class="post-meta">November 16, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Benchmarking</a></div>
+
+<p>You can <strong>benchmark asyncio programs</strong> using the <strong>loop.time()</strong> method on the asyncio event loop.</p>
+<p>The asyncio event loop maintains an internal monotonic timer. It is mostly used for managing timeouts and delays. We can retrieve the current time maintained by asyncio via the <strong>loop.time()</strong> method.</p>
+<p>In this tutorial, you will discover how to benchmark asyncio programs using the <strong>loop.time()</strong> method.</p>
+<p>Let's get started.</p>
+<h2>Need To Benchmark Asyncio Programs</h2>
+<p>Benchmarking Python code refers to comparing the performance of one program to variations of the program.</p>
+<blockquote>
+<p>Benchmarking is the practice of comparing business processes and performance metrics to industry bests and best practices from other companies. Dimensions typically measured are quality, time and cost.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Benchmarking">Benchmarking, Wikipedia</a>.</cite></blockquote>
+<p>Typically, we make changes to the programs, such as adding concurrency, in order to improve the performance of a program on a given system.</p>
+<p>Improving performance typically means reducing the run time of the program.</p>
+<p>Therefore, when we benchmark programs in Python after adding concurrency, we typically are interested in recording how long a program takes to run.</p>
+<p>It is critical to be systematic when benchmarking code.</p>
+<p>The first step is to record how long an unmodified version of the program takes to run. This provides a baseline in performance to which all other versions of the program must be compared. If we are adding concurrency, then the unmodified version of the program will typically perform tasks sequentially, e.g. one-by-one.</p>
+<p>We can then make modifications to the program, such as adding thread pools, process pools, or asyncio. The goal is to perform tasks concurrently (out of order), even in parallel (simultaneously). The performance of the program can be benchmarked and compared to the performance of the unmodified version.</p>
+<p>The performance of the modified versions of the program must have better performance than the unmodified version of the program. If they do not, they are not improvements and should not be adopted.</p>
+<p>How can we benchmark the performance of asyncio programs in Python?</p>
+<h2>What is loop.time()</h2>
+<p>The asyncio event loop maintains an internal timer.</p>
+<p>This timer is monotonic, meaning that whenever the time is retrieved it is always equal to or greater than the last time that was retrieved. The underlying clock cannot be adjusted backward in time via time synchronization or daylight savings.</p>
+<p>We can access the time maintained by the event loop via the <strong>time()</strong> method on the event loop object.</p>
+<blockquote>
+<p>Return the current time, as a float value, according to the event loop's internal monotonic clock.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-eventloop.html">Asyncio Event Loop</a></cite></blockquote>
+<p>This means that we must first retrieve the event loop object, and then call the <strong>time()</strong> method to get the time.</p>
+<p>We can get the object for the current event loop via the <strong>asyncio.get_running_loop()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# get the current event loop time
+time = loop.time()</code></pre>
+<p>If we want to retrieve the time many times in our program, such as during benchmarking, we could reduce this to a single compound statement.</p>
+<p>For example:</p>
+<pre><code>...
+# get the current event loop time
+time = asyncio.get_running_loop().time()</code></pre>
+<p>The <strong>loop.time()</strong> method is implemented using the <strong>time.monotonic()</strong> function.</p>
+<p>We can confirm this if we <a href="https://github.com/python/cpython/blob/e81bd3fa16b05e2f359105eb77da976390488d81/Lib/asyncio/base_events.py#L711">review the source code</a> for the <strong>BaseEventLoop</strong> class and specifically the code for the <strong>time()</strong> method, listed below.</p>
+<pre><code>def time(self):
+    """Return the time according to the event loop's clock.
+
+    This is a float expressed in seconds since an epoch, but the
+    epoch, precision, accuracy and drift are unspecified and may
+    differ per event loop.
+    """
+    return time.monotonic()
+</code></pre>
+<p>Recall that the <a href="https://docs.python.org/3/library/time.html#time.monotonic"><strong>time.monotonic()</strong> function</a> provides a timer that uses a system-wide monotonic clock that is not adjustable.</p>
+<p>It is used in the Python standard library generally for timeouts and delays, much as the <strong>loop.time()</strong> method is used in the asyncio event loop.</p>
+<p>You can learn more about the <strong>time.monotonic()</strong> function for benchmarking in the tutorial:</p>
+<ul>
+<li><a href="../benchmark-time-monotonic/">Benchmark Python with time.monotonic()</a></li>
+</ul>
+<p>The comment for the default implementation of the <strong>time()</strong> method is telling.</p>
+<p>It reminds us that the implementation may differ from event loop to event loop, and we should not rely on the default properties of <strong>time.monotonic()</strong>, e.g. the precision, the epoch used, and the fact that it's not adjusted.</p>
+<p>Now that we know about the <strong>loop.time()</strong> method, let's look at how we can use it to benchmark our asyncio programs.</p>
+<h2>How to Benchmark with loop.time()</h2>
+<p>We can use the <strong>loop.time()</strong> method to benchmark asyncio programs.</p>
+<p>There are perhaps 3 case studies we may want to consider, they are:</p>
+<ol>
+<li>Benchmarking a statement.</li>
+<li>Benchmarking a coroutine.</li>
+<li>Benchmarking an asyncio program.</li>
+</ol>
+<p>Let's look at how we can benchmark using the <strong>loop.time()</strong> method.</p>
+<h3>How to Benchmark a Python Statement</h3>
+<p>We can use the <strong>loop.time()</strong> method to benchmark arbitrary Python statements.</p>
+<p>The procedure is as follows:</p>
+<ol>
+<li>Record <strong>loop.time()</strong> before the statement.</li>
+<li>Execute the statement.</li>
+<li>Record <strong>loop.time()</strong> after the statement.</li>
+<li>Subtract start time from after time to give duration.</li>
+<li>Report the duration using <strong>print()</strong>.</li>
+</ol>
+<p>For example:</p>
+<pre><code># record start time
+time_start = asyncio.get_running_loop().time()
+# execute the statement
+...
+# record end time
+time_end = asyncio.get_running_loop().time()
+# calculate the duration
+time_duration = time_end - time_start
+# report the duration
+print(f'Took {time_duration:.3f} seconds')</code></pre>
+<h3>How to Benchmark an Asyncio Coroutine</h3>
+<p>We can use the <strong>loop.time()</strong> method to benchmark arbitrary asyncio coroutines.</p>
+<p>The procedure is as follows:</p>
+<ol>
+<li>Record <strong>loop.time()</strong> before the coroutine.</li>
+<li>Await the coroutine.</li>
+<li>Record <strong>loop.time()</strong> after the coroutine.</li>
+<li>Subtract start time from after time to give duration.</li>
+<li>Report the duration using <strong>print()</strong>.</li>
+</ol>
+<p>For example:</p>
+<pre><code># record start time
+time_start =asyncio.get_running_loop().time()
+# await the coroutine
+await custom_coro()
+# record end time
+time_end = asyncio.get_running_loop().time()
+# calculate the duration
+time_duration = time_end - time_start
+# report the duration
+print(f'Took {time_duration:.3f} seconds')</code></pre>
+<h3>How to Benchmark an Asyncio Program</h3>
+<p>We can use the <strong>loop.time()</strong> method to benchmark arbitrary asyncio programs.</p>
+<p>Typically, the entry point to an asyncio program is a coroutine called <strong>main()</strong>. We can add the benchmarking code to the beginning and end of this coroutine.</p>
+<p>This coroutine can then be created and passed to the <strong>asyncio.run()</strong> to start the event loop and run the asyncio program.</p>
+<p>The procedure is as follows:</p>
+<ol>
+<li>Record <strong>loop.time()</strong> at the beginning of the <strong>main()</strong> coroutine</li>
+<li>Run the body of the <strong>main()</strong> coroutine</li>
+<li>Record <strong>loop.time()</strong> at the end of the <strong>main()</strong> coroutine</li>
+<li>Subtract start time from after time to give duration.</li>
+<li>Report the duration using <strong>print()</strong>.</li>
+</ol>
+<p>For example:</p>
+<pre><code>...
+
+# define main coroutine
+async def main():
+    # record start time
+    time_start = asyncio.get_running_loop().time()
+    # execute the program
+    ...
+    # record end time
+    time_end = asyncio.get_running_loop().time()
+    # calculate the duration
+    time_duration = time_end - time_start
+    # report the duration
+    print(f'Took {time_duration:.3f} seconds')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Now that we know how to benchmark Python code using <strong>loop.time()</strong>, let's look at some worked examples.</p>
+<h2>Example of Benchmarking a Statement with loop.time()</h2>
+<p>We can explore how to benchmark a Python statement using <strong>loop.time()</strong> in an asyncio program with a worked example.</p>
+<p>In this example, we will define a statement that creates a list of 100 million squared integers in a list comprehension, which should take a number of seconds.</p>
+</main>
+</body>
+</html>

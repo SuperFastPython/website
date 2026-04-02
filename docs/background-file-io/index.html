@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run One-Off File I/O Tasks in the Background – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Run One-Off File I/O Tasks in the Background</h1>
+<div class="post-meta">August 10, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent File I/O</a></div>
+
+<p>You can run one-off file IO tasks in the background using a new thread or new child process.</p>
+<p>Running a file IO task in the background allows the main thread of the program to continue on with other tasks.</p>
+<p>In this tutorial, you will discover how to run one-off file IO tasks in the background.</p>
+<p>Let's get started.</p>
+<h2>Need to Run One-Off File I/O Tasks in the Background</h2>
+<p>We often need to perform a one-off file IO operation in our programs.</p>
+<p>For example, we may need to load some data from a file, store state to a file, or append some data to a file.</p>
+<p>If our program depends on this task being performed before moving on, it cannot or probably not be performed concurrently.</p>
+<p>For example, a program may need to load data and then process that data. The processing task depends upon the load task and is blocked until the data is loaded. Concurrency offers no benefit in this case.</p>
+<p>In other cases, the one-off operation may not be depended upon by subsequent tasks, in which case it can be performed asynchronously in a fire-and-forget manner.</p>
+<p>For example, a program may need to save state on request by the user. This activity can be performed in the background.</p>
+<p>The task can be dispatched and any error handling or notifications can be handled by the task itself.</p>
+<p>For a one-off file IO task to be completed in the background, it assumes some properties of the task, such as:</p>
+<ul>
+<li><strong>Independence</strong>. The task does not depend upon another task and is not depended upon by another task, meaning the program is not waiting for the file IO operation to complete.</li>
+<li><strong>Has Data</strong>. All data required by the task is provided to the task upfront, e.g. the data to save in the file and the name and path of the file where it is saved.</li>
+<li><strong>Error Handling</strong>. The task should manage its own error handling, such as handling and reporting exceptions as the program does not explicitly depend upon the task.</li>
+<li><strong>Isolated</strong>. There is only one or a very small number of tasks to perform, e.g. one-off. This means that we are not referring to batch file IO operations, like loading all files in a directory.</li>
+</ul>
+<p>We are now familiar with the properties of a one-off file IO task.</p>
+<p><strong>How can we run one-off file IO tasks in the background?</strong></p>
+<h2>How to Run One-Off File I/O Tasks in the Background</h2>
+<p>One-off file IO operations can be performed in the background of the main program.</p>
+<p>This can be achieved using concurrency, such as a new thread or child process.</p>
+<ol>
+<li>Run file IO tasks in the background with a new thread.</li>
+<li>Run file IO tasks in the background with a child process.</li>
+</ol>
+<p>Let's take a closer look at each of these cases, as well as the default case of not running the task in the background.</p>
+<h3>One-Off I/O Tasks Block the Main Thread</h3>
+<p>When we perform a file IO task in a program, the calling thread is blocked.</p>
+<p>This means that the function call made to perform the file IO does not return until the task is complete.</p>
+<p>The program cannot continue until the function returns, as such is blocked from execution.</p>
+<p>For example:</p>
+<pre><code>...
+# open a file for writing text
+with open('path/to/file.ext', 'w', encoding='utf-8') as handle:
+	# write a string to file
+	handle.write('Hello world!')
+</code></pre>
+<p>In this case, the program is blocked in two cases:</p>
+<ol>
+<li>Opening the file via the <strong>open()</strong> function</li>
+<li>Writing to the file via the <strong>write()</strong> method</li>
+</ol>
+<p>If the program is not dependent upon the file being opened and data written to the file, this task can be performed in the background.</p>
+<p>This would mean that the main thread would not be blocked and would be free to continue on with other tasks.</p>
+<h3>Background Tasks with Thread</h3>
+<p>We can execute an independent file IO task in the background using a new thread.</p>
+<p>This can be achieved by first defining an independent function to perform the task.</p>
+<p>This function must take all required data as arguments and not return anything.</p>
+<p>For example, if we are saving data to file, then the function would take the data and file path as arguments.</p>
+<pre><code># function to write a file
+def write_file(filename, data):
+    # open a file for writing text
+    with open(filename, 'w', encoding='utf-8') as handle:
+        # write string data to the file
+        handle.write(data)
+</code></pre>
+<p>We can then create a new <strong>threading.Thread</strong> class and configure it to call our <strong>write_file()</strong> function and pass it the required arguments.</p>
+<p>This can be achieved via the "<strong>target</strong>" argument that takes the name of the function to run and the "<strong>args</strong>" argument that takes a tuple of the ordered arguments to the function.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new thread to run our function
+thread = Thread(target=write_file, args=('data.txt', 'Hello world'))</code></pre>
+<p>We can then start the new thread.</p>
+<p>This will request that the underlying operating system execute our function as soon as it is able.</p>
+<p>For example:</p>
+<pre><code>...
+# start the new thread
+thread.start()</code></pre>
+<p>The program is then free to continue on with other tasks.</p>
+<p>You can learn more about how to run functions in a new thread in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-thread/">How to Run a Function in a New Thread in Python</a></li>
+</ul>
+<h3>Background Tasks with Process</h3>
+<p>We can also execute independent file IO tasks in the background using a new child process.</p>
+<p>As with a new thread, we first define a new function to execute our task that takes all required data for the task as arguments.</p>
+<p>We can then create a new <strong>multiprocessing.Process</strong> object and configure it to execute our target function and take the required arguments.</p>
+<p>The <strong>multiprocessing.Process</strong> has the same API as the <strong>threading.Thread</strong>, including a "<strong>target</strong>" argument for the name of the function to execute and an "<strong>args</strong>" argument for an ordered tuple of arguments to the function.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new child process
+process = Process(target=write_file, args=('data.txt', 'Hello world'))</code></pre>
+<p>The new process can then be started via the <strong>start()</strong> method.</p>
+<p>This requests that the operating system execute our function in the new child process as soon as it is able.</p>
+<p>For example:</p>
+<pre><code>...
+# run the new process
+process.start()</code></pre>
+<p>The program is then free to continue on and execute other tasks while the file IO operation occurs in the background.</p>
+<p>You can learn more about how to run functions in new processes in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<h3>Choose Between Thread vs Process</h3>
+<p>Why would we choose to run a file IO task in the background using a thread vs a process?</p>
+<p>A thread is lightweight meaning that it is fast to create and run and uses minimal memory. It is also able to access data and variables shared in the main thread, which may be helpful for error handling.</p>
+<p>A process is heavyweight compared to a thread, for example, a process has one or more threads, whereas a thread does not have processes. A thread is slower to start and takes up more memory. It is also much slower to share data with a new process via function arguments. This may mean that there will be overhead when using a child process if a file IO task involves saving a large amount of data in the background.</p>
+<p>Generally, I would recommend using a thread for running one-off file IO tasks in the background.</p>
+<p>Nevertheless, sometimes the independence of a new process is required, such as if a large amount of CPU-bound work is required before saving the file. If run in a thread, this CPU-bound work would block the main thread because of the global interpreter lock (GIL), whereas when run in a new process, the main thread is free to continue.</p>
+<p>You can learn more using threads vs using processes in the tutorial:</p>
+<ul>
+<li><a href="../threading-vs-multiprocessing-in-python/">Threading vs Multiprocessing in Python</a></li>
+</ul>
+<p>And also:</p>
+<ul>
+<li><a href="../thread-vs-process/">Thread vs Process in Python</a></li>
+</ul>
+<p>Now that we are familiar with how to run a one-off file IO task in the background, let's look at some worked examples.</p>
+<h2>Example of Writing a File in the Background</h2>
+<p>In this section, we will explore an example of running a one-off file IO task in the background.</p>
+<p>This example will first show how to save data to a file in a way that blocks the main thread. We will then run the same task in the background using a new thread, then finally run in the background using a new child process.</p>
+<ol>
+<li>Save the file by blocking the main thread.</li>
+<li>Save the file in the background with a new thread.</li>
+<li>Save a file in the background with a child process.</li>
+</ol>
+<p>Let's dive in.</p>
+<h3>Write a File And Block the Main Thread</h3>
+<p>In this example, we will write a file in a way that will block the main thread.</p>
+<p>Firstly, we will define a function to perform the file IO task independently. The function takes the filename and the data that will be saved. It opens the file, writes the data, and closes the file. It then reports a final message to signal that the task is complete.</p>
+<p>The <strong>write_file()</strong> function below implements this.</p>
+<pre><code># task to write a file
+def write_file(filename, data):
+    # open a file for writing text
+    with open(filename, 'w', encoding='utf-8') as handle:
+        # write string data to the file
+        handle.write(data)
+    # report a message
+    print(f'File saved: {filename}')
+</code></pre>
+<p>Next in the main thread will report a message that the program is running, then another message that we are about to save the file. The <strong>write_file()</strong> is then called and a final message is reported that the main thread is done.</p>
+<pre><code>...
+# report a message
+print('Main is running')
+# save the file
+print('Saving file...')
+write_file('data.txt', 'Hello world')
+# report a message
+print('Main is done.')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of writing a file as a foreground task
+
+# task to write a file
+def write_file(filename, data):
+    # open a file for writing text
+    with open(filename, 'w', encoding='utf-8') as handle:
+        # write string data to the file
+        handle.write(data)
+    # report a message
+    print(f'File saved: {filename}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # report a message
+    print('Main is running')
+    # save the file
+    print('Saving file...')
+    write_file('data.txt', 'Hello world')
+    # report a message
+    print('Main is done.')
+</code></pre>
+<p>Running the program first reports a message that the program is running.</p>
+<p>The main thread then reports a message that it is about to save the file.</p>
+<p>The <strong>write_file()</strong> is called, which blocks the main thread until the function returns,</p>
+<p>The function opens the file using the context manager interface and writes the data to the file before closing the file again. A message is reported indicating that the file IO operation is complete.</p>
+<p>The program resumes and reports a final message that it is done.</p>
+<p>This example highlights that performing a file IO operation will block the main thread until the task is complete.</p>
+<pre><code>Main is running
+Saving file...
+File saved: data.txt
+Main is done.</code></pre>
+<p>Next, let's explore how we might perform the same operation in the background without blocking the main thread.</p>
+<h3>Write File in the Background with Thread</h3>
+<p>We can update the above example so that the file IO operation is performed in the background and does not block the main thread.</p>
+<p>Firstly, we need to create a new <strong>threading.Thread</strong> configured to execute our function with the required arguments.</p>
+<pre><code>...
+# create and configure the new thread
+thread = Thread(target=write_file, args=('data.txt', 'Hello world'))</code></pre>
+<p>The new thread can then be started.</p>
+<pre><code>...
+# start running the new thread in the background
+thread.start()</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the updated version that runs the file IO task in the background using a new thread is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of writing a file as a background task using a thread
+from threading import Thread
+
+# task to write a file
+def write_file(filename, data):
+    # open a file for writing text
+    with open(filename, 'w', encoding='utf-8') as handle:
+        # write string data to the file
+        handle.write(data)
+    # report a message
+    print(f'File saved: {filename}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # report a message
+    print('Main is running')
+    # save the file
+    print('Saving file...')
+    # create and configure the new thread
+    thread = Thread(target=write_file, args=('data.txt', 'Hello world'))
+    # start running the new thread in the background
+    thread.start()
+    # report a message
+    print('Main is done.')
+</code></pre>
+<p>Running the program first reports a message that the program is running.</p>
+<p>The main thread then reports a message that it is about to save the file.</p>
+<p>The new thread is then created and configured to run our custom function, then the thread is started.</p>
+<p>This schedules the thread to run at some time in the future by the operating system.</p>
+<p>The main thread continues on immediately, reporting the final message and terminating.</p>
+<p>The program continues running because the new thread is still running in the background.</p>
+<p>The <strong>write_file()</strong> function is executed in a new thread. It opens the file using the context manager interface and writes the data to the file before closing the file again. A message is reported indicating that the file IO operation is complete.</p>
+<p>The program then terminates.</p>
+<p>This example highlights how to perform a file IO operation in the background with a new thread, allowing the main thread to perform other tasks at the same time, or terminate early.</p>
+<pre><code>Main is running
+Saving file...
+Main is done.
+File saved: data.txt</code></pre>
+<p>Next, let's look at how we might perform the same task in the background using a new child process.</p>
+<h3>Write File in the Background with Process</h3>
+<p>We can update the above example so that the file IO operation is performed in the background using a new child process</p>
+<p>Firstly, we need to create a new <strong>multiprocessing.Process</strong> configured to execute our function with the required arguments.</p>
+<pre><code>...
+# create and configure a new child process
+process = Process(target=write_file, args=('data.txt', 'Hello world'))</code></pre>
+<p>The new child process can then be started.</p>
+<pre><code>...
+# start running the new child process
+process.start()</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the updated version that runs the file IO task in the background using a new child process is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of writing a file as a background task using a process
+from multiprocessing import Process
+
+# task to write a file
+def write_file(filename, data):
+    # open a file for writing text
+    with open(filename, 'w', encoding='utf-8') as handle:
+        # write string data to the file
+        handle.write(data)
+    # report a message
+    print(f'File saved: {filename}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # report a message
+    print('Main is running')
+    # save the file
+    print('Saving file...')
+    # create and configure a new child process
+    process = Process(target=write_file, args=('data.txt', 'Hello world'))
+    # start running the new child process
+    process.start()
+    # report a message
+    print('Main is done.')
+</code></pre>
+<p>Running the program first reports a message that the program is running.</p>
+<p>The main thread then reports a message that it is about to save the file.</p>
+<p>The new child process is then created and configured to run our custom function, then the process is started.</p>
+<p>This schedules the process to run at some time in the future by the operating system.</p>
+<p>The main thread continues on immediately, reporting the final message and terminating.</p>
+<p>The program continues running because the new child process is still running in the background.</p>
+<p>The <strong>write_file()</strong> function is executed in a child process. It opens the file using the context manager interface and writes the data to the file before closing the file again. A message is reported indicating that the file IO operation is complete.</p>
+<p>The program then terminates.</p>
+<p>This example highlights how to perform a file IO operation in the background with a new process, allowing the main thread to perform other tasks at the same time, or terminate early.</p>
+<pre><code>Main is running
+Saving file...
+Main is done.
+File saved: data.txt</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to run one-off file IO tasks in the background.</p>
+</main>
+</body>
+</html>

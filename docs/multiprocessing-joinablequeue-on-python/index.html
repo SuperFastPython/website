@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing JoinableQueue on Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing JoinableQueue on Python</h1>
+<div class="post-meta">May 29, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can <strong>communicate between processes</strong> with a queue via the <strong>multiprocessing.JoinableQueue</strong> class.</p>
+<p>In this tutorial you will discover how to use the process <strong>JoinableQueue in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need for a JoinableQueue</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> is a running instance of a computer program.</p>
+<p>Every Python program is executed in a Process, which is a new instance of the Python interpreter. This process has the name <em>MainProcess</em> and has one thread used to execute the program instructions called the <em>MainThread</em>. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create new child processes in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process"><strong>multiprocessing.Process</strong> class</a>.</p>
+<p>In <a href="../multiprocessing-in-python/">multiprocessing programming</a>, we often need to share data between processes.</p>
+<p>One approach to sharing data is to use a queue data structure.</p>
+<p>A problem when using queues is knowing when all items in the queue have been processed by consumer processes.</p>
+<p><strong>How can we know when all items have been processed in a queue?</strong></p>
+<h2>Why Care When All Tasks Are Done</h2>
+<p>There are many reasons why a process may want to know when all tasks in a queue have been processed.</p>
+<p>For example:</p>
+<ul><li>A producer process may want to wait until all work is done before adding new work.</li><li>A producer process may want to wait for all tasks to be done before sending a shutdown signal.</li><li>A main process may want to wait for all tasks to be done before terminating the program.</li></ul>
+<p>There are two aspects to this, they are:</p>
+<ul><li>A process blocking until tasks are done.</li><li>A task being done is more than being retrieved from the queue.</li></ul>
+<p>Specifically, waiting means that the process is blocked until the condition is met.</p>
+<p>The condition of all tasks being processed is not only the case that all items put on the queue have been retrieved, but have been processed by the process that retrieved them.</p>
+<p>Next, let’s look at how we might do this in Python.</p>
+<h2>How to Use the JoinableQueue</h2>
+<p>Python provides a simple queue in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.JoinableQueue"><strong>multiprocessing.JoinableQueue</strong> class</a>.</p>
+<p>The <strong>multiprocessing.JoinableQueue</strong> class extends the <strong>multiprocessing.Queue</strong> class. This means it provides the same functionality, such as adding items to the queue via <strong>put()</strong> and getting items from the queue via <strong>get()</strong>.</p>
+<p>You can learn more about this interface on <strong>multiprocessing.Queue</strong> in the tutorial:</p>
+<ul><li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li></ul>
+<p>The <strong>multiprocessing.JoinableQueue</strong> class offers two additional methods for joining a queue and marking items on the queue as done.</p>
+<p>Let's take a closer look at this added capability.</p>
+<p>An object added to a queue by representing a task or a unit of work.</p>
+<p>When a consumer process calls <strong>get()</strong> to retrieve the item from the queue, it may need to do additional work to it before the task is considered complete.</p>
+<p>Once complete, the process may then call the <strong>task_done()</strong> method on the queue to indicate that the item that was just retrieved has been completely processed.</p>
+<p>For example:</p>
+<pre><code>...
+# get a task
+item = queue.get()
+# process it
+# ...
+# mark the task as completed
+queue.task_done()</code></pre>
+<p>This is helpful to other processes that may be interested to know once all tasks that have been added to the queue have been completed.</p>
+<p>Other processes can wait for all tasks currently on the queue to be completed by calling the <strong>join()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all current tasks on the queue to be marked as done
+queue.join()</code></pre>
+<blockquote><p>The count of unfinished tasks goes up whenever an item is added to the queue. The count goes down whenever a consumer calls task_done() to indicate that the item was retrieved and all work on it is complete. When the count of unfinished tasks drops to zero, join() unblocks.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.JoinableQueue">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>If the <strong>task_done()</strong> function is called more times than there are items on the queue, then a ValueError will be raised to indicate the invalid state.</p>
+<p>If the <strong>join()</strong> function is called after all tasks have been marked done, then the function will return immediately.</p>
+<p>Note, this capability is also available on <strong>queue.Queue</strong> for threads instead of child processes. Learn more in the tutorial:</p>
+<ul><li><a href="../thread-queue-task-done-join/">Queue task_done() and join() in Python</a></li></ul>
+<p>Now that we know how to use the <strong>multiprocessing.JoinableQueue</strong>, let's look at some worked examples.</p>
+<h2>Example of Using the JoinableQueue</h2>
+<p>We can explore an example of how to use <strong>join()</strong> and <strong>task_done()</strong> on the <strong>JoinableQueue</strong>.</p>
+<p>In this example we will have a producer process that will add ten tasks to the queue and then signal that no further tasks are to be expected. The consumer process will get the tasks, process them and mark them as done. When the signal to exit is received, the consumer process will terminate. The main process will wait for the producer process to add all items to the queue, and will wait for all items on the queue to be processed before moving on.</p>
+<p>Let's dive in.</p>
+<h3>Producer Process</h3>
+<p>First, we can define the function to be executed by the producer process.</p>
+<p>The task will iterate ten times in a loop.</p>
+<pre><code>...
+print('Producer starting', flush=True)
+# add tasks to the queue
+for i in range(10):
+	# ...
+</code></pre>
+<p>Each iteration, it will generate a new random value between 0 and 1 via the <a href="https://docs.python.org/3/library/random.html#random.random"><strong>random.random()</strong> function</a>. It will then pair the generated value with an integer timestamp from 0 to 9 into a tuple and put the value on the queue.</p>
+<pre><code>...
+# generate a task
+    task = (i, random())
+    print(f'.producer added {task}', flush=True)
+    # add it to the queue
+    queue.put(task)
+</code></pre>
+<p>Finally, the producer will put the value <strong>None</strong> on the queue to signal to the consumer that there are no further tasks.</p>
+<p>This is called a <a href="https://en.wikipedia.org/wiki/Sentinel_value">Sentinel Value</a> and is a common way for processes to communicate via queues to signal an important event, like a shutdown.</p>
+<pre><code>...
+# send a signal that no further tasks are coming
+queue.put(None)
+print('Producer finished', flush=True)
+</code></pre>
+<p>The <strong>producer()</strong> function below implements this by taking the queue instance as an argument.</p>
+<pre><code># task for the producer process
+def producer(queue):
+    print('Producer starting', flush=True)
+    # add tasks to the queue
+    for i in range(10):
+        # generate a task
+        task = (i, random())
+        print(f'.producer added {task}', flush=True)
+        # add it to the queue
+        queue.put(task)
+    # send a signal that no further tasks are coming
+    queue.put(None)
+    print('Producer finished', flush=True)
+</code></pre>
+<h3>Consumer Process</h3>
+<p>Next, we can define the function to be executed by the consumer process.</p>
+<p>The consumer process will loop forever.</p>
+<pre><code>...
+print('Consumer starting', flush=True)
+# process items from the queue
+while True:
+    #...
+</code></pre>
+<p>Each iteration, it will get an item from the queue and block if there is no item yet available.</p>
+<pre><code>...
+# get a task from the queue
+task = queue.get()</code></pre>
+<p>If the item retrieved from the queue is the value <strong>None</strong>, then the task will break the loop and terminate the process.</p>
+<pre><code>...
+# check for signal that we are done
+if task is None:
+    break
+</code></pre>
+<p>Otherwise, the fractional value is used to block with a call to <strong>time.sleep()</strong> and is then reported. The item is then marked as processed via a call to <strong>task_done()</strong>.</p>
+<pre><code>...
+# process the item
+sleep(task[1])
+print(f'.consumer got {task}', flush=True)
+# mark the unit of work as processed
+queue.task_done()
+</code></pre>
+<p>Finally, just prior to the process exiting, it will mark the signal to terminate as processed.</p>
+<pre><code>...
+# mark the signal as processed
+queue.task_done()
+print('Consumer finished', flush=True)</code></pre>
+<p>The <strong>consumer()</strong> function below implements this and takes the queue instance as an argument.</p>
+<pre><code># task for the consumer process
+def consumer(queue):
+    print('Consumer starting', flush=True)
+    # process items from the queue
+    while True:
+        # get a task from the queue
+        task = queue.get()
+        # check for signal that we are done
+        if task is None:
+            break
+        # process the item
+        sleep(task[1])
+        print(f'.consumer got {task}', flush=True)
+        # mark the unit of work as processed
+        queue.task_done()
+    # mark the signal as processed
+    queue.task_done()
+    print('Consumer finished', flush=True)
+</code></pre>
+<h3>Create Queue and Child Processes</h3>
+<p>In the main process we can create the shared joinable queue instance.</p>
+<pre><code>...
+# create the shared queue
+queue = JoinableQueue()</code></pre>
+<p>Then we can configure and start the producer process, which will generate tasks and add them to the queue for the consumer to retrieve.</p>
+<pre><code>...
+# create and start the producer process
+producer_process = Process(target=producer, args=(queue,))
+producer_process.start()</code></pre>
+<p>We can then configure and start the consumer process, which will patiently wait for work to arrive on the queue.</p>
+<pre><code>...
+# create and start the consumer process
+consumer_process = Process(target=consumer, args=(queue,))
+consumer_process.start()</code></pre>
+<p>The main process will then block until the producer process has added all work to the queue and the process has terminated.</p>
+<pre><code>...
+# wait for the producer to finish
+producer_process.join()
+print('Main found that the producer has finished', flush=True)</code></pre>
+<p>The main process will then block on the queue with a call to <strong>join()</strong> until the consumer has retrieved all values from the queue and processed them appropriately. This includes the final signal that there are no further task items to process.</p>
+<pre><code>...
+# wait for the queue to empty
+queue.join()
+print('Main found that all tasks are processed', flush=True)</code></pre>
+<p>It is important that the main process blocks on the producer process first, before blocking on the queue. This is to avoid a possible race condition.</p>
+<p>For example, if the main process blocked on the queue directly, it is possible that at that time for the queue to be empty, in which case the call would return immediately. Alternatively, it may join at a time when there are only a few tasks on the queue, they are consumed by the consumer process and the join call returns.</p>
+<p>The problem is that in both of these cases, we don’t know if the call to join returned because all tasks were marked done or just a subset of tasks that had been added to the queue at the time join was called.</p>
+<p>By waiting for the producer process to terminate first, we know that all tasks that could be added to the queue have been added to the queue. By blocking on the queue after the producer has finished, we know that when the call to join returns, that all tasks were added to the queue, all tasks were retrieved from the queue and all retrieved tasks were marked as done.</p>
+<h3>Complete Example</h3>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of join and task done for a joinable queue with processes
+from time import sleep
+from random import random
+from multiprocessing import JoinableQueue
+from multiprocessing import Process
+
+# task for the producer process
+def producer(queue):
+    print('Producer starting', flush=True)
+    # add tasks to the queue
+    for i in range(10):
+        # generate a task
+        task = (i, random())
+        print(f'.producer added {task}', flush=True)
+        # add it to the queue
+        queue.put(task)
+    # send a signal that no further tasks are coming
+    queue.put(None)
+    print('Producer finished', flush=True)
+
+# task for the consumer process
+def consumer(queue):
+    print('Consumer starting', flush=True)
+    # process items from the queue
+    while True:
+        # get a task from the queue
+        task = queue.get()
+        # check for signal that we are done
+        if task is None:
+            break
+        # process the item
+        sleep(task[1])
+        print(f'.consumer got {task}', flush=True)
+        # mark the unit of work as processed
+        queue.task_done()
+    # mark the signal as processed
+    queue.task_done()
+    print('Consumer finished', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create the shared queue
+    queue = JoinableQueue()
+    # create and start the producer process
+    producer_process = Process(target=producer, args=(queue,))
+    producer_process.start()
+    # create and start the consumer process
+    consumer_process = Process(target=consumer, args=(queue,))
+    consumer_process.start()
+    # wait for the producer to finish
+    producer_process.join()
+    print('Main found that the producer has finished', flush=True)
+    # wait for the queue to empty
+    queue.join()
+    print('Main found that all tasks are processed', flush=True)
+</code></pre>
+<p>Running the example first creates the queue to be shared between the producer and consumer processes.</p>
+<p>Then the producer process is created and configured to execute our producer() function and passed in the shared queue instance. The producer process is then started.</p>
+<p>Next, the consumer process is configured to execute our <strong>consumer()</strong> function and is then started.</p>
+<p>The producer process runs as fast as it is able, each iteration generating a random number and adding it along with the task number to the queue. Once all ten tasks have been added to the queue, a <strong>None</strong> message is sent to the queue to indicate no further messages are to be expected and the producer process terminates.</p>
+<p>The main process notices that the producer process has terminated, then blocks on the queue itself waiting for all tasks to be retrieved and marked as done.</p>
+<p>The consumer process retrieves tasks one at a time from the queue, blocks and reports their value, then marks the task as done. This is repeated until the sentinel message is received and the loop is broken. Just before the consumer process is terminated, the final sentinel message is marked as done.</p>
+<p>The main process notices that all tasks were marked done and is then free to continue on with other tasks. In this case, the main process reports a message and terminates.</p>
+<p>A sample of the output from the program is listed below. Note, your specific results will differ given the use of random numbers.</p>
+<p>In this case, we can see that the producer ran first, adding all tasks to the queue. Then the consumer process ran, reading off each value. After all tasks are marked done, finally the main process continues on.</p>
+<p>This highlights how to use <strong>task_done()</strong> and <strong>join()</strong> on a process queue.</p>
+<pre><code>Producer starting
+.producer added (0, 0.17191334178951057)
+Consumer starting
+.producer added (1, 0.7281669000124695)
+.producer added (2, 0.8835116735385814)
+.producer added (3, 0.3613833018911995)
+.producer added (4, 0.6356607291920195)
+.producer added (5, 0.8971417071906157)
+.producer added (6, 0.424420704274559)
+.producer added (7, 0.017250244327121078)
+.producer added (8, 0.35167161248303724)
+.producer added (9, 0.5265211005357712)
+Producer finished
+Main found that the producer has finished
+.consumer got (0, 0.17191334178951057)
+.consumer got (1, 0.7281669000124695)
+.consumer got (2, 0.8835116735385814)
+.consumer got (3, 0.3613833018911995)
+.consumer got (4, 0.6356607291920195)
+.consumer got (5, 0.8971417071906157)
+.consumer got (6, 0.424420704274559)
+.consumer got (7, 0.017250244327121078)
+.consumer got (8, 0.35167161248303724)
+.consumer got (9, 0.5265211005357712)
+Consumer finished
+Main found that all tasks are processed
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share data among processes with the <strong>JoinableQueue</strong> in Python.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lock Contention in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Lock Contention in Python</h1>
+<div class="post-meta">April 22, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can <strong>reduce lock contention</strong> by reducing the frequency and duration that a lock is used and held.</p>
+<p>In this tutorial you will discover how to identify and <strong>reduce lock contention in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Problem With Lock Contention</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Mutual_exclusion">mutual exclusion lock</a> or mutex lock is a synchronization primitive intended to prevent a race condition.</p>
+<p>A mutex lock can be used to ensure that only one <a href="../threading-in-python/">thread</a> at a time executes a critical section of code at a time, while all other threads trying to execute the same code must wait until the currently executing thread is finished with the critical section and releases the lock.</p>
+<p>Python provides a mutual exclusion lock via the <strong>threading.Lock</strong> class.</p>
+<p>An instance of the lock can be created and then acquired by threads before accessing a critical section, and released after the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = Lock()
+# acquire the lock
+lock.acquire()
+# critical section
+# ...
+# release the lock
+lock.release()</code></pre>
+<p>Only one thread can have the lock at any time. If a thread does not release an acquired lock, it cannot be acquired again.</p>
+<p>The thread attempting to acquire the lock will block until the lock is acquired, such as if another thread currently holds the lock then releases it.</p>
+<p>We can also use the lock via the context manager. This will allow the critical section to be a block within the usage of the lock and for the lock to be released automatically once the block has completed.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = Lock()
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>You can learn more about mutex locks in the tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>A problem with locks is that multiple threads may attempt to acquire the lock at the same time.</p>
+<p>This is called lock contention.</p>
+<p><strong>What is lock contention and how can we fix it in our programs?</strong></p>
+<h2>What is Lock Contention</h2>
+<p>Lock contention is a problem that may occur when using mutual exclusion (mutex) locks.</p>
+<p>Lock contention is typically described in the context of the internals of operating systems, but may also be a problem at a high-level such as application programming with concurrency primitives.</p>
+<p>It describes a situation where a lock protects a critical section and multiple threads attempt to acquire the lock at the same time.</p>
+<blockquote><p>Contention on a lock occurs when multiple threads try to acquire the lock at the same time. High contention means there are many such threads; low contention means there are few.</p><cite>-- Page 154, <a href="https://amzn.to/3z1XhOz">The Art of Multiprocessor Programming</a>, 2020.</cite></blockquote>
+<p>This is a problem because only one thread can acquire a lock, and all other threads must block, and wait for the lock to become available. This is an inefficient use of resources, as those threads could be executing and completing tasks in the application.</p>
+<blockquote><p>If, however, the lock is in sufficiently high demand, threads will block waiting for it; in the extreme case, processors will sit idle even though there is plenty of work to do.</p><cite>-- Page 232, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>Lock contention is a specific type of contention problem, related to the broader problem of <a href="https://en.wikipedia.org/wiki/Resource_contention">resource contention</a> where multiple threads may compete for access for any given resource accessible to the program.</p>
+<p>It may be helpful to think of lock contention in terms of severity.</p>
+<p>For example:</p>
+<ul><li><strong>High Lock Contention</strong>: Many threads competing for the same lock.</li><li><strong>Low Lock Contention</strong>: Few threads competing for the same lock.</li></ul>
+<p>If we are subjected to the problem of lock contention in our concurrent application, we would prefer low lock contention over high lock contention.</p>
+<p>There are two aspects of using a lock which may influence whether we suffer lock contention.</p>
+<p>They are:</p>
+<ul><li>How often the lock is used.</li><li>How long the lock is held.</li></ul>
+<p>For example, the more often a lock is used in a multithreaded application, the more likely there will be contention for the lock among threads.</p>
+<p>Additionally, the longer a lock is held within the application, the more likely that there will be contention for the lock among the threads.</p>
+<blockquote><p>Two factors influence the likelihood of contention for a lock: how often that lock is requested and how long it is held once acquired.</p><cite>-- Page 232, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>This provides some insight in how we might reduce contention for locks in our programs.</p>
+<p>Next, let's look at approaches we can use to reduce lock contention.</p>
+<h2>How to Reduce Lock Contention</h2>
+<p>There are two main techniques we can use to address and reduce lock contention in our programs.</p>
+<p>They are:</p>
+<ul><li>Reduce lock frequency.</li><li>Reduce lock duration.</li></ul>
+<p>We may be able to reduce the frequency and duration of the locks directly.</p>
+<p>Alternatively, we might consider a framework under which the locks are used in the program.</p>
+<p>For example:</p>
+<ul><li>Reduce lock scope.</li><li>Increase lock granularity.</li></ul>
+<p>If we must suffer some contention for locks in our application, there are two approaches we may use to reduce their effects.</p>
+<p>They are:</p>
+<ul><li>Block before acquiring the lock.</li><li>Back-off while waiting for the lock.</li></ul>
+<p>Let's take a closer look at each approach in turn.</p>
+<h3>Reduce Lock Frequency</h3>
+<p>The more often a lock is used within the program, the more likely lock contention will occur.</p>
+<p>As such, we can reduce the likelihood of lock contention by limiting the use of a lock as much as possible within the program.</p>
+<blockquote><p>The other way to reduce the fraction of time that a lock is held (and therefore the likelihood that it will be contended) is to have threads ask for it less often.</p><cite>-- Page 233, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>This may involve an audit of the usage of the lock to confirm that it is indeed protecting the same or related critical sections in the program.</p>
+<p>One approach to reducing lock frequency is by increasing the lock granularity.</p>
+<h3>Increase Lock Granularity</h3>
+<p>Lock granularity refers to the relationship between the lock and the state and resources it protects.</p>
+<p>Coarse lock granularity means that one lock protects many state variables or resources, whereas fine lock granularity means that one lock protects few state variables or resources.</p>
+<ul><li><strong>Coarse Lock Granularity</strong>: One lock protects many variables.</li><li><strong>Fine Lock Granularity</strong>: One lock protects a few variables.</li></ul>
+<p>Lock contention may be reduced by increasing the granularity of the lock.</p>
+<p>Two approaches to increasing lock granularity are lock splitting and lock stripping.</p>
+<ul><li><strong>Lock Splitting</strong>: Split a critical section of multiple variables protected by one lock into multiple critical sections per variable each protected by their own lock.</li><li><strong>Lock Striping</strong>: Split a data structure protected by one lock into multiple partitions or stripes each protected by their own lock.</li></ul>
+<p>Lock splitting can be achieved by splitting up a critical section into multiple critical sections, perhaps one per variable. Then adding a new lock for each new critical section.</p>
+<blockquote><p>This can be accomplished by lock splitting and lock striping, which involve using separate locks to guard multiple independent state variables previously guarded by a single lock.</p><cite>-- Page 233, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>For example, perhaps a lock protected four variables. Lock granularity could be increased by separating the four variables into four critical sections, then adding three additional locks so that each variable was protected by its own lock.</p>
+<p>This may allow the frequency of any given lock to be reduced throughout the application.</p>
+<p>Alternately, splitting a lock into multiple locks may result in multiple locks with equally high lock contention.</p>
+<blockquote><p>Splitting a heavily contended lock into two is likely to result in two heavily contended locks.</p><cite>-- Page 233, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>If a variable being protected is a data structure like a list, set, or dictionary, then it may be possible to split up the data structure into sub-structures. Each sub-structure may then be protected by its own lock, reducing contention. This is called lock striping.</p>
+<blockquote><p>Lock splitting can sometimes be extended to partition locking on a variable-sized set of independent objects, in which case it is called lock striping.</p><cite>-- Page 233, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>Another approach might be to split up the responsibilities on the objects that are being protected.</p>
+<p>For example, if a resource is being protected, then perhaps the responsibilities of reading from the resource can be separated from the responsibility of writing to the resource, each protected by their own lock.</p>
+<p>This highlights that scope may refer to the set of variables being protected or the set of responsibilities being protected by a lock.</p>
+<ul><li><strong>Scope of Variables</strong>: Increase lock granularity by decreasing the number of variables protected by a lock.</li><li><strong>Scope of Responsibilities</strong>: Increase lock granularity by decreasing the number of responsibilities protected by a lock.</li></ul>
+<p>There is an increased risk of deadlock if additional locks are added and some locks must be acquired while other locks are held. This risk can be reduced through lock ordering.</p>
+<h3>Reduce Lock Duration</h3>
+<p>The longer a lock is held within the program, the more likely that lock contention will occur.</p>
+<p>As such, we can reduce lock contention by holding a lock for as short a time as possible in the program.</p>
+<blockquote><p>An effective way to reduce the likelihood of contention is to hold locks as briefly as possible.</p><cite>-- Page 233, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>This may involve an audit of the usage of the lock to confirm that it is indeed protecting the minimum amount of code that requires protection from race conditions.</p>
+<p>One approach to reducing lock duration is by decreasing the lock scope.</p>
+<h3>Reduce Lock Scope</h3>
+<p>Lock scope refers to the amount of code protected by a lock.</p>
+<p>A large scope refers to a lot of code protected by a lock, whereas a small scope refers to less code or instructions protected by a lock.</p>
+<ul><li><strong>Large Lock Scope</strong>: Many instructions protected by the lock.</li><li><strong>Small Lock Scope</strong>: Fewer instructions protected by the lock.</li></ul>
+<p>A smaller scope is preferred as fewer instructions executed while the lock is being held likely means a smaller duration of time that the lock will be held.</p>
+<p>We might consider scope along two dimensions, the lines of code and the time taken to execute each line of code.</p>
+<ul><li>Reduce total lines of code protected by the lock.</li><li>Reduce lines of code that take the longest to execute protected by the lock.</li></ul>
+<p>Often code can be re-organized such that a critical section protected by the lock consists of only the state that requires protection, with nothing extraneous.</p>
+<p>This can help to reduce the overall number of lines of code protected by a lock.</p>
+<p>Perhaps more importantly is the time taken to execute the lines of code protected by a lock. The most time consuming lines of code are blocking function calls.</p>
+<blockquote><p>This can be done by moving code that doesn't require the lock out of synchronized blocks, especially for expensive operations and potentially blocking operations such as I/O.</p><cite>-- Page 233, <a href="https://amzn.to/3lQ9BK2">Java Concurrency in Practice</a>, 2006.</cite></blockquote>
+<p>Perhaps we can audit the code and move out function calls that are particularly slow, requiring that the lock be held for an extended period of time. This might include blocking calls that access external resources.</p>
+<h3>Block Before Acquiring Lock</h3>
+<p>Sometimes some lock contention must be suffered, even after our best efforts to reduce the duration and frequency of the usage of the lock.</p>
+<p>One aspect of lock contention is when many threads attempt to acquire a lock at exactly the same time.</p>
+<p>This puts a burden on the lock itself, and perhaps the underlying mechanics in the C-code or the operating system in terminating what thread can acquire the lock and what threads must block wait and in what order.</p>
+<p>We may reduce this direct contention by reducing the number of threads that simultaneously attempt to acquire the lock.</p>
+<p>This can be achieved by introducing a small sleep prior to acquiring the lock.</p>
+<p>The interval may be small, much less than a second, such as a random number of a few milliseconds, a few tens of milliseconds or a few hundreds of milliseconds, depending on the application.</p>
+<p>Sleep is a system call that blocks the current thread of execution.</p>
+<p>This can be achieved via the <strong>time.sleep() </strong>function and specifying the time interval in seconds to block before acquiring the lock, such as 1 for one second or 0.100 for 100 milliseconds.</p>
+<p>A random interval in the desired range can be used to reduce the simultaneous attempt at acquiring the lock. This can be achieved via the random.random() function.</p>
+<p>For example:</p>
+<pre><code>...
+# block for a random amount between 0 and 1 seconds
+time.sleep(random.random())
+# acquire the lock
+with lock:
+	# ...
+</code></pre>
+<p>You can learn more about sleeping threads in this tutorial:</p>
+<ul><li><a href="../thread-sleep-in-python/">How to Sleep a Thread in Python</a></li></ul>
+<h3>Back-Off While Waiting for Lock</h3>
+<p>Lock contention may be a part of a concurrent program.</p>
+<p>One approach to reducing contention for a lock is to add a back-off.</p>
+<blockquote><p>Whenever a thread sees the lock has become free but fails to acquire it, it backs off before retrying.</p><cite>-- Page 154, <a href="https://amzn.to/3z1XhOz">The Art of Multiprocessor Programming</a>, 2020.</cite></blockquote>
+<p>If a thread attempts to acquire a lock, rather than block until the lock becomes available, the thread may try to acquire the lock again after some interval of time, called a back-off interval.</p>
+<ul><li><strong>Back-Off Interval</strong>: The time waited before a thread makes another attempt to acquire a lock that is currently unavailable.</li></ul>
+<p>As the number of attempts to acquire the lock are tried and fail, the back-off interval can be increased as a function of the number of failed attempts to acquire the lock.</p>
+<p>For example:</p>
+<ul><li><strong>Linear Back-Off</strong>: Back-off interval increases as a linear function of the number of attempts to acquire the lock.</li><li><strong>Exponential Back-Off</strong>: Back-off interval increases as an exponential function (e.g. doubles) of the number of attempts to acquire the lock.</li></ul>
+<p>An <a href="https://en.wikipedia.org/wiki/Exponential_backoff">exponential back-off function</a> that doubles for each failed attempt to acquire a lock is a popular approach used in concurrency programming, and in other domains for the broader problem of resource contention.</p>
+<blockquote><p>A good rule of thumb is that the larger the number of unsuccessful tries, the higher the likely contention, so the longer the thread should back off. To incorporate this rule, each time a thread tries and fails to get the lock, it doubles the expected back-off time, up to a fixed maximum.</p><cite>-- Page 154, <a href="https://amzn.to/3z1XhOz">The Art of Multiprocessor Programming</a>, 2020.</cite></blockquote>
+<p>The back-off interval may be seeded with a random initial interval to avoid multiple threads attempting to acquire the lock at the same time, in lock-step.</p>
+<blockquote><p>To ensure that competing threads do not fall into lockstep, each backing off and then trying again to acquire the lock at the same time, the thread backs off for a random duration.</p><cite>-- Page 154, <a href="https://amzn.to/3z1XhOz">The Art of Multiprocessor Programming</a>, 2020.</cite></blockquote>
+<p>Using a back-off allows a thread waiting on a contended lock to perform other tasks while waiting and is a <a href="../thread-busy-waiting-in-python/">type of busy waiting</a>, specifically a <a href="../thread-spinlock-in-python/">type of spinlock</a>.</p>
+<h2>Takeaways</h2>
+<p>You now know how to identify and fix reduce contention in Python.</p>
+</main>
+</body>
+</html>

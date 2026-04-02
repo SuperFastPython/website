@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor Kill Running Tasks – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor Kill Running Tasks</h1>
+<div class="post-meta">July 11, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You can <strong>kill running tasks in the ThreadPoolExecutor</strong> by running the <strong>ThreadPoolExecutor</strong> in a new child process and calling the <strong>terminate()</strong> or <strong>kill()</strong> method on the child process.</p>
+<p>This will abruptly and immediately terminate the child process and <strong>terminate all worker threads running in the ThreadPoolExecutor</strong>.</p>
+<p>In this tutorial, you will discover how to kill running tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Let's get started.</p>
+<h2>shutdown() Won't Stop Running Tasks in the ThreadPoolExecutor</h2>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of reusable worker threads using the executor design pattern.</p>
+<p>Tasks executed in new threads are executed concurrently in Python, making the <strong>ThreadPoolExecutor</strong> appropriate for I/O-bound tasks.</p>
+<p>A <strong>ThreadPoolExecutor</strong> can be created directly or via the context manager interface and tasks can be issued one-by-one via the <strong>submit()</strong> method or in batch via the <strong>map()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# issue a task
+	future = type.submit(task)
+	# the the task result once the task is done
+	result = future.result()
+</code></pre>
+<p>You can learn more about the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor in Python: The Complete Guide</a></li>
+</ul>
+<p>The <strong>ThreadPoolExecutor</strong> can be shut down by calling the <strong>shutdown()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# shutdown the thread pool
+tpe.shutdown()</code></pre>
+<p>This call can be configured to block until all tasks are done or return immediately and cancel all pending tasks or not.</p>
+<p>You can learn more about how to shut down the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-shutdown/">How to Shutdown the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>Shutting down the <strong>ThreadPoolExecutor</strong> will not terminate running tasks.</p>
+<p>It is possible to update tasks to check a shared variable and terminate of their own accord. You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-stop-tasks/">How To Stop Running Tasks in the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>Nevertheless, we cannot immediately terminate tasks running in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Even if the program exists, the Python interpreter will wait for all threads in the <strong>ThreadPoolExecutor</strong> to complete and be released before the program terminates.</p>
+<p><strong>How can we forcefully terminate all running tasks in the ThreadPoolExecutor?</strong></p>
+<h2>How to Kill All Running Tasks in the ThreadPoolExecutor</h2>
+<p>There are a few ways that we may implement the forceful termination of worker threads in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>An approach I prefer is to host the <strong>ThreadPoolExecutor</strong> in a separate child process, then terminate the entire process in order to forcefully stop all running tasks.</p>
+<p>For example, we can define a new function that creates and manages the <strong>ThreadPoolExecutor</strong>.</p>
+<pre><code># function for managing a new thread pool
+def tpe_runner():
+    # create the thread pool
+    with ThreadPoolExecutor(2) as tpe:
+        # issue tasks
+        # ...
+</code></pre>
+<p>We can then create a new <strong>multiprocessing.Process</strong> instance to run the function in a child process.</p>
+<p>For example:</p>
+<pre><code>...
+# start a child process to run the thread pool
+process = Process(target=tpe_runner)
+process.start()</code></pre>
+<p>You can learn more about running functions in a child process in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<p>Finally, when we want to stop all tasks immediately, we can call the <strong>terminate()</strong> method on the process.</p>
+<p>For example:</p>
+<pre><code>...
+# stop all threads in the thread pool
+process.terminate()</code></pre>
+<p>You can learn more about terminating and killing child processes in the tutorial:</p>
+<ul>
+<li><a href="../kill-a-process-in-python/">Kill a Process in Python</a></li>
+</ul>
+<p>This is a clean solution in that it does not require that the <strong>ThreadPoolExecutor</strong> class or the Future class be customized with workers or tasks that can be killed.</p>
+<p>Instead, it provides a single point at which all workers and all helper threads in the <strong>ThreadPoolExecutor</strong> can be killed immediately.</p>
+<p>The downside is that the <strong>ThreadPoolExecutor</strong> is not recoverable. It is terminated along with the workers. It also has the downside that any data needed by workers or any results produced by workers must be transferred from to or from the new child process, which can be costly if there is a lot of data involved.</p>
+<p>Another downside is that tasks may be terminated mid-operation. This means that data or program state may be left inconsistent.</p>
+<p>Now that we know how to forcefully terminate all workers in the <strong>ThreadPoolExecutor</strong>, let's look at a worked example.</p>
+<h2>Example of Killing All Running Tasks in the ThreadPoolExecutor</h2>
+<p>We can develop an example that explores how to forcefully stop all worker threads in the ThreadPoolExecutor.</p>
+<p>In this example, we will define a simple task to execute many times in our thread pool. We will then define a function that will be used to manage the thread pool in a new process. Finally, the main process will create a new child process to manage the thread pool, wait a while, then terminate the child process along with all running worker threads.</p>
+<p>Firstly, we can define a task to execute in the thread pool.</p>
+<p>The task tasks a unique integer argument sleeps for a moment to simulate doing work, then reports a message with its unique identifier.</p>
+<p>These print messages will give us some idea that tasks are running and being completed in the thread pool.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a thread pool
+def task(identifier):
+    # block for a moment to simulate effort
+    sleep(1)
+    # report a message
+    print(f'Task {identifier} done.', flush=True)
+</code></pre>
+<p>Next, we can define a function to manage the <strong>ThreadPoolExecutor</strong> and issue all tasks, which will be executed in a child process.</p>
+<p>The function will report a message at the beginning and end so we have some idea if the function is running and finished normally.</p>
+<p>A <strong>ThreadPoolExecutor</strong> is created normally using the context manager interface with two worker threads. Then 10 <strong>task()</strong> calls are issued to the pool with unique arguments from 0 to 9.</p>
+<p>The context manager interface ensures that the pool is closed automatically if the block is exited, blocking until all tasks are completed.</p>
+<p>The <strong>tpe_runner()</strong> function below implements this.</p>
+<pre><code># function for managing a new thread pool
+def tpe_runner():
+    # report a message
+    print('TPE Runner has started.', flush=True)
+    # create the thread pool
+    with ThreadPoolExecutor(2) as tpe:
+        # issue a bunch of tasks
+        _ = tpe.map(task, range(10))
+    # block and wait for tasks to be done
+    print('TPE Runner is done.', flush=True)
+</code></pre>
+<p>Finally, we can develop the code in the main process.</p>
+<p>First, we will create a new process to run our <strong>tpe_runner()</strong> function, then start this process.</p>
+<pre><code>...
+# start a child process to run the thread pool
+process = Process(target=tpe_runner)
+process.start()</code></pre>
+<p>Next, the main process will block moments to allow some tasks to run and complete.</p>
+<pre><code>...
+# wait a while
+print('Main thread is waiting a moment...')
+sleep(3)</code></pre>
+<p>Finally, the main process terminates the child process running the <strong>ThreadPoolExecutor</strong>.</p>
+<pre><code>...
+# main is terminating the tpe process
+print('Main is terminating the tpe...')
+process.terminate()
+print('Main is done.')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of killing a threadpoolexecutor
+from multiprocessing import Process
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+
+# task executed in a thread pool
+def task(identifier):
+    # block for a moment to simulate effort
+    sleep(1)
+    # report a message
+    print(f'Task {identifier} done.', flush=True)
+
+# function for managing a new thread pool
+def tpe_runner():
+    # report a message
+    print('TPE Runner has started.', flush=True)
+    # create the thread pool
+    with ThreadPoolExecutor(2) as tpe:
+        # issue a bunch of tasks
+        _ = tpe.map(task, range(10))
+    # block and wait for tasks to be done
+    print('TPE Runner is done.', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # start a child process to run the thread pool
+    process = Process(target=tpe_runner)
+    process.start()
+    # wait a while
+    print('Main thread is waiting a moment...')
+    sleep(3)
+    # main is terminating the tpe process
+    print('Main is terminating the tpe...')
+    process.terminate()
+    print('Main is done.')
+</code></pre>
+<p>Running the example first creates a new child process to run our <strong>tpe_runner()</strong> function. Then the new child process is started.</p>
+<p>Next, the main process reports a message and blocks with a sleep.</p>
+<p>The child process runs, reports a message then creates the <strong>ThreadPoolExecutor</strong>. All 10 <strong>task()</strong> calls are issued to the <strong>ThreadPoolExecutor</strong> and the child process until all tasks are complete.</p>
+<p>The two worker threads in the <strong>ThreadPoolExecutor</strong> run and execute <strong>task()</strong> functions with unique arguments.</p>
+<p>Two tasks are completed, then two more.</p>
+<p>The main thread resumes and terminates the child process.</p>
+<p>This immediately stops the child process and in turn, it terminates the <strong>ThreadPoolExecutor</strong>. This includes the termination of the two running worker threads and any helper threads internal to the <strong>ThreadPoolExecutor</strong>.</p>
+<p>A final message is reported and the program terminates, again, not waiting for the workers in the child process to terminate.</p>
+<p>This highlights how we can immediately terminate running tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+<pre><code>Main thread is waiting a moment...
+TPE Runner has started.
+Task 0 done.
+Task 1 done.
+Task 2 done.
+Task 3 done.
+Main is terminating the tpe...
+Main is done.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to kill running tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+</main>
+</body>
+</html>

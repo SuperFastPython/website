@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Share Numpy Array Between Processes With Shared ctypes – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Share Numpy Array Between Processes With Shared ctypes</h1>
+<div class="post-meta">June 6, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>share a numpy array between processes</strong> by copying it into a shared ctype array.</p>
+<p>In this tutorial, you will discover how to share a numpy array between processes using a ctype array.</p>
+<p>Let's get started.</p>
+<h2>Need to Share Numpy Array Between Processes</h2>
+<p>Python offers process-based concurrency via the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a>.</p>
+<p>Process-based concurrency is appropriate for those tasks that are CPU-bound, as opposed to thread-based concurrency in Python which is generally suited to IO-bound tasks given the presence of the Global Interpreter Lock (GIL).</p>
+<p>You can learn more about process-based concurrency and the multiprocessing module in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing: The Complete Guide</a></li>
+</ul>
+<p>Consider the situation where we need to share numpy arrays between processes.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>Data is loaded as an array in one process and analyzed differently in different subprocesses.</li>
+<li>Many child processes load small data as arrays that are sent to a parent process for handling.</li>
+<li>Data arrays are loaded in the parent process and processed in a suite of child processes.</li>
+</ul>
+<p>Sharing Python objects and data between processes is slow.</p>
+<p>This is because any data, like numpy arrays, shared between processes must be transmitted using inter-process communication (ICP) requiring the data first be pickled by the sender and then unpickled by the receiver.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>This means that if we share numpy arrays between processes, it assumes that we receive some benefit, such as a speedup, that overcomes the slow speed of data transmission.</p>
+<p>For example, it may be the case that the arrays are relatively small and fast to transmit, whereas the computation performed on each array is slow and can benefit from being performed in separate processes.</p>
+<p>Alternatively, preparing the array may be computationally expensive and benefit from being performed in a separate process, and once prepared, the arrays are small and fast to transmit to another process that requires them.</p>
+<p>Given these situations, how can we share data between Processes in Python?</p>
+<h2>Share a Numpy Array As a Shared ctype</h2>
+<p>One way to share a numpy array between processes is via shared ctypes.</p>
+<p>The <a href="https://docs.python.org/3/library/ctypes.html"><strong>ctypes</strong> module</a> provides tools for working with C data types.</p>
+<p>Python provides the capability to share ctypes between processes on one system.</p>
+<p>This is primarily achieved via the following classes:</p>
+<ul>
+<li><strong>multiprocessing.Value</strong>: manage a shared value.</li>
+<li><strong>multiprocessing.Array</strong>: manage an array of shared values.</li>
+</ul>
+<p>A single <strong>Value</strong> or <strong>Array</strong> instance can be created in memory and shared among processes without duplicating the data.</p>
+<p>You can learn more about sharing ctypes between processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>We can copy a numpy array into a <strong>multiprocessing.Array</strong> and share it among multiple processes that can then read and write the same data.</p>
+<p>A <strong>multiprocessing.Array</strong> can be created by specifying the data type and initial values.</p>
+<p>For example:</p>
+<pre><code>...
+# create an integer array
+data = multiprocessing.Array(ctypes.c_int, (1, 2, 3, 4, 5))</code></pre>
+<p>We can use the <a href="https://numpy.org/doc/stable/reference/routines.ctypeslib.html#numpy.ctypeslib.as_ctypes"><strong>numpy.ctypeslib.as_ctypes()</strong> function</a> to determine the ctype for a given numpy array.</p>
+<p>For example:</p>
+<pre><code>...
+# get ctype for our array
+ctype = as_ctypes(data)</code></pre>
+<p>We can then use this type along with the array data to initialize a new <strong>multiprocessing.Array</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create ctype array initialized from our array
+array = Array(ctype._type_, data)</code></pre>
+<p>This will make a copy of the data in the numpy array into the <strong>multiprocessing.Array</strong>.</p>
+<p>Note that the shared ctype <strong>Array</strong> only supports one-dimensional arrays. This means that if you have a two-dimensional array, or more dimensions, you must flatten the array first before you copy it into the <strong>multiprocessing.Array</strong>, e.g. via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.flatten.html"><strong>flatten()</strong> method</a>.</p>
+<p>If we know that two processes will not access the same array at the same time, we can configure the <strong>Array</strong> to not use a mutex lock (e.g. that <a href="../process-safe-in-python/">process safety</a> is not required). This can offer some performance benefits.</p>
+<p>For example:</p>
+<pre><code>...
+# create ctype array initialized from our array
+array = Array(ctype._type_, data, lock=False)</code></pre>
+<p>Elements in the array can then be read and written using normal Python array indexes and slices.</p>
+<p>For example:</p>
+<pre><code>...
+# report the first 10 values in the array
+print(array[:10])</code></pre>
+<p>Now that we know how to share a numpy array between processes using a shared ctype Array, let's look at a worked example.</p>
+<h2>Example of Sharing an Array Via a Shared Ctype</h2>
+<p>We can explore the case of sharing a numpy array between processes using a shared ctype array.</p>
+<p>In this example, we will create a one-dimensional numpy array initialized with one values. We will then copy it into a shared ctype <strong>Array</strong> and share the array with a child process. The child process will then change the contents of the array. The parent process will then confirm that the contents of the shared ctype array were changed.</p>
+<p>First, we will define a function to execute in a child process.</p>
+<p>The function will take the shared ctype array as an argument.</p>
+<p>Firstly, it will check that the contents of the array match what was expected, e.g. what was passed in from the parent process. It will then change the content of the array to all zero values and confirm that the content of the array was changed.</p>
+<p>The <strong>task()</strong> function listed below implements this.</p>
+</main>
+</body>
+</html>

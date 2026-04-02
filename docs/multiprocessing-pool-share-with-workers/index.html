@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Share a Multiprocessing Pool With Workers – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Share a Multiprocessing Pool With Workers</h1>
+<div class="post-meta">August 4, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can share a <strong><a href="../multiprocessing-pool-python/">multiprocessing pool</a></strong> with child workers indirectly using a <strong>multiprocessing.Manager</strong> and proxy objects.</p>
+<p>Using a Manager provides a workaround for the inability to directly share a process pool because it cannot be pickled.</p>
+<p>This allows you to issue tasks to the pool from tasks executed by the pool, e.g. issue tasks from tasks.</p>
+<p>In this tutorial you will discover <strong>how to share a process pool</strong> with <strong>child worker processes</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>Need To Share Process Pool With Tasks</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the process pool we may want to pass the pool to a task executed by the pool.</p>
+<p>This may be for many reasons, such as:</p>
+<ol><li>The task may want to log or report the status of the pool.</li><li>The task may want to log or report the status of a task in the pool.</li><li>The task may want to issue follow-up tasks to the pool.</li></ol>
+<p><strong>How can we pass the process pool to a worker child process?</strong></p>
+<h2>Sharing the Multiprocessing Pool Results in an Error</h2>
+<p>The <strong>multiprocessing.pool.Pool</strong> cannot be shared with child processes directly.</p>
+<p>This is because the process pool cannot be serialized.</p>
+<p>Specifically, it cannot be <a href="https://docs.python.org/3/library/pickle.html">pickled</a>, Python's native serialization method, and will result in a <strong>NotImplementedError</strong>:</p>
+<pre><code>pool objects cannot be passed between processes or pickled</code></pre>
+<p>We can see this in the <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/pool.py#L642">source code for the <strong>multiprocessing.pool.Pool</strong> class</a> in the <strong>__reduce__()</strong> method, called when an object is pickled</p>
+<pre><code>def __reduce__(self):
+        raise NotImplementedError('pool objects cannot be passed between processes or pickled')
+</code></pre>
+<p>When we share an object with another process, like a child process, the object must be pickled in the current process, transmitted to the other process, then unpickled.</p>
+<p>Because the process pool cannot be pickled, it cannot be shared with another process.</p>
+<p>Sharing a process pool may mean a few things.</p>
+<p>For example:</p>
+<ol><li>Putting a process pool on a multiprocessing queue or a pipe.</li><li>Passing a process pool as an argument in a function executed by another process.</li><li>Returning a process pool from one process to another.</li></ol>
+<p>This has consequences in your development of programs that use process-based concurrency.</p>
+<p>Such as:</p>
+<ul><li>You cannot share the process pool with a child process.</li><li>A child process cannot share its process pool with a parent process.</li><li>You cannot share a process pool with child workers in the process pool itself.</li></ul>
+<p>Now that we know that we cannot share a process pool between processes, let's look at a workaround.</p>
+<h2>How to Share a Multiprocessing Pool via a Manager</h2>
+<p>We can share a process pool indirectly.</p>
+<p>This can be achieved by creating a process pool using a manager. This will return a proxy object for the process pool that can be shared among processes directly.</p>
+<p>A <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Manager">multiprocessing.Manager</a></strong> provides a way to create a centralized version of a Python object hosted on a server process.</p>
+<p>Once created, it returns proxy objects that allow other processes to interact with the centralized objects automatically behind the scenes.</p>
+<blockquote><p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The <strong>multiprocessing.Manager</strong> provides the full multiprocessing API, allowing concurrency primitives to be shared among processes, including the process pool.</p>
+<p>As such, using a <strong>multiprocessing.Manager</strong> is a useful way to centralize a synchronization primitive like a <strong>multiprocessing.pool.Pool</strong> shared among multiple processes, such as worker processes in the pool itself.</p>
+<p>We can first create a <strong>multiprocessing.Manager</strong> using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>We can then create a shared <strong>multiprocessing.pool.Pool</strong> object using the manager.</p>
+<p>This will return a proxy object for the <strong>multiprocessing.pool.Pool</strong> object in the manager process that we can share among child worker processes directly or indirectly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared object via the manager
+pool = manager.Pool()</code></pre>
+<p>The proxy for the <strong>multiprocessing.pool.Pool </strong>can then be passed to a child worker initialization function or to a task function as an argument to be executed by worker processes.</p>
+<p>Now that we know how to share a process pool indirectly with other processes, let's look at some worked examples.</p>
+<h2>Example Error Sharing the Multiprocessing Pool With Workers</h2>
+<p>Before we explore an example of sharing a process pool with child worker processes, let's explore an example where sharing the process pool directly results in an error.</p>
+<p>In this example, we will define a custom task function that takes a process pool as an argument and reports its details. We will then issue the task from the main process asynchronously and pass the process pool as an argument. This will fail with an error. We will add an error handler callback to ensure the details of the error are reported.</p>
+<p>Firstly, we can define the error callback back function.</p>
+<p>This function takes an error raised in a task in the process pool and reports its details directly.</p>
+<p>The <strong>handler()</strong> function below implements this.</p>
+<pre><code># error callback function
+def handler(error):
+    print(error, flush=True)
+</code></pre>
+<p>Next, we can define the custom task function.</p>
+<p>The function takes the process pool as an argument and reports its details.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(pool):
+    # report a message
+    print(f'Pool Details: {pool}', flush=True)
+</code></pre>
+<p>Next, in the main process we can create the process pool.</p>
+<p>We will create the process pool with the default configuration and use the context manager interface.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>You can learn more about the context manager interface in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<p>We can then issue a call to our custom <strong>task()</strong> function asynchronously to the process pool using the <strong>apply_async()</strong> function.</p>
+<p>We will pass the pool instance itself as an argument and specify an error handler callback function as our custom <strong>handler()</strong> function.</p>
+<pre><code>...
+# issue a task to the process pool
+pool.apply_async(task, args=(pool,), error_callback=handler)</code></pre>
+<p>You can learn more about the <strong>apply_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-apply_async/">Multiprocessing Pool.apply_async() in Python</a></li></ul>
+<p>Finally, the main process will close the process pool and block, waiting for the issued task to complete.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all issued tasks to complete
+pool.join()</code></pre>
+<p>You can learn more about joining the process pool in the tutorial:</p>
+<ul><li><a href="../join-a-multiprocessing-pool-in-python/">Join a Process Pool in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of attempting to share the pool with a worker process
+from multiprocessing.pool import Pool
+
+# error callback function
+def handler(error):
+    print(error, flush=True)
+
+# task executed in a worker process
+def task(pool):
+    # report a message
+    print(f'Pool Details: {pool}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue a task to the process pool
+        pool.apply_async(task, args=(pool,), error_callback=handler)
+        # close the pool
+        pool.close()
+        # wait for all issued tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>It then issues the task asynchronously. The main process then closes the process pool and waits for all issued tasks to complete.</p>
+<p>The task begins executing and fails with an error.</p>
+<p>The error is passed to the error callback function and is reported.</p>
+<p>This highlights that we cannot pass a process pool instance directly to child worker processes in the process pool.</p>
+<p>pool objects cannot be passed between processes or pickled</p>
+<p>Next, let's look at an example where we can use a manager to share a process pool with child workers.</p>
+<h2>Example of Sharing the Multiprocessing Pool With Workers</h2>
+<p>We can explore how we can share a process pool with child processes using a manager.</p>
+<p>In this example, we will update the previous example so that the process pool is created using a <strong>multiprocessing.Manager</strong>. This will create a centralized version of the process pool running in a server process and return proxy objects for the process pool that we can share among child processes.</p>
+<p>Firstly, we must create the manager instance.</p>
+<p>This can be achieved using the context manager interface that will ensure the manager is closed once we are finished using it.</p>
+<pre><code>...
+# create a manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>Next, we can create the process pool via the manager.</p>
+<p>This will create the process pool in the server process and return a proxy object that works just like the actual process pool object.</p>
+<pre><code>...
+# create and configure the process pool
+with manager.Pool() as pool:
+	# ...
+</code></pre>
+<p>And that's it.</p>
+<p>The proxy for the process pool object can then be passed to the child worker processes directly and provide access to the centralized process pool.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a process pool among processes
+from multiprocessing import Manager
+
+# error callback function
+def handler(error):
+    print(error, flush=True)
+
+# task executed in a worker process
+def task(pool):
+    # report a message
+    print(f'Pool Details: {pool}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a manager
+    with Manager() as manager:
+        # create and configure the process pool
+        with manager.Pool() as pool:
+            # issue a task to the process pool
+            pool.apply_async(task, args=(pool,), error_callback=handler)
+            # close the pool
+            pool.close()
+            # wait for all issued tasks to complete
+            pool.join()
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>It then issues the task asynchronously. The main process then closes the process pool and waits for all issued tasks to complete.</p>
+<p>The task executes normally and reports the details of the process pool.</p>
+<p>In this case, the pool is accessed via the proxy object without problem and the details of the pool are reported. It is closed and was created with 8 child worker processes.</p>
+<p>Note, the specific default configuration of the process pool on your system may differ.</p>
+<p>The task completes and the main process carries on, first terminating the process pool, then terminating the manager.</p>
+<p>This highlights how we can share a process pool with child worker processes indirectly using a manager.</p>
+<pre><code>Pool Details: &lt;multiprocessing.pool.Pool state=CLOSE pool_size=8&gt;</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share a process pool with child worker processes in Python.</p>
+</main>
+</body>
+</html>

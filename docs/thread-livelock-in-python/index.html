@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread Livelocks in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread Livelocks in Python</h1>
+<div class="post-meta">March 29, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can get a <strong>livelock</strong> if a <strong>thread cannot make progress</strong> because of another thread, but is not blocked as with a deadlock.</p>
+<p>In this tutorial you will discover how to identify a thread livelock in Python.</p>
+<p>Let's get started.</p>
+<h2>What is a Livelock</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Deadlock#Livelock">livelock</a> is a concurrency failure case where a <a href="../threading-in-python/">thread</a> is not blocked but is unable to make progress because of the actions of another thread.</p>
+<p>A livelock typically involves two or more threads that share concurrency primitives such as mutual exclusion (mutex) locks.</p>
+<p>The threads may both attempt to acquire a lock or series of locks at the same time, detect that they are competing for the same resource, and then back-off. This process is repeated and neither thread is able to make progress and are "locked".</p>
+<blockquote><p>Livelock: A situation in which threads are doing some computation but are unable to proceed past the current computation phase due to the actions of some other thread. This is typically caused by resource starvation where there's constant change, with no thread progressing.</p><cite>-- Page 269, <em><a href="https://amzn.to/3z1XhOz">The Art of Concurrency</a></em>, 2009.</cite></blockquote>
+<p>Next, let's learn more about a livelock by contrasting it with a deadlock.</p>
+<h2>Livelock vs Deadlock</h2>
+<p>A livelock can be contrasted with a deadlock.</p>
+<p>Both a livelock and a deadlock have a lock in common, for example:</p>
+<ul><li>Both are examples of a concurrency failure mode.</li><li>Both prevent threads from progressing.</li><li>Both are challenging to identify from code alone, e.g. may require running code.</li></ul>
+<p>The main difference between a livelock and a deadlock is the state of the thread or threads while they are unable to make progress.</p>
+<p>In a livelock the threads execute and are not blocked, whereas in a deadlock the threads are blocked, e.g. waiting on a concurrency primitive such as a lock, and are unable to to execute code.</p>
+<ul><li><strong>Livelock</strong>: Threads cannot make progress but can continue to execute code.</li><li><strong>Deadlock</strong>: Threads cannot make progress and are blocked, e.g. waiting.</li></ul>
+<p>You can learn more about thread deadlocks in this tutorial:</p>
+<ul><li><a href="../thread-deadlock-in-python/">How to Identify a Deadlock in Python</a></li></ul>
+<p>Next, let's look at a worked example of a thread livelock.</p>
+<h2>Example of a Livelock</h2>
+<p>We can make the idea of a livelock clear with a worked example.</p>
+<p>In this example we will define a task function to be executed by worker threads. The function will involve acquiring one lock, then attempting to acquire the second lock. If the second lock is already locked, it will back-off, release the first lock and wait a fraction of a second before trying again.</p>
+<p>If the function is executed by two threads at the same time and the threads acquire the locks in a different order then it will lead to a live lock.</p>
+<p>For example:</p>
+<ul><li><strong>Thread 1</strong>: Acquires Lock1, checks Lock2 and backs off if it is not free.</li><li><strong>Thread 2</strong>: Acquires Lock2, checks Lock1 and backs off if it is not free.</li></ul>
+<p>First, let's define a function that attempts to acquire locks in an order and backs off if the second lock is not available.</p>
+<p>The function will take a unique number to identify the thread, and the two locks to acquire as arguments.</p>
+<pre><code># task for worker threads
+def task(number, lock1, lock2):
+	# ...
+</code></pre>
+<p>The task will continue to attempt to acquire both locks forever. This can be achieved with a while-loop.</p>
+<pre><code>...
+# loop until the task is completed
+while True:
+	# ...
+</code></pre>
+<p>The task attempts to acquire the first lock.</p>
+<pre><code>...
+# acquire the first lock
+with lock1:
+	# ...
+</code></pre>
+<p>We need to contrive the situation by ensuring the lock is held while the other thread attempts to acquire it. Therefore we will force the task to block for a moment while holding the lock.</p>
+<pre><code>...
+# wait a moment
+sleep(0.1)</code></pre>
+<p>Next, the task checks if the second lock is available, and if not it gives up. Otherwise, if the lock is available, it attempts to acquire it and if so completes the task and breaks out of the outer while loop.</p>
+<pre><code>...
+# check if the second lock is available
+if lock2.locked():
+    print(f'Task {number} cannot get the second lock, giving up...')
+else:
+    # acquire lock2
+    with lock2:
+        print(f'Task {number} made it, all done.')
+        break
+</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function is listed below.</p>
+<pre><code># task for worker threads
+def task(number, lock1, lock2):
+    # loop until the task is completed
+    while True:
+        # acquire the first lock
+        with lock1:
+            # wait a moment
+            sleep(0.1)
+            # check if the second lock is available
+            if lock2.locked():
+                print(f'Task {number} cannot get the second lock, giving up...')
+            else:
+                # acquire lock2
+                with lock2:
+                    print(f'Task {number} made it, all done.')
+                    break
+</code></pre>
+<p>Finally, in the main thread, we can first create both mutex locks.</p>
+<pre><code>...
+# create locks
+lock1 = Lock()
+lock2 = Lock()</code></pre>
+<p>We can then create and configure two threads, both executing the same task at the same time. Importantly, we will switch the order of the locks provided as arguments to each thread to force the live-lock situation.</p>
+<pre><code>...
+# create threads
+thread1 = Thread(target=task, args=(0, lock1, lock2))
+thread2 = Thread(target=task, args=(1, lock2, lock1))</code></pre>
+<p>We can then start both worker threads and wait for the tasks to finish.</p>
+<pre><code>...
+# start threads
+thread1.start()
+thread2.start()
+# wait for threads to finish
+thread1.join()
+thread2.join()</code></pre>
+<p>Tying this together, the complete example of a livelock is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a livelock
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task for worker threads
+def task(number, lock1, lock2):
+    # loop until the task is completed
+    while True:
+        # acquire the first lock
+        with lock1:
+            # wait a moment
+            sleep(0.1)
+            # check if the second lock is available
+            if lock2.locked():
+                print(f'Task {number} cannot get the second lock, giving up...')
+            else:
+                # acquire lock2
+                with lock2:
+                    print(f'Task {number} made it, all done.')
+                    break
+
+# create locks
+lock1 = Lock()
+lock2 = Lock()
+# create threads
+thread1 = Thread(target=task, args=(0, lock1, lock2))
+thread2 = Thread(target=task, args=(1, lock2, lock1))
+# start threads
+thread1.start()
+thread2.start()
+# wait for threads to finish
+thread1.join()
+thread2.join()
+</code></pre>
+<p>Running the example first creates the locks.</p>
+<p>The two worker threads are then configured and started and the main thread blocks while waiting for the tasks to complete.</p>
+<p>The first thread acquires lock1 and blocks for a moment. The second thread acquires lock2 and blocks for a moment.</p>
+<p>The first thread then checks if lock2 is available. It isn't so it gives up and repeats the loop. At the same time, the second thread checks if lock1 is available. It isn't so it also gives up and repeats the loop.</p>
+<p>This process of both threads getting one lock and attempting to get the next lock and giving up is then repeated forever.</p>
+<p>Note, you will have to manually kill the process (e.g. Control-C) in order to stop it.</p>
+<pre><code>...
+Task 0 cannot get the second lock, giving up...
+Task 1 cannot get the second lock, giving up...
+Task 0 cannot get the second lock, giving up...
+Task 1 cannot get the second lock, giving up...
+Task 0 cannot get the second lock, giving up...
+Task 1 cannot get the second lock, giving up...
+Task 0 cannot get the second lock, giving up...
+Task 1 cannot get the second lock, giving up...
+Task 0 cannot get the second lock, giving up...
+Task 1 cannot get the second lock, giving up...</code></pre>
+<h2>Tips On Avoiding a Livelock</h2>
+<p>This section provides some tips to help avoiding livelocks in your multithreaded Python applications.</p>
+<p>Two tips for avoiding livelocks include:</p>
+<ol><li>Always acquire sequences of locks in the same order.</li><li>Give-up on repeated tasks after a fixed number of tries.</li></ol>
+<p>Let’s take a closer look at each.</p>
+<h3>Tip 1: Force Consistent Lock Ordering</h3>
+<p>This specific livelock in the previous section could be avoided if both threads acquired the locks in the same order.</p>
+<p>This is a best practice when threads must acquire multiple locks in order to perform a task and is called "<strong>lock ordering</strong>".</p>
+<p>For example, both functions may be given the same locks in the same order as arguments:</p>
+<pre><code>...
+# create threads
+thread1 = Thread(target=task, args=(0, lock1, lock2))
+thread2 = Thread(target=task, args=(1, lock1, lock2))</code></pre>
+<h3>Tip 2: Use a Fixed Number of Tries</h3>
+<p>The lock could be broken if the task used a counter and gave up after a fixed number of tries, rather than looping forever.</p>
+<p>For example:</p>
+<pre><code>...
+# try the task ten times before giving up
+for i in range(10):
+	# ...
+else:
+	print('Task failed after 10 tries')
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to identify a thread livelock in Python.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to use asyncio.TaskGroup – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to use asyncio.TaskGroup</h1>
+<div class="post-meta">June 29, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>A problem with tasks is that it is a good idea to assign and keep track of the <strong>asyncio.Task</strong> objects.</p>
+<p>The reason is that if we don't the tasks may be garbage collected, terminating the task.</p>
+<p>A helpful solution is to use a <strong>TaskGroup</strong> to create and manage a collection of tasks. It has a number of benefits, such as canceling all tasks in the group if one task fails.</p>
+<p>In this tutorial, you will discover how to use the <strong>TaskGroup</strong> in asyncio.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>How to use the <strong>TaskGroup</strong> to create and manage a collection of tasks.</li>
+<li>How to wait for a collection of tasks to complete using the <strong>TaskGroup</strong> context manager interface.</li>
+<li>How to cancel all tasks if one task in the <strong>TaskGroup</strong> fails.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>Need To Manage Multiple Coroutines as a Group</h2>
+<p>It is common to issue many coroutines and then manage them as a group.</p>
+<p>Treating multiple coroutines as a group allows for functionality such as:</p>
+<ol>
+<li>Waiting until all tasks are completed.</li>
+<li>Canceling all tasks if one task fails.</li>
+<li>Handling an exception raised in any task.</li>
+</ol>
+<p>Prior to Python 3.11, there were two main approaches to handling multiple coroutines as a group, they were:</p>
+<ol>
+<li>Call <strong>asyncio.gather()</strong></li>
+<li>Call <strong>asyncio.wait()</strong></li>
+</ol>
+<h3>Manage Multiple Coroutines with asyncio.gather()</h3>
+<p>The <strong>asyncio.gather()</strong> function takes one more coroutine or <strong>asyncio.Task</strong> objects.</p>
+<p>It returns a <strong>Future</strong> object that allows the group of tasks to be managed together with features such as canceling all tasks and waiting on all tasks.</p>
+<p>You can learn more about how to use the <strong>asyncio.gather()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather/">How to Use asyncio.gather() in Python</a></li>
+</ul>
+<p>It is possible to use cancel all tasks in the group if one task in the group fails with an exception.</p>
+<p>You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather-cancel-all-if-one-fails/">Asyncio gather() Cancel All Tasks if One Task Fails</a></li>
+</ul>
+<h3>Manage Multiple Coroutines with asyncio.wait()</h3>
+<p>The <strong>asyncio.wait()</strong> function takes a collection of coroutines or tasks and returns the set of tasks that meet the specified conditions, such as one completed, all completed or first to fail.</p>
+<p>You can learn more about how to use the <strong>asyncio.wait()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait/">How to Use Asyncio wait() in Python</a></li>
+</ul>
+<p>The release of Python version 3.11 introduced a new approach to managing multiple coroutines or tasks as a group, called the <strong>asyncio.TaskGroup</strong>.</p>
+<h2>How to Use asyncio.TaskGroup</h2>
+<p>Python 3.11 introduce the <strong>asyncio.TaskGroup</strong> task for managing a group of associated asyncio task.</p>
+<blockquote>
+<p>Added the TaskGroup class, an asynchronous context manager holding a group of tasks that will wait for all of them upon exit. For new code this is recommended over using create_task() and gather() directly.</p>
+<cite>-- <a href="https://docs.python.org/3/whatsnew/3.11.html">What’s New In Python 3.11</a></cite></blockquote>
+<p>The <strong>asyncio.TaskGroup</strong> class is intended as a replacement for the <strong>asyncio.create_task()</strong> function for creating tasks and the <strong>asyncio.gather()</strong> function for waiting on a group of tasks.</p>
+<p>Historically, we create and issue a coroutine as an <strong>asyncio.Task</strong> using the <strong>asyncio.create_task()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# create and issue coroutine as task
+task = asyncio.create_task(coro())</code></pre>
+<p>This creates a new <strong>asyncio.Task</strong> object and issues it to the asyncio event loop for execution as soon as it is able.</p>
+<p>We can then choose to await the task and wait for it to be completed.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for task to complete
+result = await task</code></pre>
+<p>You can learn more about executing coroutines as <strong>asyncio.Task</strong> objects in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-create-task/">How to Create Asyncio Tasks in Python</a></li>
+</ul>
+<p>As we have seen, the <strong>asyncio.gather()</strong> function is used to create and issue many coroutines simultaneously as <strong>asyncio.Task</strong> objects to the event loop, allowing the caller to treat them all as a group.</p>
+<p>The most common usage is to wait for all issued tasks to complete.</p>
+<p>For example:</p>
+<pre><code>...
+# issue coroutines as tasks and wait for them to complete
+results = await asyncio.gather(coro1(), coro2(), coro2)</code></pre>
+<p>The <strong>asyncio.TaskGroup</strong> can perform both of these activities and is the preferred approach.</p>
+<blockquote>
+<p>An asynchronous context manager holding a group of tasks. Tasks can be added to the group using create_task(). All tasks are awaited when the context manager exits.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.TaskGroup">Asyncio Task Groups</a></cite></blockquote>
+<h3>How to Create an asyncio.TaskGroup</h3>
+<p>An <strong>asyncio.TaskGroup</strong> object implements the asynchronous context manager interface, and this is the preferred usage of the class.</p>
+<p>This means that an instance of the class is created and is used via the "<strong>async with</strong>" expression.</p>
+<p>For example:</p>
+<pre><code>...
+# create a taskgroup
+async with asyncio.TaskGroup() as group:
+	# ...
+</code></pre>
+<p>If you are new to the "<strong>async with</strong>" expression, see the tutorial:</p>
+<ul>
+<li><a href="../asyncio-async-with/">How to Use the “async with” Expression in Python</a></li>
+</ul>
+<p>Recall that an asynchronous context manager implements the <strong>__aenter__()</strong> and <strong>__aexit__()</strong> methods which can be awaited.</p>
+<p>In the case of the <strong>asyncio.TaskGroup</strong>, the <strong>__aexit__()</strong> method which is called automatically when the context manager block is exited will await all tasks created by the <strong>asyncio.TaskGroup</strong>.</p>
+<p>This means that exiting the <strong>TaskGroup</strong> object's block normally or via an exception will automatically await until all group tasks are done.</p>
+<pre><code>...
+# create a taskgroup
+async with asyncio.TaskGroup() as group:
+	# ...
+# wait for all group tasks are done
+</code></pre>
+<p>You can learn more about asynchronous context managers in the tutorial:</p>
+<ul>
+<li><a href="../asynchronous-context-manager/">Asynchronous Context Managers in Python</a></li>
+</ul>
+<h3>How to Create Tasks Using asyncio.TaskGroup</h3>
+<p>We can create a task in the task group via the <strong>create_task()</strong> method on the <strong>asyncio.TaskGroup</strong> object.</p>
+<p>For example:</p>
+<pre><code>...
+# create a taskgroup
+async with asyncio.TaskGroup() as group:
+	# create and issue a task
+	task = group.create_task(coro())
+</code></pre>
+<p>This will create an <strong>asyncio.Task</strong> object and issue it to the asyncio event loop for execution, just like the <strong>asyncio.create_task()</strong> function, except that the task is associated with the group.</p>
+<p>We can await the task directly if we choose and get results.</p>
+<p>For example:</p>
+<pre><code>...
+# create a taskgroup
+async with asyncio.TaskGroup() as group:
+	# create and issue a task
+	result = await group.create_task(coro())
+</code></pre>
+<p>The benefit of using the <strong>asyncio.TaskGroup</strong> is that we can issue multiple tasks in the group and execute code in between. such as checking results or gathering more data.</p>
+<h3>How to Wait on Tasks Using asyncio.TaskGroup</h3>
+<p>We can wait on all tasks in the group by exiting the asynchronous context manager block.</p>
+<p>As such, the tasks are awaited automatically and nothing additional is required.</p>
+<p>For example:</p>
+<pre><code>...
+# create a taskgroup
+async with asyncio.TaskGroup() as group:
+	# ...
+# wait for all group tasks are done
+</code></pre>
+<p>If this behavior is not preferred, then we must ensure all tasks are "done" (finished, canceled, or failed) before exiting the context manager.</p>
+<h3>How to Cancel All Tasks If One Task Fails Using asyncio.TaskGroup</h3>
+<p>If one task in the group fails with an exception, then all non-done tasks remaining in the group will be canceled.</p>
+<p>This is performed automatically and does not require any additional code.</p>
+<p>For example:</p>
+<pre><code># handle the failure of any tasks in the group
+try:
+	...
+	# create a taskgroup
+	async with asyncio.TaskGroup() as group:
+		# create and issue a task
+		task1 = group.create_task(coro1())
+		# create and issue a task
+		task2 = group.create_task(coro2())
+		# create and issue a task
+		task3 = group.create_task(coro3())
+	# wait for all group tasks are done
+except:
+	# all non-done tasks are cancelled
+	pass
+</code></pre>
+<p>If this behavior is not preferred, then the failure of each task must be managed within the tasks themselves, e.g. by a try-except block within the coroutine.</p>
+<p>Now that we know how to use the <strong>asyncio.TaskGroup</strong>, let's look at some worked examples.</p>
+<h2>Example of Waiting on Multiple Tasks with a TaskGroup</h2>
+<p>We can explore the case of creating multiple tasks within an <strong>asyncio.TaskGroup</strong> and then waiting for all tasks to complete.</p>
+<p>This can be achieved by first defining a suite of different coroutines that represent the tasks we want to complete.</p>
+<p>In this case, we will define 3 coroutines that each report a different message and then sleep for one second.</p>
+<pre><code># coroutine task
+async def task1():
+    # report a message
+    print('Hello from coroutine 1')
+    # sleep to simulate waiting
+    await asyncio.sleep(1)
+
+# coroutine task
+async def task2():
+    # report a message
+    print('Hello from coroutine 2')
+    # sleep to simulate waiting
+    await asyncio.sleep(1)
+
+# coroutine task
+async def task3():
+    # report a message
+    print('Hello from coroutine 3')
+    # sleep to simulate waiting
+    await asyncio.sleep(1)
+</code></pre>
+<p>Next, we can define a <strong>main()</strong> coroutine that creates the <strong>asyncio.TaskGroup</strong> via the context manager interface.</p>
+<pre><code># asyncio entry point
+async def main():
+    # create task group
+    async with asyncio.TaskGroup() as group:
+    # ...
+</code></pre>
+<p>We can then create and issue each coroutine as a task into the event loop, although collected together as part of the group.</p>
+<pre><code>...
+# run first task
+group.create_task(task1())
+# run second task
+group.create_task(task2())
+# run third task
+group.create_task(task3())
+</code></pre>
+<p>Notice that we don't need to keep a reference to the <strong>asyncio.Task</strong> objects as the <strong>asyncio.TaskGroup</strong> will keep track of them for us.</p>
+<p>Also, notice that we don't need to await the tasks because when we exit the context manager block for the <strong>asyncio.TaskGroup</strong> we will await all tasks in the group.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example of asyncio task group
+import asyncio
+
+# coroutine task
+async def task1():
+    # report a message
+    print('Hello from coroutine 1')
+    # sleep to simulate waiting
+    await asyncio.sleep(1)
+
+# coroutine task
+async def task2():
+    # report a message
+    print('Hello from coroutine 2')
+    # sleep to simulate waiting
+    await asyncio.sleep(1)
+
+# coroutine task
+async def task3():
+    # report a message
+    print('Hello from coroutine 3')
+    # sleep to simulate waiting
+    await asyncio.sleep(1)
+
+# asyncio entry point
+async def main():
+    # create task group
+    async with asyncio.TaskGroup() as group:
+        # run first task
+        group.create_task(task1())
+        # run second task
+        group.create_task(task2())
+        # run third task
+        group.create_task(task3())
+    # wait for all tasks to complete...
+    print('Done')
+
+# entry point
+asyncio.run(main())
+</code></pre>
+<p>Running the example first executes the <strong>main()</strong> coroutine, starting a new event loop for us.</p>
+<p>The <strong>main()</strong> coroutine runs and creates an <strong>asyncio.TaskGroup</strong>.</p>
+<p>All three coroutines are then created as <strong>asyncio.Task</strong> objects and issued to the event loop via the <strong>asyncio.TaskGroup</strong>.</p>
+<p>The context manager block for the <strong>asyncio.TaskGroup</strong> is exited which automatically awaits all three tasks.</p>
+<p>The tasks report their message and sleep.</p>
+<p>Once all tasks are completed the main() coroutine reports a final message.</p>
+<pre><code>Hello from coroutine 1
+Hello from coroutine 2
+Hello from coroutine 3
+Done</code></pre>
+<p>Next, let's explore how we might use an <strong>asyncio.TaskGroup</strong> with tasks that take arguments and return values.</p>
+<h2>Example of TaskGroup with Arguments and Return Values</h2>
+<p>We can explore the case of executing coroutines as tasks that take arguments and return values.</p>
+<p>These are just like coroutines we might issue normally as tasks without the <strong>asyncio.TaskGroup</strong>, but it is good to have an example for reference.</p>
+<p>In this case, we will define a task that takes an argument, sleeps, then returns the argument multiplied by 100.</p>
+<pre><code># coroutine task
+async def task(value):
+    # sleep to simulate waiting
+    await asyncio.sleep(1)
+    # return value
+    return value * 100
+</code></pre>
+<p>The main coroutine will then create an <strong>asyncio.TaskGroup</strong> and then create 9 instances of the task, passing the value 1 to 9 as arguments to the task.</p>
+<p>The task objects are kept so we can retrieve the values from them later. This is achieved using a list comprehension.</p>
+<p>Once all tasks are complete, the return values are retrieved and reported.</p>
+</main>
+</body>
+</html>

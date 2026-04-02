@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>9 Ways to Share a Numpy Array Between Processes – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>9 Ways to Share a Numpy Array Between Processes</h1>
+<div class="post-meta">June 15, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>share numpy arrays between processes</strong> in Python.</p>
+<p>There are many ways to share a numpy array between processes, such as as a function argument, as an inherited global variable, via a queue or a pipe, as a ctype <strong>Array</strong> and <strong>RawArray</strong>, memory-mapped file, <strong>SharedMemory</strong> backed array, or via a <strong>Manager</strong>.</p>
+<p>In this tutorial, you will discover a suite of approaches that you can use to share a numpy array between python processes.</p>
+<p>Let's get started.</p>
+<p><strong>Updated August 2023</strong>: Added memory-mapped file method, added ctype Array section, added how to choose section.</p>
+<h2>Need to Share Numpy Array Between Processes</h2>
+<p>Python offers process-based concurrency via the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a>.</p>
+<p>Process-based concurrency is appropriate for those tasks that are CPU-bound, as opposed to thread-based concurrency in Python which is generally suited to IO-bound tasks given the presence of the Global Interpreter Lock (GIL).</p>
+<p>You can learn more about process-based concurrency and the multiprocessing module in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing: The Complete Guide</a></li>
+</ul>
+<p>Consider the situation where we need to share numpy arrays between processes.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>Data is loaded as an array in one process and analyzed differently in different subprocesses.</li>
+<li>Many child processes load small data as arrays that are sent to a parent process for handling.</li>
+<li>Data arrays are loaded in the parent process and processed in a suite of child processes.</li>
+</ul>
+<p>Sharing Python objects and data between processes is slow.</p>
+<p>This is because any data, like numpy arrays, shared between processes must be transmitted using inter-process communication (ICP) requiring the data first be pickled by the sender and then unpickled by the receiver.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>This means that if we share numpy arrays between processes, it assumes that we receive some benefit, such as a speedup, that overcomes the slow speed of data transmission.</p>
+<p>For example, it may be the case that the arrays are relatively small and fast to transmit, whereas the computation performed on each array is slow and can benefit from being performed in separate processes.</p>
+<p>Alternatively, preparing the array may be computationally expensive and benefit from being performed in a separate process, and once prepared, the arrays are small and fast to transmit to another process that requires them.</p>
+<p><strong>Given these situations, how can we share data between Processes in Python?</strong></p>
+<h2>How to Share a Numpy Array Between Processes</h2>
+<p>There are many ways to share a numpy array between processes.</p>
+<p>Nevertheless, there are perhaps 9 main approaches that we can implement using the Python standard library.</p>
+<p>They are:</p>
+<ol>
+<li>Share NumPy Array Via Function Argument</li>
+<li>Share NumPy Array Via Inherited Variable</li>
+<li>Share NumPy Array Via Queue</li>
+<li>Share NumPy Array Via Pipe</li>
+<li>Share NumPy Array Via ctype Array</li>
+<li>Share NumPy Array Via ctype RawArray</li>
+<li>Share NumPy Array Via SharedMemory</li>
+<li>Share NumPy Array via Memory Mapped File</li>
+<li>Share NumPy Array Manager</li>
+</ol>
+<p><strong>Do you know of another approach to sharing numpy arrays?</strong><br/>Let me know in the comments below.</p>
+<p>Some approaches are slow, requiring that the numpy array be transmitted using inter-process communication, e.g. passing the array as an argument or using a queue or a pipe.</p>
+<p>Other approaches are fast, using a direct memory copy, such as inheriting the array using a global variable.</p>
+<p>The preferred approach is often to use a simulated shared memory model that is fast and allows changes to be reflected in each process, such as a <strong>RawArray</strong> or <strong>SharedMemory</strong> backed numpy array or an array hosted in a <strong>Manager</strong> server process.</p>
+<p>We will take a close look at each approach and explore each with a worked example.</p>
+<p>Let's dive in.</p>
+<h2>Method 01: Share a NumPy Array Via Function Argument</h2>
+<p>We can share numpy arrays with child processes via function arguments.</p>
+<p>Recall that when we start a child process, we can configure it to run a target function via the "<strong>target</strong>" argument. We can also pass arguments to the target function via the "<strong>args</strong>" keyword.</p>
+<p>As such, we can define a target function that takes a numpy array as an argument and execute it in a child process.</p>
+<p>For example:</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(data,))</code></pre>
+<p>You can learn more about running a function in a child process in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<p>Passing a numpy array to a target function executed in a child process is slow.</p>
+<p>It requires that the numpy array be pickled in the parent process and then unpickled in the child process. This means it may only be appropriate for modestly sized arrays that are fast to pickle and unpickle.</p>
+<p>Nevertheless, it is a simple and effective approach.</p>
+<p>You can learn more about sharing a numpy array as an argument to a process in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multiprocessing-share-array-function/">Share Numpy Array Between Processes Using Function Arguments and Return Values</a></li>
+</ul>
+<p>We can explore the case of sharing a numpy array with a child process via a function argument.</p>
+<p>In this example, we will create an array in the parent process then pass it to a task executed in a child process. The array will be copied and transmitted to the child process and as such changes to it won't be reflected in the parent process.</p>
+<p>Firstly, we can define a task function to be executed in the child process.</p>
+<p>The function will take a numpy array as an argument. It will report on some of the content of the array, change all values to zero, then report that the contents of the array were changed.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task(data):
+    # check some data in the array
+    print(data[:5,:5])
+    # change data in the array
+    data.fill(0.0)
+    # confirm the data was changed
+    print(data[:5,:5])
+</code></pre>
+<p>Next, in the main process, we can create an array of modest size, filled with ones.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000
+# create the numpy array
+data = ones((n,n))</code></pre>
+<p>We can then create and configure a child process to execute our task() function and pass the numpy array as an argument.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(data,))</code></pre>
+<p>We can then start the child process and block until it has completed.</p>
+<pre><code>...
+# start the child process
+child.start()
+# wait for the child process to complete
+child.join()</code></pre>
+<p>Finally, we can check the contents of the array.</p>
+<pre><code>...
+# check some data in the array
+print(data[:5,:5])</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># share numpy array via function argument
+from multiprocessing import Process
+from numpy import ones
+
+# task executed in a child process
+def task(data):
+    # check some data in the array
+    print(data[:5,:5])
+    # change data in the array
+    data.fill(0.0)
+    # confirm the data was changed
+    print(data[:5,:5])
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,n))
+    # create a child process
+    child = Process(target=task, args=(data,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the array
+    print(data[:5,:5])
+</code></pre>
+<p>Running the example first creates the numpy array populated with one values.</p>
+<p>The child process is then created, configured and started. The main process then blocks until the child process is terminated.</p>
+<p>The child process runs, confirming the array was populated with one values. It then fills the array with zero values and confirms the contents of the array were changed.</p>
+<p>The child process terminates and the main process resumes. It confirms that the contents of the array in the parent process have not changed.</p>
+<p>This highlights how we can share a copy of an array with a child process and how changes to the copy of the array in the child process are not reflected in the parent process.</p>
+<pre><code>[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+[[0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]]
+[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+</code></pre>
+<h2>Method 02: Share a NumPy Array Via Inheritance</h2>
+<p>We can share a numpy array with other processes via an inherited global variable.</p>
+<p>That is, a process can load or create a numpy array, store it in a global variable, and other processes can access it directly.</p>
+<p>The benefit of this approach is that it is really fast.</p>
+<p>It can be up to 34x faster than sending the array between processes using other methods, such as a function argument.</p>
+<p>You can learn more about this approach to sharing data between processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-inherit-vs-sending-data/">Inheriting is 34x Faster Than Sending Data Between Processes in Python</a></li>
+</ul>
+<p>There are some limitations on this approach though, they are:</p>
+<ol>
+<li>The array must be stored in a global variable by a parent process.</li>
+<li>The array can only be accessed by child processes.</li>
+<li>Child processes must be created using the 'fork' start method.</li>
+<li>Changes to the array made by child processes will not be reflected in each other or in the parent process.</li>
+</ol>
+<p>Let's consider these concerns in detail.</p>
+<p>A python program can declare an explicit global variable using the '<strong>global</strong>' keyword.</p>
+<p>For example:</p>
+<pre><code>...
+# declare the global variable
+global data</code></pre>
+<p>This is not needed in the parent process when preparing the numpy array, but may be needed in the function executed in the child process to ensure that the program is referred to the inherited global variable and not a newly created local variable.</p>
+<p>This is called inheriting a global variable.</p>
+<p>You can learn more about inheriting global variables in child processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-inherit-global-variables-in-python/">Multiprocessing Inherit Global Variables in Python</a></li>
+</ul>
+<p>Child processes can be created either by spawning a new instance of the Python interpreter or by forking an existing instance of the Python interpreter. Spawning is the current default on Windows and macOS, whereas forking is the default on Linux.</p>
+<p>We can explicitly set the method used to start child processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.set_start_method"><strong>multiprocessing.set_start_method()</strong> function</a> and specify the method as a string, such as 'fork'.</p>
+<p>For example:</p>
+<pre><code>...
+# ensure we are using fork start method
+set_start_method('fork')</code></pre>
+<p>The fork start method is not supported on Windows at the time of writing.</p>
+<p>You can learn more about setting the start method used for creating child processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-start-method/">Multiprocessing Start Methods</a></li>
+</ul>
+<p>The child process will inherit a copy of all global variables from the parent process.</p>
+<p>Because they are a copy, any changes made to the global variable in the child process will only be available to the child process. Similarly, any changes to the global variable made in the parent process after the child processes are created will not be reflected in the child processes.</p>
+<p>As such, this approach to sharing an array between processes is appropriate in certain situations, such as:</p>
+<ul>
+<li>The array is large, but the machine can afford to store multiple copies in memory at the same time.</li>
+<li>Child processes compute something using the array, but changes to the array itself are not required in the parent process or other processes.</li>
+</ul>
+<p>A common example that may be appropriate for this approach would be where one or more arrays are prepared or loaded and a suite of computationally expensive statistics needs to be calculated on each. Each statistic or set of statistics can be calculated using a copy of the array in a separate process.</p>
+<p>You can learn more about inheriting a numpy array as a global variable in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multiprocessing-share-array-global-variable/">Share Numpy Array Between Processes Using Global Variable</a></li>
+</ul>
+<p>We can explore how to share a numpy array as an inherited global variable with child processes.</p>
+<p>In this example, we will create a modestly sized numpy array in a parent process and store it as a global variable. We will then start a child process using the fork start method and have it access the inherited numpy array.</p>
+<p>Firstly, we can define a task to be executed in a child process.</p>
+<p>In this case, the task does not take any arguments. Instead, it declares an inherited global variable, then accesses a portion of it directly.</p>
+<p>It then changes the contents of the array, by assigning all values to zero and confirming that the change took effect.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task():
+    # declare the global variable
+    global data
+    # check some data in the array
+    print(data[:5,:5])
+    # change data in the array
+    data.fill(0.0)
+    # confirm the data was changed
+    print(data[:5,:5])
+</code></pre>
+<p>Next, we can set the start method to fork.</p>
+<pre><code>...
+# ensure we are using fork start method
+set_start_method('fork')</code></pre>
+<p>We can then create a modestly sized numpy array, stored in a variable.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000
+# create the numpy array
+data = ones((n,n))</code></pre>
+<p>We can then create a child process, configured to execute our <strong>task()</strong> function, and then start the process.</p>
+<p>This will make a copy of the parent process, including the numpy array stored in the 'data' variable.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task)
+# start the child process
+child.start()</code></pre>
+<p>You can learn more about running a function in a child process in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<p>Finally, we can wait for the child process to terminate and then report the contents of the array.</p>
+<pre><code>...
+# wait for the child process to complete
+child.join()
+# check some data in the array
+print(data[:5,:5])</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<p>Note, this example may not run on Windows as it requires support for the 'fork' start method.</p>
+<pre><code># share a numpy array as a global variable
+from multiprocessing import set_start_method
+from multiprocessing import Process
+from numpy import ones
+from numpy import zeros
+
+# task executed in a child process
+def task():
+    # declare the global variable
+    global data
+    # check some data in the array
+    print(data[:5,:5])
+    # change data in the array
+    data.fill(0.0)
+    # confirm the data was changed
+    print(data[:5,:5])
+
+# protect the entry point
+if __name__ == '__main__':
+    # ensure we are using fork start method
+    set_start_method('fork')
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,n))
+    # create a child process
+    child = Process(target=task)
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the array
+    print(data[:5,:5])
+</code></pre>
+<p>Running the example first sets the 'fork' start method for creating child processes.</p>
+<p>Next, the numpy array is created and initialized to the value.</p>
+<p>The child process is then created and started, and the main process blocks until it is terminated.</p>
+<p>A forked copy of the parent process is created and runs the <strong>task()</strong> function. The inherited global variable is declared and then accessed, reporting a small subset of the data.</p>
+<p>This confirms that the array was inherited correctly and contains the data initialized in the parent process.</p>
+<p>The child process then fills the array with zero values and accesses them to confirm the data was changed.</p>
+<p>The child process terminates and the main process then resumes. It reports the contents of a small portion of the array, confirming that the data change made in the child process was not propagated to the parent process.</p>
+<p>This highlights how to share a numpy array with child processes by inheritance and that changes made in the child process to the inherited array do not propagate.</p>
+<pre><code>[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+[[0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]]
+[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+</code></pre>
+<h2>Method 03: Share a NumPy Array Via a Queue</h2>
+<p>Another way to share numpy arrays between python processes is to use a queue.</p>
+<p>Python provides a process-safe queue in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue"><strong>multiprocessing.Queue</strong> class</a>.</p>
+<p>A queue is a data structure on which items can be added by a call to <strong>put()</strong> and from which items can be retrieved by a call to <strong>get()</strong>.</p>
+<p>The <strong>multiprocessing.Queue</strong> provides a first-in, first-out FIFO queue, which means that the items are retrieved from the queue in the order they were added. The first items added to the queue will be the first items retrieved. This is opposed to other queue types such as last-in, first-out, and priority queues.</p>
+<p>You can learn more about how to use the <strong>multiprocessing.Queue</strong> class in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li>
+</ul>
+<p>You can learn more about sharing numpy arrays between processes via a queue in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multiprocessing-share-array-queue/">Share Numpy Array Between Processes Using a Queue</a></li>
+</ul>
+<p>We can explore an example of sending numpy arrays to child processes for processing using a shared queue.</p>
+<p>In this example, the parent process will create many arrays with different dimensions and filled with random numbers. The arrays will be placed on a shared queue. Multiple child processes will then consume the arrays from the queue and perform a mathematical operation on them.</p>
+<p>This may be a good template for those cases where loading or preparing the numpy arrays is relatively easy and the arrays a modest in size, yet each array requires non-trivial computation performed (which we will simulate in this case).</p>
+<p>Firstly, we can define the task executed in child processes.</p>
+<p>This task will run in a loop. Each iteration it will retrieve one array from the queue and then perform a computational operation on it. In this case, it will simply compute the max value in the array and report it. The loop is exited if a <strong>None</strong> message is received, signaling no further arrays.</p>
+<p>The <strong>task()</strong> function below implements this, taking the shared array as an argument.</p>
+<pre><code># read numpy arrays from the queue and compute something
+def task(queue):
+    # read arrays
+    while True:
+        # read one array
+        data = queue.get()
+        # check for final item
+        if data is None:
+            # report message
+            print('Task done.', flush=True)
+            # push signal back into queue
+            queue.put(data)
+            # exit the task
+            break
+        # compute max of array
+        result = data.max()
+        # report a message
+        print(f'Task read an array {data.shape}, max={result}', flush=True)
+</code></pre>
+<p>The main process will first create the shared queue, then starts 4 child processes, each executing the task() function.</p>
+<pre><code>...
+# create the shared queue
+queue = Queue()
+# issue task processes
+tasks = [Process(target=task, args=(queue,)) for _ in range(4)]
+for t in tasks:
+    t.start()
+</code></pre>
+<p>The main process then loops 20 times, each iteration creating a numpy array with random dimensions and filled with random values which is then put on the shared queue.</p>
+<pre><code>...
+# generate many arrays of random numbers
+for _ in range(20):
+    # generate random dimensions
+    dim = (randint(500,2000),randint(500,2000))
+    # generate array of random floats with random dimensions
+    data = random(dim)
+    # push into queue
+    queue.put(data)
+</code></pre>
+<p>The main process then signals that no further arrays are expected via a <strong>None</strong> value, then waits for all child processes to terminate.</p>
+<pre><code>...
+# signal no further arrays
+queue.put(None)
+# wait for task processes to be done
+for t in tasks:
+    t.join()
+# report a final message
+print('Done.', flush=True)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># create arrays in a parent process and read in children via queue
+from multiprocessing import Process
+from multiprocessing import Queue
+from random import randint
+from numpy.random import random
+
+# read numpy arrays from the queue and compute something
+def task(queue):
+    # read arrays
+    while True:
+        # read one array
+        data = queue.get()
+        # check for final item
+        if data is None:
+            # report message
+            print('Task done.', flush=True)
+            # push signal back into queue
+            queue.put(data)
+            # exit the task
+            break
+        # compute max of array
+        result = data.max()
+        # report a message
+        print(f'Task read an array {data.shape}, max={result}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared queue
+    queue = Queue()
+    # issue task processes
+    tasks = [Process(target=task, args=(queue,)) for _ in range(4)]
+    for t in tasks:
+        t.start()
+    # generate many arrays of random numbers
+    for _ in range(20):
+        # generate random dimensions
+        dim = (randint(500,2000),randint(500,2000))
+        # generate array of random floats with random dimensions
+        data = random(dim)
+        # push into queue
+        queue.put(data)
+    # signal no further arrays
+    queue.put(None)
+    # wait for task processes to be done
+    for t in tasks:
+        t.join()
+    # report a final message
+    print('Done.', flush=True)
+</code></pre>
+<p>Running the program first creates the shared queue.</p>
+<p>The 4 child processes are then created and configured to execute our <strong>task()</strong> function before being started. Each process waits on items to appear on the queue.</p>
+<p>The main process then generates and puts 20 numpy arrays on the queue.</p>
+<p>It then adds the signal to not expect any further arrays and waits for the child process to exit.</p>
+<p>Each child process loops, retrieving one array from the queue. It computes the max value and then reports it along with the dimensions of the array.</p>
+<p>This is repeated by all child processes until no further arrays are available.</p>
+<p>Each child process encounters the None message, adds it back to the queue for other child processes, exits its loop, and reports a message, terminating the child process.</p>
+<p>Once all child processes are terminated the main process resumes and reports a final message before terminating itself.</p>
+<pre><code>Task read an array (827, 1388), max=0.999999824661523
+Task read an array (1745, 1231), max=0.9999998440051578
+Task read an array (823, 1081), max=0.999999653298093
+Task read an array (1364, 1886), max=0.9999994826187178
+Task read an array (1960, 1190), max=0.9999999890428217
+Task read an array (1272, 1634), max=0.9999992473453926
+Task read an array (1596, 1742), max=0.9999996946372763
+Task read an array (1035, 1511), max=0.9999988748078102
+Task read an array (1358, 951), max=0.9999996488860812
+Task read an array (586, 564), max=0.999998583415731
+Task read an array (1852, 673), max=0.9999997326673665
+Task read an array (1273, 1114), max=0.9999999614124049
+Task read an array (1920, 775), max=0.9999997603830041
+Task read an array (1175, 1762), max=0.9999998728441418
+Task read an array (1567, 843), max=0.9999978316858225
+Task read an array (1579, 1028), max=0.9999996224604828
+Task read an array (784, 1873), max=0.9999998776214708
+Task read an array (1770, 1099), max=0.9999998975119301
+Task read an array (1511, 788), max=0.9999996664224969
+Task done.
+Task done.
+Task done.
+Task read an array (1851, 1027), max=0.9999997882123821
+Task done.
+Done.
+</code></pre>
+<h2>Method 04: Share a NumPy Array Via a Pipe</h2>
+<p>We can share a numpy array between processes using a pipe.</p>
+<p>This is much like sharing a numpy array using a queue. A numpy array must be written to the pipe in one process and read from the pipe in another process. A copy of the array is transmitted between processes using inter-process communication, which can be slow for large arrays.</p>
+<p>A <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Pipe"><strong>multiprocessing.Pipe</strong> class</a> is a simple data structure for sharing data between processes. We can create a pipe, which will create a send and receive connection.</p>
+<pre><code>...
+# create the shared pipe
+conn1, conn2 = Pipe()</code></pre>
+<p>We can then share the sending connection with the child process and the receiving connection with the parent process and use them to send an array back from the child to the parent process.</p>
+<pre><code>...
+# send the array via a pipe
+pipe.send(data)</code></pre>
+<p>You can learn more about how to use pipes for interprocess communication in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pipe-in-python/">Multiprocessing Pipe in Python</a></li>
+</ul>
+<p>You can learn more about sharing a numpy array between processes using a pipe in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multiprocessing-share-array-function/">Share Numpy Array Between Processes Using Function Arguments and Return Values</a></li>
+</ul>
+<p>We can explore the case of simulating the return of a numpy array from a child process using a pipe.</p>
+<p>In this example, we will create a pipe and share the sending connection with the child process and keep the receive connection in the parent process. The child process will then create a numpy array and send it to the parent process via the pipe.</p>
+<p>Firstly, we can define a task function that takes a pipe connection as an argument and creates and transmits the array.</p>
+<p>The function first creates an array initialized with one values. It then confirms the contents of the array contains one values and sends it via the pipe.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task(pipe):
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,n))
+    # check some data in the array
+    print(data[:5,:5])
+    # send the array via a pipe
+    pipe.send(data)
+</code></pre>
+<p>Next, the main process will create the pipe.</p>
+<pre><code>...
+# create the shared pipe
+conn1, conn2 = Pipe()</code></pre>
+<p>It then creates the child process and configures it to execute our task function, passing it the sending connection as an argument.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(conn2,))</code></pre>
+<p>The child process is then started and the main process blocks waiting to receive the array via the pipe.</p>
+<pre><code>...
+# start the child process
+child.start()
+# read the data from the pipe
+data = conn1.recv()</code></pre>
+<p>Finally, the main process confirms the contents of the received numpy array.</p>
+<pre><code>...
+# check some data in the array
+print(data[:5,:5])</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># share numpy array via pipe
+from multiprocessing import Process
+from multiprocessing import Pipe
+from numpy import ones
+
+# task executed in a child process
+def task(pipe):
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,n))
+    # check some data in the array
+    print(data[:5,:5])
+    # send the array via a pipe
+    pipe.send(data)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared pipe
+    conn1, conn2 = Pipe()
+    # create a child process
+    child = Process(target=task, args=(conn2,))
+    # start the child process
+    child.start()
+    # read the data from the pipe
+    data = conn1.recv()
+    # check some data in the array
+    print(data[:5,:5])
+</code></pre>
+<p>Running the example first creates the pipe with the sending and receiving connections.</p>
+<p>Next, the child process is created and configured, and started.</p>
+<p>The main process then blocks, waiting to read the numpy array from the pipe.</p>
+<p>The child process runs, first creating a numpy array initialized with one values.</p>
+<p>It then confirms the contents of the array and transmits it to the parent process via the pipe. The child process then terminates.</p>
+<p>The main process reads the numpy array from the pipe and confirms it contains one values.</p>
+<pre><code>[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+</code></pre>
+<h2>Method 05: Share a NumPy Array Via a ctype Array</h2>
+<p>One way to share a numpy array between processes is via shared ctypes.</p>
+<p>The <a href="https://docs.python.org/3/library/ctypes.html"><strong>ctypes</strong> module</a> provides tools for working with C data types.</p>
+<p>Python provides the capability to share ctypes between processes on one system.</p>
+<p>This is primarily achieved via the following classes:</p>
+<ul>
+<li><strong>multiprocessing.Value</strong>: manage a shared value.</li>
+<li><strong>multiprocessing.Array</strong>: manage an array of shared values.</li>
+</ul>
+<p>A single <strong>Value</strong> or <strong>Array</strong> instance can be created in memory and shared among processes without duplicating the data.</p>
+<p>You can learn more about sharing ctypes between processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>We can copy a numpy array into a <strong>multiprocessing.Array</strong> and share it among multiple processes that can then read and write the same data.</p>
+<p>A <strong>multiprocessing.Array</strong> can be created by specifying the data type and initial values.</p>
+<p>For example:</p>
+<pre><code>...
+# create an integer array
+data = multiprocessing.Array(ctypes.c_int, (1, 2, 3, 4, 5))</code></pre>
+<p>We can use the <a href="https://numpy.org/doc/stable/reference/routines.ctypeslib.html#numpy.ctypeslib.as_ctypes"><strong>numpy.ctypeslib.as_ctypes()</strong> function</a> to determine the ctype for a given numpy array.</p>
+<p>For example:</p>
+<pre><code>...
+# get ctype for our array
+ctype = as_ctypes(data)</code></pre>
+<p>We can then use this type along with the array data to initialize a new <strong>multiprocessing.Array</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create ctype array initialized from our array
+array = Array(ctype._type_, data)</code></pre>
+<p>This will make a copy of the data in the numpy array into the <strong>multiprocessing.Array</strong>.</p>
+<p>Note that the shared ctype <strong>Array</strong> only supports one-dimensional arrays. This means that if you have a two-dimensional array, or more dimensions, you must flatten the array first before you copy it into the <strong>multiprocessing.Array</strong>, e.g. via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.flatten.html"><strong>flatten()</strong> method</a>.</p>
+<p>You can learn more about how to share NumPy arrays between processes using a ctype Array in the tutorial:</p>
+<ul>
+<li><a href="../numpy-shared-array-ctypes/">Share Numpy Array Between Processes With Shared ctypes</a></li>
+</ul>
+<p>We can explore the case of sharing a numpy array between processes using a shared ctype array.</p>
+<p>In this example, we will create a one-dimensional numpy array initialized with one values. We will then copy it into a shared ctype <strong>Array</strong> and share the array with a child process. The child process will then change the contents of the array. The parent process will then confirm that the contents of the shared ctype array were changed.</p>
+<p>First, we will define a function to execute in a child process.</p>
+<p>The function will take the shared ctype array as an argument.</p>
+<p>Firstly, it will check that the contents of the array match what was expected, e.g. what was passed in from the parent process. It will then change the content of the array to all zero values and confirm that the content of the array was changed.</p>
+<p>The <strong>task()</strong> function listed below implements this.</p>
+</main>
+</body>
+</html>

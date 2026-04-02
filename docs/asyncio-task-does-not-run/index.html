@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why Asyncio Task Never Runs and Completes – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Why Asyncio Task Never Runs and Completes</h1>
+<div class="post-meta">March 12, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can develop an asyncio program that schedules background tasks, but then never gives them an opportunity to run or complete.</p>
+<p>We can allow background tasks the opportunity to start running after they are scheduled by awaiting <strong>asyncio.sleep(0)</strong>. We can also allow background tasks the opportunity to be completed without being canceled by awaiting them before the asyncio event loop exits and cancels them.</p>
+<p>In this tutorial, you will discover why <strong>background asyncio tasks never run</strong> and how to fix them so they do run.</p>
+<p>Let's get started.</p>
+<h2>Asyncio Coroutine or Task Never Runs</h2>
+<p>It is common to get a situation in asyncio where a coroutine never runs.</p>
+<p>This can happen when the coroutine is first scheduled as a background task.</p>
+<p>The asyncio program then proceeds normally and then at some point exits.</p>
+<p>We will discover that the background task that we scheduled was never executed. Alternately, perhaps it started to execute but never finished.</p>
+<p>Why are coroutines or background tasks never run?</p>
+<h2>Why Background Tasks Never Run</h2>
+<p>A background task can never run if the coroutine that scheduled it never awaits.</p>
+<p>For example, we may have a coroutine that creates and schedules another coroutine as a background task:</p>
+<pre><code>...
+# schedule the background task
+_ = asyncio.create_task(work())</code></pre>
+<p>It then proceeds with other work.</p>
+<p>At some point the program ends and the background task has never run or may have started and never finished, even if it was short in duration.</p>
+<p>The reason is that the coroutine that created and scheduled the background task did not await.</p>
+<p>Because it did not await, the background task was never given an opportunity to execute.</p>
+<p>To fix the problem, the calling coroutine must await and allow the background task to run.</p>
+<h2>How to Force Background Tasks To Start</h2>
+<p>The calling coroutine that created and scheduled the background task can force the new task to start.</p>
+<p>This can be achieved by following the scheduling of the background task with an await for <strong>asyncio.sleep(0)</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# schedule the background task
+_ = asyncio.create_task(work())
+# allow the background task to sleep
+await asyncio.sleep(0)</code></pre>
+<p>This will suspend the caller and allow all other scheduled coroutines and tasks an opportunity to run until their next point of suspension.</p>
+<p>This is not a hack.</p>
+<p>Instead, it is a pattern in asynchronous programming of suspending the caller and allowing other tasks to run.</p>
+<p>You can learn more about the <strong>asyncio.sleep(0)</strong> pattern in the tutorial:</p>
+<ul>
+<li><a href="../what-is-asyncio-sleep-zero/">What is asyncio.sleep(0)</a></li>
+</ul>
+<h2>How to Force Background Tasks To Complete</h2>
+<p>The background task will never get a chance to complete.</p>
+<p>This is because when the main coroutine exits, the event loop will exit. When the event loop exits, it will cancel all other tasks, including our background task.</p>
+<p>You can learn more about this special ability of the main coroutine in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-main-coroutine/">What is the Main Coroutine</a></li>
+</ul>
+<p>The calling coroutine can force the background task to be completed.</p>
+<p>This can be achieved by awaiting the task directly.</p>
+<p>We may want to do this at some later point in the program, such as at the end of the current coroutine.</p>
+<p>The background task must first be assigned so that we have a reference to the <strong>asyncio.Task</strong> object.</p>
+<p>For example:</p>
+<pre><code>...
+# schedule the background task
+task = asyncio.create_task(work())</code></pre>
+<p>Then later in the program we can explicitly await it. This will ensure that it is given an opportunity to complete.</p>
+<p>For example:</p>
+<pre><code>...
+# allow the background task to complete
+await task</code></pre>
+<p>If we don't have access to the scheduled background tasks, we can loop over and await all tasks in the event loop, except the current task (self).</p>
+<p>For example:</p>
+<pre><code>...
+# get a set of all running tasks
+all_tasks = asyncio.all_tasks()
+# get the current tasks
+current_task = asyncio.current_task()
+# remove the current task from the list of all tasks
+all_tasks.remove(current_task)
+# suspend until all tasks are completed
+await asyncio.wait(all_tasks)</code></pre>
+<p>You can learn more about how to wait for all background tasks to complete in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait-for-tasks/">How to Wait for All Background Asyncio Tasks in Python</a></li>
+</ul>
+<p>Now that we know why background tasks may not run and how to fix the problem, let's explore some worked examples.</p>
+<h2>Example of Asyncio Task Never Runs</h2>
+<p>We can explore an example of a background task that is scheduled but never runs and is completed.</p>
+<p>Firstly, we can define a simple background task that reports a message, sleeps for one second, and then prints a final message.</p>
+<pre><code># background task
+async def work():
+    # report a message
+    print('Work is starting')
+    # simulate work for a moment
+    await asyncio.sleep(1)
+    # report a message
+    print('Work is done')
+</code></pre>
+<p>Next, we can define a main coroutine that prints a message, schedules the <strong>work()</strong> coroutine as a background task, does some computational work, and then prints a final message.</p>
+</main>
+</body>
+</html>

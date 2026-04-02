@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread-Safe Random Numbers in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread-Safe Random Numbers in Python</h1>
+<div class="post-meta">March 30, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can generate (mostly) <strong>thread-safe random numbers</strong> via the random module.</p>
+<p>In this tutorial you will discover how to use thread-safe random numbers in Python.</p>
+<p>Let's get started.</p>
+<h2>Need Thread-Safe Random Numbers</h2>
+<p>A thread is a <strong>thread of execution</strong> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming, we often need to make use of random numbers.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>Performing a multithreaded simulation that involves random behavior.</li><li>Performing a multithreaded experiment that involves statistical randomness.</li><li>Performing a multithreaded statistical analysis that involves random sampling.</li></ul>
+<p>Therefore, we need to use random numbers, such as from the random module, in a multithreaded environment.</p>
+<p><strong>Are random numbers from the random module and the random.Random class thread-safe and if not, how can they be made thread-safe?</strong></p>
+<h2>Are Random Numbers Thread-Safe</h2>
+<p>At the time of writing (Python 3.10), the <a href="https://docs.python.org/3/library/random.html"><strong>random</strong> module in Python</a> is thread-safe, mostly.</p>
+<p>Specifically, the generation of all random numbers relies on the <a href="https://docs.python.org/3/library/random.html#random.random"><strong>random.random()</strong> function</a>, which calls down to C-code and is thread-safe. You may recall that the <strong>random.random()</strong> function returns a random floating point value between 0 and 1.</p>
+<blockquote><p>Almost all module functions depend on the basic function random(), which generates a random float uniformly in the semi-open range [0.0, 1.0). Python uses the Mersenne Twister as the core generator. It produces 53-bit precision floats and has a period of 2**19937-1. The underlying implementation in C is both fast and threadsafe.</p><cite>-- <a href="https://docs.python.org/3/library/random.html">random — Generate pseudo-random numbers</a></cite></blockquote>
+<p>Both the functions on the "<strong>random</strong>" module are thread safe as are the methods on an instance of the <a href="https://docs.python.org/3/library/random.html#random.Random"><strong>random.Random</strong> class</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# generate a thread-safe random number
+value = random.random()</code></pre>
+<p>This means that a multithreaded program may call module functions in order to generate random numbers with a seed and sequence of random numbers shared between threads, or have a single new <strong>random.Random</strong> instance shared between threads.</p>
+<p>The single function on the random module and the <strong>random.Random</strong> class that is not thread-safe is the <a href="https://docs.python.org/3/library/random.html#random.gauss"><strong>gauss()</strong> function</a>, specifically <strong>random.gauss()</strong> and <strong>random.Random.gauss()</strong>.</p>
+<p>This function will generate a random number drawn from a Gaussian distribution (e.g. normal distribution) with a given mean and standard deviation.</p>
+<p>For example:</p>
+<pre><code>...
+# generate a thread-unsafe gaussian random number
+value = random.gauss(0.0, 1.0)</code></pre>
+<p><strong>This function is not thread-safe</strong>.</p>
+<blockquote><p>Multithreading note: When two threads call this function simultaneously, it is possible that they will receive the same return value. This can be avoided in three ways. 1) Have each thread use a different instance of the random number generator. 2) Put locks around all calls. 3) Use the slower, but thread-safe normalvariate() function instead.</p><cite>-- <a href="https://docs.python.org/3/library/random.html">random — Generate pseudo-random numbers</a></cite></blockquote>
+<p>The algorithm used for generating Gaussian random numbers will generate two numbers each time the function is called. As such, it is possible for two threads to call this function at the same time and suffer a race condition, receiving the same random Gaussian values in return.</p>
+<p>As such the <a href="https://docs.python.org/3/library/random.html#random.normalvariate"><strong>random.normalvariate()</strong> function</a> should be used instead in a multithreaded application.</p>
+<p>For example:</p>
+<pre><code>...
+# generate a random gaussian in a thread-safe manner
+value = random.normalvariate(0.0, 1.0)</code></pre>
+<p>Alternatively, a mutual exclusion (mutex) lock may be used to protect the <strong>random.gauss()</strong> function via the <a href="../thread-mutex-lock/"><strong>threading.Lock</strong> class</a>.</p>
+<p>For example, a lock may be created once:</p>
+<pre><code>...
+lock = threading.Lock()</code></pre>
+<p>Then used to protect each call to the <strong>random.gauss()</strong> function:</p>
+<pre><code>...
+# acquire the mutex
+with lock:
+	# generate a random gaussian
+	value = random.gauss(0.0, 1.0)
+</code></pre>
+<p>This will ensure that only one thread can execute the <strong>random.gauss()</strong> function at a time.</p>
+<p>You can learn more about the mutex lock in this tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>Next, let's consider best practices when using random numbers in a multithreaded Python application.</p>
+<h2>Best Practice For Threads and Random Numbers</h2>
+<p>This section considers some best practice tips when using random numbers in a multithreaded application.</p>
+<p>They are:</p>
+<ol><li>Seed the random number generator prior to generating random numbers.</li><li>Provide each thread its own random number generator.</li></ol>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Seed the Random Number Generator</h3>
+<p>When using threads, it is a common requirement to need to control the sequence of random numbers generated each time the application is run to ensure reproducibility.</p>
+<p>This is especially the case if random numbers are used in a simulation or experiment.</p>
+<p>Reproducibility means that each time the program is run, the random number generator provides the same sequence of random numbers.</p>
+<blockquote><p>Sometimes it is useful to be able to reproduce the sequences given by a pseudo-random number generator. By re-using a seed value, the same sequence should be reproducible from run to run as long as multiple threads are not running.</p><cite>-- <a href="https://docs.python.org/3/library/random.html">random — Generate pseudo-random numbers</a></cite></blockquote>
+<p>This is possible because the random number generator is a deterministic equation that will generate the same sequence of pseudo or nearly-random numbers as long as it is seeded with the same value.</p>
+<p>The seed for the pseudo random number generator can be set via the <strong>random.seed() </strong>function.</p>
+<p>For example:</p>
+<pre><code>...
+# seed the random number generator
+random.seed(1)</code></pre>
+<p>It is a best practice to always seed the random number generator prior to generating random numbers. The specific value of the seed does not matter, as long as it is set prior to generating the first random number in the application.</p>
+<p>The exceptions are those applications where reproducibility is not a requirement.</p>
+<h3>Separate Random Instance Per Thread</h3>
+<p>If multiple threads access the same random number generator, it is likely that each thread will get a different subset of the random numbers from the same sequence.</p>
+<p>As such, sharing a random number generator between threads is likely not reproducible given the non-deterministic scheduling of threads by the operating system.</p>
+<p>This means that even though the functions on the random module and the <strong>random.Random</strong> class are thread-safe (mostly), and you seed the single random number generator, that you may still get unreproducible behavior among threads that use random numbers.</p>
+<p>Therefore, it is a best practice to provide each thread its own instance of a <strong>random.Random</strong> class.</p>
+<p>The <strong>random.Random</strong> assigned to each thread may then be seeded to ensure a reproducible sequence of random numbers. Care must be taken to give each thread a different seed, to ensure it receives a different sequence of random values.</p>
+<p>This could be achieved by assigning each thread a sequence integer identifier to be used as the seed for the random number generator, e.g. 0 to n where you have n threads.</p>
+<p>For example:</p>
+<pre><code>...
+# create threads
+for i in range(10):
+	# create the random number generator to be used by the thread
+	rand = random.Random(seed=i)
+	# create the thread
+	thread = threading.Thread(..., args=(rand,))
+	# ...
+</code></pre>
+<p>Next, let's look at some examples of using random numbers in a multi-threaded program.</p>
+<h2>Example Of Thread-Safe Random Numbers</h2>
+<p>We can explore how to generate random numbers in a multithreaded environment.</p>
+<p>In this example, we are not interested in reproducibility, instead just demonstrating that we can use a shared pseudorandom number generator safely from many threads. We will create one thousand threads and have them all use the single built-in random number generator on the random module to generate a random number between 0 and 1, use the number to sleep for a fraction of a second, then report the value.</p>
+<p>First, we can define a function to be executed in new threads.</p>
+<p>The function will first generate a new random number between 0 and 1.</p>
+<pre><code>...
+# generate a thread-safe random number
+value = random()</code></pre>
+<p>Next, it will sleep for the generated number as a fraction of a second.</p>
+<pre><code>...
+# block for a fraction of a second
+sleep(value)</code></pre>
+<p>Then report the value generated.</p>
+<pre><code>...
+# report the value
+print(f'.got {value}')</code></pre>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task function that sleeps for a random fraction of a second
+def task():
+    # generate a thread-safe random number
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # report the value
+    print(f'.got {value}')
+</code></pre>
+<p>Next, in the main thread, we can generate 1,000 threads, each configured to execute the <strong>task()</strong> function, then start each thread.</p>
+<pre><code>...
+# generate a bunch of threads
+for i in range(1000):
+    # create and configure the thread
+    thread = Thread(target=task)
+    # start the thread
+    thread.start()
+</code></pre>
+<p>The main thread will then wait for all threads to finish before terminating the program.</p>
+<p>Tying this together, the complete example of many threads generating thread-safe random numbers.</p>
+<pre><code># SuperFastPython.com
+# example of generating thread-safe random numbers among threads
+from time import sleep
+from random import random
+from threading import Thread
+
+# task function that sleeps for a random fraction of a second
+def task():
+    # generate a thread-safe random number
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # report the value
+    print(f'.got {value}')
+
+# generate a bunch of threads
+for i in range(1000):
+    # create and configure the thread
+    thread = Thread(target=task)
+    # start the thread
+    thread.start()
+# wait for all threads to finish
+</code></pre>
+<p>Running the example first generates 1,000 threads and then waits for all threads to finish.</p>
+<p>Each thread uses the same default random number generator provided by the random module. The random number generator is seeded with the time when the application was started, or close enough (e.g. the default seed).</p>
+<p>Each thread then generates a random number using the shared random number generator, blocks for a fraction of a second and reports the value.</p>
+<p>Below is a truncated sample of the output.</p>
+<p>Note, your specific results will differ given the use of a different random seed.</p>
+<pre><code>.got 0.03128644107538603
+.got 0.016833978413035466
+.got 0.024728081787179224
+.got 0.004274152560607147
+.got 0.025159263330416626
+.got 0.03649835202157414
+.got 0.008630466364065281
+.got 0.022108252200611744
+.got 0.019267619443028905
+...</code></pre>
+<p>Next, let's look at how we can provide each thread its own instance of the <strong>random.Random</strong> class.</p>
+<h2>Example Of Thread-Safe Random Instance</h2>
+<p>It is a good practice to give each thread its own instance the <strong>random.Random</strong> class for generating random numbers.</p>
+<p>Each thread can then seed its own random number generator in a consistent manner.</p>
+<p>Together, these two best practices ensure that the sequences of random numbers generated by each thread, and therefore any behavior in the application dependent upon random numbers will be reproducible.</p>
+<p>In this example, we will demonstrate how to do this. We will create and configure ten threads. Each thread will be assigned a unique identifier from 0 to 9. This will be used to seed a <strong>random.Random</strong> instance within each thread, which will then generate a random number between 0 and 10, block for that many seconds, then report its value.</p>
+<p>First, we can define a function that takes an integer identifier and creates a new random number, blocks and reports the value.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task function that sleeps for a random fraction of a second
+def task(identifier):
+    # create the random number generator
+    rand = Random(identifier)
+    # generate a random number in [0, 10]
+    value = rand.random() * 10
+    # block for a fraction of ten seconds
+    sleep(value)
+    # report the value
+    print(f'.thread {identifier} got {value}')
+</code></pre>
+<p>Next, in the main thread we can loop and create, configure and start ten threads. Each thread is consistently assigned a unique identifier used for generating its own unique sequence of random numbers.</p>
+<pre><code>...
+# generate a bunch of threads
+for i in range(10):
+    # create and configure the thread
+    thread = Thread(target=task, args=(i,))
+    # start the thread
+    thread.start()
+</code></pre>
+<p>The main thread will then wait for all threads to finish before terminating the program.</p>
+<p>Tying this together, the complete example of each thread using its own <strong>random.Random</strong> instance is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of threads using their own random number generator
+from time import sleep
+from random import Random
+from threading import Thread
+
+# task function that sleeps for a random fraction of a second
+def task(identifier):
+    # create the random number generator
+    rand = Random(identifier)
+    # generate a random number in [0, 10]
+    value = rand.random() * 10
+    # block for a fraction of ten seconds
+    sleep(value)
+    # report the value
+    print(f'.thread {identifier} got {value}')
+
+# generate a bunch of threads
+for i in range(10):
+    # create and configure the thread
+    thread = Thread(target=task, args=(i,))
+    # start the thread
+    thread.start()
+# wait for all threads to finish
+</code></pre>
+<p>Running the example first creates ten threads, each configured to execute our <strong>task()</strong> function, each with a unique seed, consistently assigned.</p>
+<p>Each thread generates a random number between 0 and 10, blocks for that many seconds and then reports the value.</p>
+<pre><code>.thread 1 got 1.3436424411240122
+.thread 8 got 2.2670585938104884
+.thread 4 got 2.3604808973743454
+.thread 3 got 2.3796462709189137
+.thread 7 got 3.238327648331624
+.thread 9 got 4.630073578150214
+.thread 5 got 6.229016948897019
+.thread 6 got 7.93340083761663
+.thread 0 got 8.444218515250482
+.thread 2 got 9.560342718892494</code></pre>
+<p>Importantly, the program is reproducible.</p>
+<p>This means that each time we run the program, each thread will generate the same unique sequence of random numbers.</p>
+<p>In our case, it means that we will get the same output from the program every time.</p>
+<pre><code>.thread 1 got 1.3436424411240122
+.thread 8 got 2.2670585938104884
+.thread 4 got 2.3604808973743454
+.thread 3 got 2.3796462709189137
+.thread 7 got 3.238327648331624
+.thread 9 got 4.630073578150214
+.thread 5 got 6.229016948897019
+.thread 6 got 7.93340083761663
+.thread 0 got 8.444218515250482
+.thread 2 got 9.560342718892494</code></pre>
+<p>Next, let's look at how we can make the <strong>random.gauss()</strong> function thread-safe.</p>
+<h2>Example Of Thread-Safe Gaussian Random Numbers</h2>
+<p>The <strong>random.gauss()</strong> function for generating random numbers drawn from a Gaussian distribution is not thread-safe.</p>
+<p>In this section we will first confirm that indeed the function is not threads-safe, then show how to make the function thread safe using a mutex lock, as well as an alternate function that may be used.</p>
+<h3>Single-Threaded Gaussian Random Numbers</h3>
+<p>We can demonstrate that the random.gauss() function is not thread-safe.</p>
+<p>One sign that generating random numbers is not thread-safe is that it returns the same random numbers in subsequent calls. Eventually the sequence of random numbers will repeat, but may take billions of function calls. Signs of duplicate numbers in a small sample of random numbers may be a sign of a race condition.</p>
+<p>First, we can generate a large number of Gaussian random numbers in a single-threaded program to confirm that no duplicates are generated. We can then repeat the identical process using many threads, and see if a race condition occurs. If so, this confirms that the function is not thread safe.</p>
+<p>First, we can define a function that generates many Gaussian random numbers and adds them to a provided set. We use a set, because it will only store unique values.</p>
+<pre><code># task that generates many gaussian random numbers and adds them to a set
+def task(values_set):
+    # repeat many times
+    for i in range(10000):
+        # generate a thread-unsafe gaussian random number
+        value = gauss(0.0, 1.0)
+        # store the value
+        values_set.add(value)
+</code></pre>
+<p>We can fix the seed for the random number generator, to ensure we generate the same sequence of numbers each time the code is run.</p>
+<pre><code>...
+# seed the random number generator
+seed(1)</code></pre>
+<p>Next, we can then call this function many times and provide it a set to populate.</p>
+<pre><code>...
+# maintain a set of all generated numbers
+values = set()
+# generate many gaussian random values and add them to the set
+for _ in range(1000):
+    task(values)
+</code></pre>
+<p>Finally, we can report the total number of unique random numbers generated.</p>
+<pre><code>...
+# report the number of unique gaussian random numbers
+print(f'Generated {len(values)} unique Gaussian random numbers')</code></pre>
+<p>Given that the sample of random numbers is small, we would not expect any duplicates.</p>
+<p>Therefore, 1000 * 10,000 would provides 10,000,000 unique values</p>
+<p>Tying this together, the complete example of generating a modest sample of Gaussian random numbers without threads is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of generating gaussian random numbers
+from random import seed
+from random import gauss
+
+# task that generates many gaussian random numbers and adds them to a set
+def task(values_set):
+    # repeat many times
+    for i in range(10000):
+        # generate a thread-unsafe gaussian random number
+        value = gauss(0.0, 1.0)
+        # store the value
+        values_set.add(value)
+
+# seed the random number generator
+seed(1)
+# maintain a set of all generated numbers
+values = set()
+# generate many gaussian random values and add them to the set
+for _ in range(1000):
+    task(values)
+# report the number of unique gaussian random numbers
+print(f'Generated {len(values)} unique Gaussian random numbers')
+</code></pre>
+<p>Running the example first seeds the module random number generator, then generates a many random numbers drawn from a Gaussian distribution.</p>
+<p>In this case, we can see that indeed 10,000,000 unique values were generated.</p>
+<pre><code>Generated 10000000 unique Gaussian random numbers</code></pre>
+<p>Next, let's add Threads in an effort to force a race-condition.</p>
+<h3>Thread-Unsafe Gaussian Random Numbers</h3>
+<p>The example from the previous section can be updated to use threads in an effort to force a race condition.</p>
+<p>We will know that we have a race condition if the set of generated numbers does not equal 10 million. A value less than this will indicate that some duplicate numbers were generated due to the known race condition with the <strong>random.gauss() </strong>function.</p>
+<p>The example can be updated so that instead of calling the <strong>task()</strong> function 1,000 times in a loop, instead, we create 1,000 threads that each call the function once.</p>
+<p>This can be achieved by creating 1,000 <strong>threading.Thread</strong> instances configured to call the <strong>task()</strong> function via the "<strong>target</strong>" argument and passing the set for collecting values via the "<strong>args</strong>" argument.</p>
+<pre><code>...
+# create and configure many threads
+threads = [Thread(target=task, args=(values,)) for i in range(1000)]</code></pre>
+<p>Note, the <strong>task()</strong> function calls add() on the set shared among all threads. This function is atomic and thread safe.</p>
+<p>For more on atomic options, see the tutorial:</p>
+<ul><li><a href="../thread-atomic-operations/">Thread Atomic Operation in Python</a></li></ul>
+<p>We can then start all threads and then wait for them to complete in the main thread.</p>
+<pre><code>...
+# start all threads
+for thread in threads:
+    thread.start()
+# wait for all threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Tying this together, the updated but thread-unsafe version of generating Gaussian random numbers is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-unsafe gaussian random numbers
+from random import seed
+from random import gauss
+from threading import Thread
+
+# task that generates many gaussian random numbers and adds them to a set
+def task(values_set):
+    # repeat many times
+    for i in range(10000):
+        # generate a thread-unsafe gaussian random number
+        value = gauss(0.0, 1.0)
+        # store the value
+        values_set.add(value)
+
+# seed the random number generator
+seed(1)
+# maintain a set of all generated numbers
+values = set()
+# create and configure many threads
+threads = [Thread(target=task, args=(values,)) for i in range(1000)]
+# start all threads
+for thread in threads:
+    thread.start()
+# wait for all threads to finish
+for thread in threads:
+    thread.join()
+# report the number of unique gaussian random numbers
+print(f'Generated {len(values)} unique Gaussian random numbers')
+</code></pre>
+<p>Running the example first creates 1,000 threads all configured to execute the <strong>task()</strong> function.</p>
+<p>The threads are then started and the main thread waits for them to complete.</p>
+<p>Each thread generates 10,000 Gaussian random numbers and adds them to the shared set.</p>
+<p>In this case, we can see that less than 10 million unique random numbers were generated, suggesting that a few race conditions occurred.</p>
+<pre><code>Generated 9999995 unique Gaussian random numbers</code></pre>
+<p>In fact, each time the example is run, a different number of unique random numbers are generated.</p>
+<pre><code>Generated 9999979 unique Gaussian random numbers</code></pre>
+<p>Next, let's look at how we can update the example to make it thread-safe.</p>
+<h3>Thread-Safe Gaussian Random Numbers</h3>
+<p>The example in the previous section showed that the <strong>random.gauss()</strong> function is not thread safe.</p>
+<p>We can update the example so that it is thread-safe.</p>
+<p>This can be achieved by creating a mutual exclusion (mutex) lock and sharing it among all threads. The lock can then be used to protect the <strong>random.gauss()</strong> function so that only one thread can call the function at a time.</p>
+<p>You can learn more about protecting critical sections with mutex locks in this tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>First, we can update the <strong>task()</strong> function to take a shared lock as an argument.</p>
+<pre><code>...
+# task that generates many gaussian random numbers and adds them to a set
+def task(values_set, lock_gauss):
+	# ...
+</code></pre>
+<p>We can then acquire the lock via the context manager prior to generating a random number.</p>
+<pre><code>...
+# generate a thread-unsafe gaussian random number
+with lock_gauss:
+    value = gauss(0.0, 1.0)
+</code></pre>
+<p>The updated version of the <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task that generates many gaussian random numbers and adds them to a set
+def task(values_set, lock_gauss):
+    # repeat many times
+    for i in range(10000):
+        # generate a thread-unsafe gaussian random number
+        with lock_gauss:
+            value = gauss(0.0, 1.0)
+        # store the value
+        values_set.add(value)
+</code></pre>
+<p>In the main thread we can create a <strong>threading.Lock</strong> instance and pass it to each thread as an argument.</p>
+<pre><code>...
+# create a shared lock
+lock_gauss = Lock()
+# create and configure many threads
+threads = [Thread(target=task, args=(values, lock_gauss)) for i in range(1000)]
+</code></pre>
+<p>Tying this together, the complete example of generating Gaussian random numbers in a thread-safe manner is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-safe gaussian random numbers
+from random import seed
+from random import gauss
+from threading import Thread
+from threading import Lock
+
+# task that generates many gaussian random numbers and adds them to a set
+def task(values_set, lock_gauss):
+    # repeat many times
+    for i in range(10000):
+        # generate a thread-unsafe gaussian random number
+        with lock_gauss:
+            value = gauss(0.0, 1.0)
+        # store the value
+        values_set.add(value)
+
+# seed the random number generator
+seed(1)
+# maintain a set of all generated numbers
+values = set()
+# create a shared lock
+lock_gauss = Lock()
+# create and configure many threads
+threads = [Thread(target=task, args=(values, lock_gauss)) for i in range(1000)]
+# start all threads
+for thread in threads:
+    thread.start()
+# wait for all threads to finish
+for thread in threads:
+    thread.join()
+# report the number of unique gaussian random numbers
+print(f'Generated {len(values)} unique Gaussian random numbers')
+</code></pre>
+<p>Running the example first initializes the shared random number generator as before, then creates the shared set and lock.</p>
+<p>A total of 1,000 new threads are created and configured to run the <strong>task()</strong> function.</p>
+<p>The main thread blocks until all new threads finish, then reports the total number of unique values generated.</p>
+<p>In this case, we can see that the race condition was fixed and that the expected 10 million unique values were generated. Importantly, the same result is achieved each time the program is run.</p>
+<pre><code>Generated 10000000 unique Gaussian random numbers</code></pre>
+<p>Note, this version is significantly slower than the thread-unsafe version. This version took about 3 minutes on my system compared to about 7 seconds for the thread-unsafe version.</p>
+<h3>Alternate Thread-Safe Gaussian Random Numbers</h3>
+<p>An alternate approach to generating thread-safe Gaussian random numbers is to use the <a href="https://docs.python.org/3/library/random.html#random.normalvariate"><strong>random.normalvariate()</strong> function</a>.</p>
+<p>This function performs the same task as <strong>random.gauss() </strong>except that it is thread-safe.</p>
+<p>The thread-safety is achieved by not using any internal state for efficiency as is done within the <strong>random.gauss()</strong> function.</p>
+<p>We can update the thread-unsafe version above to use this function instead, and confirm that it is indeed thread-safe.</p>
+<p>For example, we can change the random.gauss() function in our <strong>task()</strong> function to call <strong>random.normalvariate()</strong> directly:</p>
+<pre><code># task that generates many gaussian random numbers and adds them to a set
+def task(values_set, lock_gauss):
+    # repeat many times
+    for i in range(10000):
+        # generate a thread-unsafe gaussian random number
+        value = normalvariate(0.0, 1.0)
+        # store the value
+        values_set.add(value)
+</code></pre>
+<p>Tying this together, the complete example of using an alternate function for generating Gaussian random numbers is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-safe alternative to gaussian random numbers
+from random import seed
+from random import normalvariate
+from threading import Thread
+
+# task that generates many gaussian random numbers and adds them to a set
+def task(values_set):
+    # repeat many times
+    for i in range(10000):
+        # generate a thread-unsafe gaussian random number
+        value = normalvariate(0.0, 1.0)
+        # store the value
+        values_set.add(value)
+
+# seed the random number generator
+seed(1)
+# maintain a set of all generated numbers
+values = set()
+# create and configure many threads
+threads = [Thread(target=task, args=(values,)) for i in range(1000)]
+# start all threads
+for thread in threads:
+    thread.start()
+# wait for all threads to finish
+for thread in threads:
+    thread.join()
+# report the number of unique gaussian random numbers
+print(f'Generated {len(values)} unique Gaussian random numbers')
+</code></pre>
+<p>Running the example creates and starts 1,000 new threads, each executing our <strong>task()</strong> function.</p>
+<p>The main thread blocks until all threads finish, then report the total number of unique random numbers that were generated.</p>
+<p>We can see that the function does appear thread-safe, as it generated the 10 million unique values as expected. Importantly, it achieves the same result each time the code is run.</p>
+<pre><code>Generated 10000000 unique Gaussian random numbers</code></pre>
+<p>Note, using the <strong>random.normalvariate() </strong>function is dramatically faster than using a mutex lock as in the previous section. On my system it took about 8 seconds compared to 3 minutes with the lock.</p>
+<h2>Takeaways</h2>
+<p>You now know how to use random numbers in a multithreaded application in Python.</p>
+</main>
+</body>
+</html>

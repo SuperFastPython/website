@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What is asyncio.sleep(0) – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>What is asyncio.sleep(0)</h1>
+<div class="post-meta">December 5, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can force the current asyncio task to suspend using <strong>asyncio.sleep(0)</strong>.</p>
+<p>This gives an opportunity for all other scheduled tasks in the event loop to run until their next point of suspension. This allows the event loop to progress one cycle through all tasks before resuming the current task.</p>
+<p>In this tutorial, you will <strong>discover asyncio.sleep(0)</strong>, what it is, and why it is important.</p>
+<p>Let's get started.</p>
+<h2>What is asyncio.sleep()?</h2>
+<p>The <strong>asyncio.sleep()</strong> call is a coroutine that suspends the current coroutine or task for a given number of seconds.</p>
+<blockquote>
+<p>Block for delay seconds.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# suspend for 2 seconds
+await asyncio.sleep(2)</code></pre>
+<p>Or, less elegantly:</p>
+<pre><code>...
+# create coroutine
+coro = asyncio.sleep(2)
+# suspend for 2 seconds
+await coro</code></pre>
+<p>We call <strong>asyncio.sleep()</strong> when we want to block or suspend the current coroutine for some time.</p>
+<p>This might be to wait for a future time when some event has occurred.</p>
+<p>It may also be used to simulate a blocking call such as in a prototype or unit test.</p>
+<p>You can learn more about <strong>asyncio.sleep()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-sleep/">Asyncio sleep() in Python</a></li>
+</ul>
+<p>Now that we know what <strong>asyncio.sleep()</strong> is, let's consider the special case of <strong>asyncio.sleep(0)</strong>.</p>
+<h2>What is asyncio.sleep(0)?</h2>
+<p>The <strong>asyncio.sleep()</strong> coroutine provides a guarantee to always suspend the current coroutine or task.</p>
+<blockquote>
+<p>sleep() always suspends the current task, allowing other tasks to run.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>This is true, even if we provide the value of zero seconds, e.g. <strong>asyncio.sleep(0)</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# suspend the current task
+await asyncio.sleep(0)</code></pre>
+<p>We must provide a value, e.g. 0, or perhaps a negative value. We cannot leave the call empty or provide a None value.</p>
+<p>The <strong>asyncio.sleep(0)</strong> coroutine is a helpful as it allows:</p>
+<ol>
+<li>Other tasks have an opportunity to run.</li>
+<li>The current coroutine to resume as soon as other tasks are finished.</li>
+</ol>
+<p>It provides a mechanism to allow one cycle of the asyncio event loop, allowing each scheduled task to progress until its next point of suspension (e.g. next blocking call).</p>
+<blockquote>
+<p>Setting the delay to 0 provides an optimized path to allow other tasks to run. This can be used by long-running functions to avoid blocking the event loop for the full duration of the function call.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>Another way to think about <strong>asyncio.sleep(0)</strong> is that it is a nop (<a href="https://en.wikipedia.org/wiki/NOP_(code)">no-op or no-operation</a>).</p>
+<p>It tells the event loop that the current task is happy to do nothing or suspend right now and grants every other scheduled task one opportunity to run before the current task resumes with regular activity.</p>
+<p>Next, let's consider when to use <strong>asyncio.sleep(0)</strong>.</p>
+<h3>When to Use asyncio.sleep(0)?</h3>
+<p>We need to use <strong>asyncio.sleep(0)</strong> in our programs occasionally.</p>
+<p>The most common use case is when:</p>
+<ol>
+<li>A new task is created and scheduled.</li>
+<li>We need to give the new task the opportunity to start running.</li>
+<li>The new task should start running before the current task resumes.</li>
+<li>We don't want to wait for the new task to complete.</li>
+</ol>
+<p>This may be the case if a new task is a helper task or a background task.</p>
+<p>For example:</p>
+<pre><code>...
+# create and schedule task
+task = asyncio.create_task(other_work())
+# suspend current task and allow new task to get started
+await asyncio.sleep(0)
+# carry on with things
+...
+</code></pre>
+<p>Without the <strong>asyncio.sleep(0)</strong> in the above snippet, the current task will create and schedule the new task, but the new task will not get an opportunity to start until the current task suspends or is done.</p>
+<p>This could be a long time if the current task has many subtasks to complete. In this case, it can result in unexpected behavior if the task assumes that the newly created and scheduled task has started and is running in the background.</p>
+<p>Some other use cases include:</p>
+<ol>
+<li>To explicitly give up control after performing a blocking task, such as file I/O or calling a CPU-intensive function.</li>
+<li>To explicitly give up control in a long task, that has many lines of code.</li>
+<li>To explicitly give up control in a loop repeated many times, e.g. a monitoring task.</li>
+</ol>
+<p>Next, let's see some other cases where <strong>asyncio.sleep(0)</strong> is used.</p>
+<h3>Where Else is asyncio.sleep(0) Used?</h3>
+<p>There are calls to <strong>asyncio.sleep(0)</strong> in the Python standard library and in third-party libraries.</p>
+<p>For example, it is used when draining the <strong><a href="https://github.com/python/cpython/blob/6323bc33ff9f445a947adf4af42b8be7e44c730c/Lib/asyncio/streams.py#L367C1-L377C27">StreamWriter</a></strong> class.</p>
+<pre><code>...
+if self._transport.is_closing():
+    # Wait for protocol.connection_lost() call
+    # Raise connection closing error if any,
+    # ConnectionResetError otherwise
+    # Yield to the event loop so connection_lost() may be
+    # called.  Without this, _drain_helper() would return
+    # immediately, and code that calls
+    #     write(...); await drain()
+    # in a loop would never call connection_lost(), so it
+    # would not see an error when the socket is closed.
+    await sleep(0)
+</code></pre>
+<p>It is also used in the <a href="https://github.com/python/cpython/blob/6323bc33ff9f445a947adf4af42b8be7e44c730c/Lib/asyncio/base_events.py#L352C1-L356C29"><strong>asyncio.Server</strong> class</a>.</p>
+<pre><code>async def start_serving(self):
+    self._start_serving()
+    # Skip one loop iteration so that all 'loop.add_reader'
+    # go through.
+    await tasks.sleep(0)
+</code></pre>
+<h3>Is asyncio.sleep(0) a Hack?</h3>
+<p>No.</p>
+<p>The call to await <strong>asyncio.sleep(0)</strong> looks like a hack.</p>
+<p>It's not a hack, it is just the way the Python standard library chose to offer this required functionality.</p>
+<ol>
+<li>It is a documented pattern to allow the current task to give up control and suspend.</li>
+<li>It signals the event loop to give an opportunity to all other scheduled tasks.</li>
+<li>It ensures that the current task will execute as soon as the event loop is able to return control</li>
+</ol>
+<p>There was some debate first about how to (re-)introduce this ability into asyncio: "<a href="https://github.com/python/asyncio/issues/284">Question: How to relinquishing control to the event loop in Python 3.5</a>".</p>
+<p>For example:</p>
+<blockquote>
+<p>... In Python &lt; 3.5, you could do a yield or yield None in a coroutine to give control to the event loop. In Python 3.5, it is invalid to yield in an async def coroutine. So, what's the proper way of relinquishing control to the event loop?</p>
+<cite>-- <a href="https://github.com/python/asyncio/issues/284">Question: How to relinquishing control to the event loop in Python 3.5</a></cite></blockquote>
+<p>Then a discussion on how to best describe this feature in the API documentation: "<a href="https://github.com/python/cpython/issues/78657">asyncio.sleep(0) not documented</a>"</p>
+<blockquote>
+<p>... Looking at the implementation and at the old issue at python/asyncio#284 shows that asyncio.sleep special-cases asyncio.sleep(0) to mean "yield control to the event loop" without incurring additional overhead of sleeping. However, this is not documented ...</p>
+<cite>-- <a href="https://github.com/python/cpython/issues/78657">asyncio.sleep(0) not documented</a></cite></blockquote>
+<p>Now that we know what <strong>asyncio.sleep(0)</strong> is and why it is important, let's look at some worked examples.</p>
+<h2>Example Without asyncio.sleep(0)</h2>
+<p>Before we look at an example of <strong>asyncio.sleep(0)</strong>, let's develop an example without it.</p>
+<p>We can contrive a situation that breaks when we don't have <strong>asyncio.sleep(0)</strong> and works when we add it in.</p>
+<p>In this case, we have a background task that prepares some data. The main task needs this data for some reason but does not want to explicitly wait for the task to complete. We want the other task to run in the background.</p>
+<pre><code># a background task
+async def other_task():
+    # report a message
+    print('Other task is running')
+    # prepare some data and return it
+    return 99
+</code></pre>
+<p>If we assume that the background task will just start running and will be ready when we need it, we will get an error.</p>
+<pre><code># entry point coroutine
+async def main():
+    # create and schedule the new task
+    task = asyncio.create_task(other_task())
+    # do some other things
+    # ...
+    # get the result from by other task
+    result = task.result()
+    # report the result
+    print(result)
+</code></pre>
+<p>This is because the new task was created and scheduled, but is not given an opportunity to run.</p>
+<p>When we try to retrieve the result from this task, we expect an exception, specifically as <strong>InvalidStateError</strong> because the task is not done, it is not even started. It is pending.</p>
+<p>Tying this together, the complete example is listed below.</p>
+</main>
+</body>
+</html>

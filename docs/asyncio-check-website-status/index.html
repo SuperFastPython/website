@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Case Study: Check Website HTTP Status Concurrently – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Case Study: Check Website HTTP Status Concurrently</h1>
+<div class="post-meta">December 20, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>We can <strong>query the HTTP status of websites using asyncio </strong>by opening a stream sending HTTP requests, and then reading the response.</p>
+<p>Once developed, we can use this mechanism to query the status of many websites concurrently and even report the results dynamically.</p>
+<p>In this tutorial, you will discover <strong>how to develop a concurrent client program to check the HTTP status of multiple web pages</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>How to manually manage the life-cycle of opening, sending, receiving, and closing an HTTP connection in asyncio.</li>
+<li>How to sequentially and then concurrently query the status of multiple websites.</li>
+<li>How to concurrently query and dynamically report responses from servers as they are received with asyncio.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>How to Check HTTP Status with Asyncio</h2>
+<p>The asyncio module provides support for opening socket connections and reading and writing data via streams.</p>
+<p>We can use this capability to check the status of web pages.</p>
+<p>This involves perhaps four steps, they are:</p>
+<ul>
+<li>1. Open a connection</li>
+<li>2. Write a request</li>
+<li>3. Read a response</li>
+<li>4. Close the connection</li>
+</ul>
+<p>Let's take a closer look at each part in turn.</p>
+<h3>Open HTTP Connection</h3>
+<p>A connection can be opened in asyncio using the <a href="https://docs.python.org/3/library/asyncio-stream.html#asyncio.open_connection"><strong>asyncio.open_connection()</strong> function</a>.</p>
+<blockquote>
+<p>Establish a network connection and return a pair of (reader, writer) objects.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Asyncio Streams</a></cite></blockquote>
+<p>Among many arguments, the function takes the string hostname and integer port number</p>
+<p>This is a coroutine that must be awaited and returns a <strong>StreamReader</strong> and a <strong>StreamWriter</strong> for reading and writing with the socket.</p>
+<p>This can be used to open an HTTP connection on port 80.</p>
+<p>For example:</p>
+<pre><code>...
+# open a socket connection
+reader, writer = await asyncio.open_connection('www.google.com', 80)</code></pre>
+<p>We can also open an SSL connection using the <strong>ssl=True</strong> argument. This can be used to open an HTTPS connection on port 443.</p>
+<p>For example:</p>
+<pre><code>...
+# open a socket connection
+reader, writer = await asyncio.open_connection('www.google.com', 443)</code></pre>
+<h3>Write HTTP Request</h3>
+<p>Once open, we can write a query to the <strong>StreamWriter</strong> to make an HTTP request.</p>
+<blockquote>
+<p>StreamWriter: Represents a writer object that provides APIs to write data to the IO stream.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Asyncio Streams</a></cite></blockquote>
+<p>For example, an <a href="https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol">HTTP version 1.1 request</a> is in plain text. We can request the file path '/', which may look as follows:</p>
+<pre><code>GET / HTTP/1.1
+Host: www.google.com</code></pre>
+<p>Importantly, there must be a carriage return and a line feed (\r\n) at the end of each line, and an empty line at the end.</p>
+<p>As Python strings this may look as follows:</p>
+<pre><code>'GET / HTTP/1.1\r\n'
+'Host: www.google.com\r\n'
+'\r\n'</code></pre>
+<p>You can learn more about HTTP v1.1 request messages here:</p>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#HTTP/1.1_request_messages">HTTP/1.1 request messages</a></li>
+</ul>
+<p>This string must be encoded as bytes before being written to the <strong><a href="https://docs.python.org/3/library/asyncio-stream.html#streamwriter">StreamWriter</a></strong>.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/stdtypes.html#str.encode"><strong>encode()</strong> method</a> on the string itself.</p>
+<p>The default 'utf-8' encoding may be sufficient.</p>
+<p>For example:</p>
+<pre><code>...
+# encode string as bytes
+byte_data = string.encode()</code></pre>
+<p>You can see a listing of encodings here:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/codecs.html#standard-encodings">Python Standard Encodings</a></li>
+</ul>
+<p>The bytes can then be written to the socket via the <strong>StreamWriter</strong> via the <a href="https://docs.python.org/3/library/asyncio-stream.html#asyncio.StreamWriter.write"><strong>write()</strong> method</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# write query to socket
+writer.write(byte_data)</code></pre>
+<p>After writing the request, it is a good idea to wait for the byte data to be sent and for the socket to be ready.</p>
+<p>This can be achieved by the <strong>drain()</strong> method.</p>
+<blockquote>
+<p>Wait until it is appropriate to resume writing to the stream.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Asyncio Streams</a></cite></blockquote>
+<p>This is a coroutine that must be awaited.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the socket to be ready.
+await writer.drain()</code></pre>
+<h3>Read HTTP Response</h3>
+<p>Once the HTTP request has been made, we can read the response.</p>
+<p>This can be achieved via the <strong><a href="https://docs.python.org/3/library/asyncio-stream.html#streamreader">StreamReader</a></strong> for the socket.</p>
+<blockquote>
+<p>Represents a reader object that provides APIs to read data from the IO stream.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Asyncio Streams</a></cite></blockquote>
+<p>The response can be read using the <strong>read()</strong> method which will read a chunk of bytes, or the <strong>readline()</strong> method which will read one line of bytes.</p>
+<p>We might prefer the <strong>readline()</strong> method because we are using the text-based HTTP protocol which sends HTML data one line at a time.</p>
+<p>The <strong>readline()</strong> method is a coroutine and must be awaited.</p>
+<p>For example:</p>
+<pre><code>...
+# read one line of response
+line_bytes = await reader.readline()</code></pre>
+<p><a href="https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#HTTP/1.1_response_messages">HTTP 1.1 responses</a> are composed of two parts, a header separated by an empty line, then the body terminating with an empty line.</p>
+<p>The header has information about whether the request was successful and what type of file will be sent, and the body contains the content of the file, such as an HTML webpage.</p>
+<p>The first line of the HTTP header contains the HTTP status for the requested page on the server.</p>
+<p>You can learn more about HTTP v1.1 responses here:</p>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#HTTP/1.1_response_messages">HTTP/1.1 response messages</a></li>
+</ul>
+<p>Each line must be decoded from bytes into a string.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/stdtypes.html#bytes.decode"><strong>decode()</strong> method</a> on the byte data. Again, the default encoding is 'utf_8'.</p>
+<p>For example:</p>
+<pre><code>...
+# decode bytes into a string
+line_data = line_bytes.decode()</code></pre>
+<h3>Close HTTP Connection</h3>
+<p>We can close the socket connection by closing the <strong>StreamWriter</strong>.</p>
+<p>This can be achieved by calling the <a href="https://docs.python.org/3/library/asyncio-stream.html#asyncio.StreamWriter.close"><strong>close()</strong> method</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# close the connection
+writer.close()</code></pre>
+<p>This does not block and may not close the socket immediately.</p>
+<p>Now that we know how to make HTTP requests and read responses using asyncio, let's look at some worked examples of checking web page statuses.</p>
+<h2>Example of Checking HTTP Status Sequentially</h2>
+<p>We can develop an example to check the HTTP status for multiple websites using asyncio.</p>
+<p>In this example, we will first develop a coroutine that will check the status of a given URL. We will then call this coroutine once for each of the <a href="https://en.wikipedia.org/wiki/List_of_most_visited_websites">top 10 websites</a>.</p>
+<p>Firstly, we can define a coroutine that will take a URL string and return the HTTP status.</p>
+<pre><code># get the HTTP/S status of a webpage
+async def get_status(url):
+	# ...
+</code></pre>
+<p>The URL must be parsed into its constituent components.</p>
+<p>We require the hostname and file path when making the HTTP request. We also need to know the URL scheme (HTTP or HTTPS) in order to determine whether SSL is required nor not.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/urllib.parse.html"><strong>urllib.parse.urlsplit()</strong> function</a> that takes a URL string and returns a named tuple of all the URL elements.</p>
+<pre><code>...
+# split the url into components
+url_parsed = urlsplit(url)</code></pre>
+<p>We can then open the HTTP connection based on the URL scheme and use the URL hostname.</p>
+<pre><code>...
+# open the connection
+if url_parsed.scheme == 'https':
+    reader, writer = await asyncio.open_connection(url_parsed.hostname, 443, ssl=True)
+else:
+    reader, writer = await asyncio.open_connection(url_parsed.hostname, 80)
+</code></pre>
+<p>Next, we can create the HTTP GET request using the hostname and file path and write the encoded bytes to the socket using the <strong>StreamWriter</strong>.</p>
+<pre><code>...
+# send GET request
+query = f'GET {url_parsed.path} HTTP/1.1\r\nHost: {url_parsed.hostname}\r\n\r\n'
+# write query to socket
+writer.write(query.encode())
+# wait for the bytes to be written to the socket
+await writer.drain()</code></pre>
+<p>Next, we can read the HTTP response.</p>
+<p>We only require the first line of the response that contains the HTTP status.</p>
+<pre><code>...
+# read the single line response
+response = await reader.readline()</code></pre>
+<p>The connection can then be closed.</p>
+<pre><code>...
+# close the connection
+writer.close()</code></pre>
+<p>Finally, we can decode the bytes read from the server, remote trailing white space, and return the HTTP status.</p>
+<pre><code>...
+# decode and strip white space
+status = response.decode().strip()
+# return the response
+return status</code></pre>
+<p>Tying this together, the complete <strong>get_status()</strong> coroutine is listed below.</p>
+<p>It does not have any error handling, such as the case where the host cannot be reached or is slow to respond.</p>
+<p>These additions would make a nice extension for the reader.</p>
+<pre><code># get the HTTP/S status of a webpage
+async def get_status(url):
+    # split the url into components
+    url_parsed = urlsplit(url)
+    # open the connection
+    if url_parsed.scheme == 'https':
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 443, ssl=True)
+    else:
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 80)
+    # send GET request
+    query = f'GET {url_parsed.path} HTTP/1.1\r\nHost: {url_parsed.hostname}\r\n\r\n'
+    # write query to socket
+    writer.write(query.encode())
+    # wait for the bytes to be written to the socket
+    await writer.drain()
+    # read the single line response
+    response = await reader.readline()
+    # close the connection
+    writer.close()
+    # decode and strip white space
+    status = response.decode().strip()
+    # return the response
+    return status
+</code></pre>
+<p>Next, we can call the <strong>get_status()</strong> coroutine for multiple web pages or websites we want to check.</p>
+<p>In this case, we will define a list of the top 10 web pages in the world.</p>
+<pre><code>...
+# list of top 10 websites to check
+sites = ['https://www.google.com/',
+    'https://www.youtube.com/',
+    'https://www.facebook.com/',
+    'https://twitter.com/',
+    'https://www.instagram.com/',
+    'https://www.baidu.com/',
+    'https://www.wikipedia.org/',
+    'https://yandex.ru/',
+    'https://yahoo.com/',
+    'https://www.whatsapp.com/'
+    ]
+</code></pre>
+<p>We can then query each, in turn, using our <strong>get_status()</strong> coroutine.</p>
+<p>In this case, we will do so sequentially in a loop, and report the status of each in turn.</p>
+<pre><code>...
+# check the status of all websites
+for url in sites:
+    # get the status for the url
+    status = await get_status(url)
+    # report the url and its status
+    print(f'{url:30}:\t{status}')
+</code></pre>
+<p>We can do better than sequential when using asyncio, but this provides a good starting point that we can improve upon later.</p>
+<p>Tying this together, the <strong>main()</strong> coroutine queries the status of the top 10 websites.</p>
+<pre><code># main coroutine
+async def main():
+    # list of top 10 websites to check
+    sites = ['https://www.google.com/',
+        'https://www.youtube.com/',
+        'https://www.facebook.com/',
+        'https://twitter.com/',
+        'https://www.instagram.com/',
+        'https://www.baidu.com/',
+        'https://www.wikipedia.org/',
+        'https://yandex.ru/',
+        'https://yahoo.com/',
+        'https://www.whatsapp.com/'
+        ]
+    # check the status of all websites
+    for url in sites:
+        # get the status for the url
+        status = await get_status(url)
+        # report the url and its status
+        print(f'{url:30}:\t{status}')
+</code></pre>
+<p>Finally, we can create the <strong>main()</strong> coroutine and use it as the entry point to the asyncio program.</p>
+<pre><code>...
+# run the asyncio program
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# check the status of many webpages
+import asyncio
+from urllib.parse import urlsplit
+
+# get the HTTP/S status of a webpage
+async def get_status(url):
+    # split the url into components
+    url_parsed = urlsplit(url)
+    # open the connection
+    if url_parsed.scheme == 'https':
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 443, ssl=True)
+    else:
+        reader, writer = await asyncio.open_connection(url_parsed.hostname, 80)
+    # send GET request
+    query = f'GET {url_parsed.path} HTTP/1.1\r\nHost: {url_parsed.hostname}\r\n\r\n'
+    # write query to socket
+    writer.write(query.encode())
+    # wait for the bytes to be written to the socket
+    await writer.drain()
+    # read the single line response
+    response = await reader.readline()
+    # close the connection
+    writer.close()
+    # decode and strip white space
+    status = response.decode().strip()
+    # return the response
+    return status
+
+# main coroutine
+async def main():
+    # list of top 10 websites to check
+    sites = ['https://www.google.com/',
+        'https://www.youtube.com/',
+        'https://www.facebook.com/',
+        'https://twitter.com/',
+        'https://www.instagram.com/',
+        'https://www.baidu.com/',
+        'https://www.wikipedia.org/',
+        'https://yandex.ru/',
+        'https://yahoo.com/',
+        'https://www.whatsapp.com/'
+        ]
+    # check the status of all websites
+    for url in sites:
+        # get the status for the url
+        status = await get_status(url)
+        # report the url and its status
+        print(f'{url:30}:\t{status}')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the program.</p>
+<p>The <strong>main()</strong> coroutine runs, defining a list of the top 10 websites.</p>
+<p>The list of websites is then traversed sequentially. The <strong>main()</strong> coroutine suspends and calls the <strong>get_status()</strong> coroutine to query the status of one website.</p>
+<p>The <strong>get_status()</strong> coroutine runs, parses the URL, and opens a connection. It constructs an HTTP GET query and writes it to the host. A response is read, decoded, and returned.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports the HTTP status of the URL.</p>
+<p>This is repeated for each URL in the list.</p>
+<p>The program takes about 5.6 seconds to complete, or about half a second per URL on average.</p>
+<p>This highlights how we can use asyncio to query the HTTP status of webpages.</p>
+<p>Nevertheless, it does not take full advantage of the asyncio to execute tasks concurrently.</p>
+<pre><code>https://www.google.com/       :	HTTP/1.1 200 OK
+https://www.youtube.com/      :	HTTP/1.1 200 OK
+https://www.facebook.com/     :	HTTP/1.1 302 Found
+https://twitter.com/          :	HTTP/1.1 200 OK
+https://www.instagram.com/    :	HTTP/1.1 200 OK
+https://www.baidu.com/        :	HTTP/1.1 200 OK
+https://www.wikipedia.org/    :	HTTP/1.1 200 OK
+https://yandex.ru/            :	HTTP/1.1 302 Moved temporarily
+https://yahoo.com/            :	HTTP/1.1 301 Moved Permanently
+https://www.whatsapp.com/     :	HTTP/1.1 302 Found</code></pre>
+<p>Next, let's look at how we might update the example to execute the coroutines concurrently.</p>
+<h2>Example of Checking Website Status Concurrently</h2>
+<p>A benefit of asyncio is that we can execute many coroutines concurrently.</p>
+<p>There are a number of ways that this can be achieved.</p>
+<p>We will explore two examples in this section.</p>
+<ul>
+<li>1. Issues independent tasks and waits.</li>
+<li>2. Gather the coroutines.</li>
+</ul>
+<p>Let's dive in.</p>
+<h3>Example Using asyncio.wait()</h3>
+<p>We can update the above example to query the status of URLs concurrently using asyncio.</p>
+<p>One approach is to issue each <strong>get_status()</strong> coroutine as an independent task. We can then wait for all of the issued tasks to complete. Once complete, we can report the status of each URL.</p>
+<p>Firstly, we can schedule coroutines as independent tasks using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task"><strong>asyncio.create_task()</strong> function</a> that returns an <strong>asyncio.Task</strong> object.</p>
+<p>We need to associate the URL with each task. This can be achieved using a dict where the asyncio.Task objects are taken as keys and the URL string is taken as the value. We can then look up the URL for a task later when reporting results.</p>
+<pre><code>...
+# create all task requests
+tasks_to_url = {asyncio.create_task(get_status(url)):url for url in sites}</code></pre>
+<p>You can learn more about how to issue asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-create-task/">How to Create an Asyncio Task in Python</a></li>
+</ul>
+<p>This allows all tasks to be executed concurrently.</p>
+<p>Next, we can wait for all issued tasks to complete.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait"><strong>asyncio.wait()</strong> function</a>. It takes a collection of awaitables, suspends the caller, and by default returns once all tasks are complete.</p>
+<pre><code>...
+# wait for all tasks to complete
+_ = await asyncio.wait(tasks_to_url)</code></pre>
+<p>This allows the scheduled tasks to run.</p>
+<p>You can learn more about waiting for tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait/">How to Use Asyncio wait() in Python</a></li>
+</ul>
+<p>Once all tasks are complete, the status of each URL can be reported.</p>
+<p>We can traverse the dict of tasks, retrieve the URL for each, retrieve the status from the task and report the result.</p>
+</main>
+</body>
+</html>

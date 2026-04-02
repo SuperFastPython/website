@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>5 Usage Patterns for the ThreadPool in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>5 Usage Patterns for the ThreadPool in Python</h1>
+<div class="post-meta">October 20, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>You can adopt one of the common usage patterns to get the most out of the <a href="../threadpool-python/"><strong>ThreadPool</strong> in Python</a>.</p>
+<p>In this tutorial, you will discover the common usage patterns for Python thread pools.</p>
+<p>Let's get started.</p>
+<h2>ThreadPool Usage Patterns</h2>
+<p>The <strong>ThreadPool</strong> class provides a lot of flexibility for executing concurrent tasks in Python.</p>
+<p>Nevertheless, there are a handful of common usage patterns that will fit most program scenarios.</p>
+<p>This section lists the common usage patterns with worked examples that you can copy and paste into your own project and adapt as needed.</p>
+<p>The patterns we will look at are as follows:</p>
+<ol><li>map() and Iterate Results Pattern</li><li>apply_async() and Forget Pattern</li><li>map_async() and Forget Pattern</li><li>imap_unordered() and Use as Completed Pattern</li><li>imap_unordered() and Wait for First Pattern</li></ol>
+<p>We will use a contrived task in each example that will sleep for a random amount of time equal to less than one second. You can easily replace this example task with your own task in each pattern.</p>
+<p>Let's start with the first usage pattern.</p>
+<h2>map() and Iterate Results Pattern</h2>
+<p>This pattern involves calling the same function with different arguments and then iterating over the results.</p>
+<p>It is a concurrent version of the built-in <strong>map()</strong> function with the main difference that all function calls are issued to the <strong>ThreadPool</strong> immediately and we cannot handle results until all tasks are completed.</p>
+<p>It requires that we call the <strong>map()</strong> function with our target function and an iterable of arguments and handle return values from each function call in a for loop.</p>
+<pre><code>...
+# issue tasks and handle results
+for result in pool.map(task, range(10)):
+    print(f'&gt;got {result}')
+</code></pre>
+<p>You can learn more about how to use the <strong>map()</strong> function on the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul><li><a href="../threadpool-map/">How to Use ThreadPool map() in Python</a></li></ul>
+<p>This pattern can be used for target functions that take multiple arguments by changing the <strong>map()</strong> function for the <strong>starmap()</strong> function.</p>
+<p>You can learn more about the <strong>starmap()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-starmap/">How to Use ThreadPool starmap() in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the map an iterate results usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # return a value
+    return (value, random_value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue tasks and thread results
+        for result in pool.map(task, range(10)):
+            print(f'&gt;got {result}')
+</code></pre>
+<p>Running the example, we can see that the <strong>map()</strong> function is called the <strong>task()</strong> function for each argument in the range 0 to 9.</p>
+<p>Watching the example run, we can see that all tasks are issued to the <strong>ThreadPool</strong>, complete, then once all results are available will the main thread iterate over the return values.</p>
+<pre><code>&gt;got (0, 0.310223620846512)
+&gt;got (1, 0.5534422426763196)
+&gt;got (2, 0.9145594152075625)
+&gt;got (3, 0.9854963211949936)
+&gt;got (4, 0.9032837400483694)
+&gt;got (5, 0.3747364017403312)
+&gt;got (6, 0.6199419223860916)
+&gt;got (7, 0.44890520908189024)
+&gt;got (8, 0.20945564922787074)
+&gt;got (9, 0.8415252597808756)
+</code></pre>
+<h2>apply_async() and Forget Pattern</h2>
+<p>This pattern involves issuing one task to the <strong>ThreadPool</strong> and then not waiting for the result. Fire and forget.</p>
+<p>This is a helpful approach for issuing ad hoc tasks asynchronously to the <strong>ThreadPool</strong>, allowing the main thread to continue on with other aspects of the program.</p>
+<p>This can be achieved by calling the <strong>apply_async()</strong> function with the name of the target function and any arguments the target function may take.</p>
+<p>The <strong>apply_async()</strong> function will return an <strong>AsyncResult</strong> object that can be ignored.</p>
+<p>For example:</p>
+<pre><code>...
+# issue task
+_ = pool.apply_async(task, args=(1,))</code></pre>
+<p>You can learn more about the <strong>apply_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-apply_async/">How to Use ThreadPool apply_async() in Python</a></li></ul>
+<p>Once all ad hoc tasks have been issued, we may want to wait for the tasks to be completed before closing the ThreadPool.</p>
+<p>This can be achieved by calling the <strong>close()</strong> function on the pool to prevent it from receiving any further tasks, then joining the pool to wait for the issued tasks to be completed.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>You can learn more about joining the thread pool in the tutorial:</p>
+<ul><li><a href="../threadpool-join/">How to Join a ThreadPool in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the apply_async and forget usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # prepare result
+    result = (value, random_value)
+    # report results
+    print(f'&gt;task got {result}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue task
+        _ = pool.apply_async(task, args=(1,))
+        # close the pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example fires a task into the <strong>ThreadPool</strong> and forgets about it, allowing it to complete in the background.</p>
+<p>The task is issued and the main thread is free to continue on with other parts of the program.</p>
+<p>In this simple example, there is nothing else to go on with, so the main thread then closes the pool and waits for all ad hoc fire-and-forget tasks to complete before terminating.</p>
+<pre><code>&gt;task got (1, 0.21185811282105182)</code></pre>
+<h2>map_async() and Forget Pattern</h2>
+<p>This pattern involves issuing many tasks to the <strong>ThreadPool</strong> and then moving on. Fire-and-forget for multiple tasks.</p>
+<p>This is helpful for applying the same function to each item in an iterable and then not being concerned with the result or return values.</p>
+<p>The tasks are issued asynchronously, allowing the caller to continue on with other parts of the program.</p>
+<p>This can be achieved with the <strong>map_async()</strong> function that takes the name of the target task and an iterable of arguments for each function call.</p>
+<p>The function returns an <strong>AsyncResult</strong> object that provides a handle on the issued tasks, that can be ignored in this case.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the thread pool
+_ = pool.map_async(task, range(10))</code></pre>
+<p>You can learn more about the <strong>map_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-map_async/">How to Use ThreadPool map_async() in Python</a></li></ul>
+<p>Once all asynchronous tasks have been issued and there is nothing else in the program to do, we can close the <strong>ThreadPool</strong> and wait for all issued tasks to complete.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the map_async and forget usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # prepare result
+    result = (value, random_value)
+    # report results
+    print(f'&gt;task got {result}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        _ = pool.map_async(task, range(10))
+        # close the pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example issues ten tasks to the <strong>ThreadPool</strong>.</p>
+<p>The call returns immediately and the tasks are executed asynchronously. This allows the main thread to continue on with other parts of the program.</p>
+<p>There is nothing else to do in this simple example, so the <strong>ThreadPool</strong> is then closed and the main thread blocks, waiting for the issued tasks to complete.</p>
+<pre><code>&gt;task got (3, 0.01656785957523077)
+&gt;task got (1, 0.16636687341149126)
+&gt;task got (8, 0.3578403325183659)
+&gt;task got (0, 0.3902136572761431)
+&gt;task got (2, 0.5132666358386517)
+&gt;task got (5, 0.5361330353348999)
+&gt;task got (6, 0.578456028719465)
+&gt;task got (4, 0.7078182459226122)
+&gt;task got (9, 0.6892519284915574)
+&gt;task got (7, 0.9930438937948564)</code></pre>
+<h2>imap_unordered() and Use as Completed Pattern</h2>
+<p>This pattern is about issuing tasks to the pool and using results for tasks as they become available.</p>
+<p>This means that results are received out of order, if tasks take a variable amount of time, rather than in the order that the tasks were issued to the <strong>ThreadPool</strong>.</p>
+<p>This can be achieved with the <strong>imap_unordered()</strong> function. It takes a function and an iterable of arguments, just like the <strong>map()</strong> function.</p>
+<p>It returns an iterable that yields return values from the target function as the tasks are completed.</p>
+<p>We can call the <strong>imap_unordered()</strong> function and iterate the return values directly in a for-loop.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks and handle results
+for result in pool.imap_unordered(task, range(10)):
+    print(f'&gt;got {result}')
+</code></pre>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-imap_unordered/">How to Use ThreadPool imap_unordered() in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the imap_unordered and use as completed usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # return result
+    return (value, random_value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue tasks and handle results
+        for result in pool.imap_unordered(task, range(10)):
+            print(f'&gt;got {result}')
+</code></pre>
+<p>Running the example issues all tasks to the pool, then receives and handles results in the order that tasks are completed, not the order that tasks were issued to the pool, e.g. unordered.</p>
+<pre><code>&gt;got (0, 0.20226779909365256)
+&gt;got (2, 0.2834202553495814)
+&gt;got (5, 0.3386592672484412)
+&gt;got (7, 0.3766044907699312)
+&gt;got (1, 0.38721574549008964)
+&gt;got (8, 0.28434196524133903)
+&gt;got (9, 0.5267175537767974)
+&gt;got (3, 0.8388712753727219)
+&gt;got (4, 0.985834525306049)
+&gt;got (6, 0.9933519000644436)</code></pre>
+<h2>imap_unordered() and Wait for First Pattern</h2>
+<p>This pattern involves issuing many tasks to the <strong>ThreadPool</strong> asynchronously, then waiting for the first result or first task to finish.</p>
+<p>It is a helpful pattern when there may be multiple ways of getting a result but only a single or the first result is required, after which, all other tasks become irrelevant.</p>
+<p>This can be achieved by the <strong>imap_unordered()</strong> function that, like the <strong>map()</strong> function, takes the name of a target function and an iterable of arguments.</p>
+<p>It returns an iterable that yields return values in the order that tasks complete.</p>
+<p>This iterable can then be traversed once manually via the <strong>next()</strong> built-in function which will return only once the first task to finish returns.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks and handle results
+it = pool.imap_unordered(task, range(10))
+# get the result from the first task to complete
+result = next(it)</code></pre>
+<p>The result can then be handled and the <strong>ThreadPool</strong> can be terminated, forcing any remaining tasks to stop immediately. This happens automatically via the context manager interface.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the imap_unordered and wait for first result usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # return result
+    return (value, random_value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue tasks and handle results
+        it = pool.imap_unordered(task, range(10))
+        # get the result from the first task to complete
+        result = next(it)
+        # report first result
+        print(f'&gt;got {result}')
+</code></pre>
+<p>Running the example first issues all of the tasks asynchronously.</p>
+<p>The result from the first task to complete is then requested, which blocks until a result is available.</p>
+<p>One task completes, returns a value, which is then handled, then the <strong>ThreadPool</strong> and all remaining tasks are terminated automatically.</p>
+<pre><code>&gt;got (0, 0.06283170442191666)</code></pre>
+<h2>Takeaways</h2>
+<p>You now know the common usage patterns for the <strong>ThreadPool</strong> in Python.</p>
+</main>
+</body>
+</html>

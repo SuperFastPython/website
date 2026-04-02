@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Cancel All Tasks If One Task Fails – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Cancel All Tasks If One Task Fails</h1>
+<div class="post-meta">November 27, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>We can <strong>cancel all asyncio tasks if one task fails</strong>.</p>
+<p>It is common to group similar tasks together, then execute the group of tasks concurrently and wait for them to complete. If one task in the group fails with an unhandled exception, we can then cancel all other tasks in the group.</p>
+<p>This can be achieved in many ways, although it is straightforward when using the asyncio.TaskGroup structure, and the <strong>asyncio.gather()</strong> and <strong>asyncio.wait()</strong> functions.</p>
+<p>In this tutorial, you will discover how to cancel all tasks in asyncio if one task fails.</p>
+<p>Specifically, you will learn:</p>
+<ul>
+<li>About the requirement to cancel all tasks if one task fails with an unhandled exception.</li>
+<li>How to cancel all tasks if one task fails with <strong>asyncio.gather()</strong> and <strong>asyncio.wait()</strong>.</li>
+<li>How to automatically cancel all tasks if one task fails with the <strong>asyncio.TaskGroup</strong>.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>Need to Cancel All Tasks If One Task Fails</h2>
+<p>We typically group tasks in asyncio.</p>
+<p>For example, we have a list of items and issue one task for each to complete concurrently.</p>
+<p>When working with a group of tasks, one task may fail and we need to cancel all remaining tasks.</p>
+<p>When we say that a task "fails" we mean that it raises an exception that propagates up and causes the task to be "done".</p>
+<p>You can learn more about the asyncio task life-cycle in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-life-cycle/">Asyncio Task Life-Cycle</a></li>
+</ul>
+<p>We may need to cancel all tasks in a group for many reasons, such as:</p>
+<ol>
+<li><strong>Preventing Resource Leakage</strong>: When one task in a group encounters an error or fails, there might be associated resources allocated or ongoing processes. Canceling all tasks ensures that these resources are released and prevents any potential resource leakage, maintaining system efficiency.</li>
+<li><strong>Ensuring Consistent State</strong>: In scenarios where the tasks in a group are interdependent or contribute to a larger process, allowing one task to fail while others continue could lead to an inconsistent or invalid state. Canceling all tasks ensures the application remains in a consistent state by preventing further execution that might rely on the failed task.</li>
+<li><strong>Error Propagation and Cleanup</strong>: By canceling all tasks, especially in cases where the failure might impact subsequent tasks or the overall application flow, it allows for appropriate error handling and cleanup. This ensures that any necessary cleanup actions or error-handling procedures are uniformly applied across all tasks in response to the failure.</li>
+</ol>
+<p>Canceling all remaining tasks if one task fails is a common feature in many real-world scenarios.</p>
+<p>For example:</p>
+<p><strong>Batch Processing</strong>: Imagine a scenario where a series of tasks represents batch jobs or data processing tasks. If one task fails due to invalid data or an error, canceling all other tasks prevents further processing, ensuring data consistency and integrity.</p>
+<p><strong>Parallel Requests</strong>: In applications dealing with concurrent HTTP requests or multiple API calls, if one request fails due to a server error or connectivity issue, canceling other pending requests prevents overloading the system or creating a cascade of subsequent failures.</p>
+<p><strong>Data Pipelines</strong>: Data processing pipelines or ETL (Extract, Transform, Load) processes often involve a sequence of tasks. Canceling all tasks if one fails prevents incomplete or inconsistent data from being propagated further down the pipeline, maintaining data quality.</p>
+<p><strong>Distributed Systems</strong>: In distributed systems where tasks may span across different nodes or services, canceling all tasks can prevent unnecessary resource consumption or avoid inconsistent states when a component failure occurs.</p>
+<p><strong>Service Orchestration</strong>: In microservices architectures where one service's failure might impact others, canceling downstream tasks upon a failure ensures the system's stability and avoids unnecessary processing.</p>
+<p><strong>In asyncio, how can we cancel all tasks if one task in a group fails?</strong></p>
+<p>What approaches are available?</p>
+<h2>How to Cancel All Tasks if One Task Fails</h2>
+<p>There are 3 ways that we can cancel all tasks in a group of tasks if one task in the group fails.</p>
+<p>They are:</p>
+<ol>
+<li>Use <strong>asyncio.gather()</strong></li>
+<li>Use <strong>asyncio.wait()</strong></li>
+<li>Use TaskGroup</li>
+</ol>
+<p>We will take a closer look at each in turn.</p>
+<p>There are other approaches we could use, for example:</p>
+<ul>
+<li>Exit the main coroutine, it will cause all other running tasks to be canceled.</li>
+<li>Monitor all tasks in a loop and cancel all if one fails with an exception.</li>
+<li>Set an event if one task fails and have all other tasks check on the event in a loop.</li>
+</ul>
+<p>These less direct approaches are left as an exercise.</p>
+<h3>Cancel All Tasks If One Task Fails with asyncio.gather()</h3>
+<p>We can cancel all tasks if one task fails using the <a href="../asyncio-gather/"><strong>asyncio.gather()</strong> function</a>.</p>
+<p>Recall that the <strong>asyncio.gather()</strong> function takes one or more asyncio tasks, suspends until all tasks are done, and then returns an iterable of return values for all tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# execute a group of tasks concurrently
+results = await asyncio.gather(task1, task2, task3)</code></pre>
+<p>When used with a list of tasks, the list must be unpacked first using the star (*) operator, for example:</p>
+<pre><code>...
+# execute a group of tasks concurrently
+results = await asyncio.gather(*tasks)</code></pre>
+<p>You can learn more about the <strong>asyncio.gather()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather-done-callback/">Asyncio gather() Add Done Callback Function</a></li>
+</ul>
+<p>We can use <strong>asyncio.gather()</strong> to cancel all tasks if one task fails.</p>
+<p>This can be achieved by wrapping the call to <strong>asyncio.gather()</strong> in a try-except structure.</p>
+<p>For example:</p>
+<pre><code>try:
+	# execute a group of tasks concurrently
+	results = await asyncio.gather(*tasks)
+except Exception:
+	...
+</code></pre>
+<p>If one task fails in the group, the exception will propagate up and cancel the task of awaiting the group.</p>
+<p>We can catch and handle that exception.</p>
+<p>Although the group task has terminated, the tasks in the group have not terminated.</p>
+<p>We can iterate over all tasks and cancel each in turn.</p>
+<pre><code>...
+# cancel all tasks
+for task in tasks:
+    task.cancel()
+</code></pre>
+<p>We can then wait for all canceled tasks to cancel, using the "<em>cancel and await</em>" idiom.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to cancel
+for task in tasks:
+    try:
+        await task
+    except Exception:
+        pass
+    except asyncio.CancelledError:
+        pass
+</code></pre>
+<p>The whole <strong>asyncio.gather()</strong> approach would look as follows:</p>
+<pre><code>...
+# handle the case that a task fails
+try:
+    # wait for the group of tasks to complete
+    await asyncio.gather(*tasks)
+except Exception as e:
+    # report failure
+    print(f'A task failed with: {e}, canceling all tasks')
+    # cancel all tasks
+    for task in tasks:
+        task.cancel()
+    # wait for all tasks to cancel
+    for task in tasks:
+        try:
+            await task
+        except Exception:
+            pass
+        except asyncio.CancelledError:
+            pass
+</code></pre>
+<p>You can learn more about how to cancel all tasks if task in a gather fails in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather-cancel-all-if-one-fails/">Asyncio gather() Cancel All Tasks if One Task Fails</a></li>
+</ul>
+<h3>Cancel All Tasks If One Task Fails with asyncio.wait()</h3>
+<p>We can cancel all tasks if one task fails using the <a href="../asyncio-wait/"><strong>asyncio.wait()</strong> function</a>.</p>
+<p>Recall that <strong>asyncio.wait()</strong> takes a collection of asyncio tasks and will suspend until a condition is met, such as all tasks are done.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to be done
+_ = await asyncio.wait(tasks)</code></pre>
+<p>You can learn more about the <strong>asyncio.wait()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait/">How to Use Asyncio wait() in Python</a></li>
+</ul>
+<p>We can configure the <strong>asyncio.wait()</strong> function to wait for the first task to fail.</p>
+<p>This can be achieved by setting the "<strong>return_when</strong>" argument to asyncio.<strong>FIRST_EXCEPTION</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks
+failed, rest = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)</code></pre>
+<p>If at least one task fails, it will be returned in the "failed" set, whereas any tasks still running will be in the "rest" set.</p>
+<p>If no tasks fail, then the "failed" set will have all tasks and the "rest" set will be empty.</p>
+<p>Therefore, when <strong>asyncio.wait()</strong> returns, we can check if we have any tasks still running in the "rest" set and if so, cancel them all, then wait for them to be done.</p>
+<pre><code>...
+# check for at least one failure
+if len(rest) &gt; 0:
+    print(f'{len(failed)} task(s) failed, cancelling the rest')
+    # cancel all tasks
+    for task in rest:
+        task.cancel()
+    # wait for all tasks to cancel
+    for task in tasks:
+        try:
+            await task
+        except Exception:
+            pass
+        except asyncio.CancelledError:
+            pass
+</code></pre>
+<h3>Cancel All Tasks If One Task Fails with TaskGroup</h3>
+<p>We can cancel all tasks if one task fails in asyncio using an <strong>asyncio.TaskGroup</strong>.</p>
+<p>Recall that the <strong>asyncio.TaskGroup</strong> can be used to create and manage a group of tasks in asyncio.</p>
+<p>It is used via the context manager interface and can be used to wait for all tasks to complete.</p>
+<p>For example:</p>
+</main>
+</body>
+</html>

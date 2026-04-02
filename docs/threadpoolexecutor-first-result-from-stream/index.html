@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor Get First Result From Stream of Tasks – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor Get First Result From Stream of Tasks</h1>
+<div class="post-meta">July 2, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>The <strong>ThreadPoolExecutor</strong> in Python allows one-off and batches of tasks to be issued for asynchronous execution.</p>
+<p>The API provides functions like <strong>concurrent.futures.wait()</strong> that can be used to block until one in a collection of tasks is done so that we can get the result from the first task to complete.</p>
+<p>The problem with this function is that it does not support the case where we want to issue many tasks over a long period of time, such as streaming tasks into the <strong>ThreadPoolExecutor</strong>, yet are only interested in the result of the first task to complete.</p>
+<p>Instead, we must develop our own solution.</p>
+<p>In this tutorial, you will discover how to get the first result from a sequence of tasks streamed into the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Get the First Result From a Stream of Tasks</h2>
+<p>Consider the following situation:</p>
+<p>You have a suite of tasks to execute using a <strong>ThreadPoolExecutor</strong>.</p>
+<p>The tasks are issued to the pool one by one and/or in small batches, likely achieved using the <strong>submit()</strong> method.</p>
+<p><strong>How can we wait on or report the first task result in the stream of tasks to complete?</strong></p>
+<p><strong>Similarly, how can we report task results as tasks in the stream are completed?</strong></p>
+<p>This was a question that I received via email and was <a href="https://stackoverflow.com/questions/76520190/how-to-let-concurrent-futures-handle-streaming-tasks">also shared on StackOverflow</a>.</p>
+<p>The API does not currently support this ability, instead, we must develop our own solution.</p>
+<h2>How to Get Result From First Task in Stream</h2>
+<p>There are a few ways to solve this problem.</p>
+<p>Perhaps the simplest is to use a done callback function to report or notify about task results and use a variable to ensure only the first task result is reported.</p>
+<p>Recall, we can add a done callback function to a <strong>Future</strong> object via the <strong>add_done_callback()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# add a done callback function
+future.add_done_callback(handler)</code></pre>
+<p>The callback function must take a single argument which is the <strong>Future</strong> object for the task that is completed. The function is called as soon as the task is done, e.g. completed normally or failed with an exception.</p>
+<pre><code># custom done callback function
+def handler(future):
+	print(future.result())
+</code></pre>
+<p>You can learn more about done callback functions in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-add-callback/">How to Add a Callbacks to the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>My preferred approach would be to use a <strong>threading.Event</strong> to indicate that a single result has been seen and to no longer report results from other tasks.</p>
+<p>The <strong>threading.Event</strong> object is a thread-safe boolean variable and ensures expected behavior, even in cases where threads are executed in parallel using future and alternate Python interpreters.</p>
+<p>For example:</p>
+<pre><code># custom done callback function
+def handler(future):
+	if event.is_set():
+		return
+	event.set()
+	print(future.result())
+</code></pre>
+<p>You can learn more about the <strong>threading.Event</strong> in the tutorial:</p>
+<ul>
+<li><a href="../thread-event-object-in-python/">Threading Event Object In Python</a></li>
+</ul>
+<p>There is a race here between checking and setting the state of the event. If it is a concern for your use case, you can use a mutex lock via <strong>threading.Lock</strong>. I recommend this approach.</p>
+<p>For example:</p>
+<pre><code># custom done callback function
+def handler(future):
+	with lock:
+		if event.is_set():
+			return
+		event.set()
+		print(future.result())</code></pre>
+<p>You can learn more about mutex locks in the tutorial:</p>
+<ul>
+<li><a href="../thread-mutex-lock/">Threading Mutex Lock in Python</a></li>
+</ul>
+<p>Now that we know how to get the first task result from a stream of tasks, let's look at some worked examples.</p>
+<p>Update: If there is a lot of demand for this type of solution (let me know in the comments), I will develop a more robust version that extends the <strong>wait()</strong> and <strong>as_completed()</strong> functions.</p>
+<h2>Example of Streamed Tasks and Report of First to Complete</h2>
+<p>We can explore the case of reporting the first task result from a stream of tasks issued to the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Firstly, we will define a task to be executed in the thread pool.</p>
+<p>The task will have a unique task identifier and will simulate effort with a sleep for a random number of seconds between 5 and 20.</p>
+<p>Once complete, it will return its task id and the time slept. This will be the result we seek.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task function that will sleep for a random number of seconds
+def task(task_id):
+    # generate value between 5 and 20
+    value = 5 + (random() * 20)
+    # block to simulate effort
+    sleep(value)
+    # return the result of the task
+    return (task_id, value)
+</code></pre>
+<p>Next, we will define a done callback function.</p>
+<p>This function is responsible for alerting the program about the first task to complete, in this case by reporting the result of the first task in the stream to be done.</p>
+<p>To ensure thread safety, we will use an event variable to determine whether a first result has been seen or not and a mutex lock to ensure the check and set of the event on the first time is atomic.</p>
+<p>The <strong>handler()</strong> function below implements this.</p>
+<pre><code># callback function to call when a task is completed
+def handler(future):
+    # declare global state
+    global event
+    global lock
+    # acquire the mutex lock to avoid race condition
+    with lock:
+        # check if the event is already set
+        if event.is_set():
+            return
+        # set the event
+        event.set()
+        # report a message
+        print(f'First done: {future.result()}')
+</code></pre>
+<p>Next, we need a task that will issue a stream of tasks into the <strong>ThreadPoolExecutor</strong>.</p>
+<p>In this case, we will issue 50 examples of the <strong>task()</strong> function to the pool. Each task that is issued via the <strong>submit()</strong> function will return a <strong>Future</strong> object. On this <strong>Future</strong> object, we will register the callback function that we defined above.</p>
+<p>To slow things down a bit, this task will issue one task to the pool every 200 milliseconds, meaning that the stream of all 50 tasks will take 10 seconds to issue.</p>
+<p>We will also stop issuing tasks once a result is observed, which we can determine via the shared <strong>Event</strong> object. This is not required but seems efficient in this case.</p>
+<p>Tying this together, the <strong>task_stream()</strong> function below implements this.</p>
+<pre><code># task to inject a stream of tasks into the thread pool
+def task_stream(tpe, event):
+    for i in range(1, 51):
+        # check if we are all done
+        if event.is_set():
+            return
+        # issue a task
+        future = tpe.submit(task, i)
+        # add the done handler
+        future.add_done_callback(handler)
+        # report progress
+        print(f'&gt;issued task {i}')
+        # block a moment
+        sleep(0.2)
+</code></pre>
+<p>Finally, we kick all this off with the entry to the program.</p>
+<p>First, we will define global variables for the event and mutex lock needed in the done callback.</p>
+<pre><code>...
+# create event to signal the done state
+event = Event()
+# create the mutex lock
+lock = Lock()
+</code></pre>
+<p>We can then create the <strong>ThreadPoolExecutor</strong> with sufficient capacity to execute many tasks simultaneously. We can then issue the task that will spawn a stream of tasks into the thread pool and wait for this task to complete.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=50) as tpe:
+    # issue task that streams work into the pool
+    future = tpe.submit(task_stream, tpe, event)
+    # wait for the event to be set
+    event.wait()
+# wait until all tasks are done...
+</code></pre>
+<p>And that's it.</p>
+<p>Tying all of this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of stream of tasks and reporting the first result
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+from threading import Lock
+
+# task function that will sleep for a random number of seconds
+def task(task_id):
+    # generate value between 5 and 20
+    value = 5 + (random() * 20)
+    # block to simulate effort
+    sleep(value)
+    # return the result of the task
+    return (task_id, value)
+
+# callback function to call when a task is completed
+def handler(future):
+    # declare global state
+    global event
+    global lock
+    # acquire the mutex lock to avoid race condition
+    with lock:
+        # check if the event is already set
+        if event.is_set():
+            return
+        # set the event
+        event.set()
+        # report a message
+        print(f'First done: {future.result()}')
+
+# task to inject a stream of tasks into the thread pool
+def task_stream(tpe, event):
+    for i in range(1, 51):
+        # check if we are all done
+        if event.is_set():
+            return
+        # issue a task
+        future = tpe.submit(task, i)
+        # add the done handler
+        future.add_done_callback(handler)
+        # report progress
+        print(f'&gt;issued task {i}')
+        # block a moment
+        sleep(0.2)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create event to signal the done state
+    event = Event()
+    # create the mutex lock
+    lock = Lock()
+    # create a thread pool
+    with ThreadPoolExecutor(max_workers=50) as tpe:
+        # issue task that streams work into the pool
+        future = tpe.submit(task_stream, tpe, event)
+        # wait for the event to be set
+        event.wait()
+    # wait until all tasks are done...
+</code></pre>
+<p>Running the example first creates the event and mutex lock used in the done callback.</p>
+<p>The thread pool is created and the task used to issue a stream of tasks is issued to the pool. The main thread then blocks until this streaming task is done.</p>
+<p>The task streaming begins and one by one tasks are issued into the thread pool.</p>
+<p>Eventually one task finishes.</p>
+<p>It's done callback function is called, setting the event object and reporting the result.</p>
+<p>Any subsequent tasks that are completed also call the done callback function but do not set the event or report their result because the event has already been set.</p>
+<p>The set event causes the streaming task to complete.</p>
+<p>The main thread continues and waits for any tasks still running in the pool to complete before terminating the program.</p>
+<p>This highlights how we can get the first result from a stream of tasks issued to the <strong>ThreadPoolExecutor</strong>.</p>
+<pre><code>&gt;issued task 1
+&gt;issued task 2
+&gt;issued task 3
+&gt;issued task 4
+&gt;issued task 5
+&gt;issued task 6
+&gt;issued task 7
+&gt;issued task 8
+&gt;issued task 9
+&gt;issued task 10
+&gt;issued task 11
+&gt;issued task 12
+&gt;issued task 13
+&gt;issued task 14
+&gt;issued task 15
+&gt;issued task 16
+&gt;issued task 17
+&gt;issued task 18
+&gt;issued task 19
+&gt;issued task 20
+&gt;issued task 21
+&gt;issued task 22
+&gt;issued task 23
+&gt;issued task 24
+&gt;issued task 25
+&gt;issued task 26
+&gt;issued task 27
+&gt;issued task 28
+&gt;issued task 29
+&gt;issued task 30
+&gt;issued task 31
+&gt;issued task 32
+&gt;issued task 33
+First done: (7, 5.401081129857179)
+</code></pre>
+<h3>Why Not Use concurrent.futures.wait()?</h3>
+<p>This problem cannot be solved using the <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.wait"><strong>concurrent.futures.wait()</strong> function</a>.</p>
+<p>Recall that the <strong>wait()</strong> function takes an iterable of <strong>Future</strong> objects and will return a set of <strong>Future</strong> objects that match a condition, such as the first done or all done.</p>
+<p>You can learn more about the <strong>concurrent.futures.wait()</strong> function in the tutorials:</p>
+<ul>
+<li><a href="../threadpoolexecutor-wait-first-result/">How to Wait For The First Task To Finish In The ThreadPoolExecutor</a></li>
+<li><a href="../threadpoolexecutor-wait-all-tasks/">How to Wait For All Tasks to Finish in the ThreadPoolExecutor</a></li>
+</ul>
+<p>This function cannot be used in this case.</p>
+<p>The reason is that the tasks are streamed, e.g. created sequentially, and waiting must begin after the first task has been issued.</p>
+<p>The <strong>wait()</strong> function requires first that all tasks be issued before waiting can begin.</p>
+<p>We cannot update a list or set of tasks provided to the <strong>wait()</strong> function as an argument, as changes to the structure are not monitored by the wait function (I know, I tried).</p>
+<p>We can demonstrate this by updating the above example to use the <strong>concurrent.futures.wait()</strong> function.</p>
+<p>This involves removing the done callback function and the event and mutex locks that go along with it. instead, we define a new task function that takes a shared list and waits on it only after at least one task has been added to it. After the <strong>wait()</strong> function returns the result is reported.</p>
+<pre><code># task to wait for the first task to complete and return results
+def wait_for_first_result(task_list):
+    # declare global task list
+    while len(task_list) == 0:
+        sleep(0.1)
+    print('list not empty')
+    # wait on the task list
+    done,_ = wait(task_list, return_when=FIRST_COMPLETED)
+    # get the first task
+    future = done.pop()
+    # report result of first task
+    print(future.result())
+</code></pre>
+<p>Note, we are spinning with a busy wait loop here to check the status of the list.</p>
+<p>You can learn more about busy wait loops in the tutorial:</p>
+<ul>
+<li><a href="../thread-busy-waiting-in-python/">How to Use Busy Waiting in Python</a></li>
+</ul>
+<p>I did this for simplicity, but a better solution is to use wait/notify via a condition.</p>
+<p>You can learn more about condition variables in the tutorial:</p>
+<ul>
+<li><a href="../thread-condition/">Threading Condition Variable in Python</a></li>
+</ul>
+<p>The <strong>task_stream()</strong> function is then updated to add each <strong>Future</strong> to this same shared list.</p>
+<pre><code># task to inject a stream of tasks into the thread pool
+def task_stream(tpe, task_list):
+    for i in range(1, 51):
+        # issue a task
+        future = tpe.submit(task, i)
+        # store future in task list
+        task_list.append(future)
+        # report progress
+        print(f'&gt;issued task {i}')
+        # block a moment
+        sleep(0.2)
+</code></pre>
+<p>The complete example with these changes is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of stream of tasks and reporting the first result using wait()
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+from concurrent.futures import FIRST_COMPLETED
+
+# task function that will sleep for a random number of seconds
+def task(task_id):
+    # generate value between 5 and 20
+    value = 5 + (random() * 20)
+    # block to simulate effort
+    sleep(value)
+    # return the result of the task
+    return (task_id, value)
+
+# task to inject a stream of tasks into the thread pool
+def task_stream(tpe, task_list):
+    for i in range(1, 51):
+        # issue a task
+        future = tpe.submit(task, i)
+        # store future in task list
+        task_list.append(future)
+        # report progress
+        print(f'&gt;issued task {i}')
+        # block a moment
+        sleep(0.2)
+
+# task to wait for the first task to complete and return results
+def wait_for_first_result(task_list):
+    # declare global task list
+    while len(task_list) == 0:
+        sleep(0.1)
+    print('list not empty')
+    # wait on the task list
+    done,_ = wait(task_list, return_when=FIRST_COMPLETED)
+    # get the first task
+    future = done.pop()
+    # report result of first task
+    print(future.result())
+
+# protect the entry point
+if __name__ == '__main__':
+    # list of tasks
+    task_list = list()
+    # create a thread pool
+    tpe = ThreadPoolExecutor(max_workers=50)
+    # issue task to wait on the first result
+    future = tpe.submit(wait_for_first_result, task_list)
+    # issue task that streams work into the pool
+    tpe.submit(task_stream, tpe, task_list)
+    # wait for the first result to be reported
+    future.result()
+    # close the thread pool
+    tpe.shutdown(wait=False, cancel_futures=True)
+    print('Main is done.')
+</code></pre>
+<p>Running the example creates the thread pool, issues the waiting task, then the streaming task.</p>
+<p>All tasks are streamed into the thread pool.</p>
+<p>The first task issued is added to the shared list.</p>
+<p>The busy wait loop notices the shared list is no longer empty and begins waiting.</p>
+<p>Tasks continue to be issued to the pool and appended to the list.</p>
+<p>Eventually, the first task completes and the result is reported.</p>
+<p>We can see the result is for task 1. This will always be the case.</p>
+<p>The reason is that all subsequent <strong>Future</strong> objects appended to the list are not considered by the internals of the <strong>wait()</strong> function.</p>
+<pre><code>&gt;issued task 1
+list not empty
+&gt;issued task 2
+&gt;issued task 3
+&gt;issued task 4
+&gt;issued task 5
+&gt;issued task 6
+&gt;issued task 7
+&gt;issued task 8
+&gt;issued task 9
+&gt;issued task 10
+&gt;issued task 11
+&gt;issued task 12
+&gt;issued task 13
+&gt;issued task 14
+&gt;issued task 15
+&gt;issued task 16
+&gt;issued task 17
+&gt;issued task 18
+&gt;issued task 19
+&gt;issued task 20
+&gt;issued task 21
+&gt;issued task 22
+&gt;issued task 23
+&gt;issued task 24
+&gt;issued task 25
+&gt;issued task 26
+&gt;issued task 27
+&gt;issued task 28
+&gt;issued task 29
+&gt;issued task 30
+&gt;issued task 31
+&gt;issued task 32
+&gt;issued task 33
+&gt;issued task 34
+&gt;issued task 35
+&gt;issued task 36
+&gt;issued task 37
+&gt;issued task 38
+&gt;issued task 39
+&gt;issued task 40
+&gt;issued task 41
+&gt;issued task 42
+&gt;issued task 43
+&gt;issued task 44
+&gt;issued task 45
+&gt;issued task 46
+&gt;issued task 47
+&gt;issued task 48
+&gt;issued task 49
+&gt;issued task 50
+(1, 12.481404668121845)
+Main is done.</code></pre>
+<h3>Why Not Use concurrent.futures.as_completed()?</h3>
+<p>This problem cannot be solved using the <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.as_completed"><strong>concurrent.futures.as_completed()</strong> function</a>.</p>
+<p>Recall that the <strong>as_completed()</strong> function takes an iterable of <strong>Future</strong> objects and yields those <strong>Future</strong> objects in the order they are done.</p>
+<p>You can learn more about the <strong>concurrent.futures.as_completed()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-as-completed/">How to Use as_completed() with the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>This function cannot be used in this case.</p>
+<p>The reason is the same as that for the <strong>concurrent.futures.wait()</strong> function.</p>
+<p>Changes to the list or set provided to the <strong>as_completed()</strong> function are not monitored and honored by the function, meaning we cannot continuously update the function as we issue new tasks.</p>
+<p>We can also explore this with a worked example.</p>
+<p>The <strong>wait_for_first_result()</strong> function in the previous section can be updated to call the <strong>as_completed()</strong> function and report the first result seen.</p>
+<pre><code># task to wait for the first task to complete and return results
+def wait_for_first_result(task_list):
+    # declare global task list
+    while len(task_list) == 0:
+        sleep(0.1)
+    print('list not empty')
+    # wait on the task list
+    for future in as_completed(task_list):
+        print(future.result())
+        return
+</code></pre>
+<p>The complete example with this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of stream of tasks and reporting the first result using as_completed()
+from time import sleep
+from random import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
+# task function that will sleep for a random number of seconds
+def task(task_id):
+    # generate value between 5 and 20
+    value = 5 + (random() * 20)
+    # block to simulate effort
+    sleep(value)
+    # return the result of the task
+    return (task_id, value)
+
+# task to inject a stream of tasks into the thread pool
+def task_stream(tpe, task_list):
+    for i in range(1, 51):
+        # issue a task
+        future = tpe.submit(task, i)
+        # store future in task list
+        task_list.append(future)
+        # report progress
+        print(f'&gt;issued task {i}')
+        # block a moment
+        sleep(0.2)
+
+# task to wait for the first task to complete and return results
+def wait_for_first_result(task_list):
+    # declare global task list
+    while len(task_list) == 0:
+        sleep(0.1)
+    print('list not empty')
+    # wait on the task list
+    for future in as_completed(task_list):
+        print(future.result())
+        return
+
+# protect the entry point
+if __name__ == '__main__':
+    # list of tasks
+    task_list = list()
+    # create a thread pool
+    tpe = ThreadPoolExecutor(max_workers=50)
+    # issue task to wait on the first result
+    future = tpe.submit(wait_for_first_result, task_list)
+    # issue task that streams work into the pool
+    tpe.submit(task_stream, tpe, task_list)
+    # wait for the first result to be reported
+    future.result()
+    # close the thread pool
+    tpe.shutdown(wait=False, cancel_futures=True)
+    print('Main is done.')
+</code></pre>
+<p>Running the example creates the thread pool, issues the waiting task, then the streaming task.</p>
+<p>Tasks are streamed into the thread pool.</p>
+<p>The first task issued is added to the shared list.</p>
+<p>The busy wait loop notices the shared list is no longer empty and begins waiting via the <strong>as_completed()</strong> loop.</p>
+<p>Tasks continue to be issued to the pool and appended to the list.</p>
+<p>Eventually, the first task completes and the result is reported.</p>
+<p>We can see the result is for task 1. This will always be the case.</p>
+<p>The reason is that all subsequent <strong>Future</strong> objects appended to the list are not considered by the internals of the <strong>as_complete()</strong> function.</p>
+<pre><code>&gt;issued task 1
+list not empty
+&gt;issued task 2
+&gt;issued task 3
+&gt;issued task 4
+&gt;issued task 5
+&gt;issued task 6
+&gt;issued task 7
+&gt;issued task 8
+&gt;issued task 9
+&gt;issued task 10
+&gt;issued task 11
+&gt;issued task 12
+&gt;issued task 13
+&gt;issued task 14
+&gt;issued task 15
+&gt;issued task 16
+&gt;issued task 17
+&gt;issued task 18
+&gt;issued task 19
+&gt;issued task 20
+&gt;issued task 21
+&gt;issued task 22
+&gt;issued task 23
+&gt;issued task 24
+&gt;issued task 25
+&gt;issued task 26
+&gt;issued task 27
+&gt;issued task 28
+&gt;issued task 29
+&gt;issued task 30
+&gt;issued task 31
+&gt;issued task 32
+&gt;issued task 33
+&gt;issued task 34
+&gt;issued task 35
+&gt;issued task 36
+&gt;issued task 37
+&gt;issued task 38
+&gt;issued task 39
+&gt;issued task 40
+&gt;issued task 41
+&gt;issued task 42
+&gt;issued task 43
+&gt;issued task 44
+&gt;issued task 45
+&gt;issued task 46
+&gt;issued task 47
+&gt;issued task 48
+&gt;issued task 49
+&gt;issued task 50
+(1, 13.766543332563181)
+Main is done.
+</code></pre>
+<h2>Example of Streamed Tasks and Reporting as Tasks Complete</h2>
+<p>There is another similar use case when getting results from streamed task.</p>
+<p>Rather than getting and using the result of the first task that completes, we may want to get and use all results from streamed tasks, as the tasks are completed.</p>
+<p>This is like using a call to <strong>as_completed()</strong> but for streamed tasks rather than a single batch of tasks.</p>
+<p>Again, there are many ways to solve this problem, but an approach I like is to use a thread-safe <strong><a href="https://docs.python.org/3/library/queue.html#queue.Queue">queue.Queue</a></strong>.</p>
+<p>The done callback handler can be updated to get and put results on a shared queue.</p>
+<pre><code># callback function to call when a task is completed
+def handler(future):
+    # declare global queue
+    global queue
+    # get result from task
+    result = future.result()
+    # put result on the queue
+    queue.put(f'Done: {result}')
+</code></pre>
+<p>A new task can then be defined to consume results from the queue and report them.</p>
+<pre><code># consume and report results forever
+def result_consumer(queue):
+    # consume results forever
+    while True:
+        # consume result
+        result = queue.get()
+        # report result
+        print(result)
+</code></pre>
+<p>We can then create a daemon thread to run the result consumer task for as long as we need.</p>
+<pre><code>...
+# start daemon thread to report results as they are available
+daemon = Thread(target=result_consumer, args=(queue,), daemon=True)
+daemon.start()
+</code></pre>
+<p>If you are new to using the <strong>queue.Queue</strong>, you can get started in the tutorial:</p>
+<ul>
+<li><a href="../thread-queue/">Thread-Safe Queue in Python</a></li>
+</ul>
+<p>We use a daemon thread because it does not need to be shut down. We can close our program and the daemon thread will not stop the program from exiting, unlike a non-daemon thread.</p>
+<p>If you are new to using daemon threads, you can learn more in the tutorial:</p>
+<ul>
+<li><a href="../daemon-threads-in-python/">How to Use Daemon Threads in Python</a></li>
+</ul>
+<p>Tying these changes together, the complete example of reporting results for streamed tasks as tasks are completed is listed below.</p>
+</main>
+</body>
+</html>

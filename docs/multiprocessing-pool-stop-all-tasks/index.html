@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stop All Tasks in the Multiprocessing Pool in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Stop All Tasks in the Multiprocessing Pool in Python</h1>
+<div class="post-meta">July 17, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>safely stop tasks</strong> in the <strong><a href="../multiprocessing-pool-python/">process pool</a></strong> using a shared <strong>multiprocessing.Event</strong> object.</p>
+<p>In this tutorial you will discover how to <strong>safely stop tasks in the process pool in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Safely Stop All Tasks</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the process pool, we often need to to safely stop all running tasks.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>A user requests to close the application.</li><li>An error or fault that negates the tasks.</li><li>A problem accessing a required resource.</li></ul>
+<p><strong>How can we safely do all tasks in the process pool?</strong></p>
+<h2>How To Safely Stop All Tasks in the Process Pool</h2>
+<p>The process pool does not provide a mechanism to safely stop all currently running tasks.</p>
+<p>It does provide a way to forcefully terminate all running worker processes via the <strong>terminate()</strong> function. This approach is too aggressive for most use cases as it will mean the process pool can no longer be used.</p>
+<p>Instead, we can develop a mechanism to safely stop all running tasks in a process pool using a <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Event"><strong>multiprocessing.Event</strong> object</a>.</p>
+<p>Firstly, an Event object must be created and shared among all running tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared event
+event = multiprocessing.Event()</code></pre>
+<p>Recall that an event provides a process-safe boolean variable.</p>
+<p>It is created in the False state and can be checked via the <strong>is_set()</strong> function and made True via the <strong>set()</strong> function.</p>
+<p>You can learn more about how to use a <strong>multiprocessing.Event</strong> in the tutorial:</p>
+<ul><li><a href="../multiprocessing-event-object-in-python/">Multiprocessing Event Object In Python</a></li></ul>
+<p>The <strong>multiprocessing.Event</strong> object cannot be passed as an argument to task functions executed in the process pool. It will result in an error such as:</p>
+<pre><code>RuntimeError: Condition objects should only be shared between processes through inheritance</code></pre>
+<p>The error is likely triggered because the <strong>multiprocessing.Event</strong> object uses a <strong>multiprocessing.Condition</strong> object internally, which cannot be serialized (pickled) in the manner required by the process pool.</p>
+<p>Instead, we have two options to share the Event with tasks in the pool.</p>
+<ol><li>Define the Event as a global variable and inherit the global variable in the child process. This will only work for child processes created using the 'fork' start method.</li><li>Define the Event using a Manager, then inherit the global variable or pass it as an argument. This works with both 'spawn' and 'fork' start methods.</li></ol>
+<p>This latter approach is more general and therefore preferred.</p>
+<p>A <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Manager">multiprocessing.Manager</a></strong> creates a process and is responsible for managing a centralized version of an object. It then provides proxy objects that can be used in other processes that keep up-to-date with the single centralized object.</p>
+<blockquote><p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>As such, using a Manager is a useful way to centralize a synchronization primitive like an event shared among multiple worker processes.</p>
+<p>We can first create a <strong>multiprocessing.Manager</strong> using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>We can then create a shared Event object using the manager.</p>
+<p>This will return a proxy object for the Event object in the manager process that we can share among child worker processes directly or indirectly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared event via the manager
+event = manager.Event()</code></pre>
+<p>It is best to explicitly share state among child processes wherever possible. It's just easier to read and debug.</p>
+<p>Therefore, I recommend passing the shared Event as an argument to the target task function.</p>
+<p>For example:</p>
+<pre><code># function executed in worker processes
+def task(event, ...):
+	# ...
+</code></pre>
+<p>The custom function executing the task can check the status of the Event object periodically, such as each iteration of a loop.</p>
+<p>If the Event set, the target task function can then choose to stop, closing any resources if necessary.</p>
+<pre><code># function executed in worker processes
+def task(event, ...):
+	# ...
+	while True:
+		# ...
+		if event.is_set():
+			return</code></pre>
+<p>There are some limitations to this approach.</p>
+<p>It requires that you have complete control over the target task function or functions executed in the process pool.</p>
+<p>This control is required so that the functions can be changed to take the event as an argument and then to check the status of the event periodically.</p>
+<ul><li>Target task function must take the <strong>multiprocessing.Event</strong> as an argument.</li><li>Target task function must check the status of the <strong>multiprocessing.Event</strong> periodically.</li></ul>
+<p>The first limitation can be removed by inheriting the event from the parent process as a global variable. Nevertheless, all tasks that you want to stop will need to check the status of the event all the time.</p>
+<p>This can be a problem if tasks are performing blocking operations such as reading and/or writing from/to files or sockets.</p>
+<p>Now that we know how to safely stop tasks in the process pool, let's look at a worked example.</p>
+<h2>Example Safely Stop All Tasks in the Process Pool</h2>
+<p>We can explore how to safely stop tasks in the process pool.</p>
+<p>In this example, we will define a task function that takes a shared event as an argument that loops a number of times and sleeps each iteration. It will check the status of the shared event each iteration and stop the task if the event is set. The main process will issue a number of tasks to the process book, wait a moment then request that all issued tasks safely stop, then wait for the tasks to stop.</p>
+<p>Importantly, the process pool is left in a condition where it can be used again to issue more tasks. This is unlike calling the terminate() function to forcefully kill all child worker processes.</p>
+<p>Firstly, we can define a custom function to execute tasks in the process pool.</p>
+<p>The task function will take a unique integer identifier and a shared event object as arguments. It will report a message that it is starting, then loop 10 times. Each loop it will sleep for one second to simulate computational effort. It will then check the status of the event, and if set it will report a message and break the loop. Finally, a message is reported right before the task is stopped.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(identifier, event):
+    print(f'Task {identifier} running', flush=True)
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+        # check if the task should stop
+        if event.is_set():
+            print(f'Task {identifier} stopping...', flush=True)
+            # stop the task
+            break
+    # report all done
+    print(f'Task {identifier} Done', flush=True)
+</code></pre>
+<p>Next, in the main process we can create the shared event.</p>
+<p>This requires first creating the <strong>multiprocessing.Manager</strong> that will control the centralized version of the <strong>multiprocessing.Event</strong> object.</p>
+<p>We will use the context manager interface to ensure the Manager is closed once we are finished with it.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>Next, we will create the <strong>multiprocessing.Event</strong> using the Manager. This will return a proxy for the centralized Event object that we can safely share with child worker processes directly.</p>
+<pre><code>...
+# create the shared event
+event = manager.Event()</code></pre>
+<p>Next, we will create a process pool with a default configuration.</p>
+<p>Again, we will use the context manager interface to ensure that the pool is closed automatically once we are finished using it.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>We will then issue 4 tasks to the process pool.</p>
+<p>In this case, we will use the <strong>starmap_async()</strong> function that supports multiple arguments and allows tasks to be issued asynchronously, allowing the main process to continue on.</p>
+<p>Firstly, we will create a list of arguments, with one tuple per task containing a unique integer and the shared event object. We then issue the tasks and receive an <strong>AsyncResult</strong> as a handle on the issued tasks.</p>
+<pre><code>...
+# prepare arguments
+items = [(i,event) for i in range(4)]
+# issue tasks asynchronously
+result = pool.starmap_async(task, items)</code></pre>
+<p>You can learn more about issuing tasks using the <strong>starmap_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-starmap_async/">Multiprocessing Pool.starmap_async() in Python</a></li></ul>
+<p>Next, the main process will block for a moment to allow the tasks to get started and run for a while.</p>
+<pre><code>...
+# wait a moment
+sleep(2)</code></pre>
+<p>The main process will then request that all issued tasks safely stop by setting the shared event.</p>
+<pre><code>...
+# safely stop the issued tasks
+print('Safely stopping all tasks')
+event.set()</code></pre>
+<p>The main process will then wait for all tasks to stop.</p>
+<p>There are many ways to do this, although in this case will simply wait on the single <strong>AsyncResult</strong> object returned as a handle on the single batch of tasks issued to the pool.</p>
+<pre><code>...
+# wait for all tasks to stop
+result.wait()
+print('All stopped')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of safely stopping all tasks in the process pool
+from time import sleep
+from multiprocessing import Event
+from multiprocessing import Manager
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, event):
+    print(f'Task {identifier} running', flush=True)
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+        # check if the task should stop
+        if event.is_set():
+            print(f'Task {identifier} stopping...', flush=True)
+            # stop the task
+            break
+    # report all done
+    print(f'Task {identifier} Done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared event
+        event = manager.Event()
+        # create and configure the process pool
+        with Pool() as pool:
+            # prepare arguments
+            items = [(i,event) for i in range(4)]
+            # issue tasks asynchronously
+            result = pool.starmap_async(task, items)
+            # wait a moment
+            sleep(2)
+            # safely stop the issued tasks
+            print('Safely stopping all tasks')
+            event.set()
+            # wait for all tasks to stop
+            result.wait()
+            print('All stopped')
+</code></pre>
+<p>Running the example first creates the manager, then creates the shared event object from the manager.</p>
+<p>The process pool is then created using the default configuration.</p>
+<p>The arguments for the tasks are prepared, then the four tasks are issued asynchronously to the process pool.</p>
+<p>The main process then blocks for a moment.</p>
+<p>Each task starts, reporting a message then starting its main loop.</p>
+<p>The main process wakes up and sets the event, requesting all issued tasks to stop. It then waits on the <strong>AsyncResult</strong> for the issued tasks to stop.</p>
+<p>Each task checks the status of the event each iteration of its main loop. They notice that the event is set, break their main loop, report a final message then return, stopping the task safely.</p>
+<p>All tasks stop, allowing the main process to continue on, ending the application.</p>
+<p>This highlights how we can safely stop all tasks in the process pool in a controlled manner.</p>
+<pre><code>Task 0 running
+Task 2 running
+Task 1 running
+Task 3 running
+Safely stopping all tasks
+Task 1 stopping...
+Task 1 Done
+Task 0 stopping...
+Task 0 Done
+Task 3 stopping...
+Task 3 Done
+Task 2 stopping...
+Task 2 Done
+All stopped</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to safely stop tasks in the process pool in Python.</p>
+</main>
+</body>
+</html>

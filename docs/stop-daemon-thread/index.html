@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Stop a Daemon Thread Gracefully in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Stop a Daemon Thread Gracefully in Python</h1>
+<div class="post-meta">March 17, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can gracefully <strong>stop a daemon thread</strong> using a <strong>threading.Event</strong>.</p>
+<p>In this tutorial you will discover how to stop daemon thread background tasks in Python.</p>
+<p>Let's get started.</p>
+<h2>Need to Stop a Daemon Thread</h2>
+<p>A thread is a <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread of execution</a> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming, we may need to run a task in the background using a daemon thread.</p>
+<p>The problem with daemon threads is that they will be terminated abruptly by the Python process once all other non-daemon threads are finished. This can cause problems for some background tasks that may need to close and release resources before being closed.</p>
+<p>How can we gracefully stop a daemon thread in Python?</p>
+<h2>How to Stop a Daemon Thread</h2>
+<p>A daemon thread can be stopped gracefully using a threading.Event.</p>
+<p>A <a href="https://en.wikipedia.org/wiki/Daemon_(computing)">daemon thread</a> is a background thread. Daemon is pronounced "<em>dee-mon</em>", like the alternate spelling "<em>demon</em>".</p>
+<p>A thread may be configured to be a daemon or not, and most threads in concurrent programming, including the main thread, are non-daemon threads (not background threads) by default. The difference between daemon threads and non-daemon threads is that the process will exit if only daemon threads are running, whereas it cannot exit if at least one non-daemon thread is running.</p>
+<p>As such, daemon threads are helpful for executing tasks in the background to support the non-daemon threads in an application.</p>
+<p>If you are new to daemon threads, you can learn more about them here:</p>
+<ul><li><a href="../daemon-threads-in-python/">How to Use Daemon Threads in Python</a></li></ul>
+<p>Importantly, daemon threads are terminated abruptly once all non daemon threads are finished. This means that any background task running in a daemon thread will not have a chance to close resources and stop gracefully.</p>
+<p>A Python <strong>threading.Thread</strong> instance can be configured to be a daemon thread.</p>
+<p>We can configure a new thread to be a daemon thread by specifying the "<strong>daemon</strong>" argument to <strong>True</strong> in the constructor of the threading.Thread class.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new daemon thread
+thread = Thread(daemon=True, ...)</code></pre>
+<p>Typically a background task is a long-running task that may run for the duration of the main program.</p>
+<p>This may be implemented using a loop that performs the task periodically based on a time interval or sporadically based on the arrival of events.</p>
+<p>For example, we can define a simple background task as a while loop and a sleep interval.</p>
+<pre><code># background task
+def task():
+    # run forever
+    while True:
+        # run every 2 seconds
+        sleep(2)
+        # perform task...
+</code></pre>
+<p>A background task of this type that executes in a loop can be adjusted to check program state as to whether it should shutdown each iteration.</p>
+<p>For example, a threading.Event can be used to trigger the background task to shutdown if it is set true.</p>
+<p>You may recall that a <strong>threading.Event</strong> is a thread-safe boolean flag that can be shared between threads.</p>
+<p>You can learn more about thread events here:</p>
+<ul><li><a href="../thread-event-object-in-python/">How to Use an Event Object In Python</a></li></ul>
+<p>The main loop of the background task can be configured to check the status of the event each iteration.</p>
+<p>For example:</p>
+<pre><code>...
+# check of the task should exit
+if event.is_set():
+	return
+</code></pre>
+<p>Alternatively, the main loop of the background task could be configured to check the status of the event each iteration.</p>
+<p>For example:</p>
+<pre><code>...
+# run until event is set
+while not event.is_set():
+    # run every 2 seconds
+    sleep(2)
+    # perform task...
+</code></pre>
+<p>The main thread can then set the event once the main task of the program has completed, then join (block) on the <strong>threading.Thread</strong> object until the background task has terminated.</p>
+<p>For example:</p>
+<pre><code>...
+# request the background thread stop
+stop_event.set()
+# wait for the background thread to stop
+thread.join()
+</code></pre>
+<p>If you are new to joining thread instances, you can learn more here:</p>
+<ul><li><a href="../join-a-thread-in-python/">How to Join a Thread in Python</a></li></ul>
+<p>This process of stopping the daemon thread can be automated using the <a href="https://docs.python.org/3/library/atexit.html"><strong>atexit</strong> module</a>.</p>
+<p>The atexit module allows a function to be registered that will be called by the Python interpreter right before the process is exited.</p>
+<p>A new function can be defined that will perform this action for us, setting the event and joining the background thread instance.</p>
+<p>The function can take the <strong>threading.Event</strong> and <strong>threading.Thread</strong> instances as arguments.</p>
+<p>For example:</p>
+<pre><code># stop the background task gracefully before exit
+def stop_background(stop_event, thread):
+    # request the background thread stop
+    stop_event.set()
+    # wait for the background thread to stop
+    thread.join()
+</code></pre>
+<p>Our <strong>stop_background()</strong> function can then be registered with the <strong>atexit</strong> module, for example:</p>
+<pre><code>...
+# register the at exit
+atexit.register(stop_background, stop_event, thread)</code></pre>
+<p>This will call the function right before the Python process exists, terminating the background daemon thread gracefully.</p>
+<p>Now that we know how to stop a background task in a daemon thread, let's look at some worked examples.</p>
+<h2>Example of Daemon Thread Stopping Abruptly</h2>
+<p>Before we explore how to stop a background task in a daemon thread, let's look at an example where a background task is terminated abruptly.</p>
+<p>We will define a background task that will run for the duration of the program and execute every two seconds. In this case, just reporting a message. The main thread will perform its own task for a while to give the background thread a chance to run. Then the main thread will terminate and abruptly stop the background thread.</p>
+<p>First, we can define a function named <strong>task()</strong> that we will execute in the background via a daemon thread.</p>
+<p>The function will be composed of a while-loop that loops forever. Each iteration, the function will sleep for 2 seconds, then wake-up and perform the task, which in this case is to simply print a message.</p>
+<p>The complete function for the background task is listed below.</p>
+<pre><code># background task
+def task():
+    # run forever
+    while True:
+        # run every 2 seconds
+        sleep(2)
+        # perform task
+        print('Background performing task')
+</code></pre>
+<p>Back in the main thread, we can then create a new <strong>threading.Thread</strong> instance and configure it to execute our <strong>task()</strong> function and to do so as a daemon thread. Once created, we can start this new thread immediately.</p>
+<pre><code>...
+# create and start the background thread
+thread = Thread(target=task, daemon=True, name="Background")
+thread.start()</code></pre>
+<p>We can then simulate work in the main thread for a while to allow the background task a chance to run. This can be achieved with a sleep for ten seconds after which the main thread and the entire Python process will terminate.</p>
+<pre><code>...
+# run the main thread for a while
+print('Main thread running...')
+sleep(10)
+print('Main thread stopping')</code></pre>
+<p>Tying this together, the complete example of a daemon thread stopping abruptly is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a daemon thread background task that runs in a loop
+from time import sleep
+from threading import Thread
+
+# background task
+def task():
+    # run forever
+    while True:
+        # run every 2 seconds
+        sleep(2)
+        # perform task
+        print('Background performing task')
+
+# create and start the background thread
+thread = Thread(target=task, daemon=True, name="Background")
+thread.start()
+# run the main thread for a while
+print('Main thread running...')
+sleep(10)
+print('Main thread stopping')
+</code></pre>
+<p>Running the example first creates and runs the background thread.</p>
+<p>The background threads start running, entering the loop and sleeping for two seconds.</p>
+<p>The main thread carries on and then sleeps for ten seconds.</p>
+<p>This gives the background daemon thread a chance to run a few times, in this case four times</p>
+<p>Finally, the main thread wakes and terminates, which abruptly terminates the background thread.</p>
+<p>This highlights that by default, we don't have any control over how or when the background thread is terminated.</p>
+<pre><code>Main thread running...
+Background performing task
+Background performing task
+Background performing task
+Background performing task
+Main thread stopping</code></pre>
+<p>Next, let's look at how we might add some control over stopping the daemon thread.</p>
+<h2>Example of Stopping a Daemon Thread</h2>
+<p>The example from the previous section can be updated to give control over stopping the daemon thread.</p>
+<p>This can be achieved by having the main loop in the background task check a shared <strong>threading.Event</strong> each iteration and have the main thread set the event at the point that we wish to exit the program. This will allow the background thread to have a controlled termination before the main thread and the entire Python process terminates.</p>
+<p>First, we can update the <strong>task()</strong> function to take a <strong>threading.Thread</strong> instance as an argument and then to check that the event is not set each iteration of the while-loop.</p>
+<p>Once the event is set, the loop will exit and the background task will report a message that it is terminating gracefully.</p>
+<p>The updated <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># background task
+def task(event):
+    # run until the event is set
+    while not event.is_set():
+        # run every 2 seconds
+        sleep(2)
+        # perform task
+        print('Background performing task')
+    print('Background done')
+</code></pre>
+<p>Next, in the main thread can create the shared <strong>threading.Event</strong> object and pass it to the <strong>task()</strong> function as an argument when configuring our new daemon <strong>threading.Thread</strong> instance.</p>
+<pre><code>...
+# prepare state for stopping the background
+stop_event = Event()
+# create and start the background thread
+thread = Thread(target=task, args=(stop_event,), daemon=True, name="Background")
+thread.start()
+</code></pre>
+<p>Then, once the application is finished in the main thread and ready to terminate, we can set the event and join the daemon thread, blocking until it has terminated.</p>
+<pre><code>...
+# request the background thread stop
+stop_event.set()
+# wait for the background thread to stop
+thread.join()
+print('Main done')
+</code></pre>
+<p>Tying this together, the complete example of stopping a daemon thread is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of stopping daemon thread background task
+from time import sleep
+from threading import Thread
+from threading import Event
+
+# background task
+def task(event):
+    # run until the event is set
+    while not event.is_set():
+        # run every 2 seconds
+        sleep(2)
+        # perform task
+        print('Background performing task')
+    print('Background done')
+
+# prepare state for stopping the background
+stop_event = Event()
+# create and start the background thread
+thread = Thread(target=task, args=(stop_event,), daemon=True, name="Background")
+thread.start()
+# run the main thread for a while
+print('Main thread running...')
+sleep(10)
+print('Main thread stopping')
+# request the background thread stop
+stop_event.set()
+# wait for the background thread to stop
+thread.join()
+print('Main done')
+</code></pre>
+<p>Running the example first creates and starts the daemon thread and runs the background task.</p>
+<p>The background task runs in a while-loop, checking if the event is set each iteration, sleeping and printing a message.</p>
+<p>The main thread simulates its task and sleeps for ten seconds. It then wakes and sets the event and waits for the background thread to terminate.</p>
+<p>The background thread notices the event is set on the next iteration. It exits the loop in the background thread, reports a final message and the thread terminates.</p>
+<p>The main thread then terminates and the entire Python process is terminated.</p>
+<pre><code>Main thread running...
+Background performing task
+Background performing task
+Background performing task
+Background performing task
+Main thread stopping
+Background performing task
+Background done
+Main done</code></pre>
+<p><strong>Note</strong>, the design could be improved further if the background thread waited on a <strong>threading.Condition</strong> each iteration. This would allow the main thread to notify the daemon thread to wake-up and check the status of the event, avoiding any prolonged waiting in the main thread. This would be especially useful if the background thread only ran every minute or hour.</p>
+<p>Next, let's look at how we might automate the stopping of the daemon thread.</p>
+<h2>Example of Stopping a Daemon At Exit</h2>
+<p>The previous example showed how we can stop a daemon thread using a <strong>thread.Event</strong>, but it required a manual intervention by the main thread.</p>
+<p>We can automate this and leave the main thread free to focus on the main task of the application.</p>
+<p>This can be achieved by defining a function that sets the <strong>threading.Event</strong> and waits on the <strong>threading.Thread</strong> instance of the background task. We can then have this function called by the Python process automatically just prior to the Process terminating.</p>
+<p>This capability is provided by the <a href="https://docs.python.org/3/library/atexit.html"><strong>atexit</strong> module</a> and by registering functions to call at the exit of the Python process via the <a href="https://docs.python.org/3/library/atexit.html#atexit.register"><strong>atexit.register()</strong> function</a>.</p>
+<p>This function takes the name of the callable to execute, as well as any arguments that may need to be passed to the callable.</p>
+<p>We can define a function named <strong>stop_background()</strong> that takes the <strong>threading.Event</strong> and <strong>threading.Thread</strong> instances as arguments then sets the event and waits on the thread.</p>
+<p>The complete function is listed below.</p>
+<pre><code># stop the background task gracefully before exit
+def stop_background(stop_event, thread):
+    print('At exit stopping')
+    # request the background thread stop
+    stop_event.set()
+    # wait for the background thread to stop
+    thread.join()
+    print('At exit done')
+</code></pre>
+<p>We can then update the main thread to register this function.</p>
+<pre><code>...
+# register the at exit
+atexit.register(stop_background, stop_event, thread)</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of stopping a daemon thread at exit is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of stopping daemon thread background task at exit
+from time import sleep
+from threading import Thread
+from threading import Event
+import atexit
+
+# background task
+def task(event):
+    # run forever
+    while not event.is_set():
+        # run every 2 seconds
+        sleep(2)
+        # perform task
+        print('Background performing task')
+    print('Background done')
+
+# stop the background task gracefully before exit
+def stop_background(stop_event, thread):
+    print('At exit stopping')
+    # request the background thread stop
+    stop_event.set()
+    # wait for the background thread to stop
+    thread.join()
+    print('At exit done')
+
+# prepare state for stopping the background
+stop_event = Event()
+# create and start the background thread
+thread = Thread(target=task, args=(stop_event,), daemon=True, name="Background")
+thread.start()
+# register the at exit
+atexit.register(stop_background, stop_event, thread)
+# run the main thread for a while
+print('Main thread running...')
+sleep(10)
+print('Main thread stopping')
+</code></pre>
+<p>Running the example first creates and starts the daemon thread to run the background task.</p>
+<p>The background task runs every two seconds as before, checking the status of the event each iteration.</p>
+<p>The main thread blocks for ten seconds then terminates.</p>
+<p>Right before the Python process is terminated, our <strong>stop_background()</strong> function is called. This function sets the event and joins the thread instance, waiting for it to terminate.</p>
+<p>The background thread notices that the event is set, exits its loop and terminates.</p>
+<p>Finally, the Python process is terminated.</p>
+<p>This shows how we can automatically trigger background daemon threads to close gracefully.</p>
+<pre><code>Main thread running...
+Background performing task
+Background performing task
+Background performing task
+Background performing task
+Main thread stopping
+At exit stopping
+Background performing task
+Background done
+At exit done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to stop daemon threads in Python.</p>
+</main>
+</body>
+</html>

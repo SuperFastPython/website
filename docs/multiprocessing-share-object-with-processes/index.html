@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Manager to Share an Object with Processes – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Manager to Share an Object with Processes</h1>
+<div class="post-meta">September 2, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can use a Manager to host a centralized Python object that can be shared with multiple processes that is both process-safe and changes to the object are propagated and made available to all processes seamlessly.</p>
+<p>In this tutorial you will discover how to use a <strong>Manager to share an ad hoc Python object</strong> with <strong>multiple processes</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need Manager to Share Queue</h2>
+<p>A manager in the <strong>multiprocessing</strong> module provides a way to create Python objects that can be shared easily between processes.</p>
+<blockquote><p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>A manager creates a server process that hosts a centralized version of objects that can be shared among multiple processes.</p>
+<p>The objects are not shared directly. Instead, the manager creates a proxy object for each object that it manages and the proxy objects are shared among processes.</p>
+<p>The proxy objects are used and operate just like the original objects, except that they serialize data, synchronize and coordinate with the centralized version of the object hosted in the manager server process.</p>
+<blockquote><p>A proxy is an object which refers to a shared object which lives (presumably) in a different process. [...] A proxy object has methods which invoke corresponding methods of its referent (although not every method of the referent will necessarily be available through the proxy).</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This makes managers a process-safe and preferred way to share Python objects among processes.</p>
+<p>You can learn more about multiprocessing managers in the tutorial:</p>
+<ul><li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li></ul>
+<p>When using multiprocessing, we may need to share an arbitrary Python object with child processes.</p>
+<p>It may be a data structure or similar object where the internal state of the object may need to be updated from multiple child processes concurrently, although in a process-safe manner in order to avoid race conditions.</p>
+<p><strong>How can we use a multiprocessing Manager to share a Python object with child processes?</strong></p>
+<h2>How to Use a Manager to Share an Object with Processes</h2>
+<p>We can use a multiprocessing manager to share an ad hoc Python object with multiple processes.</p>
+<p>This requires a few steps:</p>
+<ol><li>Defining a custom Manager class that extends BaseManager.</li><li>Registering the Python class with the custom manager.</li><li>Creating an instance of the custom manager.</li><li>Creating an instance of the Python object from the manager instance.</li></ol>
+<p>Let's take a closer look at each step in turn.</p>
+<h3>Step 1. Define a Custom Manager</h3>
+<p>We must define a custom manager in order to use the manager to create and manage ad hoc Python objects.</p>
+<p>This involves defining a new class that extends the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.BaseManager"><strong>multiprocessing.managers.BaseManager</strong> class</a>.</p>
+<p>The custom class does not need to override the constructor or any methods, nor define any functionality.</p>
+<p>For example:</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<h3>Step 2. Register the Python Class</h3>
+<p>The next step involves registering the Python class with the custom manager.</p>
+<p>This is so when the program requests a new instance of the class from the manager, it knows how to create an instance of that class.</p>
+<p>This involves calling a class function (static function) on the custom manager class called <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.BaseManager.register">register()</a></strong>.</p>
+<p>The <strong>register()</strong> function takes two arguments, the string name of the class used by the program when requesting an instance and the name of the Python class to create.</p>
+<p>This should probably be the same name, but do not have to be.</p>
+<p>For example:</p>
+<pre><code>...
+# register the a python class with the custom manager
+CustomManager.register('set', set)</code></pre>
+<h3>Step 3. Create the Manager</h3>
+<p>The next step is to create an instance of the custom manager, and start it.</p>
+<p>This is so that the program can request an instance of the custom class.</p>
+<p>This can be achieved manually by instantiating the class and calling start, for example:</p>
+<pre><code>...
+# create the custom manager
+manager = CustomManager()
+# start the custom manager
+manager.start()</code></pre>
+<p>Later we must close the manager to terminate the server process.</p>
+<pre><code>...
+# close the manager
+manager.close()</code></pre>
+<p>The preferred approach is to use the context manager interface and limit usage of the manager to the context manager block.</p>
+<p>This will ensure the manager is closed automatically regardless of what happens in our program.</p>
+<p>For example:</p>
+<pre><code>...
+# create and start the custom manager
+with CustomManager() as manager:
+	# ...
+</code></pre>
+<h3>Step 4. Create a Custom Class Instance</h3>
+<p>Finally, we can create an instance of our ad hoc Python class using the manager.</p>
+<p>This will create the object in the Manager's server process and return a proxy object.</p>
+<p>The proxy object can then be shared among processes and used to interact with the centralized version of the custom class instance, with all data serialization and process-safety handled automatically under the covers.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared python object
+shared_object = manager.set()</code></pre>
+<p>Now that we know how to share an ad hoc class with processes using a manager, let's look at a worked example.</p>
+<h2>Example of Using a Manager to Share an Object with Processes</h2>
+<p>We can explore how to use a <strong>Manager</strong> to share an ad hoc Python object.</p>
+<p>In this example, we will use a <strong>Manager</strong> to host a <a href="https://docs.python.org/3/tutorial/datastructures.html#sets">Python set</a> and share the set among multiple processes.</p>
+<p>Recall, we can create a set via the <a href="https://docs.python.org/3/library/stdtypes.html#set">set() built-in function</a> and add items to the set via calling the <a href="https://docs.python.org/3/library/stdtypes.html#set-types-set-frozenset">add() method</a>.</p>
+<p>Importantly, if we just created a set and shared it with multiple processes to modify concurrently, it would not have the desired effect. The changes would be made locally within each process and not shared among all processes.</p>
+<p>Firstly, we can define our custom <strong>Manager</strong> instance that we will use to register and host our set instance.</p>
+<p>The <strong>CustomManager</strong> class is defined below.</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>Next, we can define a function to execute in each child process.</p>
+<p>The function will take a unique integer identifier and the shared set as arguments. It will generate a random number between 0 and 1, block for a fraction of a second to simulate computational effort, then add a tuple of its integer argument and generated number to the shared set.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># custom function to be executed in a child process
+def task(number, shared_set):
+    # generate a number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # store the result
+    shared_set.add((number,value))
+</code></pre>
+<p>Finally, in the main process, we will first register our set class with our custom <strong>Manager</strong> class.</p>
+<p>This can be achieved by calling the <strong>register()</strong> class method on our <strong>CustomManager</strong> class and specifying the name of the class we are registering (which is arbitrary, but we will match the actual class name) and the actual Python class it maps to.</p>
+<pre><code>...
+# register the counter with the custom manager
+CustomManager.register('set', set)</code></pre>
+<p>Next, we can create and start an instance of our custom manager.</p>
+<p>In this case, we will use the context manager interface.</p>
+<pre><code>...
+# create a new manager instance
+with CustomManager() as manager:
+	# ...
+</code></pre>
+<p>We will then use the manager instance to create a new instance of our Python <strong>set</strong> class.</p>
+<pre><code>...
+# create a shared set instance
+shared_set = manager.set()</code></pre>
+<p>We will share this set object among many child processes.</p>
+<p>Next, we will create and configure 50 child processes to execute our custom <strong>task()</strong> function with an integer and the share set as arguments.</p>
+<p>This can be achieved in a list comprehension which will create a list of configured <strong>Process</strong> instances.</p>
+<pre><code>...
+# start some child processes
+processes = [Process(target=task, args=(i,shared_set)) for i in range(50)]</code></pre>
+<p>The main process can then traverse the list of <strong>Process</strong> instances and start each. Then iterate the same list and join each process in turn, having the effect of blocking waiting for all tasks to complete.</p>
+<pre><code>...
+# start processes
+for process in processes:
+    process.start()
+# wait for processes to finish
+for process in processes:
+    process.join()
+</code></pre>
+<p>If you are new to joining processes and waiting for them to terminate, you can learn more in the tutoria:</p>
+<ul><li><a href="../join-a-process-in-python/">How to Join a Process in Python</a></li></ul>
+<p>Once all tasks are completed, the main process will report the total number of items in the shared set.</p>
+<p>If the share was not hosted on the <strong>Manager</strong>, then the set would be empty as each process would have added an item to a local copy of the set object.</p>
+<p>We cannot check the size of the shared set object directly, because we only have access to a proxy object representation. We can get access to the underlying set object via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.BaseProxy._getvalue"><strong>_getvalue()</strong> function</a>. We can then calculate the length of the set on the value returned.</p>
+<p>We can also report the contents of the set.</p>
+<pre><code>...
+# all done
+print('Done')
+# report the results
+print(len(shared_set._getvalue()))
+print(shared_set)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a python object using a manager
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing.managers import BaseManager
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# custom function to be executed in a child process
+def task(number, shared_set):
+    # generate a number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # store the result
+    shared_set.add((number,value))
+
+# protect the entry point
+if __name__ == '__main__':
+    # register the counter with the custom manager
+    CustomManager.register('set', set)
+    # create a new manager instance
+    with CustomManager() as manager:
+        # create a shared set instance
+        shared_set = manager.set()
+        # start some child processes
+        processes = [Process(target=task, args=(i,shared_set)) for i in range(50)]
+        # start processes
+        for process in processes:
+            process.start()
+        # wait for processes to finish
+        for process in processes:
+            process.join()
+        # all done
+        print('Done')
+        # report the results
+        print(len(shared_set._getvalue()))
+        print(shared_set)
+</code></pre>
+<p>Running the example first registers the set class with the custom manager class via a static class function.</p>
+<p>Next, an instance of the custom manager class is created and started, starting a new server process for the manager.</p>
+<p>A single centralized instance of a Python set object is then created using the manager and a proxy object for the instance is then returned.</p>
+<p>A total of 50 child processes are configured to execute our custom task() function and pass an integer argument and the proxy object for the share set.</p>
+<p>The child processes are then started and the main process blocks, waiting for all child processes to terminate.</p>
+<p>Each child process generates a random number, blocks for a fraction of a second, then adds a tuple to the shared set containing its integer argument and the generated value.</p>
+<p>The proxy objects ensure that all method calls on the centralized set object are process-safe. This ensures two things:</p>
+<ol><li>No race condition is possible by two processes modifying the set object at the same time.</li><li>Changes made to the hosted and centralized object are available to all other processes.</li></ol>
+<p>All tasks complete and the main process continues on.</p>
+<p>It first reports the size of the shared set, which matches the execution of 50 items for the 50 tasks that were started.</p>
+<p>Next, the content of the set is reported, showing that we have one item from 0 to 49 for each of the 50 tasks that added a tuple.</p>
+<pre><code>Done
+50
+{(26, 0.9683583780033496), (22, 0.13686892488319335), (39, 0.1414689707523733), (13, 0.5951166827165203), (17, 0.8494358251755124), (35, 0.40237396081453247), (4, 0.2522874971557658), (31, 0.8332097787030488), (23, 0.18722977072712244), (5, 0.33779828541166634), (28, 0.7439113416210278), (1, 0.17322276676116777), (24, 0.727053996708004), (47, 0.2533012542203056), (25, 0.8342307237961513), (29, 0.6187359680376543), (42, 0.2968688956217582), (12, 0.5676851016265028), (37, 0.14546902635045955), (20, 0.3868711282904791), (9, 0.3327623955067941), (2, 0.41510857673265966), (10, 0.6344327379460593), (8, 0.9047725964902997), (6, 0.8622076866372874), (48, 0.3895996433092157), (43, 0.6288467330940722), (14, 0.6041826196535989), (19, 0.1610412684825725), (18, 0.6897069725680317), (36, 0.028888642904620676), (21, 0.4839101428301853), (49, 0.8903931689087147), (7, 0.6652282602882754), (46, 0.8637619025440303), (33, 0.3104412938620833), (15, 0.4429830747758847), (38, 0.9206606902877741), (32, 0.8816867571018366), (11, 0.8945218098684898), (44, 0.05677471724926908), (27, 0.19586927234967577), (41, 0.7706467554224696), (45, 0.6759663716448222), (0, 0.963282709368371), (40, 0.7823591820906549), (16, 0.10105616728272415), (34, 0.8210198749842155), (30, 0.9136410079319093), (3, 0.12156928070685225)}
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a Manager to share an ad hoc Python object with multiple processes.</p>
+</main>
+</body>
+</html>

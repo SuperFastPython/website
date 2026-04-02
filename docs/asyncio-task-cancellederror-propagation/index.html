@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Task CancelledError Propagation – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Task CancelledError Propagation</h1>
+<div class="post-meta">January 2, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can cancel asyncio tasks and the request to cancel can propagate down a hierarchy of awaiting tasks.</p>
+<p>The resulting <strong>CancelledError</strong> exceptions can then bubble back up the hierarchy.</p>
+<p>In this tutorial, you will discover how <strong>CancelledError</strong> exceptions propagate when an asyncio task is cancelled.</p>
+<p>Let's get started.</p>
+<h2>What is Asyncio Task Cancellation?</h2>
+<p>Asyncio tasks can be canceled.</p>
+<p>This can be achieved by calling the <strong>cancel()</strong> method on the <strong>asyncio.Task</strong>. This will request that the task cancel as soon as possible and returns <strong>True</strong> if the request was successful or <strong>False</strong> if it was not, e.g. the task is already done.</p>
+<blockquote>
+<p>Request the Task to be cancelled. This arranges for a CancelledError exception to be thrown into the wrapped coroutine on the next cycle of the event loop.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+if task.cancel():
+	# request successful
+</code></pre>
+<p>The next time that the target task that was cancelled resumes, a <strong>CancelledError</strong> exception will be raised.</p>
+<p>This exception will bubble up to the top level of the task and cause it to stop running.</p>
+<p>You can learn more about the mechanics of cancellation a task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<p>You can also learn more about task cancellation best practices in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-cancellation-best-practices/">Asyncio Task Cancellation Best Practices</a></li>
+</ul>
+<h2>Asyncio Task Cancellation Propagates</h2>
+<p>When an asyncio task is cancelled, the <strong>CancelledError</strong> is propagated.</p>
+<p>The <strong>CancelledError</strong> is propagated down to any task that the cancelled task is awaiting. The <strong>CancelledError</strong> is raised in the current task and is then bubbled up to the caller.</p>
+<p>Any task in the hierarchy can intercept the <strong>CancelledError</strong> and choose not to propagate it up, although this is discouraged.</p>
+<blockquote>
+<p>Task.cancel() does not guarantee that the Task will be cancelled, although suppressing cancellation completely is not common and is actively discouraged.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>Generally, a <strong>CancelledError</strong> can be handled at the level that the cancellation request was made.</p>
+<p>We can make the propagation of <strong>CancelledError</strong> exceptions clearer if we consider a hierarchy of tasks:</p>
+<ul>
+<li>Task 1 is created and awaited by the main program.</li>
+<li>Task 1 creates Task 2 and awaits it.</li>
+<li>Task 2 creates Task 3 and awaits it.</li>
+<li>Task 3 executes a long running task.</li>
+</ul>
+<p>This hierarchy of tasks looks as follows:</p>
+<ul>
+<li><strong>task1()</strong>
+<ul>
+<li>-&gt; <strong>task2()</strong>
+<ul>
+<li>-&gt; <strong>task3()</strong></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>Now, we can consider the cancellation of a task at each point in the hierarchy:</p>
+<h3>Cancel Top-Level Task</h3>
+<p>The <strong>main()</strong> coroutine may cancel the top-level task, Task 1.</p>
+<p>For example:</p>
+<ul>
+<li><strong>task1()</strong> &lt;= cancel() 
+<ul>
+<li>-&gt; <strong>task2()</strong>
+<ul>
+<li>-&gt; <strong>task3()</strong></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>Given that <strong>task1()</strong> is awaiting <strong>task2()</strong>, the <strong>CancelledError</strong> will propagate to <strong>task2()</strong>.</p>
+<p>Given that <strong>task2()</strong> is awaiting <strong>task3()</strong>, the <strong>CancelledError</strong> will propagate to <strong>task3()</strong>.</p>
+<p>Whatever <strong>task3()</strong> is doing, the <strong>CancelledError</strong> will propagate down to it as well.</p>
+<p>This highlights that a cancellation of a top-level task in a task hierarchy will cause the propagation of the <strong>CancelledError</strong> from the target task down the hierarchy to all subtasks, assuming they are awaiting and assuming they do not consume the <strong>CancelledError</strong>.</p>
+<h3>Cancel Middle-Level Task</h3>
+<p>The <strong>task1()</strong> task may cancel the middle-level task, Task 2.</p>
+<p>For example:</p>
+<ul>
+<li><strong>task1()</strong>
+<ul>
+<li>-&gt; <strong>task2()</strong> &lt;= cancel() 
+<ul>
+<li>-&gt; <strong>task3()</strong></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>Given that <strong>task2()</strong> is awaiting <strong>task3()</strong>, the <strong>CancelledError</strong> will propagate to <strong>task3()</strong>.</p>
+<p>Whatever <strong>task3()</strong> is doing, the <strong>CancelledError</strong> will propagate down to it as well.</p>
+<p>The <strong>CancelledError</strong> will then propagate back up to <strong>task1()</strong>.</p>
+<p>Given that <strong>task1()</strong> does not consume the <strong>CancelledError</strong>, it then propagates back up to the <strong>main()</strong> task driving the program.</p>
+<p>This highlights that a cancellation request propagates down the task hierarchy as well as back up the hierarchy. A task in the middle of the hierarchy will have both subtasks and parent tasks cancelled, assuming they are awaiting and assuming they do not consume the <strong>CancelledError</strong>.</p>
+<h3>Cancel Bottom-Level Task</h3>
+<p>The <strong>task2()</strong> task may cancel the bottom-level task, Task 3.</p>
+<p>For example:</p>
+<ul>
+<li><strong>task1()</strong>
+<ul>
+<li>-&gt; <strong>task2()</strong>
+<ul>
+<li>-&gt; <strong>task3()</strong> &lt;= cancel()</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>Whatever <strong>task3()</strong> is doing, the <strong>CancelledError</strong> will propagate down to it.</p>
+<p>The <strong>CancelledError</strong> will then propagate back up to <strong>task2()</strong>.</p>
+<p>Given that <strong>task2()</strong> does not consume the <strong>CancelledError</strong>, it then propagates back up to the <strong>task1()</strong>.</p>
+<p>Given that <strong>task1()</strong> does not consume the <strong>CancelledError</strong>, it then propagates back up to the <strong>main()</strong> task driving the program.</p>
+<p>This highlights that a cancellation request at the bottom level of a task hierarchy can propagate all the way back up to the top level, assuming all tasks are waiting and do not consume the <strong>CancelledError</strong> exception.</p>
+<p>This is probably the most expected and familiar case of <strong>CancelledError</strong> propagation, e.g. normal exception propagation.</p>
+<h3>When Is the CancelledError Propagated</h3>
+<p>A <strong>CancelledError</strong> is raised in a task the next time it runs.</p>
+<p>Typically, the target task is suspended and another task is running which requests that the target cancel.</p>
+<p>When the target next resumes, it raises a <strong>CancelledError</strong>.</p>
+<p>But this is not always the case.</p>
+<p>If the target task is running and is cancelled, e.g. it cancels itself, the task will not raise a <strong>CancelledError</strong> until the next time it resumes.</p>
+<p>If the target task cancels itself and does not suspend, then the <strong>CancelledError</strong> will propagate when the task terminates, e.g. is done.</p>
+<p>If a task cancels itself and has subtasks running in the background, they too will raise a <strong>CancelledError</strong> the next time they resume, or will propagate a <strong>CancelledError</strong> when they terminate.</p>
+<p>Now that we are familiar with how cancellation requests can propagate through a task hierarchy, let's look at some worked examples.</p>
+<h2>Example of Cancelling the Top-Level Task</h2>
+<p>We can explore asyncio task cancellation propagation when canceling a top-level task.</p>
+<p>In this example, we will define a hierarchy of three tasks. Task1 awaits Task2, Task2 awaits Task3 and Task3 awaits a sleep.</p>
+<p>Each task handles the <strong>CancelledError</strong> exception, so we can report a message, and then re-raise the exception.</p>
+<p>The <strong>main()</strong> coroutine will run the Task1 task in the background, give it a moment to start the hierarchy, then cancel the top-level task.</p>
+<p>We expect the cancellation to propagate down the hierarchy so that all three tasks are cancelled.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of cancellation propagating down
+import asyncio
+
+# task that take a long time
+async def task3():
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        print('Task3 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task3 cancelled')
+        # re-raise the cancellation
+        raise
+
+# task that take a long time
+async def task2():
+    try:
+        # await the next task
+        await task3()
+        print('Task2 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task2 cancelled')
+        # re-raise the cancellation
+        raise
+
+# task that take a long time
+async def task1():
+    try:
+        # await the next task
+        await task2()
+        print('Task1 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task1 cancelled')
+        # re-raise the cancellation
+        raise
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(task1())
+    # let the tasks run a moment
+    await asyncio.sleep(1)
+    # cancel the task
+    task.cancel()
+    # await the task
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and schedules the <strong>task1()</strong> coroutine in the background. It then suspends for one second to allow the <strong>task1()</strong> coroutine to run.</p>
+<p>The <strong>task1()</strong> coroutine runs and awaits <strong>task2()</strong>.</p>
+<p>The <strong>task2()</strong> coroutine runs and awaits <strong>task3()</strong>.</p>
+<p>The <strong>task3()</strong> coroutine runs and awaits a sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and then cancels <strong>task1()</strong>. It then awaits the task.</p>
+<p>The cancellation request propagates from task1 to task2 to task3 to sleep.</p>
+<p>A <strong>CancelledError</strong> is raised in the sleep, then propagates to task3, which reports a message and re-raises the exception.</p>
+<p>The <strong>CancelledError</strong> is propagated to task2 which is handled, reports a message, and re-raises the exception.</p>
+<p>The <strong>CancelledError</strong> is propagated to task1 which is handled, reports a message, and re-raises the exception.</p>
+<p>Finally, the <strong>CancelledError</strong> exception reaches the <strong>main()</strong> coroutine where it is handled and a message is reported.</p>
+<p>The <strong>main()</strong> coroutine then reports a final message.</p>
+<p>This highlights how a cancellation request can propagate down a hierarchy of awaiting tasks and the resulting <strong>CancelledError</strong> exception can bubble all the way back up.</p>
+<pre><code>Task3 cancelled
+Task2 cancelled
+Task1 cancelled
+Main saw the task cancel
+Main is done</code></pre>
+<h2>Example of Cancelling the Middle-Level Task</h2>
+<p>We can explore asyncio task cancellation propagation when canceling a middle-level task.</p>
+<p>In this case, we can update the above example so that the middle task, e.g. task2 is cancelled by task1.</p>
+<p>This can be achieved by updating the <strong>task1()</strong> coroutine to first issue the task in the background, sleep a moment, then cancel task2 and await the cancellation to take effect.</p>
+<pre><code># task that take a long time
+async def task1():
+    # create and schedule the task
+    task = asyncio.create_task(task2())
+    # let the tasks run a moment
+    await asyncio.sleep(1)
+    # cancel the task
+    task.cancel()
+    try:
+        # await the next task
+        await task
+        print('Task1 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task1 cancelled')
+        # re-raise the cancellation
+        raise
+</code></pre>
+<p>This pattern is then removed from the <strong>main()</strong> coroutine so that the task1 coroutine is no longer cancelled directly.</p>
+<pre><code># main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(task1())
+    # let the tasks run
+    try:
+        # await the task
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of cancellation propagating down and up
+import asyncio
+
+# task that take a long time
+async def task3():
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        print('Task3 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task3 cancelled')
+        # re-raise the cancellation
+        raise
+
+# task that take a long time
+async def task2():
+    try:
+        # await the next task
+        await task3()
+        print('Task2 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task2 cancelled')
+        # re-raise the cancellation
+        raise
+
+# task that take a long time
+async def task1():
+    # create and schedule the task
+    task = asyncio.create_task(task2())
+    # let the tasks run a moment
+    await asyncio.sleep(1)
+    # cancel the task
+    task.cancel()
+    try:
+        # await the next task
+        await task
+        print('Task1 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task1 cancelled')
+        # re-raise the cancellation
+        raise
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(task1())
+    # let the tasks run
+    try:
+        # await the task
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and schedules the <strong>task1()</strong> coroutine in the background. It then suspends and waits for the task to complete.</p>
+<p>The <strong>task1()</strong> coroutine runs and schedules <strong>task2()</strong> to run in the background. It then sleeps for one second.</p>
+<p>The <strong>task2()</strong> coroutine runs and awaits <strong>task3()</strong>.</p>
+<p>The <strong>task3()</strong> coroutine runs and awaits a sleep.</p>
+<p>The <strong>task1()</strong> coroutine resumes and then cancels <strong>task2()</strong>. It then awaits the task.</p>
+<p>The cancellation request propagates from task2 to task3 to sleep.</p>
+<p>A <strong>CancelledError</strong> is raised in the sleep, then propagates to task3, which reports a message and re-raises the exception.</p>
+<p>The <strong>CancelledError</strong> is propagated to task2 which is handled, reports a message, and re-raises the exception.</p>
+<p>The <strong>CancelledError</strong> is propagated back to task1 which is handled, reports a message, and re-raises the exception.</p>
+<p>Finally, the <strong>CancelledError</strong> exception reaches the <strong>main()</strong> coroutine where it is handled and a message is reported.</p>
+<p>The <strong>main()</strong> coroutine then reports a final message.</p>
+<p>This highlights how a cancellation request can propagate down a hierarchy of awaiting tasks and back up the hierarchy given the bubbling up of the <strong>CancelledError</strong> exception.</p>
+<pre><code>Task3 cancelled
+Task2 cancelled
+Task1 cancelled
+Main saw the task cancel
+Main is done</code></pre>
+<h2>Example of Cancelling the Bottom-Level Task</h2>
+<p>We can explore asyncio task cancellation propagation when canceling a bottom-level task.</p>
+<p>In this case, we can update the above example so that the middle task, e.g. task3 is cancelled by task2.</p>
+<p>This can be achieved by updating the <strong>task2()</strong> coroutine to first issue the task in the background, sleep a moment, then cancel task3 and await the cancellation to take effect.</p>
+<pre><code># task that take a long time
+async def task3():
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        print('Task3 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task3 cancelled')
+        # re-raise the cancellation
+        raise
+</code></pre>
+<p>Task1 and main can then be simplified to create and await their subsequent tasks as before.</p>
+<pre><code># task that take a long time
+async def task1():
+    try:
+        # await the next task
+        await task2()
+        print('Task1 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task1 cancelled')
+        # re-raise the cancellation
+        raise
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of cancellation propagating up
+import asyncio
+
+# task that take a long time
+async def task3():
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        print('Task3 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task3 cancelled')
+        # re-raise the cancellation
+        raise
+
+# task that take a long time
+async def task2():
+    # create and schedule the task
+    task = asyncio.create_task(task3())
+    # let the tasks run a moment
+    await asyncio.sleep(1)
+    # cancel the task
+    task.cancel()
+    try:
+        # await the next task
+        await task
+        print('Task2 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task2 cancelled')
+        # re-raise the cancellation
+        raise
+
+# task that take a long time
+async def task1():
+    try:
+        # await the next task
+        await task2()
+        print('Task1 completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task1 cancelled')
+        # re-raise the cancellation
+        raise
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(task1())
+    # let the tasks run
+    try:
+        # await the task
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and schedules the <strong>task1()</strong> coroutine in the background. It then suspends and waits for the task to complete.</p>
+<p>The <strong>task1()</strong> coroutine runs and awaits <strong>task2()</strong>.</p>
+<p>The <strong>task2()</strong> coroutine runs and schedules task3 to run in the background. It then sleeps for one second.</p>
+<p>The <strong>task3()</strong> coroutine runs and awaits a sleep.</p>
+<p>The <strong>task2()</strong> coroutine resumes and then cancels <strong>task3()</strong>. It then awaits the task.</p>
+<p>The cancellation request propagates from task3 to sleep.</p>
+<p>A <strong>CancelledError</strong> is raised in the sleep, then propagates to task3, which reports a message and re-raises the exception.</p>
+<p>The <strong>CancelledError</strong> is propagated to task2 which is handled, reports a message, and re-raises the exception.</p>
+<p>The <strong>CancelledError</strong> is propagated back to task1 which is handled, reports a message, and re-raises the exception.</p>
+<p>Finally, the <strong>CancelledError</strong> exception reaches the <strong>main()</strong> coroutine where it is handled and a message is reported.</p>
+<p>The <strong>main()</strong> coroutine then reports a final message.</p>
+<p>This highlights how a cancellation request can propagate down into the asyncio infrastructure, e.g. <strong>asyncio.sleep()</strong>, and the resulting <strong>CancelledError</strong> can bubble back up to the top level of the program.</p>
+<pre><code>Task3 cancelled
+Task2 cancelled
+Task1 cancelled
+Main saw the task cancel
+Main is done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how CancelledError exceptions propagate when an asyncio task is cancelled.</p>
+</main>
+</body>
+</html>

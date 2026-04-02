@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Lock in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Lock in Python</h1>
+<div class="post-meta">May 15, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can use a mutual exclusion (mutex) <strong>lock for processes</strong> via the <strong>multiprocessing.Lock</strong> class.</p>
+<p>In this tutorial you will discover how to use <strong>mutex locks with processes in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need for a Mutual Exclusion Lock</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> is a running instance of a computer program.</p>
+<p>Every Python program is executed in a Process, which is a new instance of the Python interpreter. This process has the name <em>MainProcess</em> and has one thread used to execute the program instructions called the <em>MainThread</em>. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create new child processes in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process"><strong>multiprocessing.Process</strong> class</a>.</p>
+<p>You can learn more about multiprocessing in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing in Python: The Complete Guide</a></li>
+</ul>
+<p>When writing concurrent programs we may need to share data or resources between processes, which typically must be protected with a mutual exclusion lock.</p>
+<blockquote>
+<p>The most commonly used mechanism for ensuring mutual exclusion is a mutual exclusion lock or mutex, or simply lock. A mutex is a special type of object that has support in the underlying hardware. The basic idea is that each critical section is protected by a lock.</p>
+<cite>-- Page 53, <a href="https://amzn.to/3LRljie">An Introduction to Parallel Programming</a>, 2020.</cite></blockquote>
+<p>You can learn more about mutex locks in the tutorial:</p>
+<ul>
+<li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li>
+</ul>
+<p><strong>How can we use a mutex lock with processes in Python?</strong></p>
+<h2>How to Use Mutex Locks</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Mutual_exclusion">mutual exclusion lock</a> or mutex lock is a synchronization primitive intended to prevent a race condition.</p>
+<p>You can learn more about race conditions between processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-race-condition-python/">Multiprocessing Race Conditions in Python</a></li>
+</ul>
+<p>Python provides a mutual exclusion lock for use with processes via the <strong>multiprocessing.Lock</strong> class.</p>
+<p>An instance of the lock can be created and then acquired by processes before accessing a critical section, and released after the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = multiprocessing.Lock()
+# acquire the lock
+lock.acquire()
+# ...
+# release the lock
+lock.release()
+</code></pre>
+<p>Only one process can have the lock at any time. If a process does not release an acquired lock, it cannot be acquired again.</p>
+<p>The process attempting to acquire the lock will block until the lock is acquired, such as if another process currently holds the lock then releases it.</p>
+<p>We can attempt to acquire the lock without blocking by setting the "<strong>block</strong>" argument to False. If the lock cannot be acquired, a value of False is returned.</p>
+<pre><code>...
+# acquire the lock without blocking
+lock.acquire(block=false)</code></pre>
+<p>We can also attempt to acquire the lock with a timeout, that will wait the set number of seconds to acquire the lock before giving up. If the lock cannot be acquired, a value of False is returned.</p>
+<pre><code>...
+# acquire the lock with a timeout
+lock.acquire(timeout=10)</code></pre>
+<p>We can also use the lock via the context manager protocol via the with statement, allowing the critical section to be a block within the usage of the lock and for the lock to be released automatically once the block has completed.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = multiprocessing.Lock()
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>This is the preferred usage as it makes it clear where the protected code begins and ends, and ensures that the lock is always released, even if there is an exception or error within the critical section.</p>
+<p>We can also check if the lock is currently acquired by a process via the <strong>locked()</strong> function.</p>
+<pre><code>...
+# check if a lock is currently acquired
+if lock.locked():
+    # ...
+</code></pre>
+<p>Python also provides a mutex lock for use with threads. You can learn more about it in this tutorial:</p>
+<ul>
+<li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li>
+</ul>
+<p>Now that we know how to use the <strong>multiprocessing.Lock</strong> class, let's look at a worked example.</p>
+<h2>Example of Using a Multiprocessing Lock</h2>
+<p>We can develop an example to demonstrate how to use the mutex lock.</p>
+<p>First, we can define a target task function that takes a lock as an argument and uses the lock to protect a critical section.</p>
+<p>In this case, the critical section involves reporting a message and blocking for a fraction of a second.</p>
+<pre><code># work function
+def task(lock, identifier, value):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} got the lock, sleeping for {value}')
+        sleep(value)
+</code></pre>
+<p>Next, we can then create one instance of the <strong>multiprocessing.Lock</strong> to be shared among the processes.</p>
+<pre><code>...
+# create the shared lock
+lock = Lock()</code></pre>
+<p>We can then create many processes, each configured to execute our <strong>task()</strong> function and compete to execute the critical section.</p>
+<p>Each process will receive the shared lock as an argument as well as an integer id between 0 and 9 and a random time to sleep in seconds between 0 and 1.</p>
+<p>We can implement this via a list comprehension, creating a list of ten configured <strong>multiprocessing.Process</strong> instances.</p>
+<pre><code>...
+# create a number of processes with different sleep times
+processes = [Process(target=task, args=(lock, i, random())) for i in range(10)]</code></pre>
+<p>Next, we can start all of the processes.</p>
+<pre><code>...
+# start the processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>Finally, we can wait for all of the new child processes to terminate.</p>
+<pre><code>...
+# wait for all processes to finish
+for process in processes:
+    process.join()
+</code></pre>
+<p>Tying this together, the complete example of using a lock is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a mutual exclusion (mutex) lock for processes
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# work function
+def task(lock, identifier, value):
+    # acquire the lock
+    with lock:
+        print(f'&gt;process {identifier} got the lock, sleeping for {value}')
+        sleep(value)
+
+# entry point
+if __name__ == '__main__':
+    # create the shared lock
+    lock = Lock()
+    # create a number of processes with different sleep times
+    processes = [Process(target=task, args=(lock, i, random())) for i in range(10)]
+    # start the processes
+    for process in processes:
+        process.start()
+    # wait for all processes to finish
+    for process in processes:
+        process.join()
+</code></pre>
+<p>Running the example starts ten processes that are all configured to execute our custom function.</p>
+<p>The child processes are then started and the main process blocks until all child processes finish.</p>
+<p>Each child process attempts to acquire the lock within the <strong>task()</strong> function. Only one process can acquire the lock at a time and once they do, they report a message including their id and how long they will sleep. The process then blocks for a fraction of a second before releasing the lock.</p>
+<p>Your specific results may vary given the use of random numbers. Try running the example a few times</p>
+<pre><code>&gt;process 2 got the lock, sleeping for 0.34493199862842716
+&gt;process 0 got the lock, sleeping for 0.1690829274493061
+&gt;process 1 got the lock, sleeping for 0.586700038562483
+&gt;process 3 got the lock, sleeping for 0.8439760508777033
+&gt;process 4 got the lock, sleeping for 0.49642440261633747
+&gt;process 6 got the lock, sleeping for 0.7291278047802177
+&gt;process 5 got the lock, sleeping for 0.4495745681185115
+&gt;process 7 got the lock, sleeping for 0.6844618818829677
+&gt;process 8 got the lock, sleeping for 0.21518155457911792
+&gt;process 9 got the lock, sleeping for 0.30577395898093285
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a mutex lock with processes in Python.</p>
+</main>
+</body>
+</html>

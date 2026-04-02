@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Get Asyncio Task Results – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Get Asyncio Task Results</h1>
+<div class="post-meta">November 10, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>A coroutine may <strong>return a result</strong> directly via a return value.</p>
+<p>Asyncio tasks that execute a coroutine run asynchronously. Therefore we need a way to retrieve results from coroutines executed by independently run coroutines.</p>
+<p>In this tutorial, you will discover <strong>how to get a result from an asyncio task</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>How to retrieve a result from an asyncio task.</li>
+<li>What happens to the result if the task fails or is cancelled.</li>
+<li>What happens if we try to retrieve a result from a running task.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is an Asyncio Task</h2>
+<p>An asyncio <strong>Task</strong> is an object that schedules and independently runs an asyncio coroutine.</p>
+<p>It provides a handle on a scheduled coroutine that an asyncio program can query and use to interact with the coroutine.</p>
+<blockquote>
+<p>A Task is an object that manages an independently running coroutine.</p>
+<cite>-- <a href="https://peps.python.org/pep-3156/">PEP 3156 – Asynchronous IO Support Rebooted: the "asyncio" Module</a></cite></blockquote>
+<p>An asyncio task is represented via an instance of the <a href="https://docs.python.org/3/library/asyncio-task.html#task-object"><strong>asyncio.Task</strong> class</a>.</p>
+<p>A task is created from a coroutine. It requires a coroutine object, wraps the coroutine, schedules it for execution, and provides ways to interact with it.</p>
+<p>A task is executed independently. This means it is scheduled in the asyncio event loop and will execute regardless of what else happens in the coroutine that created it. This is different from executing a coroutine directly, where the caller must wait for it to complete.</p>
+<blockquote>
+<p>Tasks are used to schedule coroutines concurrently. When a coroutine is wrapped into a Task with functions like asyncio.create_task() the coroutine is automatically scheduled to run soon</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>We can create a task using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task"><strong>asyncio.create_task()</strong> function</a>.</p>
+<p>This function takes a coroutine instance and an optional name for the task and returns an <strong>asyncio.Task</strong> instance.</p>
+<blockquote>
+<p>Wrap the coro coroutine into a Task and schedule its execution. Return the Task object.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# create and schedule a task
+task = asyncio.create_task(coro)</code></pre>
+<p>You can learn more about asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task/">What is an Asyncio Task</a></li>
+</ul>
+<p>Now that we know about asyncio tasks, let's look at how we might get results from tasks.</p>
+<h2>How to Get Task Result</h2>
+<p>We can get the result of a task via the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.Task.result"><strong>result()</strong> method</a>.</p>
+<p>This method returns the return value of the coroutine wrapped by the Task or None if the wrapped coroutine does not explicitly return a value.</p>
+<p>For example:</p>
+<pre><code>...
+# get the return value from the wrapped coroutine
+value = task.result()</code></pre>
+<p>If the coroutine fails with an unhandled exception, it is re-raised when calling the <strong>result()</strong> method and may need to be handled.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# get the return value from the wrapped coroutine
+	value = task.result()
+except Exception:
+	# task failed and there is no result
+</code></pre>
+<p>If the task was canceled, then a <strong>CancelledError</strong> exception is raised when calling the <strong>result()</strong> method and may need to be handled.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# get the return value from the wrapped coroutine
+	value = task.result()
+except asyncio.CancelledError:
+	# task was canceled
+</code></pre>
+<p>As such, it is a good idea to check if the task was canceled first.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the task was not canceled
+if not task.cancelled():
+	# get the return value from the wrapped coroutine
+	value = task.result()
+else:
+	# task was canceled
+</code></pre>
+<p>If the task is not yet done, then an <strong>InvalidStateError</strong> exception is raised when calling the <strong>result()</strong> method and may need to be handled.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# get the return value from the wrapped coroutine
+	value = task.result()
+except asyncio.InvalidStateError:
+	# task is not yet done
+</code></pre>
+<p>As such, it is a good idea to check if the task is done first.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the task is not done
+if not task.done():
+	await task
+# get the return value from the wrapped coroutine
+value = task.result()
+</code></pre>
+<p>Now that we know how to get the return value from a task, let's look at some worked examples.</p>
+<h2>Example of Getting a Result From a Done Task</h2>
+<p>We can explore how to get a return value result from a successfully done task.</p>
+<p>In this example, we define a task coroutine that reports a message, blocks for a moment, then returns a value.</p>
+<p>We then define the main coroutine that is used as the entry point into the asyncio program. It reports a message, creates and schedules the task, then awaits the task to be completed. Once completed, it retrieves the result from the task and reports it.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting a result from a done task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+    # return a value
+    return 99
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait for the task to complete
+    await task
+    # get the result
+    value = task.result()
+    print(f'result: {value}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and awaits the task to be completed.</p>
+<p>The task runs, reports a message, and sleeps for a moment before returning a value and terminating normally.</p>
+<p>The <strong>main()</strong> coroutine resumes and retrieves the return value result from the task, which is then reported.</p>
+<p>This example highlights the normal case of retrieving a return value from a successful task.</p>
+<pre><code>main coroutine started
+executing the task
+result: 99
+main coroutine done
+</code></pre>
+<p>Next, we will look at getting a result from a task that does not return a value.</p>
+<h2>Example of Getting a Result From a Task That Does Not Return a Value</h2>
+<p>If the coroutine that the task wraps does not return a value, then the <strong>result()</strong> method returns the default return value None.</p>
+<p>We can explore getting a result from a task that does not return a value.</p>
+<p>In the example below, we update the example from the previous section so that the task coroutine does not return a value.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting a result from a done task that does not return a value
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait for the task to complete
+    await task
+    # get the result
+    value = task.result()
+    print(f'result: {value}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and awaits the task to be completed.</p>
+<p>The task runs, reports a message, and sleeps for a moment before terminating normally without returning a value.</p>
+<p>The <strong>main()</strong> coroutine resumes and attempts to retrieve a return value result from the task, which is then reported.</p>
+<p>We can see that the return value for the task is None because it did not explicitly return a value.</p>
+<p>This example highlights that we can retrieve a result from a task that does not return a value and expect to receive the value None.</p>
+<pre><code>main coroutine started
+executing the task
+result: None
+main coroutine done</code></pre>
+<h2>Example of Getting a Result From a Failed Task</h2>
+<p>If the task fails with an unhandled exception, the exception will be re-raised when calling the <strong>result()</strong> method on the task to get the result.</p>
+<p>As such, we may need to handle possible exceptions when getting task results.</p>
+<p>We can explore getting a result from a task that failed with an unhandled exception.</p>
+<p>In this example, we can update the task coroutine to explicitly raise an exception that is not handled.</p>
+<p>This will cause the task's coroutine to fail.</p>
+<p>The main coroutine will sleep to wait for the task to be completed. This is to avoid using the await expression which will also propagate the exception back to the caller.</p>
+<p>You can learn more about handling exceptions in tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-exceptions/">How to Handle Asyncio Task Exceptions</a></li>
+</ul>
+<p>Once the task is done, the main coroutine will attempt to retrieve the return value and handle the exception that is re-raised.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting a result from an asyncio task that failed
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened')
+    # return a value (never reached)
+    return 99
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait for the task to complete
+    await asyncio.sleep(1.1)
+    try:
+        # get the result
+        value = task.result()
+        print(f'result: {value}')
+    except Exception as e:
+        print(f'Failed with: {e}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and awaits the task to be completed.</p>
+<p>The task runs, reports a message, and sleeps for a moment. The task resumes and raises an exception.</p>
+<p>The exception does not terminate the application or the asyncio event loop.</p>
+<p>Instead, the exception is captured by the asyncio event loop and stored in the task.</p>
+<p>The <strong>main()</strong> coroutine resumes and then attempts to retrieve the result from the task. This fails and the exception that was raised and not handled in the <strong>Task</strong>'s wrapped coroutine is re-raised in the caller.</p>
+<p>The <strong>main()</strong> coroutine catches the exception and reports its details.</p>
+<pre><code>main coroutine started
+executing the task
+Failed with: Something bad happened
+main coroutine done</code></pre>
+<p>Next, let's look at what happens if we try to get a task result from a running task.</p>
+<h2>Example of Getting a Result From a Running Task</h2>
+<p>We cannot retrieve results from a running asyncio task.</p>
+<p>Instead, we can only retrieve a result from a task after it is done.</p>
+<p>If we call the <strong>result()</strong> method on a task that is scheduled or running, an <strong>InvalidStateError</strong> exception is raised by the caller.</p>
+<p>In the example below, we update the above example so that the main coroutine schedules the task, waits a moment then attempts to get the result too soon before the task has been completed.</p>
+<p>This is expected to raise an <strong>InvalidStateError</strong>.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting a result from a running task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+    # return a value (never reached)
+    return 99
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait for the task to complete
+    await asyncio.sleep(0.1)
+    # get the result
+    value = task.result()
+    print(f'result: {value}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and sleeps for a moment.</p>
+<p>The task runs, reports a message, and sleeps for a moment.</p>
+<p>The <strong>main()</strong> coroutine resumes and attempts to retrieve the result from the task while the task is running, even though the task is suspended.</p>
+<p>This fails with an <strong>InvalidStateError</strong> that breaks the asyncio event loop in this case.</p>
+<p>This example highlights that we must always retrieve a <strong>Task</strong> result after the task is done.</p>
+<pre><code>main coroutine started
+executing the task
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.InvalidStateError: Result is not set.
+</code></pre>
+<p>We can check if a task is done before retrieving the exception via the <strong>done()</strong> method that will return <strong>True</strong> if the task is done, or <strong>False</strong> otherwise.</p>
+<p>Next, we can look at the case of attempting to get a task result from a canceled task.</p>
+<h2>Example of Getting a Result From a Canceled Task</h2>
+<p>We cannot retrieve a result from a canceled task.</p>
+<p>Although a canceled task is done, a result will not be available and cannot be retrieved.</p>
+<p>Instead, a <strong>CancelledError</strong> exception is raised when calling the <strong>result()</strong> method if the task was canceled.</p>
+<p>The example below updates the previous example to create and schedule the task as before, then wait a moment. It then cancels the task, waits a moment for the task to be canceled, then attempts to get the result.</p>
+<p>This is expected to fail as the result() method will re-raise the <strong>CancelledError</strong> exception from the wrapped coroutine that was used to cancel the task.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting a result from a canceled task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+    # return a value (never reached)
+    return 99
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait for the task to complete
+    await asyncio.sleep(0.1)
+    # cancel the task
+    task.cancel()
+    # wait a moment for the task to be canceled
+    await asyncio.sleep(0.1)
+    # get the result
+    value = task.result()
+    print(f'result: {value}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and sleeps for a moment.</p>
+<p>The <strong>main()</strong> coroutine resumes and cancels the task. It then suspends and waits a moment for the task to respond to the request for being canceled.</p>
+<p>The task is canceled by raising a <strong>CancelledError</strong> within the wrapped coroutine.</p>
+<p>The <strong>main()</strong> coroutine resumes and attempts to retrieve the result.</p>
+<p>This fails and the <strong>CancelledError</strong> exception is re-raised in the caller.</p>
+<p>This breaks the event loop in this case.</p>
+<pre><code>main coroutine started
+executing the task
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to get a result from an asyncio task in Python.</p>
+</main>
+</body>
+</html>

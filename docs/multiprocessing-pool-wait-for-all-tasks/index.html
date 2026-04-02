@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool Wait For All Tasks To Finish in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool Wait For All Tasks To Finish in Python</h1>
+<div class="post-meta">July 22, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>wait for tasks</strong> issued to the <a href="../multiprocessing-pool-python/">multiprocessing pool</a> to complete by calling <strong>AsyncResult.wait()</strong> or calling <strong>Pool.join()</strong>.</p>
+<p>In this tutorial you will discover how to <strong>wait for tasks to complete</strong> in the <strong>process pool</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>Need Wait For All Tasks in the Process Pool</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the process pool, we may need to wait for all tasks to complete.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>Waiting for all tasks to complete before issuing follow-up tasks.</li><li>Waiting for all task results so that they can be combined or used.</li><li>Waiting for all tasks to complete before continuing on with the program.</li></ul>
+<p><strong>How can we wait for all tasks to complete in the process pool?</strong></p>
+<h2>How to Wait For All Tasks to Finish</h2>
+<p>There are two ways that we can wait for tasks to finish in the multiprocessing.pool.Pool.</p>
+<p>They are:</p>
+<ol><li>Wait for an asynchronous set of tasks to complete with the <strong>wait()</strong> function.</li><li>Wait for all issued tasks to complete after shutdown with the <strong>join()</strong> function.</li></ol>
+<p>Let's take a closer look at each approach.</p>
+<h3>How to Wait For All Tasks in a Batch</h3>
+<p>Tasks may be issued asynchronously to the process pool.</p>
+<p>This can be achieved using a function such as <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async()</strong>. These functions return an <strong>AsyncResult</strong> object.</p>
+<p>We can wait for a single batch of tasks issued asynchronously to the process pool to complete by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.wait"><strong>wait()</strong> function</a> on the returned <strong>AsyncResult</strong> object.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks
+result = pool.map_async(...)
+# wait for issued tasks to complete
+result.wait()</code></pre>
+<p>If multiple batches of asynchronous tasks are issued to the process pool, we can collect the <strong>AsyncResult</strong> objects that are returned and wait on each in turn.</p>
+<p>You can learn more about how to wait on the <strong>AsyncResult</strong> object in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-asyncresult/">Process Pool AsyncResult in Python</a></li></ul>
+<h3>How to Wait For All Tasks After Shutdown</h3>
+<p>We may issue many batches of asynchronous tasks to the process pool and not hang onto the <strong>AsyncResult</strong> objects that are returned.</p>
+<p>Instead, we can wait for all tasks in the process pool to complete by first shutting down the process pool, then joining it to wait for all issued tasks to be completed.</p>
+<p>This can be achieved by first calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.close"><strong>close()</strong> function</a> that will prevent any further tasks to be issued to the process pool and close down the worker processes once all tasks are complete.</p>
+<p>We can then call the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.join"><strong>join()</strong> function</a>. This will block the caller until all tasks in the process pools are completed and the worker child processes in the process pool have closed.</p>
+<p>For example:</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# block until all tasks are complete and processes close
+pool.join()</code></pre>
+<p>The downside of this approach is that we cannot issue tasks to the pool after it is closed. This approach can only be used once you know that you have no further tasks to issue to the process pool.</p>
+<p>You can learn more about joining the process pool after shutdown in the tutorial:</p>
+<ul><li><a href="../join-a-multiprocessing-pool-in-python/">Join a Process Pool in Python</a></li></ul>
+<p>Now that we know how to wait for all tasks in the process pool to complete, let's look at some worked examples.</p>
+<h2>Example of Waiting for All Tasks in a Batch</h2>
+<p>We can explore how to wait for a batch of issued tasks to complete in the process pool.</p>
+<p>In this example we will define a task that blocks for a moment and then reports a message. From the main process, we will issue a batch of tasks to the process pool asynchronous. We will then explicitly wait on the batch of tasks to complete by waiting on the returned <strong>AsyncResult</strong> object.</p>
+<p>Firstly, we can define a task to execute in the process pool.</p>
+<p>The custom function will take an integer argument, will block for a fraction of a second to simulate computational effort, then reports a message that the task is done.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    # block for a moment
+    sleep(0.5)
+    # report done
+    print(f'Task {identifier} done', flush=True)
+</code></pre>
+<p>Next, in the main process we will create the process pool with the default configuration.</p>
+<p>We will use the context manager interface to ensure that the process pool is closed automatically once we are finished with it.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>You can learn more about the context manager interface in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<p>We will then issue 10 tasks to the process pool by calling our custom <strong>task()</strong> function with integers from 0 to 9. This can be achieved via the <strong>map_async()</strong> function.</p>
+<pre><code>...
+# issue tasks into the process pool
+result = pool.map_async(task, range(10))</code></pre>
+<p>You can learn more about issuing asynchronous tasks to the process pool with the <strong>map_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li></ul>
+<p>This returns an AsyncResult object on which we can call the <strong>wait()</strong> function.</p>
+<p>This function call will block until all 10 tasks issued asynchronously are completed.</p>
+<pre><code>...
+# wait for tasks to complete
+result.wait()</code></pre>
+<p>We can then report a message that the tasks are completed.</p>
+<pre><code>...
+# report all tasks done
+print('All tasks are done', flush=True)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for all tasks in a batch to finish
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier):
+    # block for a moment
+    sleep(0.5)
+    # report done
+    print(f'Task {identifier} done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks into the process pool
+        result = pool.map_async(task, range(10))
+        # wait for tasks to complete
+        result.wait()
+        # report all tasks done
+        print('All tasks are done', flush=True)
+    # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>The ten tasks are then issued to the process pool asynchronously. An <strong>AsyncResult</strong> object is returned and the main process then blocks until the issued tasks are completed.</p>
+<p>Each task is issued in the process pool, first blocking for a fraction of a second, then printing a message.</p>
+<p>All ten tasks issued as a batch to the process pool complete, then <strong>wait()</strong> function returns and the main process continues on.</p>
+<p>A final message is reported, then the process pool is closed automatically via the context manager interface.</p>
+<pre><code>Task 1 done
+Task 0 done
+Task 2 done
+Task 3 done
+Task 4 done
+Task 5 done
+Task 6 done
+Task 7 done
+Task 9 done
+Task 8 done
+All tasks are done</code></pre>
+<p>Next, let's look at how we might wait for all tasks in the process pool to complete when shutting down the pool.</p>
+<h2>Example of Waiting for All Tasks After Shutdown</h2>
+<p>We can wait for all tasks issued to the process pool to complete by shutting down the pool, then joining it.</p>
+<p>In this example, we can update the previous example to issue two batches of tasks to the process pool and not hang onto the <strong>AsyncResult</strong> objects that are returned. We can then close the process pool and join it, blocking until all tasks issued to the process pool have completed.</p>
+<p>This can be achieved by first issuing two batches of tasks to the pool via two calls to the <strong>map_async()</strong> function.</p>
+<pre><code>...
+# issue tasks into the process pool
+_ = pool.map_async(task, range(5))
+# issue more tasks into the process pool
+_ = pool.map_async(task, range(5, 10))</code></pre>
+<p>Next, we can close the process pool to prevent any further tasks to be issued to the pool and to shutdown the worker processes once they are done.</p>
+<pre><code>...
+# shutdown the process pool
+pool.close()</code></pre>
+<p>We can then join the process pool which will block until all tasks issued to the pool have completed.</p>
+<pre><code>...
+# wait for tasks to complete
+pool.join()</code></pre>
+<p>Finally, we can report a message that all tasks are completed.</p>
+<pre><code>...
+# report all tasks done
+print('All tasks are done', flush=True)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for all tasks after shutdown
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier):
+    # block for a moment
+    sleep(0.5)
+    # report done
+    print(f'Task {identifier} done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks into the process pool
+        _ = pool.map_async(task, range(5))
+        # issue more tasks into the process pool
+        _ = pool.map_async(task, range(5, 10))
+        # shutdown the process pool
+        pool.close()
+        # wait for tasks to complete
+        pool.join()
+        # report all tasks done
+        print('All tasks are done', flush=True)
+    # process pool is closed automatically
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>The five tasks are then issued to the process pool asynchronously. An <strong>AsyncResult</strong> object is returned and ignored.</p>
+<p>A further five tasks are then issued to the process pool asynchronously, and again an <strong>AsyncResult</strong> object is returned and ignored.</p>
+<p>The process pool is then closed preventing any further tasks from being issued to the pool and closing the worker processes once all tasks are completed. The main process then blocks waiting for the process pool to close completely.</p>
+<p>Each task is issued in the process pool, first blocking for a fraction of a second, then printing a message.</p>
+<p>All ten tasks issued to the process pool complete and the child worker processes in the pool terminate. The blocking call to the <strong>join()</strong> function returns and the main process continues on.</p>
+<p>A final message is reported.</p>
+<pre><code>Task 0 done
+Task 1 done
+Task 2 done
+Task 3 done
+Task 4 done
+Task 5 done
+Task 6 done
+Task 7 done
+Task 8 done
+Task 9 done
+All tasks are done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to wait for tasks to complete in the process pool in Python.</p>
+</main>
+</body>
+</html>

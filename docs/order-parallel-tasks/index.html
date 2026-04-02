@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Order Parallel Tasks in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Order Parallel Tasks in Python</h1>
+<div class="post-meta">February 12, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can order parallel by having the tasks coordinate themselves or by splitting tasks into parallel and sequential subtasks.</p>
+<p>In this tutorial, you will discover <strong>how to order tasks that are executed in parallel</strong> in Python.</p>
+<p>This tutorial was inspired by questions and discussions with Casey M. Thank you deeply! If you have a question about Python concurrency, <a href="../contact/">message me anytime</a>.</p>
+<p>Let's get started.</p>
+<h2>Need to Order Parallel Tasks</h2>
+<p>Consider this situation.</p>
+<p>You have many tasks to execute and they are semi-independent, so they can be executed concurrently, perhaps in parallel.</p>
+<p>However, the tasks are not completely independent.</p>
+<p>There is a need to order the tasks at some point.</p>
+<p>For example:</p>
+<ul>
+<li>Perhaps the initial portion of each task must be executed in order.</li>
+<li>Perhaps the middle portion of the task must be ordered.</li>
+<li>Perhaps the results of the tasks must be processed or reported in order.</li>
+</ul>
+<p>By order, we specifically mean that the tasks are executed sequentially in a mutually exclusive manner.</p>
+<p>The order may be assigned to each task when created. Alternatively, the ordering of the tasks may be determined dynamically through initial processing within each task.</p>
+<p>This raises the question, how can we execute tasks independently, yet order them in some way as needed?</p>
+<h2>How to Order Parallel Tasks</h2>
+<p>There are many ways to order concurrent and parallel tasks.</p>
+<p>We must be careful to avoid ordering the complete tasks.</p>
+<p>If concurrent or parallel tasks are ordered in their entirety, it means the tasks should just be executed sequentially.</p>
+<p>Attempting to order concurrent tasks is an anti-pattern in concurrent programming. This means it is attempting to counter the concurrent nature of the tasks provided by threading or multiprocessing by imposing order, defeating the concurrency.</p>
+<p>Nevertheless, a partial ordering of the task, such as the beginning, middle, or end, can be achieved.</p>
+<p>There are perhaps two main approaches that could be explored to solving this problem:</p>
+<ol>
+<li>Use synchronization primitives to coordinate task order.</li>
+<li>Split tasks into concurrent and sequential subtasks.</li>
+</ol>
+<p>Let's explore both approaches.</p>
+<h3>Use Synchronization Primitives to Coordinate Tasks</h3>
+<p>Perhaps a naive approach is to modify the tasks so that they coordinate at the point that ordering is required.</p>
+<p>This might be preferred for existing code or complex tasks that cannot be easily split into subtasks.</p>
+<p>Each task may be assigned or determined its ordering as an integer between 1 and n (the total number of tasks).</p>
+<p>A shared counter can be used to keep track of which task may execute and a condition variable can be used by tasks to wait for their turn to execute and by executing tasks to notify waiting tasks to check if it is their time to execute.</p>
+<h3>Split Tasks into Concurrent and Sequential Subtasks</h3>
+<p>Ideally, we would split each task into the concurrent portion and the sequential portion.</p>
+<p>The concurrent portion can be completed with coroutines, threads, and processes, and the sequential portion can be completed in one thread.</p>
+<p>Queues can be used to create producer-consider tasks or a pipeline of tasks.</p>
+<p>A priority queue may even be used to automatically order the sequential tasks, where each task item is assigned a priority order and the consumer of those tasks consumes them in the assigned order by default and executes them one by one.</p>
+<p>This approach is appropriate for those tasks that are simple enough to split and may be suited for those tasks where only the initial processing or collation and reporting of results need to be ordered.</p>
+<p>Now that we have explored some approaches to solving this problem, let's look at some worked examples.</p>
+<h2>Example of Using Synchronization Primitives to Coordinate Tasks</h2>
+<p>We can explore the case of complex tasks that cannot easily be split into subtasks.</p>
+<p>In this case, we will use synchronization primitives to have the tasks coordinate themselves automatically.</p>
+<p>Each task has an order, in this case, assigned beforehand.</p>
+<p>We will execute tasks in parallel using process-based concurrency, suited for CPU-bound tasks. Processes do not have shared memory, so we will use a <strong>multiprocessing.Manager</strong> to host a shared counter and a shared condition variable.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>If you are new to working with managers, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li>
+</ul>
+<p>The shared counter will be an instance of a <strong>multiprocessing.Value</strong>, called a shared ctype configured to be an integer.</p>
+<p>For example:</p>
+<pre><code>...
+# create the shared value
+value = manager.Value('i', -1)</code></pre>
+<p>You can learn more about shared ctype objects in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>We will also use the manager to create the shared condition variable object.</p>
+<pre><code>...
+# create a shared condition
+condition = manager.Condition()</code></pre>
+<p>You can learn more about condition variables in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-condition-variable-in-python/">Multiprocessing Condition Variable in Python</a></li>
+</ul>
+<p>Each task will be executed in a new <strong>multiprocessing.Process</strong> instance and the main process will create, start and wait for all processes to complete.</p>
+<p>For example:</p>
+<pre><code>...
+# create the processes
+processes = [Process(target=task, args=(i, condition, value)) for i in range(5)]
+# start the processes
+for process in processes:
+    process.start()
+# wait on all processes
+for process in processes:
+    process.join()
+</code></pre>
+<p>We can define a <strong>task()</strong> function to perform our operation.</p>
+<p>It will take its assigned task order as an argument, as well as the shared condition variable and counter.</p>
+<p>Tasks coordinate themselves.</p>
+<p>This is achieved using a spin lock structure.</p>
+<p>Each task loops forever. Each iteration, it acquires the shared condition and checks the shared counter to see if it is its turn to execute. If it is, the spin lock is exited, otherwise, it waits on the condition to be notified by another task.</p>
+<pre><code>...
+# loop until the task can execute
+while True:
+    # attempt to acquire the condition
+    with shared_condition:
+        # check stat to see if it is my turn
+        if shared_value.value == number - 1:
+            break
+        else:
+            # wait to be notified to re-check the state
+            shared_condition.wait()
+</code></pre>
+<p>This is an efficient way of waiting as tasks only execute and check the status of the counter when another task finishes.</p>
+<p>You can learn more about spin locks in the tutorial:</p>
+<ul>
+<li><a href="../thread-spinlock-in-python/">How to Use a Spinlock in Python</a></li>
+</ul>
+<p>Once a task is permitted to run, it performs its activity.</p>
+<p>In this case, it will sleep for a random interval.</p>
+<pre><code>...
+# it is my turn
+print(f'Task {number} is running!', flush=True)
+# block to simulate work
+sleep(random())</code></pre>
+<p>Once it has finished its sequential activity, it can increment the shared counter and notify the next task.</p>
+<p>This involves first acquiring the shared condition variable, changing the counter value, then notifying all waiting tasks.</p>
+<pre><code>...
+# acquire the condition so we can update state
+with shared_condition:
+    # update the shared value
+    shared_value.value = number
+    print(f'Task {number} done, shared number is {shared_value.value}!', flush=True)
+    # notify everyone so the next task can run
+    shared_condition.notify_all()
+</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function is listed below.</p>
+<pre><code># task executed in a process simultaneously
+def task(number, shared_condition, shared_value):
+    # loop until the task can execute
+    while True:
+        # attempt to acquire the condition
+        with shared_condition:
+            # check stat to see if it is my turn
+            if shared_value.value == number - 1:
+                break
+            else:
+                # wait to be notified to re-check the state
+                shared_condition.wait()
+    # it is my turn
+    print(f'Task {number} is running!', flush=True)
+    # block to simulate work
+    sleep(random())
+    # acquire the condition so we can update state
+    with shared_condition:
+        # update the shared value
+        shared_value.value = number
+        print(f'Task {number} done, shared number is {shared_value.value}!', flush=True)
+        # notify everyone so the next task can run
+        shared_condition.notify_all()
+</code></pre>
+<p>The <strong>task()</strong> function only includes the sequential aspects of the complex task.</p>
+<p>The parallel activities performed by each task may be performed before the spin lock and after releasing the condition variable when completing their sequential portion.</p>
+<p>The spinlock and notification mechanisms are quite standard structures and could be abstracted onto private methods of an object that is overridden by each task.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of executing tasks in order sequentially
+from time import sleep
+from random import random
+from multiprocessing import Manager
+from multiprocessing import Process
+
+# task executed in a process simultaneously
+def task(number, shared_condition, shared_value):
+    # loop until the task can execute
+    while True:
+        # attempt to acquire the condition
+        with shared_condition:
+            # check stat to see if it is my turn
+            if shared_value.value == number - 1:
+                break
+            else:
+                # wait to be notified to re-check the state
+                shared_condition.wait()
+    # it is my turn
+    print(f'Task {number} is running!', flush=True)
+    # block to simulate work
+    sleep(random())
+    # acquire the condition so we can update state
+    with shared_condition:
+        # update the shared value
+        shared_value.value = number
+        print(f'Task {number} done, shared number is {shared_value.value}!', flush=True)
+        # notify everyone so the next task can run
+        shared_condition.notify_all()
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create a shared condition
+        condition = manager.Condition()
+        # create the shared value
+        value = manager.Value('i', -1)
+        print(f'Shared value is {value.value}')
+        # create the processes
+        processes = [Process(target=task, args=(i, condition, value)) for i in range(5)]
+        # start the processes
+        for process in processes:
+            process.start()
+        # wait on all processes
+        for process in processes:
+            process.join()
+        print('Done')
+</code></pre>
+<p>Running the example first creates the manager using the context manager interface.</p>
+<p>Next, the manager is used to create the shared condition variable and counter.</p>
+<p>Five child processes are then configured and passed a unique task order and the shared counter and condition variables as arguments.</p>
+<p>The child processes are then started and the main process waits for the tasks to be completed.</p>
+<p>Each task runs and executes its own spinlock.</p>
+<p>The initial counter has a value of -1 and the first task is assigned the value of 0. Each task checks if the current counter value equals one minus its assigned order.</p>
+<p>This means the counter will run from -1 to 3, whereas task orders will run from 0 to 4. This could be cleaner.</p>
+<p>The task assigned the order value of zero breaks the spinlock, sleeps, reports a message, then changes the counter value to zero and notify all waiting tasks. It is done.</p>
+<p>All tasks resume, check the counter value. Task 1 breaks the lock and all other tasks wait.</p>
+<p>This process continues until all tasks execute in their assigned order.</p>
+<p>This example highlights how many concurrent or parallel tasks started at an arbitrary time can be coordinated to execute in a specific order at some part during their execution.</p>
+<pre><code>Shared value is -1
+Task 0 is running!
+Task 0 done, shared number is 0!
+Task 1 is running!
+Task 1 done, shared number is 1!
+Task 2 is running!
+Task 2 done, shared number is 2!
+Task 3 is running!
+Task 3 done, shared number is 3!
+Task 4 is running!
+Task 4 is done, shared number is 4!
+Done</code></pre>
+<p>Next, let's look at an alternate approach to ordering concurrent tasks.</p>
+<h2>Example of Processing Results in Order</h2>
+<p>We can explore an example of using a queue to handle, process, or report task results in order.</p>
+<p>This is a preferred approach to handling tasks that have some ordering requirements. It involves splitting each task into subtasks that can be made concurrent or parallel, and subtasks, like processing results, that can be performed sequentially.</p>
+<p>It avoids the complication of having to have tasks coordinate their order amongst themselves.</p>
+<p>In this example, each task will generate a random number between 0 and 5 and block for that many seconds. This will be the result of the task which is then placed on a shared queue.</p>
+<p>For example:</p>
+<pre><code># task executed in a process simultaneously
+def task(number, queue):
+    # it is my turn
+    print(f'Task {number} is running!', flush=True)
+    # generate a random number between 0 and 5
+    value = random() * 5
+    # block to simulate work
+    sleep(value)
+    # construct result
+    result = (number, value)
+    # store result
+    queue.put(result)
+</code></pre>
+<p>The main process will create the shared queue and then configure, start, and wait for all processes to complete.</p>
+<pre><code>...
+# create the shared priority queue
+queue = Queue()
+# create the processes
+n_tasks = 5
+processes = [Process(target=task, args=(i, queue)) for i in range(n_tasks)]
+# start the processes
+for process in processes:
+    process.start()
+# wait on all processes
+for process in processes:
+    process.join()
+</code></pre>
+<p>The main process will then consume all results from the shared queue, order them by the generated value, and report results in the specific dynamic ordering.</p>
+</main>
+</body>
+</html>

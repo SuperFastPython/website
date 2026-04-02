@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Share a Numpy Array Between Processes Backed By RawArray – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Share a Numpy Array Between Processes Backed By RawArray</h1>
+<div class="post-meta">June 8, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>share a numpy array between processes</strong> by first creating a shared ctype <strong>RawArray</strong> and then using the <strong>RawArray</strong> as a buffer for a new numpy array.</p>
+<p>In this tutorial, you will discover how to share a numpy array between processes that is backed by a shared ctype <strong>RawArray</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Share Numpy Array Between Processes</h2>
+<p>Python offers process-based concurrency via the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a>.</p>
+<p>Process-based concurrency is appropriate for those tasks that are CPU-bound, as opposed to thread-based concurrency in Python which is generally suited to IO-bound tasks given the presence of the Global Interpreter Lock (GIL).</p>
+<p>You can learn more about process-based concurrency and the multiprocessing module in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing: The Complete Guide</a></li>
+</ul>
+<p>Consider the situation where we need to share numpy arrays between processes.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>Data is loaded as an array in one process and analyzed differently in different subprocesses.</li>
+<li>Many child processes load small data as arrays that are sent to a parent process for handling.</li>
+<li>Data arrays are loaded in the parent process and processed in a suite of child processes.</li>
+</ul>
+<p>Sharing Python objects and data between processes is slow.</p>
+<p>This is because any data, like numpy arrays, shared between processes must be transmitted using inter-process communication (ICP) requiring the data first be pickled by the sender and then unpickled by the receiver.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>This means that if we share numpy arrays between processes, it assumes that we receive some benefit, such as a speedup, that overcomes the slow speed of data transmission.</p>
+<p>For example, it may be the case that the arrays are relatively small and fast to transmit, whereas the computation performed on each array is slow and can benefit from being performed in separate processes.</p>
+<p>Alternatively, preparing the array may be computationally expensive and benefit from being performed in a separate process, and once prepared, the arrays are small and fast to transmit to another process that requires them.</p>
+<p><strong>Given these situations, how can we share data between Processes in Python?</strong></p>
+<h2>How to Share a Numpy Array Backed By RawArray</h2>
+<p>One way to share a numpy array between processes is via shared ctypes.</p>
+<p>The <a href="https://docs.python.org/3/library/ctypes.html"><strong>ctypes</strong> module</a> provides tools for working with C data types.</p>
+<p>Python provides the capability to share ctypes between processes on one system.</p>
+<p>You can learn more about sharing ctypes between processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>We can use a shared ctype array as a buffer that backs a numpy array.</p>
+<p>Numpy arrays can be created in each Python process backed by the same shared ctype array and share data directly.</p>
+<p>This can be achieved by first creating a <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.sharedctypes.RawArray">multiprocessing.sharedctypes.RawArray</a></strong> with the required type and large enough to hold the data required by the numpy array.</p>
+<p>For example:</p>
+<pre><code>...
+# create the shared array
+array = RawArray('d', 10000)</code></pre>
+<p>A new numpy array can then be created with the given type specifying the <strong>RawArray</strong> as the buffer, e.g. the pre-allocated memory for the array.</p>
+<p>This can be achieved by creating a new <strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html">numpy.ndarray</a></strong> directly and specifying the "<strong>buff</strong>" as the array buffer.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new numpy array that uses the raw array
+data = ndarray((len(array),), dtype=numpy.double, buffer=array)</code></pre>
+<p>It is generally not recommended to create <strong>ndarrays</strong> directly.</p>
+<p>Instead, we can use the <a href="https://numpy.org/doc/stable/reference/generated/numpy.frombuffer.html"><strong>numpy.frombuffer()</strong> method</a> to create the array for us with the given size, type and backed by the <strong>RawArray</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create a new numpy array backed by the raw array
+data = frombuffer(array, dtype=double, count=len(array))</code></pre>
+<p>The <strong><strong>RawArray</strong></strong> instance can then be made available to other Python processes and used to create numpy arrays backed by the same memory.</p>
+<p>This allows each process to read and write the same array data directly without having to copy it between processes.</p>
+<p>Now that we know how to share a numpy array between processes, let's look at some worked examples.</p>
+<h2>Example of Sharing Numpy Array Backed By RawArray Between Processes</h2>
+<p>We can explore the case of creating a numpy array backed by a <strong>RawArray</strong> and sharing it among Python processes.</p>
+<p>In this example, we will create a <strong>RawArray</strong> and then create a numpy array from the <strong>RawArray</strong>. We will then populate it with data in the main process. The <strong>RawArray</strong> will then be shared with a child process which will use it to create another numpy array, backed by the same data. It will then change the data and terminate. Finally, the main process will confirm that the data in the array was changed by the child process.</p>
+<p>Firstly, we can define a function to execute in the child process.</p>
+<p>The function will take a <strong>RawArray</strong> as an argument and use the <strong>RawArray</strong> to create a new numpy array. It then confirms the content of the array, increments all values in the array, and confirms that the data in the array was modified.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task(array):
+    # create a new numpy array backed by the raw array
+    data = frombuffer(array, dtype=double, count=len(array))
+    # check the contents
+    print(f'Child {data[:10]}')
+    # increment the data
+    data[:] += 1
+    # confirm change
+    print(f'Child {data[:10]}')
+</code></pre>
+<p>Next, in the main process will create a new <strong>RawArray</strong> of double values that has 10,000,000 elements.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000000
+# create the shared array
+array = RawArray('d', n)</code></pre>
+<p>Next, the main process will create a new numpy array from the <strong>RawArray</strong> and populate it with one values and confirm that the data in the array was changed.</p>
+<pre><code>...
+# create a new numpy array backed by the raw array
+data = frombuffer(array, dtype=double, count=len(array))
+# populate the array
+data.fill(1.0)
+# confirm contents of the new array
+print(data[:10], len(data))</code></pre>
+<p>A child process is then configured to execute our task() function and pass it the <strong>RawArray</strong>. The process is started and the main process blocks until the child process terminates.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(array,))
+# start the child process
+child.start()
+# wait for the child process to complete
+child.join()</code></pre>
+<p>Finally, the main process confirms that the child process changed the content of the shared array.</p>
+<pre><code>...
+# check some data in the shared array
+print(data[:10])</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># share numpy array between processes via a shared raw array
+from multiprocessing import Process
+from multiprocessing.sharedctypes import RawArray
+from numpy import frombuffer
+from numpy import double
+
+# task executed in a child process
+def task(array):
+    # create a new numpy array backed by the raw array
+    data = frombuffer(array, dtype=double, count=len(array))
+    # check the contents
+    print(f'Child {data[:10]}')
+    # increment the data
+    data[:] += 1
+    # confirm change
+    print(f'Child {data[:10]}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the numpy array
+    n = 10000000
+    # create the shared array
+    array = RawArray('d', n)
+    # create a new numpy array backed by the raw array
+    data = frombuffer(array, dtype=double, count=len(array))
+    # populate the array
+    data.fill(1.0)
+    # confirm contents of the new array
+    print(data[:10], len(data))
+    # create a child process
+    child = Process(target=task, args=(array,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the shared array
+    print(data[:10])
+</code></pre>
+<p>Running the example first creates the <strong>RawArray</strong> with 10 million double elements.</p>
+<p>Next, a numpy array is created that holds double values and is backed by the <strong>RawArray</strong>. That is, it does not allocate new memory for the array and instead reuses the memory already allocated by the <strong>RawArray</strong>.</p>
+<p>Next, the main process fills the numpy array with one values and confirms the content of the array changed and that the shape of the array is as we expect.</p>
+<p>Next, a child process is started to execute our <strong>task()</strong> function, and the main process blocks until the process terminates.</p>
+<p>The child process runs. It first creates a new numpy array using the <strong>RawArray</strong> passed in as an argument.</p>
+<p>Passing the <strong>RawArray</strong> to the child process does not make a copy of the array. Instead, it passes a reference to the <strong>RawArray</strong> to the process.</p>
+<p>The child process confirms the array contains one values, as set by the parent process. Next, it increments all values in the array and confirms that the values were changed.</p>
+<p>This highlights both that the child array can directly access the same array as the parent process and that it is able to read and write to this data.</p>
+<p>The child process terminates and the main process resumes. It confirms that the child process changed the content of the array.</p>
+<p>This highlights that changes made to the array in the child process are reflected in other processes, such as the parent process.</p>
+<pre><code>[1. 1. 1. 1. 1. 1. 1. 1. 1. 1.] 10000000
+Child [1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+Child [2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+</code></pre>
+<h2>Example of Sharing a 2D Numpy Array Backed By RawArray</h2>
+<p>A limitation with the <strong>numpy.frombuffer()</strong> function for creating a numpy array backed by a <strong>RawArray</strong> is that it will only create a one-dimensional array.</p>
+<p>Often, we require a two-dimensional array for images and dataset, or more dimensions in other applications.</p>
+<p>We can store a multi-dimensional array in <strong>RawArray</strong> by calling the <a href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.flatten.html"><strong>flatten()</strong> method</a> on an array to convert a multiple dimensional array to a one-dimensional array, and <strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.reshape.html">reshape()</a></strong> to convert a one-dimensional array to a multidimensional array.</p>
+<p>In this example, we can update the previous example to work with a two-dimensional numpy array backed by a one-dimensional <strong>RawArray</strong>, shared between processes.</p>
+<p>Firstly, we can update the function executed in the child process.</p>
+<p>After creating the array using the <strong>numpy.frombuffer()</strong> function, we will call the <strong>reshape()</strong> method and specify a new shape of the array, in this case, a 3x3 matrix.</p>
+<p>The contents of the array is reported, incremented, and reported again to confirm that it was changed by the child process.</p>
+<p>The <strong>task()</strong> function below implements these changes.</p>
+<pre><code># task executed in a child process
+def task(array):
+    # create a new numpy array backed by the raw array
+    data = frombuffer(array, dtype=double, count=len(array))
+    # reshape array into preferred shape
+    data = data.reshape((3,3))
+    # check the contents
+    print(f'Child\n{data}')
+    # increment the data
+    data[:] += 1
+    # confirm change
+    print(f'Child\n{data}')
+</code></pre>
+<p>The main process will then create a <strong>RawArray</strong> with 3x3 (9) elements, large enough to hold our two-dimensional numpy array.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 3*3
+# create the shared array
+array = RawArray('d', n)</code></pre>
+<p>A numpy array is then created from this <strong>RawArray</strong> and reshaped into a two-dimensional shape for use in the application.</p>
+<pre><code>...
+# create a new numpy array backed by the raw array
+data = frombuffer(array, dtype=double, count=len(array))
+# reshape array into preferred shape
+data = data.reshape((3,3))</code></pre>
+<p>The array is filled, the child process runs and is awaited, and the content of the array is reported, all as before.</p>
+<pre><code>...
+# populate the array
+data.fill(1.0)
+# confirm contents of the new array
+print(f'Parent\n{data}')
+# create a child process
+child = Process(target=task, args=(array,))
+# start the child process
+child.start()
+# wait for the child process to complete
+child.join()
+# check some data in the shared array
+print(f'Parent\n{data}')</code></pre>
+<p>The complete example with these changes is listed below.</p>
+<pre><code># share 2d numpy array via a shared array
+from multiprocessing import Process
+from multiprocessing.sharedctypes import RawArray
+from numpy import frombuffer
+from numpy import double
+
+# task executed in a child process
+def task(array):
+    # create a new numpy array backed by the raw array
+    data = frombuffer(array, dtype=double, count=len(array))
+    # reshape array into preferred shape
+    data = data.reshape((3,3))
+    # check the contents
+    print(f'Child\n{data}')
+    # increment the data
+    data[:] += 1
+    # confirm change
+    print(f'Child\n{data}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the numpy array
+    n = 3*3
+    # create the shared array
+    array = RawArray('d', n)
+    # create a new numpy array backed by the raw array
+    data = frombuffer(array, dtype=double, count=len(array))
+    # reshape array into preferred shape
+    data = data.reshape((3,3))
+    # populate the array
+    data.fill(1.0)
+    # confirm contents of the new array
+    print(f'Parent\n{data}')
+    # create a child process
+    child = Process(target=task, args=(array,))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the shared array
+    print(f'Parent\n{data}')
+</code></pre>
+<p>Running the example first creates the <strong>RawArray</strong> with 9 elements, large enough to hold the two-dimensional numpy array.</p>
+<p>A numpy array is then created from the <strong>RawArray</strong> and reshaped into a 3x3 matrix. The numpy array is filled with one values and reported to confirm that the change was made.</p>
+<p>The child process is then started and the main process blocks and waits for it to terminate.</p>
+<p>The child process runs, first creating a numpy array from the passed in <strong>RawArray</strong>. The array is then reshaped into a 3x3 matrix.</p>
+<p>The content of the array is reported, confirming that the changes made in the parent process are reflected. The content of the array is incremented and reported, confirming the change was made.</p>
+<p>The child process terminates and the main process resumes, reporting the contents of the array.</p>
+<p>This highlights that we can easily share a two-dimension numpy array between processes that is backed by a one-dimensional <strong>RawArray</strong>.</p>
+<pre><code>Parent
+[[1. 1. 1.]
+ [1. 1. 1.]
+ [1. 1. 1.]]
+Child
+[[1. 1. 1.]
+ [1. 1. 1.]
+ [1. 1. 1.]]
+Child
+[[2. 2. 2.]
+ [2. 2. 2.]
+ [2. 2. 2.]]
+Parent
+[[2. 2. 2.]
+ [2. 2. 2.]
+ [2. 2. 2.]]
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share a numpy array between processes that is backed by a shared ctype <strong>RawArray</strong>.</p>
+</main>
+</body>
+</html>

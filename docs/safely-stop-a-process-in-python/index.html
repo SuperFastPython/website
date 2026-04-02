@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Safely Stop a Process in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Safely Stop a Process in Python</h1>
+<div class="post-meta">May 21, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can <strong>safely stop a process</strong> by using a <strong>multiprocessing.Event</strong>.</p>
+<p>In this tutorial you will discover how to <strong>gracefully stop a process in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Stop a Process</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> is a running instance of a computer program.</p>
+<p>Every Python program is executed in a Process, which is a new instance of the Python interpreter. This process has the name <em>MainProcess</em> and has one thread used to execute the program instructions called the <em>MainThread</em>. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create new child processes in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process"><strong>multiprocessing.Process</strong> class</a>.</p>
+<p>You can learn more about multiprocessing in the tutorial:</p>
+<ul><li><a href="../multiprocessing-in-python/">Multiprocessing in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming, we may run a task in a new process, then later decide to stop the task.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>The result from the task is no longer required.</li><li>The application is shutting down.</li><li>The outcome from the task has gone astray.</li></ul>
+<p>Python provides no way to stop a running process in the API.</p>
+<p><strong>How can we stop a process in Python?</strong></p>
+<h2>How to Stop a Process</h2>
+<p>A process can be stopped using a shared boolean variable such as a <strong>multiprocessing.Event</strong>.</p>
+<p>A <strong>multiprocessing.Event</strong> is a thread-safe boolean variable flag that can be either set or not set. It can be shared between processes safely and correctly and checked and set without fear of a race condition.</p>
+<p>You can learn more about multiprocessing events in the tutorial:</p>
+<ul><li><a href="../multiprocessing-event-object-in-python/">Multiprocessing Event Object In Python</a></li></ul>
+<p>A new <strong>multiprocessing.Event</strong> can be created and then shared between processes, for example:</p>
+<pre><code>...
+# create a shared event
+event = multiprocessing.Event()</code></pre>
+<p>The event is created in the 'not set' or <strong>False</strong> state.</p>
+<p>We may have a task in a custom function that is run in a new process. The task may iterate, such as in a while-loop or a for-loop.</p>
+<p>For example:</p>
+<pre><code># custom task function
+def task():
+	# perform task in iterations
+	while True:
+		# ...</code></pre>
+<p>We can update our task function to check the status of a <strong>multiprocessing.Event</strong> each iteration.</p>
+<p>If the event is set <strong>True</strong>, we can exit the task loop or return from the <strong>task()</strong> function, allowing the new child process to terminate.</p>
+<p>The status of the <strong>multiprocessing.Event</strong> can be checked via the <strong>is_set()</strong> function.</p>
+<p>For example:</p>
+<pre><code># custom task function
+def task():
+	# perform task in iterations
+	while True:
+		# ...
+        # check for stop
+        if event.is_set():
+            break
+</code></pre>
+<p>The main parent process, or another process, can then set the event in order to stop the new process from running.</p>
+<p>The <strong>multiprocessing.Event</strong> can be set or made <strong>True</strong> via the <strong>set()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# set the event
+event.set()
+# wait for the new process to stop
+process.join()</code></pre>
+<p>Note, this same approach can be used to stop a thread within a process. You can learn more in the tutorial:</p>
+<ul><li><a href="../stop-a-thread-in-python/">How to Stop a Thread in Python</a></li></ul>
+<p>Now that we know how to stop a Python process, let's look at some worked examples.</p>
+<h2>Stop a Process With a Custom Function</h2>
+<p>In this section we can explore how to safely stop a child process that is executing a custom function.</p>
+<p>First, we will develop an example that runs a custom function in a child process, then we will look at how to update the example to stop the process on demand.</p>
+<h3>Custom Function in a New Process</h3>
+<p>We can develop an example that runs a function in a new child process.</p>
+<p>The new task function will execute in a loop and once finished the new process will terminate and the main parent process will terminate.</p>
+<p>Firstly, we can define the task function.</p>
+<p>The function will execute a loop five times. Each iteration it will block for a second, then report a message in an effort to simulate work and show progress.</p>
+<p>Once the task is finished, the function will report a final message.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># custom task function
+def task():
+    # execute a task in a loop
+    for i in range(5):
+        # block for a moment
+        sleep(1)
+        # report a message
+        print('Worker process running...', flush=True)
+    print('Worker closing down', flush=True)
+</code></pre>
+<p>Next, in the main parent process we can create a new <strong>multiprocessing.Process</strong> instance that is configured to execute our <strong>task()</strong> function in a new process via the "<strong>target</strong>" argument.</p>
+<pre><code>...
+# create and configure a new process
+process = Process(target=task)</code></pre>
+<p>We can then immediately start the new process via the <strong>start()</strong> function.</p>
+<pre><code>...
+# start the new process
+process.start()</code></pre>
+<p>The parent process will then wait for the new child process to finish by joining the process.</p>
+<p>If you are new to joining processes, you can learn more here:</p>
+<ul><li><a href="../join-a-process-in-python/">How to Join a Process in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a process executing a custom function
+from time import sleep
+from multiprocessing import Process
+
+# custom task function
+def task():
+    # execute a task in a loop
+    for i in range(5):
+        # block for a moment
+        sleep(1)
+        # report a message
+        print('Worker process running...', flush=True)
+    print('Worker closing down', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create and configure a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # wait for the new process to finish
+    process.join()
+</code></pre>
+<p>Running the example first creates and starts the new child process.</p>
+<p>The main parent process then blocks until the new process finishes.</p>
+<p>The new process executes in a loop, blocking for a moment and reporting progress. After five iterations of the loop, the new process reports a final message and terminates.</p>
+<p>The parent process notices that the new process has finished and then terminates itself, closing the program.</p>
+<pre><code>Worker process running...
+Worker process running...
+Worker process running...
+Worker process running...
+Worker process running...
+Worker closing down</code></pre>
+<p>Next, let's look at how we might update this example to stop the process on demand.</p>
+<h3>Stop Custom Function in New Process</h3>
+<p>We can update the example from the previous section to stop the new process on demand.</p>
+<p>This can be achieved by creating a new multiprocessing.Event instance, passing it as an argument to the new process, and then updating the custom function to check if the event is set each iteration. Once the event is set, the function can break its task loop and exit, terminating the new process.</p>
+<p>Firstly, we can update the task function to take the shared <strong>multiprocessing.Event</strong> instance as an argument.</p>
+<pre><code># custom task function
+def task(event):
+	# ...
+</code></pre>
+<p>We can then update the task loop to check the status of the event each iteration, and if set to break the task loop.</p>
+<pre><code>...
+# check for stop
+if event.is_set():
+    break
+</code></pre>
+<p>Tying this together, the updated <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># custom task function
+def task(event):
+    # execute a task in a loop
+    for i in range(5):
+        # block for a moment
+        sleep(1)
+        # check for stop
+        if event.is_set():
+            break
+        # report a message
+        print('Worker process running...', flush=True)
+    print('Worker closing down', flush=True)
+</code></pre>
+<p>Next, the main process can first create a new <strong>multiprocessing.Event</strong> instance to be shared between the processes.</p>
+<pre><code>...
+# create the event
+event = Event()</code></pre>
+<p>We can then update the parent process to block for a few seconds.</p>
+<pre><code>...
+# block for a while
+sleep(3)</code></pre>
+<p>Finally, we can set the event and trigger the new process to stop.</p>
+<pre><code>...
+# stop the worker process
+print('Main stopping process')
+event.set()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of stopping a new process
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Event
+
+# custom task function
+def task(event):
+    # execute a task in a loop
+    for i in range(5):
+        # block for a moment
+        sleep(1)
+        # check for stop
+        if event.is_set():
+            break
+        # report a message
+        print('Worker process running...', flush=True)
+    print('Worker closing down', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create the event
+    event = Event()
+    # create and configure a new process
+    process = Process(target=task, args=(event,))
+    # start the new process
+    process.start()
+    # block for a while
+    sleep(3)
+    # stop the worker process
+    print('Main stopping process')
+    event.set()
+    # wait for the new process to finish
+    process.join()
+</code></pre>
+<p>Running the example first creates and starts the new child process.</p>
+<p>The main parent process then blocks for a few seconds.</p>
+<p>Meanwhile, the new process executes its task loop, blocking and reporting a message each iteration. It checks the event each iteration, which remains false and does not trigger the process to stop.</p>
+<p>The main parent process wakes up, and then sets the event. It then joins the new process, waiting for it to terminate.</p>
+<p>The task process checks the event which is discovered to be set (e.g. <strong>True</strong>). The process breaks the task loop, reports a final message then terminates the new process.</p>
+<p>The parent process then terminates, closing the Python program.</p>
+<pre><code>Worker process running...
+Worker process running...
+Main stopping process
+Worker closing down
+</code></pre>
+<p>Now that we know how to stop a custom function running in a new process, let's look at an example of stopping a custom process class.</p>
+<h2>Stop a Process With an Extended Class</h2>
+<p>In this section we can explore how to stop a process that is an object that extends the <strong>multiprocessing.Process</strong> class.</p>
+<p>First, we will develop an example that extends the <strong>multiprocessing.Process</strong> class, then we will look at how to update the example to stop the process on demand.</p>
+<h3>Custom Process Class</h3>
+<p>We can run a task in a new process by extending the <strong>multiprocessing.Process</strong> class and overriding the constructor and the <strong>run()</strong> function.</p>
+<p>In this section, we will show how to run the same task as in the previous section within a custom process class.</p>
+<p>Firstly, we can define a new class that extends <strong>multiprocessing.Process</strong>.</p>
+<pre><code># custom process class
+class CustomProcess(Process):
+	# ...
+</code></pre>
+<p>The new class may implement a constructor, and if so it must call the constructor of the <strong>multiprocessing.Process</strong> class to properly initialize the underlying process instance.</p>
+<pre><code># constructor
+def __init__(self):
+    # call the parent constructor
+    Process.__init__(self)
+</code></pre>
+<p>We can then override the <strong>run()</strong> method on the <strong>multiprocessing.Process</strong> class.</p>
+<p>This function will run in a new process once the process is started via the <strong>start() </strong>function. Specifically we call <strong>start()</strong> and <strong>start()</strong> will call <strong>run()</strong> for us in a new spawned or forked child process.</p>
+<p>Our task will be to execute a loop five times, block for a second to simulate work, and report a message. Then report a message once the task is complete.</p>
+<pre><code># execute task
+def run(self):
+    # execute a task in a loop
+    for i in range(5):
+        # block for a moment
+        sleep(1)
+        # report a message
+        print('Worker process running...', flush=True)
+    print('Worker closing down', flush=True)
+</code></pre>
+<p>Tying this together the new <strong>CustomProcess</strong> class is listed below.</p>
+<pre><code># custom process class
+class CustomProcess(Process):
+    # constructor
+    def __init__(self):
+        # call the parent constructor
+        Process.__init__(self)
+
+    # execute task
+    def run(self):
+        # execute a task in a loop
+        for i in range(5):
+            # block for a moment
+            sleep(1)
+            # report a message
+            print('Worker process running...', flush=True)
+        print('Worker closing down', flush=True)
+</code></pre>
+<p>Next, in the main parent process, we can create a new instance of our custom process class and start it in order to execute our task in a new process.</p>
+<pre><code>...
+# create a new process
+process = CustomProcess()
+# start the new process
+process.start()</code></pre>
+<p>We will then <strong>join()</strong> the new process and wait for the new process to terminate, before terminating the main parent process.</p>
+<pre><code>...
+# wait for the new process to finish
+process.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a extending the process class
+from time import sleep
+from multiprocessing import Process
+
+# custom process class
+class CustomProcess(Process):
+    # constructor
+    def __init__(self):
+        # call the parent constructor
+        Process.__init__(self)
+
+    # execute task
+    def run(self):
+        # execute a task in a loop
+        for i in range(5):
+            # block for a moment
+            sleep(1)
+            # report a message
+            print('Worker process running...', flush=True)
+        print('Worker closing down', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = CustomProcess()
+    # start the new process
+    process.start()
+    # wait for the new process to finish
+    process.join()
+</code></pre>
+<p>Running the example first creates our custom process class then starts executing the new process.</p>
+<p>The main process then blocks waiting for the new process to finish.</p>
+<p>Our custom process class runs our task in a new process of execution, looping five times. Each iteration it blocks for a moment then reports a message.</p>
+<p>Once the task is finished, it reports a final message.</p>
+<p>The new process terminates, then the main process terminates, closing the process.</p>
+<pre><code>Worker process running...
+Worker process running...
+Worker process running...
+Worker process running...
+Worker process running...
+Worker closing down</code></pre>
+<p>Next, let's look at how we might update this example to stop the task on demand.</p>
+<h3>Stop Custom Process Class</h3>
+<p>We can update the example in the previous section to stop the process on demand.</p>
+<p>This can be achieved by sharing a <strong>multiprocessing.Event</strong> with the new process and updating the <strong>run()</strong> function to check if the event is set each iteration. Once set, the <strong>run()</strong> function can exit, which will terminate the new process.</p>
+<p>Firstly, we can update the constructor of our new process class to create a new instance of the <strong>multiprocessing.Event</strong> class and store it as an instance variable attribute.</p>
+<pre><code># constructor
+def __init__(self):
+    # call the parent constructor
+    Process.__init__(self)
+    # create and store an event
+    self.event = Event()
+</code></pre>
+<p>Next, we can update the <strong>run()</strong> function to check the status of the <strong>multiprocessing.Event</strong> each iteration and to break the task loop once the event is set.</p>
+<pre><code># execute task
+def run(self):
+    # execute a task in a loop
+    for i in range(5):
+        # block for a moment
+        sleep(1)
+        # check for stop
+        if self.event.is_set():
+            break
+        # report a message
+        print('Worker process running...', flush=True)
+    print('Worker closing down', flush=True)
+</code></pre>
+<p>Tying this together, the updated <strong>CustomProcess</strong> class that can be stopped on demand is listed below.</p>
+<pre><code># custom process class
+class CustomProcess(Process):
+    # constructor
+    def __init__(self):
+        # call the parent constructor
+        Process.__init__(self)
+        # create and store an event
+        self.event = Event()
+
+    # execute task
+    def run(self):
+        # execute a task in a loop
+        for i in range(5):
+            # block for a moment
+            sleep(1)
+            # check for stop
+            if self.event.is_set():
+                break
+            # report a message
+            print('Worker process running...', flush=True)
+        print('Worker closing down', flush=True)
+</code></pre>
+<p>The main parent process can then set the event via the attribute on the new <strong>CustomProcess</strong> instance.</p>
+<pre><code>...
+# stop the worker process
+print('Main stopping process')
+process.event.set()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of stopping a custom process class
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Event
+
+# custom process class
+class CustomProcess(Process):
+    # constructor
+    def __init__(self):
+        # call the parent constructor
+        Process.__init__(self)
+        # create and store an event
+        self.event = Event()
+
+    # execute task
+    def run(self):
+        # execute a task in a loop
+        for i in range(5):
+            # block for a moment
+            sleep(1)
+            # check for stop
+            if self.event.is_set():
+                break
+            # report a message
+            print('Worker process running...', flush=True)
+        print('Worker closing down', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = CustomProcess()
+    # start the new process
+    process.start()
+    # block for a while
+    sleep(3)
+    # stop the worker process
+    print('Main stopping process')
+    process.event.set()
+    # wait for the new process to finish
+    process.join()
+</code></pre>
+<p>Running the example first involves creating an instance of the custom process and starting it.</p>
+<p>The main process will then block for a few seconds.</p>
+<p>The new process will start executing its task loop, blocking for a moment and reporting progress.</p>
+<p>The main process then wakes up and sets the event, triggering the new process to stop.</p>
+<p>The new process notices that the event is set and then exits the task loop, reporting a final message and terminating the new process.</p>
+<p>The main process waits for the new process to terminate, before then stopping itself and closing the application.</p>
+<pre><code>Worker process running...
+Worker process running...
+Main stopping process
+Worker closing down
+</code></pre>
+<h2>Common Questions About Stopping Processes</h2>
+<p>This section lists common questions about stopping a child process in Python.</p>
+<p>Do you have any questions about stopping a process? Let me know in the comments and I will do my best to help.</p>
+<h3>What if My Task Does Not Have a Loop?</h3>
+<p>Your task does not need to have a loop in order to be stopped.</p>
+<p>Instead, you need to add frequent checks of the shared <strong>multiprocessing.Event</strong> and return from the <strong>task() </strong>function or <strong>run()</strong> function once the event is set.</p>
+<p>This will depend on the specifics of the task you wish to exit in a new process.</p>
+<p>If your task involves blocking, such as reading or writing IO or waiting on another process, you may want to adopt a busy wait and have the <strong>multiprocessing.Event</strong> checked each iteration.</p>
+<p>If your task remains idle for some time, such as waiting for sporadic events, it may be able to wait on the <strong>multiprocessing.Event</strong> itself via the <strong>wait()</strong> function.</p>
+<h3>What if My Task Raises An Exception?</h3>
+<p>If your task executing in a new process raises an exception that is not handled, it will terminate the process.</p>
+<p>This could be an alternate way for you to trigger a new process to terminate, if convenient.</p>
+<h3>What if My New Process Has Already Stopped?</h3>
+<p>If the new process has already stopped and you set the event, it will not have any effect.</p>
+<p>It would not be a problem.</p>
+<h3>What if My New Process is a Daemon Process?</h3>
+<p>If your task is executing in a daemon process, then there is no need to stop it manually as it will be terminated for you once all non-daemon processes (e.g. the main parent process) terminate.</p>
+<p>You can learn more about daemon process here:</p>
+<ul><li><a href="../daemon-process-in-python/">Daemon Process in Python</a></li></ul>
+<h3>How Can We Stop Multiple Processes?</h3>
+<p>You can share the same <strong>multiprocessing.Event</strong> between all of the child processes that might want to stop.</p>
+<p>Each process can frequently check the status of the event.</p>
+<p>Once set, all processes can exit their task and terminate.</p>
+<h3>How Can We Stop Tasks in a ProcessPoolExecutor?</h3>
+<p>The same technique of using a <strong>multiprocessing.Event</strong> can be used to stop tasks executing in a <strong>ProcessPoolExecutor</strong>.</p>
+<p>You can see an example of this here:</p>
+<ul><li><a href="../processpoolexecutor-stop-running-tasks/">How To Stop Running Tasks in the ProcessPoolExecutor in Python</a></li></ul>
+<h3>Do We Need To Use a Manager</h3>
+<p>No.</p>
+<p>A shared Event object can be created via a <strong><a href="https://docs.python.org/3/library/multiprocessing.html#managers">multiprocessing.Manager</a></strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create a manager
+with Manager() as manager:
+    # create an event from the manager
+    event = manager.Event()
+    # ...
+</code></pre>
+<p>This is only needed if the event is to be shared across processes running on different machines.</p>
+<h3>Why Not use Process.terminate() or Process.kill()</h3>
+<p>A child process can be stopped by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.terminate"><strong>terminate()</strong> method</a>, or the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.kill"><strong>kill()</strong> method</a>.</p>
+<p>If called, the process will stop immediately.</p>
+<p>This is not a graceful and safe way to stop a child process as it does not give the child process any way to respond to the request to stop, such as close and release resources.</p>
+<h2>Takeaways</h2>
+<p>You now know how to stop a process in Python.</p>
+</main>
+</body>
+</html>

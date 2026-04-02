@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Manager With a Custom Class – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Manager With a Custom Class</h1>
+<div class="post-meta">August 31, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can use manager to with <strong>custom Python classes</strong> by creating a <strong>Manager</strong> class that extends the <strong>BaseManager</strong> class, registering the custom class with the manager, then using the manager to create a shared instance of the custom class.</p>
+<p>In this tutorial you will discover how to use a <strong>multiprocessing manager</strong> with a <strong>custom class in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need Manager to Share Custom Class</h2>
+<p>A manager in the <strong>multiprocessing</strong> module provides a way to create Python objects that can be shared easily between processes.</p>
+<blockquote>
+<p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>A manager creates a server process that hosts a centralized version of objects that can be shared among multiple processes.</p>
+<p>The objects are not shared directly. Instead, the manager creates a proxy object for each object that it manages and the proxy objects are shared among processes.</p>
+<p>The proxy objects are used and operate just like the original objects, except that they serialize data, synchronize and coordinate with the centralized version of the object hosted in the manager server process.</p>
+<blockquote>
+<p>A proxy is an object which refers to a shared object which lives (presumably) in a different process. [...] A proxy object has methods which invoke corresponding methods of its referent (although not every method of the referent will necessarily be available through the proxy).</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This makes managers a process-safe and preferred way to share simple data structures like lists and dicts among processes.</p>
+<p>They are also a preferred way to share concurrency primitives among processes, specifically among workers in a multiprocessing pool.</p>
+<p>You can learn more about multiprocessing managers in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li>
+</ul>
+<p>We may need to use a <strong>Manager</strong> to host our own custom Python objects.</p>
+<p>This may be because our custom classes cannot be pickled and therefore cannot be shared directly with child processes or are perhaps challenging to make process-safe.</p>
+<p><strong>How can we use a multiprocessing manager to share our own custom Python objects among multiple processes?</strong></p>
+<h2>How to Use a Manager Create a Custom Class</h2>
+<p>We can use a manager to create and manage a centralized version of a custom class.</p>
+<p>This requires a few steps:</p>
+<ol>
+<li>Defining a custom class.</li>
+<li>Defining a custom Manager class that extends BaseManager.</li>
+<li>Registering the custom class with the custom manager.</li>
+<li>Creating an instance of the custom manager.</li>
+<li>Creating an instance of the custom class from the manager instance.</li>
+</ol>
+<p>Let's take a closer look at each step in turn.</p>
+<h3>1. Define a Custom Class</h3>
+<p>The first step is to define our custom class.</p>
+<p>This is just a normal Python class. No special <strong>Manager</strong>-specific changes are required.</p>
+<p>The class should be serializable, e.g. picklable.</p>
+<p>If we expect the class to be accessed and modified from multiple processes concurrently, then it is a good idea to protect any internal state using a mutex lock.</p>
+<p>Otherwise, you run the risk of race conditions that may leave the object's internal state in an inconsistent and unknown condition.</p>
+<p>You can learn more about race conditions in objects hosted by a manager in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-race-condition-python/">Multiprocessing Race Conditions in Python</a></li>
+</ul>
+<h3>2. Define a Custom Manager</h3>
+<p>We must define a custom manager in order to use the manager to create and manage custom classes.</p>
+<p>This involves defining a new class that extends the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.BaseManager"><strong>multiprocessing.managers.BaseManager</strong> class</a>.</p>
+<p>The custom class does not need to override the constructor or any methods, nor define any functionality.</p>
+<p>For example:</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<h3>3. Register the Custom Class</h3>
+<p>The next step involves registering the custom class with the custom manager.</p>
+<p>This is so when the program requests a new instance of the custom class from the manager, it knows how to create an instance of that class.</p>
+<p>This involves calling a class function (static function) on the custom manager class called <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.BaseManager.register">register()</a></strong>.</p>
+<p>The <strong>register()</strong> function takes two arguments, the string name of the class used by the program when requesting an instance and the name of the Python class to create.</p>
+<p>This should probably be the same name, but do not have to be.</p>
+<p>For example:</p>
+<pre><code>...
+# register the custom class on the custom manager
+CustomManager.register('MyCustomClass', MyCustomClass)</code></pre>
+<h3>4. Create the Manager</h3>
+<p>The next step is to create an instance of the custom manager, and start it.</p>
+<p>This is so that the program can request an instance of the custom class.</p>
+<p>This can be achieved manually by instantiating the class and calling start, for example:</p>
+<pre><code>...
+# create the custom manager
+manager = CustomManager()
+# start the custom manager
+manager.start()</code></pre>
+<p>Later we must close the manager to terminate the server process.</p>
+<pre><code>...
+# close the manager
+manager.close()</code></pre>
+<p>The preferred approach is to use the context manager interface and limit usage of the manager to the context manager block.</p>
+<p>This will ensure the manager is closed automatically regardless of what happens in our program.</p>
+<p>For example:</p>
+<pre><code>...
+# create and start the custom manager
+with CustomManager() as manager:
+	# ...
+</code></pre>
+<h3>5. Create a Custom Class Instance</h3>
+<p>Finally, we can create an instance of our custom class using the manager.</p>
+<p>This will create the object in the <strong>Manager</strong>'s server process and return a proxy object.</p>
+<p>The proxy object can then be shared among processes and used to interact with the centralized version of the custom class instance, with all data serialization and process-safety handled automatically under the covers.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared custom class instance
+shared_custom = manager.MyCustomClass()</code></pre>
+<p>Now that we know how to create a custom class instance using a manager, let's look at a worked example.</p>
+<h2>Example of Manager With a Custom Class</h2>
+<p>We can explore an example of using a manager to create a custom class.</p>
+<p>In this example we will define a custom class that has some data in an instance variable, a task function that uses the data and returns a value. We will also have the object record all values that are returned in an internal list so we can inspect it later. We will then use a manager to create a centralized version of the object and share it among multiple processes that will all interact with it.</p>
+<p>This will be a good case study that can be adapted to host a centralized version of any arbitrary complex object in a manager and share it among multiple child processes.</p>
+<p>Firstly, we can define our custom class.</p>
+<p>There is nothing <strong>Manager</strong>-specific about this class, it's just a normal Python class.</p>
+<p>We will call the class <strong>MyCustomClass</strong> and define a class constructor that takes a data argument and stores it, and also initializes an internal list for storing all return values it generates later.</p>
+<pre><code># custom class
+class MyCustomClass():
+    # constructor
+    def __init__(self, data):
+        # store the data in the instance
+        self.data = data
+        self.storage = list()
+</code></pre>
+<p>In this class, we will define a <strong>task()</strong> method.</p>
+<p>This method will generate a random value between 0 and 1, block for a moment, then calculate a new value that multiples the generated value by the data instance variable. Finally, it stores a tuple of the instance variable, generated value, and calculated value and returns the calculated value.</p>
+<p>The <strong>task()</strong> method below implements this.</p>
+<pre><code># do something with the data
+def task(self):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # calculate a new value
+    new_value = self.data * value
+    # store everything
+    self.storage.append((self.data, value, new_value))
+    # return the new value
+    return new_value
+</code></pre>
+<p>We will define one more method that provides access to the "<strong>storage</strong>" list instance variable so we can get a log of all returned values later.</p>
+<pre><code># get all stored values
+def get_storage(self):
+    return self.storage
+</code></pre>
+<p>Tying this together, the complete <strong>MyCustomClass</strong> class is defined below.</p>
+<pre><code># custom class
+class MyCustomClass():
+    # constructor
+    def __init__(self, data):
+        # store the data in the instance
+        self.data = data
+        self.storage = list()
+
+    # do something with the data
+    def task(self):
+        # generate a random number
+        value = random()
+        # block for a moment
+        sleep(value)
+        # calculate a new value
+        new_value = self.data * value
+        # store everything
+        self.storage.append((self.data, value, new_value))
+        # return the new value
+        return new_value
+
+    # get all stored values
+    def get_storage(self):
+        return self.storage
+</code></pre>
+<p>Next, we need a custom <strong>Manager</strong> class that will support our custom <strong>MyCustomClass</strong> class.</p>
+<p>This can be achieved by defining a new <strong>Manager</strong> class that extends the <strong>BaseManager</strong> and does nothing else.</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>Next, we can define a custom function that we will execute in new child processes.</p>
+<p>This function will take a shared <strong>MyCustomClass</strong> object, call the <strong>task()</strong> method and report the value that is returned.</p>
+<p>The <strong>work()</strong> function is listed below.</p>
+<pre><code># custom function to be executed in a child process
+def work(shared_custom):
+    # call the function on the shared custom instance
+    value = shared_custom.task()
+    # report the value
+    print(f'&gt;child got {value}')
+</code></pre>
+<p>Finally, in the main process, we will first register our <strong>MyCustomClass</strong> class on our custom Manager class.</p>
+<p>This can be achieved by calling the <strong>register()</strong> class method on our <strong>CustomManager</strong> class and specifying the name of the class we are registering (which is arbitrary, but we will match the actual class name) and the actual Python class it maps to.</p>
+<pre><code>...
+# register the custom class on the custom manager
+CustomManager.register('MyCustomClass', MyCustomClass)</code></pre>
+<p>Next, we can create and start an instance of our custom manager.</p>
+<p>In this case, we will use the context manager interface.</p>
+<pre><code>...
+# create a new manager instance
+with CustomManager() as manager:
+	# ...
+</code></pre>
+<p>We will then use the manager instance to create a new instance of our custom class and initialize it with a value, in this case 10, which will be stored in an instance variable.</p>
+<pre><code>...
+# create a shared custom class instance
+shared_custom = manager.MyCustomClass(10)</code></pre>
+<p>We will share this object among child processes.</p>
+<p>But first, let's confirm that it is working correctly by calling the <strong>task()</strong> method in the main process and reporting the generated value.</p>
+<pre><code>...
+# call the function on the shared custom instance
+value = shared_custom.task()
+# report the value
+print(f'&gt;main got {value}')</code></pre>
+<p>Next, we will create and start 4 child processes configured to execute our <strong>work()</strong> function and pass the shared <strong>MyCustomClass</strong> instance as an argument.</p>
+<pre><code>...
+# start some child processes
+processes = [Process(target=work, args=(shared_custom,)) for i in range(4)]
+# start processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>The main process then blocks until all child processes have finished.</p>
+<pre><code>...
+# wait for processes to finish
+for process in processes:
+    process.join()
+</code></pre>
+<p>The main process then reports a message, then accesses the "<strong>storage</strong>" instance variable on the shared <strong>MyCustomClass</strong> object and reports all tuples stored in the centralized object.</p>
+<p>We expect there to be 5 items and they will match the values returned by calling the <strong>task()</strong> method in the main process and in each child process, confirming that we are working with a single centralized instance of the custom class.</p>
+<pre><code>...
+# all done
+print('Done')
+# report all values stored in the central object
+for t in shared_custom.get_storage():
+    print(t)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a manager to create a custom class
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing.managers import BaseManager
+
+# custom class
+class MyCustomClass():
+    # constructor
+    def __init__(self, data):
+        # store the data in the instance
+        self.data = data
+        self.storage = list()
+
+    # do something with the data
+    def task(self):
+        # generate a random number
+        value = random()
+        # block for a moment
+        sleep(value)
+        # calculate a new value
+        new_value = self.data * value
+        # store everything
+        self.storage.append((self.data, value, new_value))
+        # return the new value
+        return new_value
+
+    # get all stored values
+    def get_storage(self):
+        return self.storage
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# custom function to be executed in a child process
+def work(shared_custom):
+    # call the function on the shared custom instance
+    value = shared_custom.task()
+    # report the value
+    print(f'&gt;child got {value}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # register the custom class on the custom manager
+    CustomManager.register('MyCustomClass', MyCustomClass)
+    # create a new manager instance
+    with CustomManager() as manager:
+        # create a shared custom class instance
+        shared_custom = manager.MyCustomClass(10)
+        # call the function on the shared custom instance
+        value = shared_custom.task()
+        # report the value
+        print(f'&gt;main got {value}')
+        # start some child processes
+        processes = [Process(target=work, args=(shared_custom,)) for i in range(4)]
+        # start processes
+        for process in processes:
+            process.start()
+        # wait for processes to finish
+        for process in processes:
+            process.join()
+        # all done
+        print('Done')
+        # report all values stored in the central object
+        for t in shared_custom.get_storage():
+            print(t)
+</code></pre>
+<p>Running the example first registers the custom class with the custom manager class via a class function.</p>
+<p>Next, an instance of the custom manager class is created and started, starting a new server process for the manager.</p>
+<p>A single centralized instance of our <strong>MyCustomClass</strong> class is then created using the manager and a proxy object for the instance is then returned.</p>
+<p>The proxy object for the custom class is then used in the main process and a method on the object is executed, returning a value that is reported.</p>
+<p>Four new child processes are then created, configured and started, executing a custom function that takes the proxy object for our custom class as an argument. Each calls a method on the centralized object via the proxy and reports the generated value.</p>
+<p>The proxy objects ensure that all method calls on the centralized object are process-safe.</p>
+<p>Each time the <strong>task()</strong> method is called on the centralized custom class, the generated and calculated values are stored in an internal list.</p>
+<p>Finally, the main process accesses the list instance variable on the custom class and reports the log of all values generated and reported.</p>
+<p>These match the values reported by the main process and child processes, in the order they were reported. This log provides confirmation that the shared object is indeed centralized on the manager and that all processes interact with the same instance via proxy objects.</p>
+<pre><code>&gt;main got 0.5875523348927492
+&gt;child got 1.262028562953147
+&gt;child got 2.5299182522080277
+&gt;child got 2.630220125408651
+&gt;child got 8.506195991560324
+Done
+(10, 0.058755233489274916, 0.5875523348927492)
+(10, 0.1262028562953147, 1.262028562953147)
+(10, 0.25299182522080277, 2.5299182522080277)
+(10, 0.2630220125408651, 2.630220125408651)
+(10, 0.8506195991560324, 8.506195991560324)</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a manager with a custom class.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Debug Asyncio – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Debug Asyncio</h1>
+<div class="post-meta">November 28, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can <strong>debug asyncio programs</strong> by enabling debug-level logging, enabling warnings, and running the asyncio event loop in debug mode.</p>
+<p>This will report additional messages from the asyncio module in the standard library, and perform additional checks, such as calls to thread-unsafe functions and reporting when asyncio tasks take too long to complete.</p>
+<p>In this tutorial, you will discover <strong>how to debug asyncio programs</strong>.</p>
+<p>Let's get started.</p>
+<h2>We Need to Debug Asyncio</h2>
+<p>Sometimes things do go as planned with our asyncio program.</p>
+<p>We need insight into what is going on.</p>
+<p>There are two levels of insight we might need.</p>
+<ol>
+<li>What is happening inside the asyncio module.</li>
+<li>What is happening inside our program.</li>
+</ol>
+<p>This can be achieved by logging debug messages.</p>
+<p><strong><em>How can we debug asyncio?</em></strong></p>
+<h2>How to Debug Asyncio</h2>
+<p>There are perhaps three considerations when debugging asyncio, from a high level.</p>
+<ol>
+<li>Accessing debug messages from the asyncio module.</li>
+<li>Running the asyncio event loop in debug mode.</li>
+<li>Accessing warning messages.</li>
+<li>Adding logging messages (like debug messages) to our program code.</li>
+</ol>
+<p>Let's consider each of these aspects in turn.</p>
+<h3>Access Asyncio Debug Messages</h3>
+<p>The asyncio module internally does a lot of logging.</p>
+<p>You can see this if you search the code files for "<strong>logger</strong>" in the module:</p>
+<ul>
+<li><a href="https://github.com/python/cpython/blob/3.11/Lib/asyncio/">Asyncio source code</a></li>
+</ul>
+<p>All asyncio module logging is performed under the context of the module name, e.g. "<strong>asyncio</strong>".</p>
+<p>We can therefore enable all debug messages (and higher) for the asyncio module and all of our programs by setting the log level to <strong>DEBUG</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# enable debugging
+logging.basicConfig(level=logging.DEBUG)</code></pre>
+<p>This alone will report basic information from the asyncio module internals.</p>
+<h3>Running the Event Loop in Debug Mode</h3>
+<p>If debug log messages for the asyncio module are permitted (see above), we can run the asyncio event loop in debug mode in order to see more information.</p>
+<p>This can be achieved in a few ways:</p>
+<ol>
+<li>Via an argument to <strong>asyncio.run()</strong></li>
+<li>Via a method on the event loop itself.</li>
+<li>Via an environment variable.</li>
+</ol>
+<p>The first approach involves passing the "<strong>debug</strong>" argument set to <strong>True</strong> to the <strong>asyncio.run()</strong> function used to start the event loop for our program.</p>
+<p>For example:</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main(), debug=True)</code></pre>
+<p>The second is to acquire the event loop object, such as via the <strong>asyncio.get_running_loop()</strong> function and then calling the <strong>set_debug()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# enable debug mode on the current event loop
+loop = asyncio.get_running_loop()
+loop.set_debug()</code></pre>
+<p>The third approach is to set the <strong>PYTHONASYNCIODEBUG</strong> environment variable.</p>
+<p>This could be set in the shell, command line environment, or IDE environment.</p>
+<p>For example</p>
+<pre><code>PYTHONASYNCIODEBUG=1</code></pre>
+<p>It may also be set programmatically via the <a href="https://docs.python.org/3/library/os.html#os.environ"><strong>os.environ()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# set debug mode
+os.environ["PYTHONASYNCIODEBUG"] = "1"</code></pre>
+<p>Once set, the event loop will do extra work to calculate interesting debug information and present it via log message, such as at the <strong>DEBUG</strong> and <strong>WARNING</strong> levels.</p>
+<blockquote>
+<p>Callbacks taking longer than 100 milliseconds are logged.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-dev.html">Developing with asyncio</a></cite></blockquote>
+<p>Specifically, asyncio debug mode provides:</p>
+<ol>
+<li>Coroutines that were not awaited are logged, e.g. the stack trace.</li>
+<li>Thread-unsafe methods raise exceptions if called from the wrong threads.</li>
+<li>Execution of I/O is logged, if it takes too long.</li>
+<li>Execution time of tasks are logged, if they take too long.</li>
+</ol>
+<p>As such, these additional checks and logging can add overhead, making execution time slower.</p>
+<h3>How to Configure How Long is "Too Long"</h3>
+<p>When in debug mode, the asyncio event loop will report warning messages for coroutines that take too long to complete.</p>
+<p>These messages are reported after the coroutines and tasks are completed.</p>
+<p>The "<em>too long</em>" duration by default is 0.1 seconds, e.g. 100 milliseconds.</p>
+<p>It can be configured via the <strong>slow_callback_duration</strong> attribute on the event loop object.</p>
+<blockquote>
+<p>The loop.slow_callback_duration attribute can be used to set the minimum execution duration in seconds that is considered “slow”.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-dev.html">Developing with asyncio</a></cite></blockquote>
+<p>The attribute is measured in seconds, including fractions of a second.</p>
+<p>For example:</p>
+<pre><code>...
+# change the how long limit for reporting warnings
+loop = asyncio.get_running_loop()
+loop.slow_callback_duration = 0.01 # 10 ms</code></pre>
+<h3>Accessing Warning Messages</h3>
+<p>By default, the asyncio will emit warnings in stations that represent common problems.</p>
+<p>The most common is when a coroutine is created and not awaited.</p>
+<p>For example:</p>
+<pre><code>...
+RuntimeWarning: coroutine '...' was never awaited
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback</code></pre>
+<p>You can learn more about this specific warning in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-coroutine-was-never-awaited/">RuntimeWarning: Coroutine Was Never Awaited</a></li>
+</ul>
+<p>When the event loop is run in debug mode, additional warnings may be emitted.</p>
+<p>These can be accessed without enabling debug logging.</p>
+<p>This can be achieved by enabling the warning messages alone, via the warnings module.</p>
+<p>For example, we can set the filter on warning messages to be '<strong>always</strong>' for <strong>ResoruceWarnings</strong> via the <a href="https://docs.python.org/3/library/warnings.html#warnings.simplefilter"><strong>warnings.simplefilter()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# enable warnings
+warnings.simplefilter('always', ResourceWarning)</code></pre>
+<p>Or all warnings:</p>
+<pre><code>...
+# enable all warnings
+warnings.simplefilter('always')</code></pre>
+<p>This can help expose warning messages, such as when coroutines take too long to complete.</p>
+<h3>Adding Debug Logging to Our Program</h3>
+<p>Finally, we can add debug (and other levels), log messages to our program by using the logging module.</p>
+<p>For example:</p>
+<pre><code># custom coroutine
+async def task(value):
+    # do work
+    # ...
+    # log a debug message
+    logging.debug(f'Task done with value={value}')
+</code></pre>
+<p>Note, additional debug information is provided in the asyncio API documentation:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/asyncio-dev.html">Developing with asyncio</a></li>
+</ul>
+<p>Now that we know the basics of debugging asyncio programs, let's look at some worked examples.</p>
+<h2>Example of Enabling Asyncio Debug Logging</h2>
+<p>We can explore an example of enabling the logging of debug messages in the "<strong>asyncio</strong>" module in the standard library.</p>
+<p>In this example we will have a task that takes an argument, reports a message, sleeps a moment, then reports a final message. The main coroutine awaits this task.</p>
+<p>To enable logging in the asyncio module, we can set the log level for the entire program to "<strong>DEBUG</strong>" before starting the asyncio event loop.</p>
+<pre><code>...
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>By default, this will log all messages to standard output (the console).</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of enabling the asyncio module debugging
+import logging
+import asyncio
+
+# simple task that takes a moment
+async def task(value):
+    # report a message
+    print(f'Task is running, value={value}')
+    # block a moment
+    await asyncio.sleep(2)
+    # report a message
+    print(f'Task is done, value={value}')
+
+# main coroutine
+async def main():
+    # execute and await the task
+    await task(99)
+
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first sets the logging level to <strong>DEBUG</strong>.</p>
+<p>It then starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs the <strong>task()</strong> coroutine and awaits it. The <strong>task()</strong> coroutine runs, reports a message, sleeps, and then reports a final message.</p>
+<p>Then the program terminates.</p>
+<p>We can see that in this case that only a single debug message is reported by the asyncio module.</p>
+<p>The message is about the IO selector that was chosen by the asyncio event loop, in this case, the <strong><a href="https://docs.python.org/3/library/selectors.html#selectors.KqueueSelector">KqueueSelector</a></strong>.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+Task is running, value=99
+Task is done, value=99</code></pre>
+<p>Next, let's look at an example of enabling debug mode for the event loop.</p>
+<h2>Example of Running the Event Loop in Debug Mode</h2>
+<p>We can explore an example of enabling debug mode in the asyncio event loop.</p>
+<p>This will cause additional checking and logging to be performed, which may slow down large programs with many coroutines.</p>
+<p>To enable debug mode, we will set the "<strong>debug</strong>" argument to <strong>True</strong> when starting the asyncio event loop with <strong>asyncio.run()</strong>. We will also enable debug-level logging so that we can see any additional log messages reported by the event loop.</p>
+<pre><code>...
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main(), debug=True)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of enabling debug logging and run in debug mode
+import logging
+import asyncio
+
+# simple task that takes a moment
+async def task(value):
+    # report a message
+    print(f'Task is running, value={value}')
+    # block a moment
+    await asyncio.sleep(2)
+    # report a message
+    print(f'Task is done, value={value}')
+
+# main coroutine
+async def main():
+    # execute and await the task
+    await task(99)
+
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main(), debug=True)
+</code></pre>
+<p>Running the program first sets debug level logging, then starts the event loop in debug mode.</p>
+<p>The <strong>main()</strong> coroutine runs, executes the <strong>task()</strong> coroutine and the program terminates.</p>
+<p>We can see that as before, the asyncio module reports the selector that is being used, e.g. <strong>KqueueSelector</strong>.</p>
+<p>When the program closes, it then reports that the event loop has closed (e.g. is no longer running) and other details of its state (e.g. it was run in debug mode)</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+Task is running, value=99
+Task is done, value=99
+DEBUG:asyncio:Close &lt;_UnixSelectorEventLoop running=False closed=False debug=True&gt;
+</code></pre>
+<p>Next, let's look at the reporting of long-running tasks.</p>
+<h2>Example of Task Took Too Long in Debug Mode (with logging)</h2>
+<p>We can explore an example of reporting log messages running asyncio tasks when running the asyncio event loop in debug mode.</p>
+<p>A task takes too long if it has not been executed by the event loop in more than 100 milliseconds (e.g. 0.1 seconds).</p>
+<p>Typically, this occurs when an asyncio performs some blocking function call (like reading from a file) or some CPU-intensive task (such as parsing a file or calculating something).</p>
+<p>We can simulate a blocking call by calling the <a href="https://docs.python.org/3/library/time.html#time.sleep"><strong>time.sleep()</strong> function</a> in our <strong>task()</strong> coroutine.</p>
+<pre><code># simple task that takes a moment
+async def task(value):
+    # report a message
+    print(f'Task is running, value={value}')
+    # block a moment
+    time.sleep(2)
+    # report a message
+    print(f'Task is done, value={value}')
+</code></pre>
+<p>This will cause the asyncio event loop to block while executing our task.</p>
+<p>We will run the event loop in debug mode and use logging configured to the DEBUG-level. The task will block for 2 seconds (more than 0.1 seconds required to trigger a warning), and a warning log message will be reported.</p>
+<p>If we dig into the <a href="https://github.com/python/cpython/blob/3.11/Lib/asyncio/base_events.py#L1910C1-L1918C67">asyncio module code base on GitHub</a>, we can see that in the code for running tasks, the event loop operates differently when in the debug mode (as we are), recording the start and end time of a task, and reporting the warning message only if the task takes longer than the minimum allowed time (defined by <strong>slow_callback_duration</strong>).</p>
+<p>Here is a snippet from the <strong>_run_once()</strong> method on the event loop from the "<strong>asyncio/base_events.py</strong>" file that shows this:</p>
+<pre><code>...
+if self._debug:
+    try:
+        self._current_handle = handle
+        t0 = self.time()
+        handle._run()
+        dt = self.time() - t0
+        if dt &gt;= self.slow_callback_duration:
+            logger.warning('Executing %s took %.3f seconds',
+                           _format_handle(handle), dt)
+</code></pre>
+<p>Note: we cannot trigger a warning by calling <strong>asyncio.sleep()</strong>. This is because <strong>asyncio.sleep()</strong> is a coroutine that is awaited, allowing the asyncio event loop to operate normally. A call to <strong>time.sleep()</strong> will block the entire event loop and prevent it from progressing.</p>
+<p>You can learn more about <strong>asyncio.sleep()</strong> vs <strong>time.sleep()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-sleep/">Asyncio sleep() in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of task took too long in debug mode with logging
+import logging
+import time
+import asyncio
+
+# simple task that takes a moment
+async def task(value):
+    # report a message
+    print(f'Task is running, value={value}')
+    # block a moment
+    time.sleep(2)
+    # report a message
+    print(f'Task is done, value={value}')
+
+# main coroutine
+async def main():
+    # execute and await the task
+    await task(99)
+
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main(), debug=True)
+</code></pre>
+<p>Running the program first sets debug level logging, then starts the event loop in debug mode.</p>
+<p>The <strong>main()</strong> coroutine runs, executes the <strong>task()</strong> coroutine and the program terminates.</p>
+<p>We can see that as before, the asyncio module reports the selector that is being used, e.g. <strong>KqueueSelector</strong>.</p>
+<p>The <strong>task()</strong> coroutine also reports its print message as before.</p>
+<p>In this case, we can see the warning message of the task taking too long. Specifically, we can see a <strong>WARNING</strong> level message was reported that includes the details of the task and how long it took.</p>
+<p>Finally, we can see a <strong>DEBUG</strong> log message on the final state of the event loop.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+Task is running, value=99
+Task is done, value=99
+WARNING:asyncio:Executing &lt;Task finished name='Task-1' coro=&lt;main() done, defined at ...&gt; result=None created at ...&gt; took 2.004 seconds
+DEBUG:asyncio:Close &lt;_UnixSelectorEventLoop running=False closed=False debug=True&gt;
+</code></pre>
+<p>Next, let's explore the same example with warnings enabled instead of logging.</p>
+<h2>Example of Task Took Too Long in Debug Mode (without logging)</h2>
+<p>We can explore the reporting of tasks that take long when running the asyncio event loop in debug mode, by using the logging infrastructure.</p>
+<p>Tasks that take too long are reported as a warning. We can allow just warning messages to be reported (e.g. to stdout) via the warnings module.</p>
+<p>This is preferable when debugging our programs and not wanting to interfere with existing logging infrastructure.</p>
+<p>We can enable all warnings in our asyncio program before starting the event loop in debug mode.</p>
+<pre><code>...
+# enable all warnings
+warnings.simplefilter('always')
+# start the event loop
+asyncio.run(main(), debug=True)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of task took too long in debug mode with warnings
+import warnings
+import time
+import asyncio
+
+# simple task that takes a moment
+async def task(value):
+    # report a message
+    print(f'Task is running, value={value}')
+    # block a moment
+    time.sleep(2)
+    # report a message
+    print(f'Task is done, value={value}')
+
+# main coroutine
+async def main():
+    # execute and await the task
+    await task(99)
+
+# enable all warnings
+warnings.simplefilter('always')
+# start the event loop
+asyncio.run(main(), debug=True)
+</code></pre>
+<p>Running the program first sets all warnings to be visible, then starts the event loop in debug mode.</p>
+<p>The <strong>main()</strong> coroutine runs, executes the <strong>task()</strong> coroutine and the program terminates.</p>
+<p>We can see that no debug log messages are shown, as we did not configure the logging infrastructure.</p>
+<p>Instead, in this case, we can see that the details of long-running blocking tasks are reported directly on standard output.</p>
+<p>This highlights how we can run the asyncio event loop in debug mode and see helpful warning messages, without enabling or changing the logging infrastructure of our programming.</p>
+<pre><code>Task is running, value=99
+Task is done, value=99
+Executing &lt;Task finished name='Task-1' coro=&lt;main() done, defined at ...&gt; result=None created at ...&gt; took 2.004 seconds
+</code></pre>
+<p>Next, let's explore an example of configuring how long is "too long" for long-running tasks.</p>
+<h2>Example of Configuring slow_callback_duration in Debug Mode</h2>
+<p>We can configure how long is "too long" reporting a warning message for long-running tasks in the event loop.</p>
+<p>This can be achieved by setting the <strong>slow_callback_duration</strong> attribute on the asyncio event loop object.</p>
+<p>In this case, we will decrease the duration from 100 milliseconds down to 10 milliseconds. This can be done in our <strong>main()</strong> coroutine before awaiting any additional coroutines.</p>
+<pre><code>...
+# change the how long limit for reporting warnings
+loop = asyncio.get_running_loop()
+loop.slow_callback_duration = 0.01 # 10 ms</code></pre>
+<p>We can then have our coroutine block the event loop for 12 milliseconds.</p>
+<pre><code># simple task that takes a moment
+async def task(value):
+    # report a message
+    print(f'Task is running, value={value}')
+    # block a moment
+    time.sleep(0.012)
+    # report a message
+    print(f'Task is done, value={value}')
+</code></pre>
+<p>We will use logging as above to show the warning message and run the event loop in debug mode to ensure that the warning about long-running tasks is emitted.</p>
+<pre><code>...
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main(), debug=True)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of configuring slow_callback_duration in debug mode
+import logging
+import time
+import asyncio
+
+# simple task that takes a moment
+async def task(value):
+    # report a message
+    print(f'Task is running, value={value}')
+    # block a moment
+    time.sleep(0.012)
+    # report a message
+    print(f'Task is done, value={value}')
+
+# main coroutine
+async def main():
+    # change the how long limit for reporting warnings
+    loop = asyncio.get_running_loop()
+    loop.slow_callback_duration = 0.01 # 10 ms
+    # execute and await the task
+    await task(99)
+
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main(), debug=True)
+</code></pre>
+<p>Running the program first configures the log and sets it to <strong>DEBUG</strong> level, then starts the event loop in debug mode.</p>
+<p>The <strong>main()</strong> coroutine runs, executes the <strong>task()</strong> coroutine and the program terminates.</p>
+<p>We can see that the warning message reported that the <strong>task()</strong> coroutine took too long, in this case, longer than 10 milliseconds.</p>
+<p>This highlights that we can configure the tolerance for how long is "too long" for blocking tasks in our asyncio programs before a warning message is reported.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+Task is running, value=99
+Task is done, value=99
+WARNING:asyncio:Executing &lt;Task finished name='Task-1' coro=&lt;main() done, defined at ...&gt; result=None created at ...&gt; took 0.015 seconds
+DEBUG:asyncio:Close &lt;_UnixSelectorEventLoop running=False closed=False debug=True&gt;
+</code></pre>
+<p>Next, let's explore reporting of coroutines that are not awaited.</p>
+<h2>Example of Not Awaited Coroutine Reported in Debug Mode</h2>
+<p>A common problem in asyncio programs is creating coroutines and tasks and then not awaiting them.</p>
+<p>This is a problem because the created coroutines and tasks will never be executed. This often leaves developers confused and frustrated, because it looks like the code is being called because creating a coroutine looks like a function call.</p>
+<p>Therefore asyncio tries to detect coroutines that are created and not executed and report them.</p>
+<p>This behavior is different when running the asyncio event loop in debug mode and not.</p>
+<p>Let's take a look at two examples.</p>
+<ol>
+<li>Create a coroutine that is not awaited (without debug mode).</li>
+<li>Create a coroutine that is not awaited (with debug mode).</li>
+</ol>
+<p>We can then compare the <strong>RuntimeWarning</strong> messages that are emitted automatically by asyncio, without logging or warnings configured.</p>
+<h3>Unawaited Coroutine in Normal Mode (Not Debug)</h3>
+<p>We can explore an example of creating a coroutine and not awaiting it in our asyncio program.</p>
+<p>In this case, we will not run the event loop in debug mode and not enable logging or warnings.</p>
+<p>By default, asyncio works hard to detect this scenario and reports a <strong>RuntimeWarning</strong>. The warnings module allows this to be reported to standard error output by default, with a message like "<strong>RuntimeWarning: coroutine '...' was never awaited</strong>"</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-coroutine-was-never-awaited/">RuntimeWarning: Coroutine Was Never Awaited</a></li>
+</ul>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of unawaited coroutines report a RuntimeWarning
+import asyncio
+
+# simple task that takes a moment
+async def task(value):
+    # report a message
+    print(f'Task is running, value={value}')
+    # block a moment
+    asyncio.sleep(2) # forget to await
+    # report a message
+    print(f'Task is done, value={value}')
+
+# main coroutine
+async def main():
+    # execute and await the task
+    await task(99)
+
+# start the event loop
+asyncio.run(main(), debug=False)
+</code></pre>
+<p>Running the example starts the event loop, not in debug mode.</p>
+<p>The <strong>main()</strong> coroutine runs, then awaits the <strong>task()</strong> coroutine.</p>
+<p>The <strong>task()</strong> coroutine runs, reports a message then creates the <strong>asyncio.sleep()</strong> coroutine and does not await it. This means it is not given a chance to run.</p>
+<p>A RuntimeWarning is raised and reported "<strong>RuntimeWarning: coroutine 'sleep' was never awaited</strong>", as controlled by the default configuration of the warnings module.</p>
+<p>We can also see a second <strong>RuntimeWarning is reported "RuntimeWarning: Enable tracemalloc to get the object allocation traceback</strong>". This is just a suggestion on how to learn more about where the fault occurred.</p>
+<p>This highlights that even without debug log level, additional warning configuration, or running the event loop in debug mode, we can see RuntimeWarning messages for coroutines that are created and not run.</p>
+<pre><code>Task is running, value=99
+...
+RuntimeWarning: coroutine 'sleep' was never awaited
+  asyncio.sleep(2) # forget to await
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+Task is done, value=99
+</code></pre>
+<p>Next, let's consider the same case with the event loop in debug mode.</p>
+<h3>Unawaited Coroutine in Debug Mode</h3>
+<p>We can explore the case of creating coroutines that are not awaited when the asyncio event loop is in debug mode.</p>
+<p>Again, we don't need to set <strong>DEBUG</strong> level logging or change the warning level.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main(), debug=True)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of unawaited coroutines report a RuntimeWarning
+import asyncio
+
+# simple task that takes a moment
+async def task(value):
+    # report a message
+    print(f'Task is running, value={value}')
+    # block a moment
+    asyncio.sleep(2) # forget to await
+    # report a message
+    print(f'Task is done, value={value}')
+
+# main coroutine
+async def main():
+    # execute and await the task
+    await task(99)
+
+# start the event loop
+asyncio.run(main(), debug=True)
+</code></pre>
+<p>Running the example starts the event loop, this time in debug mode.</p>
+<p>The <strong>main()</strong> coroutine runs, then awaits the <strong>task()</strong> coroutine.</p>
+<p>The <strong>task()</strong> coroutine runs, reports a message then creates the <strong>asyncio.sleep()</strong> coroutine and does not await it. This means it is not given a chance to run.</p>
+<p>As above, a <strong>RuntimeWarning is raised and reported "RuntimeWarning: coroutine 'sleep' was never awaited</strong>", as controlled by the default configuration of the warnings module.</p>
+<p>Then the full stack trace of the coroutine that was not run is reported.</p>
+<p>Note, an exception is not raised and does not disrupt the execution of the program. Instead, these are <strong>RuntimeWarning</strong> messages. This can be confirmed because the next line after the coroutine that was not run is a second print statement, that was executed and reported successful.</p>
+<p>This highlights that when we run the event loop in debug mode, we can get a lot more details about coroutines that are created and not run.</p>
+<pre><code>Task is running, value=99
+...:10: RuntimeWarning: coroutine 'sleep' was never awaited
+Coroutine created at (most recent call last)
+  File "...", line 20, in &lt;module&gt;
+    asyncio.run(main(), debug=True)
+  File ".../asyncio/runners.py", line 190, in run
+    return runner.run(main)
+  File ".../asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File ".../asyncio/base_events.py", line 640, in run_until_complete
+    self.run_forever()
+  File ".../asyncio/base_events.py", line 607, in run_forever
+    self._run_once()
+  File ".../asyncio/base_events.py", line 1914, in _run_once
+    handle._run()
+  File ".../asyncio/events.py", line 80, in _run
+    self._context.run(self._callback, *self._args)
+  File "...", line 17, in main
+    await task(99)
+  File "...", line 10, in task
+    asyncio.sleep(2) # forget to await
+  asyncio.sleep(2) # forget to await
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+Task is done, value=99
+</code></pre>
+<p>Next, let's look at how we can add debug messages to our own asyncio programs.</p>
+<h2>Example of Custom Debug Messages in Asyncio Program</h2>
+<p>We can explore an example of adding debug logging to our asyncio program.</p>
+<p>In this case, we will update the above example to change our <strong>print()</strong> statements into debug log messages.</p>
+<p>The logging module is comprehensive, and I recommend reading more about it:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/logging.html">logging — Logging facility for Python</a></li>
+</ul>
+<p>In this case, we will change our <strong>print()</strong> statements to the <strong>logging.debug()</strong> function.</p>
+<pre><code># simple task that takes a moment
+async def task(value):
+    # report a message
+    logging.debug(f'Task is running, value={value}')
+    # block a moment
+    await asyncio.sleep(2)
+    # report a message
+    logging.debug(f'Task is done, value={value}')
+</code></pre>
+<p>We will then configure logging for the program before starting the event loop.</p>
+<pre><code>...
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of custom debug logging
+import logging
+import asyncio
+
+# simple task that takes a moment
+async def task(value):
+    # report a message
+    logging.debug(f'Task is running, value={value}')
+    # block a moment
+    await asyncio.sleep(2)
+    # report a message
+    logging.debug(f'Task is done, value={value}')
+
+# main coroutine
+async def main():
+    # execute and await the task
+    await task(99)
+
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the program first sets debug level logging, then starts the event loop in debug mode.</p>
+<p>The <strong>main()</strong> coroutine runs, and executes the <strong>task()</strong> coroutine.</p>
+<p>The <strong>task()</strong> coroutine reports a debug message, sleeps, then reports a second debug message. These appear on standard out along with the message from the asyncio module.</p>
+<p>This highlights how we might add debug logging to our asyncio program directly.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+DEBUG:root:Task is running, value=99
+DEBUG:root:Task is done, value=99
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to debug asyncio programs.</p>
+</main>
+</body>
+</html>

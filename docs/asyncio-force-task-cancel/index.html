@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Force an Asyncio Task to Cancel – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Force an Asyncio Task to Cancel</h1>
+<div class="post-meta">December 21, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can force an asyncio task to cancel by repeatedly calling the <strong>cancel()</strong> in a loop.</p>
+<p>In this tutorial, you will discover how to <strong>force an asyncio task to cancel</strong>.</p>
+<p>Let's get started.</p>
+<h2>What is Asyncio Task Cancellation?</h2>
+<p>Asyncio tasks can be canceled.</p>
+<p>This can be achieved by calling the <strong>cancel() </strong>method on the <strong>asyncio.Task</strong>. This will request that the task be canceled as soon as possible and return <strong>True</strong> if the request was successful or <strong>False</strong> if it was not, e.g. the task is already done.</p>
+<blockquote>
+<p>Request the Task to be cancelled. This arranges for a CancelledError exception to be thrown into the wrapped coroutine on the next cycle of the event loop.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+if task.cancel():
+	# request successful
+</code></pre>
+<p>The next time that the target task that was canceled resumes, a <strong>CancelledError</strong> exception will be raised.</p>
+<p>This exception will bubble up to the top level of the task and cause it to stop running.</p>
+<p>You can learn more about the mechanics of cancellation a task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<h2>Need to Force a Task to Cancel</h2>
+<p>Sometimes tasks don't cancel when requested.</p>
+<p>This can happen for many reasons:</p>
+<ul>
+<li>The task consumes the <strong>CancelledError</strong>.</li>
+<li>The task has a finally block that does lots of awaiting.</li>
+<li>The task is shielded.</li>
+</ul>
+<p>We can't do a lot if the task is shielded.</p>
+<p>Nevertheless, if the task attempts to consume the <strong>CancelledError</strong> or does too much work in a finally block, we may want to force it to cancel by requesting a cancellation a second or third time.</p>
+<p><strong>How can we force a task to be canceled?</strong></p>
+<h2>How to Force a Task to Cancel</h2>
+<p>We cannot force an asyncio task to cancel.</p>
+<p>This is because the task can forever resist the request to cancel if it so chooses. That is, it can continue to consume the <strong>CancelledError</strong> raised when the task resumes after suspension. But this is unlikely.</p>
+<p>Instead, it is more likely that a task will attempt to clean up when canceled, and perhaps spend too much time doing so.</p>
+<p>In this case, we can force a task to cancel by repeatedly issuing requests to cancel until the task is indeed done.</p>
+<ul>
+<li><strong>Force a task to cancel by calling cancel() until the task is done.</strong></li>
+</ul>
+<p>We can develop a coroutine that will do this.</p>
+<p>The coroutine will loop until the task is done. Each iteration, will call the <strong>cancel()</strong> method on the task and wait a moment for the task to cancel.</p>
+<p>We will set the wait period at one second, but it could be longer or shorter, depending on the application.</p>
+<p>We will also add a limited number of retries, to ensure the forced cancellation does not go on forever. In this case, if more than 10 attempts to cancel the target task fail, a <strong>RuntimeError</strong> is raised.</p>
+<p>The <strong>force_cancel()</strong> coroutine implements this.</p>
+<pre><code># helper function to force a task to cancel
+async def force_cancel(task, max_tries=10):
+    # keep track of the number of times tried
+    tries = 0
+    # keep trying to cancel the task
+    while not task.done():
+        # check if we tried too many times
+        if tries &gt;= max_tries:
+            raise RuntimeError(f'Failed to cancel task {task} after {max_tries} attempts.')
+        # request the task cancel
+        task.cancel()
+        # update attempt count
+        tries += 1
+        # give the task time to cancel
+        await asyncio.sleep(1)
+</code></pre>
+<p>We can use this as a helper in our programs when we need to force a task to cancel.</p>
+<p>Note that the <strong>force_cancel()</strong> coroutine is only concerned with calling <strong>cancel()</strong> and checking if the task is done. It does not await the target task and therefore does not propagate any <strong>CancelledError</strong> that may be raised by the target task.</p>
+<p>Now that we know how we might force a task to be canceled, let's look at a worked example.</p>
+<h2>Example of Forcing a Task to Cancel</h2>
+<p>We can explore an example of forcing an asyncio task to cancel.</p>
+<p>In this case, we can develop a task that takes a long time. Within the body of the task, it consumes the <strong>asyncio.CancelledError</strong> (which is not a good practice), and then takes more time doing clean-up. We will then use our <strong>force_cancel()</strong> helper developed in the previous section to force this task to cancel.</p>
+<p>For more on the best practices when canceling tasks, see the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-cancellation-best-practices/">Asyncio Task Cancellation Best Practices</a></li>
+</ul>
+<p>Firstly, we can develop our long-running task that also does long-running clean-up when canceled.</p>
+<p>The <strong>work()</strong> coroutine below implements this.</p>
+<pre><code># task that takes a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        # report a message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task as cancelled, cleaning up')
+        # sleep a long time
+        await asyncio.sleep(5)
+</code></pre>
+<p>We can then define our <strong>force_cancel()</strong> helper coroutine, developed in the previous section.</p>
+<pre><code># helper function to force a task to cancel
+async def force_cancel(task, max_tries=10):
+    # keep track of the number of times tried
+    tries = 0
+    # keep trying to cancel the task
+    while not task.done():
+        # check if we tried too many times
+        if tries &gt;= max_tries:
+            raise RuntimeError(f'Failed to cancel task {task} after {max_tries} attempts.')
+        # request the task cancel
+        task.cancel()
+        # update attempt count
+        tries += 1
+        # give the task time to cancel
+        await asyncio.sleep(1)
+</code></pre>
+<p>In the <strong>main()</strong> coroutine, we will first create and issue the <strong>work()</strong> coroutine, and then sleep, allowing it to run.</p>
+<pre><code>...
+# create and schedule the task
+task = asyncio.create_task(work())
+# allow the task to run a moment
+await asyncio.sleep(1)
+</code></pre>
+<p>Next, we will force the work task to be canceled.</p>
+<pre><code>...
+# force the task to cancel
+await force_cancel(task)</code></pre>
+<p>Finally, we can report the details of the work task, to confirm it was canceled.</p>
+<pre><code>...
+# report details of the task
+print(f'Task Cancelling: {task.cancelling()}')
+print(f'Task Cancelled: {task.cancelled()}')
+print(f'Task Done: {task.done()}')</code></pre>
+<p>Tying this together, the <strong>main()</strong> coroutine is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to run a moment
+    await asyncio.sleep(1)
+    # force the task to cancel
+    await force_cancel(task)
+    # report details of the task
+    print(f'Task Cancelling: {task.cancelling()}')
+    print(f'Task Cancelled: {task.cancelled()}')
+    print(f'Task Done: {task.done()}')
+</code></pre>
+<p>Finally, we can start the asyncio event loop.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying all of this together, the complete example of forcing an asyncio task to cancel is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of forcing a task to cancel
+import asyncio
+
+# task that takes a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(5)
+        # report a message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        # report a message
+        print('Task as cancelled, cleaning up')
+        # sleep a long time
+        await asyncio.sleep(5)
+
+# helper function to force a task to cancel
+async def force_cancel(task, max_tries=10):
+    # keep track of the number of times tried
+    tries = 0
+    # keep trying to cancel the task
+    while not task.done():
+        # check if we tried too many times
+        if tries &gt;= max_tries:
+            raise RuntimeError(f'Failed to cancel task {task} after {max_tries} attempts.')
+        # request the task cancel
+        task.cancel()
+        # update attempt count
+        tries += 1
+        # give the task time to cancel
+        await asyncio.sleep(1)
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to run a moment
+    await asyncio.sleep(1)
+    # force the task to cancel
+    await force_cancel(task)
+    # report details of the task
+    print(f'Task Cancelling: {task.cancelling()}')
+    print(f'Task Cancelled: {task.cancelled()}')
+    print(f'Task Done: {task.done()}')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> coroutine, then the <strong>main()</strong> coroutine suspends.</p>
+<p>The <strong>work()</strong> coroutine runs and begins a long sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and then calls the <strong>force_cancel()</strong> coroutine to cancel the <strong>work()</strong> coroutine, and suspends until it is complete.</p>
+<p>The <strong>force_cancel()</strong> coroutine runs and starts the main loop. It checks if the target task is done, which it is not, so continues. It checks if the maximum number of attempts has been reached, which it has not so it continues.</p>
+<p>It then cancels the task, increments the count, and waits a moment.</p>
+<p>The <strong>work()</strong> coroutine resumes and a <strong>CancelledError</strong> is raised. This is handled by the task and it begins its cleanup, reporting a message and suspending again with another long sleep.</p>
+<p>The <strong>force_cancel()</strong> coroutine resumes and performs another iteration of the loop and again calls cancel on the <strong>work()</strong> task and suspends for a moment.</p>
+<p>The <strong>work()</strong> task resumes and another <strong>CancelledError</strong> is raised. This one is not handled by the task, which bubbles up and causes the <strong>work()</strong> task to terminate.</p>
+<p>The <strong>force_cancel()</strong> coroutine resumes and checks if the <strong>work()</strong> task is done, which it now is. The loop exits and the <strong>force_cancel()</strong> coroutine terminates.</p>
+<p>The <strong>main()</strong> coroutine results and reports the details of the <strong>work()</strong> task.</p>
+<p>We can see that the target task received two requests to cancel and is indeed done with a canceled state.</p>
+<p>This highlights how we can aggressively force a task to cancel by repeatedly calling its <strong>cancel()</strong> method in a loop.</p>
+<pre><code>Task as cancelled, cleaning up
+Task Cancelling: 2
+Task Cancelled: True
+Task Done: True</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to force an asyncio task to cancel.</p>
+</main>
+</body>
+</html>

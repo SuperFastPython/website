@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How Does the ThreadPoolExecutor Work in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How Does the ThreadPoolExecutor Work in Python</h1>
+<div class="post-meta">November 14, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>Effective use of the <a href="../threadpoolexecutor-in-python/"><strong>ThreadPoolExecutor</strong> in Python</a> requires some knowledge of how it works internally.</p>
+<p>In this tutorial, you will discover how the <strong>ThreadPoolExecutor</strong> works so you can use it better in your projects.</p>
+<p>Let's get started.</p>
+<h2 id="how-does-threadpoolexecutor-work-internally">How Does ThreadPoolExecutor Work Internally?</h2>
+<p>It is important to pause for a moment and look at how the <code>ThreadPoolExecutor</code> works internally.</p>
+<p>The internal workings of the class impact how we use the thread pool and the behavior we can expect, specifically around cancelling tasks.</p>
+<p>Without this knowledge, some of the behavior of the thread pool may appear confusing from the outside.</p>
+<p>You can see the source code for the <meta/><code>ThreadPoolExecutor</code> and the base class here:</p>
+<ul><li><a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/thread.py">cpython/Lib/concurrent/futures/thread.py</a></li><li><a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/_base.py">cpython/Lib/concurrent/futures/_base.py</a></li></ul>
+<p>There is a lot we could learn about how the thread pool works internally, but we will limit ourselves to the most critical aspects.</p>
+<p>There are two aspects that you need to consider about the internal operation of the <meta/><code>ThreadPoolExecutor</code> class: how tasks are sent into the pool and how worker threads are created.</p>
+<h2 id="tasks-are-added-to-an-internal-queue">Tasks Are Added to an Internal Queue</h2>
+<p>Tasks are sent into the thread pool by adding them to an internal queue.</p>
+<p>Recall that a queue is a data structure where items are added to one end and retrieved from the other in a first-in, first-out (FIFO) manner by default.</p>
+<p>The queue is a <code>SimpleQueue</code> object which is a thread safe queue implementation. This means we can add work to the pool from any thread and the queue of work will not become corrupt from concurrent <code>put()</code> and <code>get()</code> operations.</p>
+<p>You can learn more about Python queues here:</p>
+<ul><li><a href="https://docs.python.org/3/library/queue.html">queue — A synchronized queue class</a></li></ul>
+<p>The use of a task queue explains the distinction between tasks that have been added or scheduled but are not yet running, and that these tasks can be cancelled.</p>
+<p>Recall that the thread pool has a fixed number of worker threads. The number of tasks on the queue may exceed the current number of threads, or the current number of available threads, in which case tasks may sit in a scheduled state for some time, allowing them to be cancelled either directly or en masse when shutting down the pool.</p>
+<p>A task is wrapped in an internal object called a <code>_WorkItem</code>. This captures the details such as the function to call, the arguments, the associated <code>Future</code> object, and handling of exceptions if they occur during task execution.</p>
+<figure><img alt="ThreadPoolExecutor Internals" loading="lazy" src="../pics/ThreadPoolExecutor-Internals2.png"/></figure>
+<p>This explains how an exception within a task does not bring down the entire thread pool, but can be checked for and accessed after the task has completed.</p>
+<p>When a <meta/><code>_WorkItem</code> object is retrieved from the queue by a worker thread, it will check if the task has been cancelled before it is executed. If so, it will return immediately and do not execute the content of the task.</p>
+<p>This explains internally how cancellation is implemented by the thread pool and why we cannot cancel a running task.</p>
+<h2 id="worker-threads-are-created-as-needed">Worker Threads Are Created as Needed</h2>
+<p>Worker threads are not created when the thread pool is created.</p>
+<p>Instead, worker threads are created on-demand or just-in-time.</p>
+<p>Each time a task is added to the internal queue, the thread pool will check if the number of active threads is less than the upper limit of threads supported by the thread pool. If so, an additional thread is created to handle the new work.</p>
+<p>Once a thread has completed a task, it will wait on the queue for new work to arrive. As new work arrives, all threads waiting on the queue will be notified and one will consume the unit of work and start executing it.</p>
+<p>These two points show how the pool will only ever create new threads until the limit is reached and how threads will be reused, waiting for new tasks without consuming computational resources.</p>
+<p>It also shows that the thread pool will not release threads after a fixed number of units of work. Perhaps this would be a nice addition to the API in the future.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how the ThreadPoolExecutor in Python works internally.</p>
+</main>
+</body>
+</html>

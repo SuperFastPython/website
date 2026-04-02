@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Share Object Instance Attributes With Processes in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Share Object Instance Attributes With Processes in Python</h1>
+<div class="post-meta">May 14, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can <strong>share process class attributes</strong> via <strong>multiprocessing.Value</strong> and <strong>multiprocessing.Array</strong> instances.</p>
+<p>In this tutorial you will discover how to <strong>share attributes on the process class between processes</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need Process Class Attributes</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> is a running instance of a computer program.</p>
+<p>Every Python program is executed in a Process, which is a new instance of the Python interpreter. This process has the name <em>MainProcess</em> and has one thread used to execute the program instructions called the <em>MainThread</em>. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create new child processes in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process"><strong>multiprocessing.Process</strong> class</a>.</p>
+<p>You can learn more about multiprocessing in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing in Python: The Complete Guide</a></li>
+</ul>
+<p>In concurrent programming we may need to extend the <strong>multiprocessing.Process</strong> class and add attributes that need to be accessed from multiple processes.</p>
+<p>For example, we may extend the process class and add an attribute that is set by the child process and accessed by the parent process.</p>
+<p>This will cause an error if implemented naively.</p>
+<p><strong>How can we share attributes on the process class among multiple processes?</strong></p>
+<h2>Process Class Attributes Fail</h2>
+<p>Extending the <strong>multiprocessing.Process</strong> and adding attributes that are shared among multiple processes will fail with an error.</p>
+<p>For example, if we define a new class that extends the <strong>multiprocessing.Process</strong> class that sets an attribute on the class instance from the <strong>run() </strong>method executed in a new child process, then this attribute will not be accessible by other processes, such as the parent process.</p>
+<p>This is the case even if both parent and child processes share access to the "<em>same</em>" object.</p>
+<p>This is because class instance variables are not shared among processes by default. Instead, instance variables added to the <strong>multiprocessing.Process</strong> are private to the process that added them.</p>
+<p>Each process operates on a serialized copy of the object and any changes made to that object are local to that process only, by default.</p>
+<p>We can demonstrate this with worked examples.</p>
+<h3>Set Process Class Attribute in run()</h3>
+<p>Instance variable attributes added to a class that extends the <strong>multiprocessing.Process</strong> class will be local to that process only.</p>
+<p>We can demonstrate this with an example.</p>
+<p>In this example, we will define a new class that extends the <strong>multiprocessing.Process</strong>. It overrides the <strong>run()</strong> function that is executed in a child process and defines a new instance variable on the class. The instance variable exists and is accessible in the child process, but is unknown and inaccessible in the parent process.</p>
+<p>First, we can define a new class that extends the <strong>multiprocessing.Process</strong> class.</p>
+<p>We will call this class <strong>CustomProcess</strong>.</p>
+<pre><code># custom process class
+class CustomProcess(Process):
+	# ...
+</code></pre>
+<p>First, we will define a constructor that calls the constructor on the parent class as the first step. We will need to make use of this constructor in later examples.</p>
+<pre><code># override the constructor
+def __init__(self):
+    # execute the base constructor
+    Process.__init__(self)
+</code></pre>
+<p>Next, we can override the <strong>run()</strong> method which will be executed in a child process.</p>
+<p>The task will block for one second with a call to <strong>time.sleep()</strong>, then set an integer value in an instance variable named "<strong>data</strong>", then report that the instance variable has been set.</p>
+<pre><code># override the run function
+def run(self):
+    # block for a moment
+    sleep(1)
+    # store the data variable
+    self.data = 99
+    # report stored value
+    print(f'Child stored: {self.data}')
+</code></pre>
+<p>Tying this together, the complete <strong>CustomProcess</strong> class is defined below.</p>
+<pre><code># custom process class
+class CustomProcess(Process):
+    # override the constructor
+    def __init__(self):
+        # execute the base constructor
+        Process.__init__(self)
+
+    # override the run function
+    def run(self):
+        # block for a moment
+        sleep(1)
+        # store the data variable
+        self.data = 99
+        # report stored value
+        print(f'Child stored: {self.data}')
+</code></pre>
+<p>In the main parent process, we will first create an instance of this new class, then start the child process.</p>
+<p>This will execute the <strong>run() </strong>function in a new child process.</p>
+<pre><code>...
+# create the process
+process = CustomProcess()
+# start the process
+process.start()</code></pre>
+<p>The parent process will then block until the child process is finished, then report the value of the "<strong>data</strong>" instance variable set by the child process in the <strong>run()</strong> method.</p>
+<pre><code>...
+# wait for the process to finish
+print('Waiting for the child process to finish')
+# block until child process is terminated
+process.join()
+# report the process attribute
+print(f'Parent got: {process.data}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of extending the Process class and adding shared attributes
+from time import sleep
+from multiprocessing import Process
+
+# custom process class
+class CustomProcess(Process):
+    # override the constructor
+    def __init__(self):
+        # execute the base constructor
+        Process.__init__(self)
+
+    # override the run function
+    def run(self):
+        # block for a moment
+        sleep(1)
+        # store the data variable
+        self.data = 99
+        # report stored value
+        print(f'Child stored: {self.data}')
+
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = CustomProcess()
+    # start the process
+    process.start()
+    # wait for the process to finish
+    print('Waiting for the child process to finish')
+    # block until child process is terminated
+    process.join()
+    # report the process attribute
+    print(f'Parent got: {process.data}')
+</code></pre>
+<p>Running the example first creates an instance of the custom class, then starts the child process.</p>
+<p>The parent process then blocks until the child process terminates.</p>
+<p>The child process executes the <strong>run()</strong> method, blocks, sets an integer value in the instance variable, reports the stored value then exits.</p>
+<p>The parent process continues on, then attempts to report the value of the instance variable set by the child process.</p>
+<p>This fails with an error that no such instance variable attribute exists.</p>
+<p>This was expected.</p>
+<pre><code>Waiting for the child process to finish
+Child stored: 99
+Traceback (most recent call last):
+  ...
+AttributeError: 'CustomProcess' object has no attribute 'data'
+</code></pre>
+<p>This error occurred because the child process operates on a copy of the <strong>CustomProcess</strong> instance that is different from the copy of the <strong>CustomProcess</strong> instance used in the parent process.</p>
+<p>When the child process adds an attribute to the class instance, it only exists in the child process and not the parent process.</p>
+<p>What if we initialize the attribute in the class constructor?</p>
+<p>We will explore this case in the next example.</p>
+<h3>Initialize Process Class Attribute in __init__()</h3>
+<p>In the previous example, we saw that we cannot set an instance variable attribute on a class instance from a child process and access it from the parent process.</p>
+<p>We might consider the case of first initializing the attribute in the class constructor.</p>
+<p>This will mean that the attribute will be accessible by both parent and child processes. If the child process sets a value of the attribute, will the parent process see the value?</p>
+<p>We can explore this by updating the example in the previous section to first define the attribute in the class constructor.</p>
+<p>The attribute can be initialized to the value of <strong>None</strong>.</p>
+<pre><code># override the constructor
+def __init__(self):
+    # execute the base constructor
+    Process.__init__(self)
+    # initialize attribute
+    self.data = None
+</code></pre>
+<p>Tying this together, the updated <strong>CustomProcess</strong> class is listed below.</p>
+<pre><code># custom process class
+class CustomProcess(Process):
+    # override the constructor
+    def __init__(self):
+        # execute the base constructor
+        Process.__init__(self)
+        # initialize attribute
+        self.data = None
+
+    # override the run function
+    def run(self):
+        # block for a moment
+        sleep(1)
+        # store the data variable
+        self.data = 99
+        # report stored value
+        print(f'Child stored: {self.data}')
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of extending the Process class and adding shared attributes
+from time import sleep
+from multiprocessing import Process
+
+# custom process class
+class CustomProcess(Process):
+    # override the constructor
+    def __init__(self):
+        # execute the base constructor
+        Process.__init__(self)
+        # initialize attribute
+        self.data = None
+
+    # override the run function
+    def run(self):
+        # block for a moment
+        sleep(1)
+        # store the data variable
+        self.data = 99
+        # report stored value
+        print(f'Child stored: {self.data}')
+
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = CustomProcess()
+    # start the process
+    process.start()
+    # wait for the process to finish
+    print('Waiting for the child process to finish')
+    # block until child process is terminated
+    process.join()
+    # report the process attribute
+    print(f'Parent got: {process.data}')
+</code></pre>
+<p>Running the example first creates an instance of the custom class, then starts a child process that executes the <strong>run()</strong> method.</p>
+<p>When an instance of the class is created, the attribute is initialized.</p>
+<p>As before, the parent process blocks until the child process terminates.</p>
+<p>The child process sets a value in the instance variable and terminates.</p>
+<p>The parent process unblocks then reports the value of the instance variable.</p>
+<p>In this case, the child process reports the correct value it stored then the parent value reports a value of <strong>None</strong> in the instance variable.</p>
+<p>This too is expected.</p>
+<pre><code>Waiting for the child process to finish
+Child stored: 99
+Parent got: None
+</code></pre>
+<p>The parent process can access the attribute. This is because it was defined in the class constructor which was executed in the parent process. Then the child process was started which executes a copy of the class instance and sets a value to the attribute which is only accessible within the child process.</p>
+<p>The parent process reports the attribute value which is still None because the change made by the child process was not shared with the parent process.</p>
+<p>Next, let's look at how we can share attributes between child and parent processes.</p>
+<h2>How to Share Process Class Attributes</h2>
+<p>Instance variable attributes can be shared between processes via the <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Value">multiprocessing.Value</a></strong> and <strong>multiprocessing.Array</strong> classes.</p>
+<p>These classes explicitly define data attributes designed to be shared between processes in a thread-safe manner.</p>
+<p>A thread-safe manner means that only one process can read or access the variable at a time.</p>
+<p>Shared variables mean that changes made in one process are always propagated and made available to other processes.</p>
+<p>We will focus on the <strong>multiprocessing.Value</strong> class in this case. In fact, from <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/context.py#L131">reviewing the source code</a>, the <strong>multiprocessing.Value</strong> is just a wrapper around the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.sharedctypes.Value"><strong>multiprocessing.sharedctypes.Value</strong> class</a>.</p>
+<p>An instance of the <strong>multiprocessing.Value</strong> can be defined in the constructor of a custom class as a shared instance variable.</p>
+<p>The constructor of the <strong>multiprocessing.Value</strong> class requires that we specify the data type and an initial value.</p>
+<p>The data type can be specified using ctype "<strong>type</strong>" or a typecode.</p>
+<p>You can learn more about ctypes here:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/ctypes.html">ctypes — A foreign function library for Python</a></li>
+</ul>
+<p>Typecodes are familiar and easy to use, for example 'i' for a signed integer or 'f' for a single floating-point value.</p>
+<p>You can see a handy table of type codes here:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/array.html">array — Efficient arrays of numeric values</a></li>
+</ul>
+<p>For example, we can define a <strong>multiprocessing.Value</strong> shared memory variable that holds a signed integer and is initialized to the value zero.</p>
+<pre><code>...
+# initialize an integer shared variable
+data = multiprocessing.Value('i', 0)</code></pre>
+<p>This can be initialized in the constructor of the class that extends the <strong>multiprocessing.Process</strong> class.</p>
+<p>We can change the value of the shared data variable via the "<strong>value</strong>" attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# change the value of the shared variable
+data.value = 100</code></pre>
+<p>We can access the value of the shared data variable via the same "<strong>value</strong>" attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# access the shared variable
+value = data.value</code></pre>
+<p>The propagation of changes to the shared variable and mutual exclusion locking of the shared variable is all performed automatically behind the scenes.</p>
+<p>You can learn more about shared ctypes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>Now that we know how to define an instance variable that will be correctly shared between processes, let's look at a worked example.</p>
+<h2>Example of Sharing Process Class Attributes</h2>
+<p>We can define an instance attribute as an instance of the <strong>multiprocessing.Value</strong> which will automatically and correctly be shared between processes.</p>
+<p>We can update the above example to use a <strong>multiprocessing.Value</strong> directly.</p>
+<p>Firstly, we must update the constructor of the <strong>CustomProcess</strong> class to initialize the <strong>multiprocessing.Value</strong> instance. We will define it to be an integer with an initial value of zero.</p>
+<pre><code>...
+# initialize integer attribute
+self.data = Value('i', 0)</code></pre>
+<p>The updated constructor with this change is listed below.</p>
+<pre><code># override the constructor
+def __init__(self):
+    # execute the base constructor
+    Process.__init__(self)
+    # initialize integer attribute
+    self.data = Value('i', 0)
+</code></pre>
+<p>We can then update the <strong>run()</strong> method to change the "<strong>value</strong>" attribute on the "<strong>data</strong>" instance variable and then to report this value via a print statement.</p>
+<pre><code>...
+# store the data variable
+self.data.value = 99
+# report stored value
+print(f'Child stored: {self.data.value}')
+</code></pre>
+<p>The updated <strong>run()</strong> function with this change is listed below.</p>
+<pre><code># override the run function
+def run(self):
+    # block for a moment
+    sleep(1)
+    # store the data variable
+    self.data.value = 99
+    # report stored value
+    print(f'Child stored: {self.data.value}')
+</code></pre>
+<p>Tying this together, the updated <strong>CustomProcess</strong> class is listed below.</p>
+<pre><code># custom process class
+class CustomProcess(Process):
+    # override the constructor
+    def __init__(self):
+        # execute the base constructor
+        Process.__init__(self)
+        # initialize integer attribute
+        self.data = Value('i', 0)
+
+    # override the run function
+    def run(self):
+        # block for a moment
+        sleep(1)
+        # store the data variable
+        self.data.value = 99
+        # report stored value
+        print(f'Child stored: {self.data.value}')
+</code></pre>
+<p>Finally, in the parent process, we can update the print statement to correctly access the value of the shared instance variable attribute.</p>
+<pre><code>...
+# report the process attribute
+print(f'Parent got: {process.data.value}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of extending the Process class and adding shared attributes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Value
+
+# custom process class
+class CustomProcess(Process):
+    # override the constructor
+    def __init__(self):
+        # execute the base constructor
+        Process.__init__(self)
+        # initialize integer attribute
+        self.data = Value('i', 0)
+
+    # override the run function
+    def run(self):
+        # block for a moment
+        sleep(1)
+        # store the data variable
+        self.data.value = 99
+        # report stored value
+        print(f'Child stored: {self.data.value}')
+
+# entry point
+if __name__ == '__main__':
+    # create the process
+    process = CustomProcess()
+    # start the process
+    process.start()
+    # wait for the process to finish
+    print('Waiting for the child process to finish')
+    # block until child process is terminated
+    process.join()
+    # report the process attribute
+    print(f'Parent got: {process.data.value}')
+</code></pre>
+<p>Running the example first creates an instance of the custom class then starts the child process.</p>
+<p>The constructor initializes the instance variable to be a <strong>multiprocessing.Value</strong> instance with an initial value of zero.</p>
+<p>The parent process blocks until the child process terminates.</p>
+<p>The child process blocks, then changes the value of the instance variable and reports the change. The change to the instance variable is propagated back to the parent process.</p>
+<p>The child process terminates and the parent process continues on. It reports the value of the instance variable which correctly reflects the change made by the child process.</p>
+<p>This demonstrates how to share instance variable attributes among parents via the <strong>multiprocessing.Value</strong> class.</p>
+<pre><code>Waiting for the child process to finish
+Child stored: 99
+Parent got: 99
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share process class attributes in Python.</p>
+</main>
+</body>
+</html>

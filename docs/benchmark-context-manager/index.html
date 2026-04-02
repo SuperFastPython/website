@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmark Context Manager in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Benchmark Context Manager in Python</h1>
+<div class="post-meta">September 7, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Benchmarking</a></div>
+
+<p>You can develop a custom <strong>context manager</strong> to <strong>automatically benchmark</strong> code in Python.</p>
+<p>In this tutorial, you will discover how to benchmark Python code using a context manager.</p>
+<p>Let's get started.</p>
+<h2>Benchmark Python Code With time.perf_counter()</h2>
+<p>We can benchmark Python code using the <a href="https://docs.python.org/3/library/time.html"><strong>time</strong> module</a>.</p>
+<p>The <a href="https://docs.python.org/3/library/time.html#time.perf_counter"><strong>time.perf_counter()</strong> function</a> will return a value from a high-performance counter.</p>
+<blockquote>
+<p>Return the value (in fractional seconds) of a performance counter, i.e. a clock with the highest available resolution to measure a short duration.</p>
+<cite>-- <a href="https://docs.python.org/3/library/time.html">time — Time access and conversions</a></cite></blockquote>
+<p>The difference between the two calls to the <strong>time.perf_counter()</strong> function can provide a high-precision estimate of the execution time of a block of code.</p>
+<p>Unlike the <strong>time.time()</strong> function, the <strong>time.perf_counter()</strong> function is not subject to updates, such as daylight saving and synchronizing the system clock with a time server. This makes the <strong>time.perf_counter() function is </strong>a reliable approach to benchmarking Python code.</p>
+<p>We can call the <strong>time.perf_counter()</strong> function at the beginning of the code we wish to benchmark, and again at the end of the code we wish to benchmark.</p>
+<p>For example:</p>
+<pre><code>...
+# record start time
+time_start = time.perf_counter()
+# call benchmark code
+task()
+# record end time
+time_end = time.perf_counter()</code></pre>
+<p>The difference between the start and end time is the total duration of the program in seconds.</p>
+<p>For example:</p>
+<pre><code>...
+# calculate the duration
+time_duration = time_end - time_start
+# report the duration
+print(f'Took {time_duration:.3f} seconds')</code></pre>
+<p>You can learn more about benchmarking Python code with the <strong>time.perf_counter()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../benchmark-time-perf-counter/">Benchmark Python with time.perf_counter()</a></li>
+</ul>
+<p><strong>How can we hide all of this code so that we can benchmark with a simple interface?</strong></p>
+<p>Can we develop a benchmark context manager?</p>
+<h2>How to Benchmark Code Using a Context Manager</h2>
+<p>We can hide manual benchmarking of Python code in a context manager.</p>
+<blockquote>
+<p>A context manager is an object that defines the runtime context to be established when executing a with statement. The context manager handles the entry into, and the exit from, the desired runtime context for the execution of the block of code.</p>
+<cite>-- <a href="https://docs.python.org/3/reference/datamodel.html#with-statement-context-managers">With Statement Context Managers</a></cite></blockquote>
+<p>Recall that a context manager is a Python object that has <strong>__enter__()</strong> and <strong>__exit__()</strong> methods and is used via the with expression.</p>
+<p>You can learn more about context managers here:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/stdtypes.html#context-manager-types">Context Manager Types - Python API Documenation</a></li>
+</ul>
+<p>Examples include opening a file via the <strong>open()</strong> built-in function and using a <strong>ThreadPoolExecutor</strong>.</p>
+<p>For example:</p>
+<pre><code># create thread pool
+with ThreadPoolExecutor() as tpe:
+	# ...
+</code></pre>
+<p>We can define a new class that implements a constructor <strong>__init__()</strong> the <strong>__enter__()</strong> and <strong>__exit__()</strong> methods.</p>
+<p>The <strong>__init__()</strong> constructor can take a name argument for the benchmark case and store it in an object attribute.</p>
+<p>For example:</p>
+<pre><code># constructor
+def __init__(self, name):
+    # store the name of this benchmark
+    self.name = name
+</code></pre>
+<p>The <strong>__enter__()</strong> method can initialize the start time and store it in object attributes. It can then return an instance of the context manager itself, as a good practice.</p>
+<p>For example:</p>
+<pre><code>...
+# enter the context manager
+def __enter__(self):
+    # record the start time
+    self.time_start = perf_counter()
+    # return this object
+    return self
+</code></pre>
+<p>The <strong>__exit__()</strong> method must take some standard arguments about any exception that occurred while running the context code. It can then record the end time, calculate and store the duration and report the calculated duration along with the name of the benchmark case.</p>
+<pre><code>...
+# exit the context manager
+def __exit__(self, exc_type, exc_value, traceback):
+    # record the end time
+    self.time_end = perf_counter()
+    # calculate the duration
+    self.duration = self.time_end - self.time_start
+    # report the duration
+    print(f'{self.name} took {self.duration:.3f} seconds')
+    # do not suppress any exception
+    return False
+</code></pre>
+<p>Tying this together, we can define a Benchmark context manager below.</p>
+<pre><code># define the benchmark context manager
+class Benchmark(object):
+    # constructor
+    def __init__(self, name):
+        # store the name of this benchmark
+        self.name = name
+
+    # enter the context manager
+    def __enter__(self):
+        # record the start time
+        self.time_start = perf_counter()
+        # return this object
+        return self
+
+    # exit the context manager
+    def __exit__(self, exc_type, exc_value, traceback):
+        # record the end time
+        self.time_end = perf_counter()
+        # calculate the duration
+        self.duration = self.time_end - self.time_start
+        # report the duration
+        print(f'{self.name} took {self.duration:.3f} seconds')
+        # do not suppress any exception
+        return False
+</code></pre>
+<p>We can then use it by creating an instance of the Benchmark class within the "<strong>with</strong>" expression and then list any code within the context we wish to benchmark.</p>
+<p>For example:</p>
+<pre><code>...
+# create the benchmark context
+with Benchmark('Task'):
+    # run the task
+    ...
+</code></pre>
+<p>The code within the context will run as per normal, and once finished, the total execution time will be reported automatically.</p>
+<p>This is a clever idea, but I am not the first to think of it. The first time I came across the idea was in a post by <a href="https://www.dabeaz.com/">Dave Beazley</a>. All credit to him:</p>
+<ul>
+<li><a href="http://dabeaz.blogspot.com/2010/02/context-manager-for-timing-benchmarks.html">A Context Manager for Timing Benchmarks</a>, Dave Beazley, 2010.</li>
+</ul>
+<p>Now that we know how to develop and use a benchmark context manager, let's look at some examples.</p>
+<h2>Example of Benchmarking a Function Using a Context Manager</h2>
+<p>We can explore how to use our Benchmark context manager to benchmark the execution time of a custom function.</p>
+<p>In this example, we will define a custom function that takes a moment to complete.</p>
+<p>The function creates a list of 100 million squared integers in a list comprehension.</p>
+<p>For example:</p>
+</main>
+</body>
+</html>

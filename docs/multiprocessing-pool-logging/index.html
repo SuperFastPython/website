@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool Logging From Worker Processes – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool Logging From Worker Processes</h1>
+<div class="post-meta">August 14, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>log from worker processes</strong> in the <strong><a href="../multiprocessing-pool-python/">multiprocessing pool</a></strong> using a shared <strong>multiprocessing.Queue</strong> and a <strong>logging.handlers.QueueHandler</strong>.</p>
+<p>In this tutorial you will discover <strong>how to log from worker processes</strong> in the <strong>multiprocessing pool in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Log from Worker Processes</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A multiprocessing pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the multiprocessing pool, we may want to log directly from tasks.</p>
+<p>This may be a problem as the tasks are executed by child worker processes, and logging to a central location from multiple processes is challenging.</p>
+<p><strong>How can we log safely from child worker processes in the multiprocessing pool?</strong></p>
+<h2>How to Log from Worker Processes</h2>
+<p>Logging is a way of tracking events within a program.</p>
+<p>There are many types of events that may be logged within a program, ranging in different levels of severity, such as debugging and information to warnings, errors and critical events.</p>
+<p>The <a href="https://docs.python.org/3/library/logging.html"><strong>logging</strong> module</a> provides infrastructure for logging within Python programs.</p>
+<p>Effective logging from multiple processes requires custom code.</p>
+<p>A few approaches are described, including:</p>
+<ul><li>Use a socket handler and send messages to a logging process.</li><li>Use a custom handler that internally uses a shared mutex to ensure one process logs at a time.</li><li>Use a queue handler that uses a shared queue to send messages to a logging process.</li></ul>
+<p>All approaches are similar in that they require that log messages are serialized before being stored.</p>
+<p>This can be achieved by serializing messages on a shared <strong><a href="https://docs.python.org/3.10/library/multiprocessing.html#multiprocessing.Queue">multiprocessing.Queue</a></strong> via a <strong><a href="https://docs.python.org/3/library/logging.handlers.html#logging.handlers.QueueHandler">logging.handlers.QueueHandler</a></strong> and letting one process read messages one at a time and store them to stream or file.</p>
+<p>A <strong>multiprocessing.Queue</strong> can be passed to a child process, such as a new <strong>multiprocessing.Process</strong> instance. You can see an example of this in the tutorial:</p>
+<ul><li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li></ul>
+<p>However, a <strong>multiprocessing.Queue</strong> cannot be passed directly to child worker processes in the <strong>Pool</strong> as an argument to a task function.</p>
+<p>Attempting to do so will result in an error, such as:</p>
+<pre><code>RuntimeError: Queue objects should only be shared between processes through inheritance</code></pre>
+<p>Instead, it must be created using a <strong>multiprocessing.Manager</strong>. This will create a centralized version of the <strong>Queue</strong> in a server process and return a proxy object to interact with the centralized queue that is safe to pass around.</p>
+<p>For example:</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # create the shared queue and get the proxy object
+    queue = manager.Queue()
+    # ...
+</code></pre>
+<p>A <strong>QueueHandler</strong> log handler can then be created and added to the logging infrastructure by each process using the shared queue.</p>
+<p>For example:</p>
+<pre><code>...
+# create a logger
+logger = logging.getLogger('app')
+# add a handler that uses the shared queue
+logger.addHandler(QueueHandler(queue))</code></pre>
+<p>This can be performed by the task functions executed by child worker processes in the multiprocessing pool.</p>
+<p>Another process can then read from the shared queue and report messages either directly or by using the logging infrastructure.</p>
+<p>For example:</p>
+<pre><code>...
+# consume a log message, block until one arrives
+message = queue.get()
+# report the message
+print(message)</code></pre>
+<p>You can learn more about how to log safely from multiple processes in the tutorial:</p>
+<ul><li><a href="../multiprocessing-logging-in-python/">Multiprocessing Logging in Python</a></li></ul>
+<p>Next, let's explore an example of how to log from child worker processes in the multiprocessing pool.</p>
+<h2>Example of Logging from Worker Processes</h2>
+<p>We can explore how to log from worker processes in the multiprocessing pool in a process-safe manner.</p>
+<p>In this example we will create a number of child processes to execute a custom function. Each task will log messages and the messages will be sent to a separate logging process and logged in a serial (one-at-a-time) manner.</p>
+<p>This can be achieved by configuring the logging infrastructure in each process to use a <strong>logging.handlers.QueueHandler</strong> that will send log messages to a shared <strong>multiprocessing.Queue</strong>.</p>
+<p>A new child process will then consume messages from the queue one-at-a-time and store or report them, in this case on stderr using a <strong>logging.StreamHandler</strong>, but it could just as easily be a file.</p>
+<p>Importantly, in this example, messages cannot be lost or corrupted as only a single process is responsible for handling the log messages, and log messages are sent to this one process safely and reliably using a process-aware queue data structure.</p>
+<h3>Define Centralized Logger Function</h3>
+<p>Firstly, we need to define a function to run in a child process responsible for logging.</p>
+<p>This function will take a shared <strong>multiprocessing.Queue</strong> as an argument.</p>
+<pre><code># executed in a process that performs logging
+def logger_process(queue):
+	# ...
+</code></pre>
+<p>We need to configure the logging infrastructure in this process to specify what level of messages to report and where to store them. In this case, we will get a named log for our application called "<strong>app</strong>", and send all messages debug level and up to stderr using a <strong>StreamHandler</strong>.</p>
+<pre><code>...
+# create a logger
+logger = logging.getLogger('app')
+# configure a stream handler
+logger.addHandler(logging.StreamHandler())
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)
+# report that the logger process is running
+logger.info(f'Logger process running.')</code></pre>
+<p>This child process will then run forever, reading messages from the queue and logging them. If there are no messages on the queue, it will block until a message arrives.</p>
+<pre><code>...
+# run forever
+while True:
+    # consume a log message, block until one arrives
+    message = queue.get()
+</code></pre>
+<p>If you are new to multiprocessing queues, you can learn more in the tutorial:</p>
+<ul><li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li></ul>
+<p>If the message is a special message None, then the look is broken and the process will terminate normally. This is called a sentinel message and must be sent by the main process before the program exits.</p>
+<pre><code>...
+# check for shutdown
+if message is None:
+    logger.info(f'Logger process shutting down.')
+    break
+</code></pre>
+<p>Otherwise, if it is a normal log message, we can let our logging infrastructure for this process handle it, e.g. log it to stderr.</p>
+<pre><code>...
+# log the message
+logger.handle(message)</code></pre>
+<p>Tying this together, the complete function for running a child process responsible for logging is listed below.</p>
+<pre><code># executed in a process that performs logging
+def logger_process(queue):
+    # create a logger
+    logger = logging.getLogger('app')
+    # configure a stream handler
+    logger.addHandler(logging.StreamHandler())
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # report that the logger process is running
+    logger.info(f'Logger process running.')
+    # run forever
+    while True:
+        # consume a log message, block until one arrives
+        message = queue.get()
+        # check for shutdown
+        if message is None:
+            logger.info(f'Logger process shutting down.')
+            break
+        # log the message
+        logger.handle(message)
+</code></pre>
+<h3>Define Custom Task Function</h3>
+<p>Next, we can define a custom function to execute in the process pool.</p>
+<p>The function takes the shared queue as an argument.</p>
+<pre><code># task to be executed in child processes
+def task(queue):
+	# ...
+</code></pre>
+<p>We can then configure a new logger instance to use a <strong>QueueHandler</strong> that makes use of the shared queue.</p>
+<pre><code>...
+# create a logger
+logger = logging.getLogger('app')
+# add a handler that uses the shared queue
+logger.addHandler(QueueHandler(queue))
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>We can then get the current process so that we can include the process name in the messages.</p>
+<pre><code>...
+# get the current process
+process = current_process()</code></pre>
+<p>The child process can then log a message, loop a few times and report a message each iteration and block for a random fraction of a second, then log a message before exiting.</p>
+<pre><code>...
+# report initial message
+logging.info(f'Child {process.name} starting.')
+# simulate doing work
+for i in range(5):
+    # report a message
+    logging.debug(f'Child {process.name} step {i}.')
+    # block
+    # sleep(random())
+# report final message
+logging.info(f'Child {process.name} done.')
+</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function is listed below.</p>
+<pre><code># task to be executed in child processes
+def task(queue):
+    # create a logger
+    logger = logging.getLogger('app')
+    # add a handler that uses the shared queue
+    logger.addHandler(QueueHandler(queue))
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # get the current process
+    process = current_process()
+    # report initial message
+    logger.info(f'Child {process.name} starting.')
+    # simulate doing work
+    for i in range(5):
+        # report a message
+        logger.debug(f'Child {process.name} step {i}.')
+        # block
+        sleep(random())
+    # report final message
+    logger.info(f'Child {process.name} done.')
+</code></pre>
+<h3>Create Shared Queue</h3>
+<p>Next, in the main process, we can create the shared queue.</p>
+<p>Importantly, we cannot just create a <strong>multiprocessing.Queue</strong> and share it with tasks in the multiprocessing pool.</p>
+<p>This will result in a <strong>RuntimeError</strong>:</p>
+<pre><code>RuntimeError: Queue objects should only be shared between processes through inheritance</code></pre>
+<p>Instead, we must create a <strong>multiprocessing.Manager</strong> and use the manager to create a Queue.</p>
+<p>The manager is a server process that will manage a centralized version of shared objects. It returns proxy objects that we can share among processes and use safely to interact with the centralized object.</p>
+<p>We can create a manager using the context manager interface to ensure it is closed once we are finished with it.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>Next, we can use the manager to create the shared queue.</p>
+<pre><code>...
+# create the shared queue and get the proxy object
+queue = manager.Queue()</code></pre>
+<p>We want to log from the main process in order to report progress.</p>
+<p>The main process can then configure its logging infrastructure to use the <strong>QueueHandler</strong> so that messages are sent to the logging child process.</p>
+<pre><code>...
+# create the shared queue
+queue = Queue()
+# create a logger
+logger = logging.getLogger('app')
+# add a handler that uses the shared queue
+logger.addHandler(QueueHandler(queue))
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<h3>Create Multiprocessing Pool</h3>
+<p>Finally, we can create the multiprocessing pool and execute our logging process task and custom task functions.</p>
+<p>First, we can create an instance of the multiprocessing pool using the context manager interface to ensure that the pool is closed once we are finished with it.</p>
+<pre><code>...
+# create the process pool with default configuration
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>You can learn more about the context manager interface for the pool in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Multiprocessing Pool Context Manager</a></li></ul>
+<p>Next, we can issue the long running task that receives and reports log messages.</p>
+<p>In this case, we will issue this task asynchronously using the <strong>apply_async()</strong> function and pass in the shared queue.</p>
+<pre><code>...
+# issue a long running task to receive logging messages
+_ = pool.apply_async(logger_process, args=(queue,))
+# report initial message
+logger.info('Main process started.')</code></pre>
+<p>You can learn more about how to use the <strong>apply_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-apply_async/">Multiprocessing Pool.apply_async() in Python</a></li></ul>
+<p>Next, we can execute our tasks in the multiprocessing pool by calling our custom <strong>task()</strong> function multiple times and pass in the share queue for logging.</p>
+<p>We will use the <strong>apply_async()</strong> function and gather the <strong>AsyncResult</strong> objects returned from each call as we will need them in a moment.</p>
+<p>This can be achieved in a list comprehension.</p>
+</main>
+</body>
+</html>

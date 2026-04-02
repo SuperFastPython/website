@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor Thread That Runs Done Callback Functions – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor Thread That Runs Done Callback Functions</h1>
+<div class="post-meta">August 8, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>The worker thread that executes the task is typically the same thread that executes the done callback function for the task.</p>
+<p>In this tutorial, you will discover which thread runs the done callback functions in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Let's get started.</p>
+<h2>What Thread Runs Done Callback Functions</h2>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of reusable worker threads using the executor design pattern.</p>
+<p>Tasks executed in new threads are executed concurrently in Python, making the <strong>ThreadPoolExecutor</strong> appropriate for I/O-bound tasks.</p>
+<p>A <strong>ThreadPoolExecutor</strong> can be created directly or via the context manager interface and tasks can be issued one-by-one via the <strong>submit()</strong> method or in batch via the <strong>map()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# issue a task
+	future = tpe.submit(task)
+	# the task result once the task is done
+	result = future.result()
+</code></pre>
+<p>You can learn more about the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor in Python: The Complete Guide</a></li>
+</ul>
+<p>Done callback functions can be added to a <strong>Future</strong> object for a task issued to the <strong>ThreadPoolExecutor</strong>. This can be achieved by calling the <strong>add_done_callback()</strong> method on the <strong>Future</strong> object and specifying the name of a function to call when the task is completed.</p>
+<p>For example:</p>
+<pre><code>...
+# add a callback to a task
+future.add_done_callback(my_callback)</code></pre>
+<p>You can learn more about adding done callbacks to tasks in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-add-callback/">How to Add a Callbacks to the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>One question we might consider is what thread runs done callback functions.</p>
+<p>This is important to know if we need to access a resource shared between threads from within the callback function. It will determine if any locks may be needed.</p>
+<p>For example, is the done callback function executed in the main thread that manages the <strong>ThreadPoolExecutor</strong>?</p>
+<p>Alternately, is the done callback function executed by the worker thread that executes the task itself, or perhaps another worker thread or helper thread within the <strong>ThreadPoolExecutor</strong>?</p>
+<p><strong>What thread executes the done callback function?</strong></p>
+<h2>Thread That Runs The Done Callback Functions</h2>
+<p>The <a href="https://docs.python.org/3/library/concurrent.futures.html"><strong>concurrent.futures</strong> API</a> does not specify which thread executes the done callback function.</p>
+<p>This means that the answer to which thread executes the done callback function must be determined empirically. It also means that the answer may change in the future if the internals of the <strong>ThreadPoolExecutor</strong> class change.</p>
+<p>After some investigation of the code and testing, it has been determined that the worker thread that executes the task also executes all done callback functions for the task.</p>
+<ul>
+<li><strong>The worker thread that runs the task runs the done callback function.</strong></li>
+</ul>
+<p>This appears to be true in most situations.</p>
+<p>The only case where this does not hold is when the task is done and the done callback function is added. In this case, the calling thread will execute the callback function immediately.</p>
+<p>Now that we know which thread executes the done callback functions, let's look at a worked example.</p>
+<h2>Example of Reporting the Thread That Runs the Done Callback Function</h2>
+<p>We can explore an example to discover which thread runs done callback functions for tasks executed in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>In this example, we will define a task that blocks for a moment and then reports the details of the thread that is executing it. We will add a done callback function to the task that reports the details of the thread that is executing it. We expect that the same thread that executes the task will also execute the done callback function.</p>
+<p>Firstly, we can define a task that sleeps and then reports the details of the worker thread that is executing it.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># target function run in the thread pool
+def task():
+    # block for a moment
+    sleep(1)
+    # retrieve access to the worker thread
+    thread = current_thread()
+    # report the details of the worker thread
+    print(f'Task: {thread}')
+</code></pre>
+<p>Next, we can define a callback function that reports the details of the thread that is executing it.</p>
+<p>The callback <strong>function()</strong> below implements this.</p>
+<pre><code># custom done callback function
+def callback(future):
+    # retrieve access to the current thread
+    thread = current_thread()
+    # report the details of the worker thread
+    print(f'Callback: {thread}')
+</code></pre>
+<p>Next, we can create the <strong>ThreadPoolExecutor</strong> with the default number of worker threads, issue the <strong>task()</strong> function to the thread pool for execution, and add the done callback function to the <strong>Future</strong> object for the task.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# issue the task to the thread pool
+	future = tpe.submit(task)
+	# add the done callback function
+	future.add_done_callback(callback)
+# shutdown and wait for the task to complete
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# report the thread that runs the done callback function
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+from threading import current_thread
+
+# target function run in the thread pool
+def task():
+    # block for a moment
+    sleep(1)
+    # retrieve access to the worker thread
+    thread = current_thread()
+    # report the details of the worker thread
+    print(f'Task: {thread}')
+
+# custom done callback function
+def callback(future):
+    # retrieve access to the current thread
+    thread = current_thread()
+    # report the details of the worker thread
+    print(f'Callback: {thread}')
+
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# issue the task to the thread pool
+	future = tpe.submit(task)
+	# add the done callback function
+	future.add_done_callback(callback)
+# shutdown and wait for the task to complete
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPoolExecutor</strong> using the context manager interface.</p>
+<p>Next, the task is issued to the thread pool and a <strong>Future</strong> object is returned. The main thread then adds the done callback to the Future and blocks, waiting for the thread pool to shut down.</p>
+<p>The task executes and reports the details of the thread that executes it.</p>
+<p>The task completes and the done callback is executed. It too reports the details of the thread that executes it.</p>
+<p>In this case, we can see that both the task and the done callback function are both executed by the same worker thread in the <strong>ThreadPoolExecutor</strong>.</p>
+<pre><code>Task: &lt;Thread(ThreadPoolExecutor-0_0, started 123145400930304)&gt;
+Callback: &lt;Thread(ThreadPoolExecutor-0_0, started 123145400930304)&gt;
+</code></pre>
+<h2>Example of Many Tasks With a Done Callback Function</h2>
+<p>We can update the above example so that the <strong>ThreadPoolExecutor</strong> executes many tasks concurrently, all of which have a registered done callback function.</p>
+<p>If we limit the number of workers in the <strong>ThreadPoolExecutor</strong> and have many more tasks than workers, it will cause tasks to be queued and may expose whether the <strong>ThreadPoolExecutor</strong> will always use the same worker thread for the task and done callback, or the next available worker thread.</p>
+<p>We can achieve this by updating the above example.</p>
+<p>Firstly, we can change the task function so that it returns the name of the worker thread that is executing it.</p>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># target function run in the thread pool
+def task():
+    # block for a moment
+    sleep(1)
+    # retrieve access to the worker thread
+    thread = current_thread()
+    # return the worker thread name
+    return thread.name
+</code></pre>
+<p>Next, we can change the <strong>callback()</strong> function so that it retrieves the name of the thread that executed the task and compares it to the name of the thread that is executing it, then reports both details.</p>
+<p>This will highlight whether a worker thread other than the worker thread that executes the task ever executes the done callback function.</p>
+<p>The updated <strong>callback()</strong> function is listed below.</p>
+<pre><code># custom done callback function
+def callback(future):
+    # get the task worker thread name
+    name = future.result()
+    # retrieve access to the current thread
+    thread = current_thread()
+    # check if different
+    diff = name != thread.name
+    # report the details of the worker thread
+    print(f'task: {name}, callback {thread.name}, different: {diff}')
+</code></pre>
+<p>Finally, we will update the main thread so that a <strong>ThreadPoolExecutor</strong> with 4 workers is created, then 16 tasks are issued to the pool, ensuring tasks are queued and that the <strong>ThreadPoolExecutor</strong> is under pressure to execute tasks and done callbacks as fast as it is able.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(4) as tpe:
+    # add many tasks
+    for _ in range(16):
+        # issue the task to the thread pool
+        future = tpe.submit(task)
+        # add the done callback function
+        future.add_done_callback(callback)
+# shutdown and wait for the task to complete
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# report of the worker and callback threads are different when running many tasks
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+from threading import current_thread
+
+# target function run in the thread pool
+def task():
+    # block for a moment
+    sleep(1)
+    # retrieve access to the worker thread
+    thread = current_thread()
+    # return the worker thread name
+    return thread.name
+
+# custom done callback function
+def callback(future):
+    # get the task worker thread name
+    name = future.result()
+    # retrieve access to the current thread
+    thread = current_thread()
+    # check if different
+    diff = name != thread.name
+    # report the details of the worker thread
+    print(f'task: {name}, callback {thread.name}, different: {diff}')
+
+# create a thread pool
+with ThreadPoolExecutor(4) as tpe:
+    # add many tasks
+    for _ in range(16):
+        # issue the task to the thread pool
+        future = tpe.submit(task)
+        # add the done callback function
+        future.add_done_callback(callback)
+# shutdown and wait for the task to complete
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPoolExecutor</strong> with 4 worker threads.</p>
+<p>Next, 16 tasks are issued to the thread pool and a done callback is added to each.</p>
+<p>The main thread then blocks and waits for all tasks to complete.</p>
+<p>Tasks are executed in the thread pool, retrieving their worker thread name and returning it.</p>
+<p>The callback functions are executed, retrieving the worker thread name from their associated task, comparing it to the name of the thread that is executing the callback, and reporting it.</p>
+<p>We can see that in all cases, the same thread is used to execute the task and callback, they never differ.</p>
+<pre><code>task: ThreadPoolExecutor-0_0, callback ThreadPoolExecutor-0_0, different: False
+task: ThreadPoolExecutor-0_1, callback ThreadPoolExecutor-0_1, different: False
+task: ThreadPoolExecutor-0_3, callback ThreadPoolExecutor-0_3, different: False
+task: ThreadPoolExecutor-0_2, callback ThreadPoolExecutor-0_2, different: False
+task: ThreadPoolExecutor-0_3, callback ThreadPoolExecutor-0_3, different: False
+task: ThreadPoolExecutor-0_1, callback ThreadPoolExecutor-0_1, different: False
+task: ThreadPoolExecutor-0_0, callback ThreadPoolExecutor-0_0, different: False
+task: ThreadPoolExecutor-0_2, callback ThreadPoolExecutor-0_2, different: False
+task: ThreadPoolExecutor-0_3, callback ThreadPoolExecutor-0_3, different: False
+task: ThreadPoolExecutor-0_0, callback ThreadPoolExecutor-0_0, different: False
+task: ThreadPoolExecutor-0_1, callback ThreadPoolExecutor-0_1, different: False
+task: ThreadPoolExecutor-0_2, callback ThreadPoolExecutor-0_2, different: False
+task: ThreadPoolExecutor-0_0, callback ThreadPoolExecutor-0_0, different: False
+task: ThreadPoolExecutor-0_2, callback ThreadPoolExecutor-0_2, different: False
+task: ThreadPoolExecutor-0_3, callback ThreadPoolExecutor-0_3, different: False
+task: ThreadPoolExecutor-0_1, callback ThreadPoolExecutor-0_1, different: False
+</code></pre>
+<h2>Example of Adding a Callback After Task is Done</h2>
+<p>A done callback function can be added to a task via the Future object after the task is already completed.</p>
+<p>This is an interesting case, as the <strong>ThreadPoolExecutor</strong> may not know which worker thread executed the task.</p>
+<p>As such, the done callback is very likely executed by a different thread.</p>
+<p>We can update the first example where a single task is issued with a done callback and both the task and callback report their thread.</p>
+<p>In this case, we will simply add a delay between issuing the task and adding the done callback in the main thread. The delay is long enough to ensure that the task is done before the callback is added.</p>
+<pre><code>...
+# wait for the task to complete entirely
+sleep(2)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# report the thread that runs the done callback function added after the task is done
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+from threading import current_thread
+
+# target function run in the thread pool
+def task():
+    # block for a moment
+    sleep(1)
+    # retrieve access to the worker thread
+    thread = current_thread()
+    # report the details of the worker thread
+    print(f'Task: {thread}')
+
+# custom done callback function
+def callback(future):
+    # retrieve access to the current thread
+    thread = current_thread()
+    # report the details of the worker thread
+    print(f'Callback: {thread}')
+
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+    # issue the task to the thread pool
+   future = tpe.submit(task)
+   # wait for the task to complete entirely
+   sleep(2)
+   # add the done callback function
+   future.add_done_callback(callback)
+# shutdown and wait for the task to complete
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Next, the task is issued to the thread pool and a <strong>Future</strong> object is returned.</p>
+<p>The main thread then blocks for two seconds.</p>
+<p>The task is executed and reports the details of the thread that executes it.</p>
+<p>The main thread resumes and adds the done callback to the Future.</p>
+<p>Because the task is already completed, the callback executes immediately.</p>
+<p>In this case, we can see that the calling thread, the main thread, executes the done callback function.</p>
+<pre><code>Task: &lt;Thread(ThreadPoolExecutor-0_0, started 123145377968128)&gt;
+Callback: &lt;_MainThread(MainThread, started 4383403520)&gt;
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know which thread runs the done callback functions in the <strong>ThreadPoolExecutor</strong>.</p>
+</main>
+</body>
+</html>

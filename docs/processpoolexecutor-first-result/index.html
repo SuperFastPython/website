@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Wait For The First Result In The ProcessPoolExecutor in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Wait For The First Result In The ProcessPoolExecutor in Python</h1>
+<div class="post-meta">January 23, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>You can wait for the first result from the <strong><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor</a></strong> by calling the <strong>wait()</strong> function with <strong>return_when</strong> set to <strong>FIRST_COMPLETED</strong>.</p>
+<p>In this tutorial you will discover how to wait for the first result from a process pool in Python.</p>
+<p>Let's get started.</p>
+<h2 id="need-to-wait-for-the-first-result">Need to Wait For The First Result</h2>
+<p>The <strong>ProcessPoolExecutor</strong> in Python provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>You can submit tasks to the process pool by calling the <strong>submit()</strong> function and passing in the name of the function you wish to execute on another process.</p>
+<p>Calling the <strong>submit()</strong> function will return a <strong>Future</strong> object that allows you to check on the status of the task and get the result from the task once it completes.</p>
+<p>There may be cases where we submit many tasks but are only interested in the first result.</p>
+<p>This may be the case for many reasons, such as:</p>
+<ul><li>Downloading the same file from multiple servers.</li><li>Accessing the same data from multiple sources.</li></ul>
+<p><strong>How can you submit multiple tasks to the ProcessPoolExecutor and stop when you get the first result?</strong></p>
+<h2 id="how-to-wait-for-the-first-result">How to Wait for the First Result</h2>
+<p>You can get the first result from many tasks by calling the <strong>wait()</strong> module function.</p>
+<p>The <strong>wait() </strong>function will take a collection of <strong>Future</strong> objects as an argument.</p>
+<p>Recall that a <strong>Future</strong> argument is returned from the <strong>ProcessPoolExecutor</strong> when calling <strong>submit()</strong> to start executing the task. You can collect the <strong>Future</strong> objects from all tasks submitted to the process pool and provide them to the <strong>wait(</strong>) function.</p>
+<p>You must also set the "<strong>return_when</strong>" argument to the constant <strong>FIRST_COMPLETED</strong>.</p>
+<p>This ensures that the <strong>wait()</strong> function will return as soon as any task in the provided collection is completed.</p>
+<p>The <strong>wait()</strong> function will return two sets of <strong>Future</strong> objects. The first set will contain those <strong>Future</strong> objects for tasks that are done (e.g. the first task in this case) and the second will contain <strong>Future</strong> objects for those tasks that are not yet completed.</p>
+<pre><code>...
+# get the first result from a collection of tasks
+done, not_done = wait(futures, return_when=FIRST_COMPLETED)
+</code></pre>
+<p>We can also set a timeout in seconds for how long we are willing to wait for the first result.</p>
+<p>This can be set via the "<strong>timeout</strong>" argument when calling the <strong>wait() </strong>function. If the <strong>timeout</strong> is exceeded while waiting, an empty done set is returned which must be checked-for and handled.</p>
+<pre><code>...
+# get the first result from a collection of tasks with a timeout
+done, not_done = wait(futures, timeout=5, return_when=FIRST_COMPLETED)
+</code></pre>
+<p>Once we have the first result from a collection of <strong>Future</strong> objects, we can retrieve it from the done set by calling the <strong>pop()</strong> function. We can then call the <strong>result()</strong> function on the <strong>Future</strong> object to get the value returned by the target task function.</p>
+<pre><code>...
+# get the first future from the done set
+future = done.pop()
+# get the result from the future
+result = future.result()
+</code></pre>
+<p>Note, the first task may or may not have been completed successfully.</p>
+<p>Calling the <strong>wait()</strong> function will return as soon as one task is "<strong>done</strong>" which may because of one of three reasons:</p>
+<ul><li>The task was completed successfully.</li><li>The task was cancelled.</li><li>The task raised an exception that was not handled.</li></ul>
+<p>As such, you must be careful to check that the task was not cancelled and that an exception was not raised before accessing and using the result.</p>
+<pre><code>...
+# get the first future from the done set
+future = done.pop()
+# check that the task completed successfully
+if future.cancelled() or future.exception():
+    print('Task did not complete successfully')
+else:
+    # get the result from the future
+    result = future.result()
+    # do something...
+</code></pre>
+<p>Also note, that getting the result for the first task to complete does not stop the other tasks from running.</p>
+<p>You may want to cancel all tasks that have not yet started running, for example:</p>
+<pre><code>...
+# cancel all tasks that have not yet started running
+for future in futures:
+    future.cancel()
+</code></pre>
+<p>You may also want to manually shutdown the process pool, instead of using the context manager, and not wait for the remaining tasks to complete.</p>
+<p>This can be achieved by setting the "<strong>wait</strong>" argument to the <strong>shutdown()</strong> function to <strong>False</strong>. You can also set the "<strong>cancel_futures</strong>" argument to the <strong>shutdown() </strong>function to <strong>True</strong> to also cancel all tasks that are not yet running.</p>
+<pre><code>...
+# shutdown the process pool, cancel scheduled tasks and not wait for any tasks still running
+executor.shutdown(wait=False, cancel_futures=True)
+</code></pre>
+<p>Now that we know how to wait for the first result from a collection of tasks, let's look at a worked example.</p>
+<h2 id="example-of-waiting-for-the-first-result">Example of Waiting for the First Result</h2>
+<p>Let's develop an example of getting the first result from a collection of tasks.</p>
+<p>First, let's develop a task that will block for a random fraction of ten seconds.</p>
+<pre><code># custom task that will block for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    value = random()
+    sleep(value * 10)
+    return f'Task={name}: {value:.2f}'
+</code></pre>
+<p>Next, we can start the process pool using the context manager then submit 10 tasks and collect their <strong>Future</strong> objects into a list.</p>
+</main>
+</body>
+</html>

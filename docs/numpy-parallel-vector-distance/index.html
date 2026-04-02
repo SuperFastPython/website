@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Numpy Parallel Vector Distance Calculation – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Numpy Parallel Vector Distance Calculation</h1>
+<div class="post-meta">May 28, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>calculate vector distances in parallel</strong> by using SciPy distance functions and threads.</p>
+<p>In this tutorial, you will discover how to calculate vector distances between numpy arrays in parallel using threads.</p>
+<p>Let's get started.</p>
+<h2>Need Parallel Vector Distance Calculation</h2>
+<p>A vector is an array of numbers.</p>
+<p>A common operation with vectors is to calculate the distance between two vectors.</p>
+<p>Common distance calculations include Euclidean distance, Minkowski distance, and Cosine distance.</p>
+<p>Distance calculations can be calculated using SciPy functions in the <a href="https://docs.scipy.org/doc/scipy/reference/spatial.distance.html"><strong>scipy.spatial.distance</strong> module</a>, such as:</p>
+<ul>
+<li><strong><a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.euclidean.html#scipy.spatial.distance.euclidean">spatial.distance.euclidean()</a></strong>: Euclidean distance.</li>
+<li><a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.minkowski.html"><strong>scipy.spatial.distance.minkowski()</strong></a>: Minkowski distance.</li>
+<li><strong><a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cosine.html">scipy.spatial.distance.cosine()</a></strong>: Cosine distance.</li>
+</ul>
+<p>We may need to calculate the distance between vectors as part of many linear algebra operations, such as in machine learning applications in algorithms such as <a href="https://en.wikipedia.org/wiki/K-nearest_neighbors_algorithm">k-nearest neighbors</a> (knn) and in <a href="https://en.wikipedia.org/wiki/Collaborative_filtering">collaborative filtering</a> systems for making recommendations.</p>
+<p>In these applications, we may need to calculate the distance between many thousands or millions of vectors.</p>
+<p>As such, vector distance calculations need to be performed fast.</p>
+<p><strong>How can we calculate vector distances in parallel and make best use of available hardware?</strong></p>
+<h2>How to Calculate Vector Distances in Parallel with Threads</h2>
+<p>Vector distance calculations between numpy arrays using SciPy functions can be performed in parallel.</p>
+<p>This can be achieved using threads.</p>
+<p>The reference Python interpreter CPython uses a lock to prevent more than one thread from running at a time. This is to ensure that the internal state of the Python interpreter is thread-safe, avoiding race conditions.</p>
+<p>This lock is called the global interpreter lock or GIL and it prevents true parallelism with Python threads. The exception is when the lock is released when it is known that the thread will not be interacting with the internals of the Python interpreter, such as when blocking during I/O, and when calling a third-party library.</p>
+<p>Many numpy and SciPy functions on numpy arrays are performed using an underlying C-API. Because these operations are CPU intensive and executed in an external library, most of these functions will release the global interpreter lock.</p>
+<p>You can learn more about numpy releasing the GIL in the tutorial:</p>
+<ul>
+<li><a href="../numpy-vs-gil/">NumPy vs the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<p>The SciPy distance functions release the GIL. As such, we can use threads to execute vector distance calculations between numpy arrays in parallel.</p>
+<p>The Python standard library provides the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.ThreadPool"><strong>multiprocessing.pool.ThreadPool</strong> class</a> that can be used to create and manage a pool of worker threads.</p>
+<p>A ThreadPool instance can be created and configured with one worker per physical CPU in the system.</p>
+<p>For example:</p>
+<pre><code>...
+# create the thread pool
+with ThreadPool(4) as pool:
+	# ...
+</code></pre>
+<p>You can learn more about configuring the number of workers in the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-number-of-workers/">ThreadPool Configure The Number of Worker Threads</a></li>
+</ul>
+<p>We can define a function to execute with thread workers and issue it to the thread pool.</p>
+<p>If the function takes more than one argument, such as two vectors or two collections of vectors, we can call the <strong>starmap()</strong> function with the name of the function and a list of arguments for each call to the target function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue calls to the thread pool
+results = pool.starmap(task, arguments)</code></pre>
+<p>This will issue each call to the target function to the thread pool and will return a collection of tasks.</p>
+<p>You can learn more about the <strong>starmap()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-starmap/">How to Use ThreadPool starmap() in Python</a></li>
+</ul>
+<p>If there are many more function calls (tasks) than worker threads, the <strong>starmap()</strong> function will group the calls into chunks and issue them to threads for execution.</p>
+<p>We can control the size of the groups of tasks issued to worker threads via the "<strong>chunksize</strong>" argument to the <strong>starmap()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue calls to the thread pool
+results = pool.starmap(task, arguments, chunksize=10)</code></pre>
+<p>A <strong>chunksize</strong> tuned for the specific duration of tasks can offer better performance in some circumstances. It often requires some trial and error to configure.</p>
+<p>You can learn more about configuring the "<strong>chunksize</strong>" argument when using the <strong>starmap()</strong> and other <strong>map()</strong> functions on the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map-chunksize/">How to Configure ThreadPool map() Chunksize</a></li>
+</ul>
+<p>Now that we know how to execute vector distance calculations in parallel using threads, let's look at some worked examples.</p>
+<h2>Example of Single-Threaded Pairwise Vector Distances (slow)</h2>
+<p>Before we explore parallel vector distance calculations, let's look at a single-threaded example.</p>
+<p>In this example, we will create two large sets of vectors and calculate the Euclidean distance between each pair of vectors and report how long it takes to complete.</p>
+<p>Firstly, we will define two collections of vectors. This can be done by creating matrices, with a given number of rows, one for each vector, where each vector has the same number of columns.</p>
+<p>Each vector will have 10,000 elements and we will create 100,000 pairs of vectors (rows in the matrix). The first matrix will have all one values and the second all zero values.</p>
+<pre><code>...
+# size of data
+n_rows = 100000
+n_cols = 10000
+# prepare data
+data1 = ones((n_rows,n_cols))
+data2 = zeros((n_rows,n_cols))</code></pre>
+<p>We can then calculate the Euclidean distance between each pair of vectors. This can be achieved in a list comprehension to give a list of 100,000 distance calculations.</p>
+</main>
+</body>
+</html>

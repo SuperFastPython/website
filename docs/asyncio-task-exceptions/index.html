@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Handle Asyncio Task Exceptions – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Handle Asyncio Task Exceptions</h1>
+<div class="post-meta">November 11, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>An <strong>asyncio task may fail</strong> with an unhandled exception.</p>
+<p>The exception will unwind the task, although may not impact other tasks or the broader asyncio program.</p>
+<p>As such, we need a way of <strong>checking if a task has failed</strong> and of retrieving any unhandled exceptions in the task, if they occurred.</p>
+<p>In this tutorial, you will <strong>discover exception handling in asyncio tasks</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>How to check if a task failed due to an unhandled exception.</li>
+<li>How to retrieve the exception from a task and what happens if we get the exception while the task is running.</li>
+<li>How and when the exception in the task may be propagated to another coroutine or task.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is an Asyncio Task</h2>
+<p>An asyncio <strong>Task</strong> is an object that schedules and independently runs an asyncio coroutine.</p>
+<p>It provides a handle on a scheduled coroutine that an asyncio program can query and use to interact with the coroutine.</p>
+<blockquote>
+<p>A Task is an object that manages an independently running coroutine.</p>
+<cite>-- <a href="https://peps.python.org/pep-3156/">PEP 3156 – Asynchronous IO Support Rebooted: the "asyncio" Module</a></cite></blockquote>
+<p>An asyncio task is represented via an instance of the <a href="https://docs.python.org/3/library/asyncio-task.html#task-object"><strong>asyncio.Task</strong> class</a>.</p>
+<p>A task is created from a coroutine. It requires a coroutine object, wraps the coroutine, schedules it for execution, and provides ways to interact with it.</p>
+<p>A task is executed independently. This means it is scheduled in the asyncio event loop and will execute regardless of what else happens in the coroutine that created it. This is different from executing a coroutine directly, where the caller must wait for it to complete.</p>
+<blockquote>
+<p>Tasks are used to schedule coroutines concurrently. When a coroutine is wrapped into a Task with functions like asyncio.create_task() the coroutine is automatically scheduled to run soon</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>We can create a task using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task"><strong>asyncio.create_task()</strong> function</a>.</p>
+<p>This function takes a coroutine instance and an optional name for the task and returns an <strong>asyncio.Task</strong> instance.</p>
+<blockquote>
+<p>Wrap the coro coroutine into a Task and schedule its execution. Return the Task object.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# create and schedule a task
+task = asyncio.create_task(coro)</code></pre>
+<p>You can learn more about asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task/">What is an Asyncio Task</a></li>
+</ul>
+<p>Now that we know about asyncio tasks, let's look at how we might handle and check for exceptions.</p>
+<h2>How to Check for Exceptions in Tasks</h2>
+<p>A coroutine wrapped by a task may raise an exception that is not handled.</p>
+<p>This will fail the task, in effect.</p>
+<p>We can retrieve an unhandled exception in the coroutine wrapped by a task via the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.Task.exception"><strong>exception()</strong> method</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# get the exception raised by a task
+exception = task.exception()</code></pre>
+<p>If an unhandled exception was not raised in the wrapped coroutine, then a value of <strong>None</strong> is returned.</p>
+<p>If the task was canceled, then a <strong>CancelledError</strong> exception is raised when calling the <strong>exception()</strong> method and may need to be handled.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# get the exception raised by a task
+	exception = task.exception()
+except asyncio.CancelledError:
+	# task was canceled
+</code></pre>
+<p>As such, it is a good idea to check if the task was canceled first.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the task was not canceled
+if not task.cancelled():
+	# get the exception raised by a task
+	exception = task.exception()
+else:
+	# task was canceled
+</code></pre>
+<p>If the task is not yet done, then an <strong>InvalidStateError</strong> exception is raised when calling the <strong>exception()</strong> method and may need to be handled.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# get the exception raised by a task
+	exception = task.exception()
+except asyncio.InvalidStateError:
+	# task is not yet done
+</code></pre>
+<p>As such, it is a good idea to check if the task is done first.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the task is not done
+if not task.done():
+	await task
+# get the exception raised by a task
+exception = task.exception()
+</code></pre>
+<p>Next, let's look at when an unhandled exception in a task is propagated to the caller.</p>
+<h2>When Are Task Exceptions Propagated to the Caller</h2>
+<p>Exceptions that occur within a task can be propagated to the caller.</p>
+<p>This can happen in two situations, they are:</p>
+<ol>
+<li>When the caller awaits the task.</li>
+<li>When the caller gets the result from the task.</li>
+</ol>
+<p>When a coroutine awaits a task that raises an unhandled exception, the exception is propagated to the caller.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the task to finish
+await task</code></pre>
+<p>Therefore, if an unhandled exception is possible in a Task's coroutine, it may need to be handled when awaiting the task.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# wait for the task to finish
+	await task
+except Exception as e:
+	# ...
+</code></pre>
+<p>Similarly, if the task is done and the caller tempts to retrieve the return value from the task via the <strong>result()</strong> method, any unhandled exceptions are propagated.</p>
+<p>For example:</p>
+<pre><code>...
+# get the return value from the task
+value = task.result()</code></pre>
+<p>Therefore, if an unhandled exception is possible in a <strong>Task</strong>'s coroutine, it may need to be handled when awaiting the task.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	# get the return value from the task
+	value = task.result()
+except Exception as e:
+	# ...
+</code></pre>
+<p>Now that we know when exceptions in tasks are propagated, let's look at some worked examples of checking for and handling exceptions in tasks.</p>
+<h2>Example of Checking for an Exception in a Done Task</h2>
+<p>We can explore how to check for and get an exception from a successfully done task.</p>
+<p>That is, check for an exception in a task that does not raise an exception.</p>
+<p>The expectation is that the <strong>exception()</strong> method will return <strong>None</strong> after the task is done.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting an exception from a successful task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait for the task to complete
+    await task
+    # get the exception
+    ex = task.exception()
+    print(f'exception: {ex}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and awaits the task to be completed.</p>
+<p>The task runs, reports a message, and sleeps for a moment before terminating normally.</p>
+<p>The <strong>main()</strong> coroutine resumes and retrieves an exception from the task.</p>
+<p>The task did not raise an unhandled exception, so the <strong>exception()</strong> method returns <strong>None</strong>.</p>
+<p>This example highlights that a successful task will return <strong>None</strong> if an unhandled exception was not raised. This could be checked for, e.g. checking to see if a task failed or not.</p>
+<pre><code>main coroutine started
+executing the task
+exception: None
+main coroutine done</code></pre>
+<p>Next, we can look at an example of retrieving an exception from a failed task.</p>
+<h2>Example of Checking for an Exception in a Failed Task</h2>
+<p>We can explore getting an exception from a task that failed with an unhandled exception.</p>
+<p>This is the exact use case for the <strong>exception()</strong> method.</p>
+<p>In this example, we can update the task coroutine to explicitly raise an exception that is not handled.</p>
+<p>This will cause the task coroutine to fail.</p>
+<p>The main coroutine will sleep to wait for the task to be completed. This is to avoid using the await expression which will propagate the exception back to the caller.</p>
+<p>Once the task is done, the main coroutine will retrieve and report the exception raised in the task.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting an exception from a failed task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+    # raise an exception
+    raise Exception('Something bad happened')
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait for the task to complete
+    await asyncio.sleep(1.1)
+    # get the exception
+    ex = task.exception()
+    print(f'exception: {ex}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and awaits the task to be completed.</p>
+<p>The task runs, reports a message, and sleeps for a moment. The task resumes and raises an exception.</p>
+<p>The exception does not terminate the application or the asyncio event loop.</p>
+<p>Instead, the exception is captured by the asyncio event loop and stored in the task.</p>
+<p>The <strong>main()</strong> coroutine resumes and then retrieves the exception from the task, which is reported.</p>
+<pre><code>main coroutine started
+executing the task
+exception: Something bad happened
+main coroutine done</code></pre>
+<p>Next, let's look at what happens if we try to retrieve an exception from a running task.</p>
+<h2>Example of Checking for an Exception in a Running Task</h2>
+<p>We cannot retrieve an exception from a running asyncio task.</p>
+<p>Instead, we can only retrieve the exception from a task after it is done.</p>
+<p>If we call the <strong>exception()</strong> method on a task that is scheduled or running, an <strong>InvalidStateError</strong> exception is raised in the caller.</p>
+<p>The example below demonstrates this.</p>
+<pre><code># SuperFastPython.com
+# example of getting an exception from a running task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait a moment
+    await asyncio.sleep(0.2)
+    # get the exception
+    ex = task.exception()
+    print(f'exception: {ex}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and sleeps for a moment.</p>
+<p>The task runs, reports a message, and sleeps for a moment.</p>
+<p>The <strong>main()</strong> coroutine resumes and attempts to retrieve the exception from the task while the task is running, even though the task is suspended.</p>
+<p>This fails with an <strong>InvalidStateError</strong> that breaks the asyncio event loop in this case.</p>
+<p>This example highlights that we must always retrieve a <strong>Task</strong> exception after the task is done.</p>
+<pre><code>main coroutine started
+executing the task
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.InvalidStateError: Exception is not set.
+</code></pre>
+<p>We can check if a task is done before retrieving the exception via the <strong>done()</strong> method that will return <strong>True</strong> if the task is done, or <strong>False</strong> otherwise.</p>
+<p>Next, we can look at the case of attempting to get a task exception for a canceled task.</p>
+<h2>Example of Checking for an Exception in a Canceled Task</h2>
+<p>We cannot retrieve an exception from a canceled task.</p>
+<p>Although a canceled task is done, an exception will not be available and cannot be retrieved.</p>
+<p>Instead, a <strong>CancelledError</strong> exception is raised when calling the <strong>exception()</strong> method if the task was canceled.</p>
+<p>We can demonstrate this with a worked example.</p>
+<pre><code># SuperFastPython.com
+# example of getting an exception from a running task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # cancel the task
+    task.cancel()
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # get the exception
+    ex = task.exception()
+    print(f'exception: {ex}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and sleeps for a moment.</p>
+<p>The <strong>main()</strong> coroutine resumes and cancels the task. It then suspends and waits a moment for the task to respond to the request for being canceled.</p>
+<p>The task is canceled by raising a <strong>CancelledError</strong> within the wrapped coroutine.</p>
+<p>The <strong>main()</strong> coroutine resumes and attempts to retrieve an exception.</p>
+<p>This fails and the <strong>CancelledError</strong> exception is re-raised in the caller.</p>
+<p>This breaks the event loop in this case.</p>
+<pre><code>main coroutine started
+executing the task
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "...", line 25, in main
+    ex = task.exception()
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+</code></pre>
+<p>Next, let's look at how we might handle an exception propagated by awaiting a task.</p>
+<h2>Example of Handling a Task Exception with await</h2>
+<p>Awaiting a task that fails with an exception will cause the exception to be propagated to the caller.</p>
+<p>As such, awaiting a task may require that the unhandled but possible exceptions be handled.</p>
+<p>The example below demonstrates this with a task that fails with an exception that is awaited in a main coroutine that expects and then handles the exception</p>
+<pre><code># SuperFastPython.com
+# example of handling a task exception when await
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened')
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    try:
+        # wait for the task to complete
+        await task
+    except Exception as e:
+        print(f'Failed with: {e}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and awaits the task to be completed. Importantly, the <strong>main()</strong> coroutine awaits the task within a try-except block.</p>
+<p>The task runs, reports a message and sleeps for a moment, and then fails with an exception.</p>
+<p>The <strong>main()</strong> coroutine resumes and handles the exception that was raised in the wrapped coroutine. The exception is propagated to the caller, caught, and the details are reported.</p>
+<p>This highlights that we may need to handle unhandled exceptions because they can be propagated back to any coroutines waiting on the task.</p>
+<pre><code>main coroutine started
+executing the task
+Failed with: Something bad happened
+main coroutine done
+</code></pre>
+<p>Next, we will look at how to handle task exceptions propagated to the caller when getting task results.</p>
+<h2>Example of Handling a Task Exception with result()</h2>
+<p>We can get the return value from a task via the <strong>result()</strong> method.</p>
+<p>Care must be taken with this method because any exception that was raised in the <strong>Task</strong>'s coroutine that was not handled will be propagated back and re-raised in the caller.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>The task coroutine returns a value, but the line is never reached because it fails with an exception.</p>
+<p>The main coroutine attempts to retrieve the result from the task and handles the exception that may be raised and propagated.</p>
+<pre><code># SuperFastPython.com
+# example of handling a task exception when getting the result
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened')
+    # return a value (never reached)
+    return 100
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait for the task to complete
+    await asyncio.sleep(1.1)
+    try:
+        # get the result
+        value = task.result()
+    except Exception as e:
+        print(f'Failed with: {e}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and sleeps a moment to allow the task to be completed.</p>
+<p>The task runs, reports a message and sleeps for a moment, and then fails with an exception.</p>
+<p>The <strong>main()</strong> coroutine resumes and attempts to retrieve the return value from the task.</p>
+<p>This fails and the unhandled exception raised in the task's coroutine is re-raised in the caller.</p>
+<p>The <strong>main()</strong> coroutine handles the exception, catching it and reporting the details.</p>
+<p>This highlights that we may need to handle unhandled exceptions when getting task results because they can be propagated back to any coroutines waiting on the task.</p>
+<pre><code>main coroutine started
+executing the task
+Failed with: Something bad happened
+main coroutine done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to handle exceptions in asyncio tasks in Python.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Manager Example in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Manager Example in Python</h1>
+<div class="post-meta">August 30, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can <strong>share objects among processes</strong> using a <strong>manager</strong>.</p>
+<p>In this tutorial you will discover how to <strong>use managers</strong> to share access to <strong>centralized Python objects</strong>.</p>
+<p>Let's get started.</p>
+<h2>What Is a Manager</h2>
+<p>A manager in the <strong>multiprocessing</strong> module provides a way to create Python objects that can be shared easily between processes.</p>
+<blockquote><p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>A manager creates a server process that hosts a centralized version of objects that can be shared among multiple processes.</p>
+<p>The objects are not shared directly. Instead, the manager creates a proxy object for each object that it manages and the proxy objects are shared among processes.</p>
+<p>The proxy objects are used and operate just like the original objects, except that they serialize data, synchronize and coordinate with the centralized version of the object hosted in the manager server process.</p>
+<blockquote><p>A proxy is an object which refers to a shared object which lives (presumably) in a different process. [...] A proxy object has methods which invoke corresponding methods of its referent (although not every method of the referent will necessarily be available through the proxy).</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This makes managers a process-safe and preferred way to share simple data structures like lists and dicts among processes.</p>
+<p>They are also a preferred way to share concurrency primitives among processes, specifically among workers in a multiprocessing pool.</p>
+<p>You can learn more about multiprocessing managers in the tutorial:</p>
+<ul><li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li></ul>
+<p>Next, let's look at how we might create and use a manager.</p>
+<h2>How to Create and Use a Manager</h2>
+<p>A <strong>multiprocessing.Manager</strong> provides a way to create a centralized version of a Python object hosted on a server process.</p>
+<p>Once created, it returns proxy objects that allow other processes to interact with the centralized objects automatically behind the scenes.</p>
+<p>The <strong>multiprocessing.Manager</strong> provides the full multiprocessing API, allowing Python objects and concurrency primitives to be shared among processes.</p>
+<p>This includes Python objects we may want to share, such as:</p>
+<ul><li>dict</li><li>list</li></ul>
+<p>It include shared ctypes for primitive values, such as:</p>
+<ul><li>Value</li><li>Array</li></ul>
+<p>It includes concurrency primitives for synchronizing and coordinating processes, such as:</p>
+<ul><li>Lock</li><li>Event</li><li>Condition</li><li>Semaphore</li><li>Barrier</li></ul>
+<p>It even includes patterns and process-safe data structures, such as:</p>
+<ul><li>Queue</li><li>Pool</li></ul>
+<p>First, we must create a manager instance.</p>
+<p>For example:</p>
+<pre><code>...
+# create a manager
+manager = Manager()</code></pre>
+<p>The manager can then be used to create a centralized Python object and return a proxy object.</p>
+<p>For example:</p>
+<pre><code>...
+# create a centralized mutex lock
+lock = manager.Lock()</code></pre>
+<p>Once we are finished with the manager, it must be closed in order to release all resources including the server process.</p>
+<p>For example:</p>
+<pre><code>...
+# close the manager
+manager.close()</code></pre>
+<p>The manager supports the context manager interface. This allows all centralized objects to be created and used within the context manager block. Once the block is exited, the manager is closed automatically.</p>
+<p>For example:</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # create a centralized mutex lock
+    lock = manager.Lock()
+    # ...
+</code></pre>
+<p>This is the preferred usage of the manager.</p>
+<p>Now that we are familiar with how to use the manager, let's look at a worked example.</p>
+<h2>Example of Using a Manager for Sharing a Data Structure</h2>
+<p>We can use a manager to share access to a Python data structure like a list or dict among multiple processes.</p>
+<p>The shared data structure can be read and modified from multiple processes in a safe manner, meaning that it will not become corrupt, inconsistent or suffer data loss by concurrent modifications.</p>
+<p>In this example we will create a list on the manager and share it among a number of processes that will concurrently add objects.</p>
+<p>Firstly, we can define a function to execute in child processes.</p>
+<p>The function will take an integer number argument and the shared list. It will then generate a random number between 0 and 1, block for a fraction of a second, then append the number argument and generate the random number to the shared list as a tuple.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a new process
+def task(number, shared_list):
+    # generate a number between 0 and 1
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # store the value in the shared list
+    shared_list.append((number, value))
+</code></pre>
+<p>Next, in the main process, we will create and start a <strong>Manager</strong> instance using the context manager interface.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>We can then use the manager to create a shared list.</p>
+<p>The list will be hosted in the manager server process and returns proxy objects that can be shared among child processes, can be pickled if needed, and used to interact with the list in a process-safe manner.</p>
+<pre><code>...
+# create the shared list
+shared_list = manager.list()</code></pre>
+<p>Next, ew can create many <strong>multiprocess.Process</strong> instances configured to run our <strong>task()</strong> function and pass an integer and the shared list as arguments.</p>
+<p>This can be achieved in a list comprehension that will create a list of configured <strong>Process</strong> instances.</p>
+<pre><code>...
+# create many child processes
+processes = [Process(target=task, args=(i, shared_list)) for i in range(50)]</code></pre>
+<p>The main process can then iterate through the processes and start each in turn.</p>
+<pre><code>...
+# start all processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>The main process can then wait until all the processes finish.</p>
+<p>This can be achieved by traversing the list of running <strong>Process</strong> instances and calling the <strong>join()</strong> function on each. This will block until the <strong>Process</strong> instance finishes, and once all processes have been joined we know that they have all terminated.</p>
+<pre><code>...
+# wait for all processes to complete
+for process in processes:
+    process.join()
+</code></pre>
+<p>Finally, we can report the size of the shared list.</p>
+<p>We expect the list to contain 50 items, one item added by each child process.</p>
+<pre><code>...
+# report the number of items stored
+print(f'List: {len(shared_list)}')</code></pre>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of shared list among processes using a manager
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import Manager
+
+# task executed in a new process
+def task(number, shared_list):
+    # generate a number between 0 and 1
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # store the value in the shared list
+    shared_list.append((number, value))
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared list
+        shared_list = manager.list()
+        # create many child processes
+        processes = [Process(target=task, args=(i, shared_list)) for i in range(50)]
+        # start all processes
+        for process in processes:
+            process.start()
+        # wait for all processes to complete
+        for process in processes:
+            process.join()
+        # report the number of items stored
+        print(f'List: {len(shared_list)}')
+</code></pre>
+<p>Running the example first creates the manager using the context manager interface.</p>
+<p>Next, the manager is used to create the shared list.</p>
+<p>This creates a centralized version of the list on the manager's server process and returns proxy objects for interacting with the list.</p>
+<p>Next, 50 child processes are created and configured to call our custom task() function, then the processes are started. The main process then blocks until all child processes complete.</p>
+<p>Each process generates a random number, blocks for a fraction of a second then appends a tuple with the task number and the generated value to the shared list.</p>
+<p>All tasks complete and the main process unblocks and reports the total number of items in the shared list which matches the same number of processes that were started.</p>
+<p>If the list was not created using a manager in this case, then changes to the list in each child process would not be shared, they would be made to a copy of the list.</p>
+<pre><code>List: 50</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use managers to share access to centralized Python objects.</p>
+</main>
+</body>
+</html>

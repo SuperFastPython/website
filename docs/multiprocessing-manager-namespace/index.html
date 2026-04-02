@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Use a Manager Namespace to Share Data with Processes – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Use a Manager Namespace to Share Data with Processes</h1>
+<div class="post-meta">September 5, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can use a manager to create a namespace that may be used to share primitive variables safely with processes.</p>
+<p>In this tutorial you will discover how to <strong>use a namespace to share data among processes in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>What is a Multiprocessing Manager</h2>
+<p>A manager in the <strong>multiprocessing</strong> module provides a way to create Python objects that can be shared easily between processes.</p>
+<blockquote><p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>A manager creates a server process that hosts a centralized version of objects that can be shared among multiple processes.</p>
+<p>The objects are not shared directly. Instead, the manager creates a proxy object for each object that it manages and the proxy objects are shared among processes.</p>
+<p>The proxy objects are used and operate just like the original objects, except that they serialize data, synchronize and coordinate with the centralized version of the object hosted in the manager server process.</p>
+<blockquote><p>A proxy is an object which refers to a shared object which lives (presumably) in a different process. [...] A proxy object has methods which invoke corresponding methods of its referent (although not every method of the referent will necessarily be available through the proxy).</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This makes managers a process-safe and preferred way to share Python objects among processes.</p>
+<p>You can learn more about multiprocessing managers in the tutorial:</p>
+<ul><li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li></ul>
+<p>Next, let's look at namespaces.</p>
+<h2>What is a Multiprocessing Namespace</h2>
+<p>A namespace is a Python object used to share primitive variables among multiple processes.</p>
+<blockquote><p>A namespace object has no public methods, but does have writable attributes. Its representation shows the values of its attributes.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>It may be used to share primitive variables such as:</p>
+<ul><li>Integer values</li><li>Floating point values.</li><li>Strings</li><li>Characters</li></ul>
+<p>It cannot be used to share simple Python data structures such as lists, tuples, and dicts.</p>
+<p>A namespace must be created by a manager. This means it is hosted in a manager's server process and shared via proxy objects.</p>
+<p>The proxy objects can be shared with child processes and automatically handle serialization (pickling) of data to and from the manager process and provide process-safety.</p>
+<ul><li><strong>Centralized</strong>: A single copy of the namespace is hosted in the server process of a manager and interacted with via proxy objects, meaning all processes see the same data.</li><li><strong>Pickability</strong>: Namespace (proxy) objects can be pickled, allowing them to be put on queues or passed as arguments to the Pool class.</li><li><strong>Safety</strong>: Primitive variables on a namespace can be read and written concurrently in a process-safe manner.</li></ul>
+<p>This means that the proxy objects for the namespace can be shared via queues and as arguments to multiprocessing pools, where they must be pickled.</p>
+<p>It also means that multiple child processes can read and write the variables on the namespace concurrently without fear of race conditions.</p>
+<p>Now that we know about a namespace, let's look at how we might use it.</p>
+<h2>How to Create and a Namespace to Share Data</h2>
+<p>Using a namespace requires first creating a manager, then using the manager to create the namespace.</p>
+<p>The namespace can be shared among processes and used to read and write primitive variables directly.</p>
+<p>The first step is to create a manager and start it.</p>
+<p>This can be achieved manually by instantiating the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Manager"><strong>multiprocessing.Manager</strong> class</a> and calling start, for example:</p>
+<pre><code>...
+# create the manager
+manager = Manager()
+# start the manager
+manager.start()</code></pre>
+<p>The <strong>multiprocessing.Manager</strong> class is in fact an alias for the <strong>multiprocessing.managers.SyncManager</strong> class that provides the capability to create and host a Namespace instance.</p>
+<p>Later we must close the manager to terminate the server process.</p>
+<pre><code>...
+# close the manager
+manager.close()</code></pre>
+<p>The preferred approach is to use the context manager interface and limit usage of the manager to the context manager block.</p>
+<p>This will ensure the manager is closed automatically regardless of what happens in our program.</p>
+<p>For example:</p>
+<pre><code>...
+# create and start the manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>Once created and started, we can use the manager to create an instance of the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.Namespace"><strong>multiprocessing.managers.Namespace</strong> class</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# create and start the manager
+with Manager() as manager:
+	namespace = manager.Namespace()
+</code></pre>
+<p>This will create a <strong>Namespace</strong> object in the <strong>Manager</strong>'s server process and return a proxy object that can be used to interact with the centralized version of the object safety.</p>
+<p>Primitive variables can be added to the namespace directly by defining them.</p>
+<p>Any arbitrary variable names may be used, except those that start with an underscore as they will become members on the proxy object itself instead of the hosted namespace.</p>
+<p>For example:</p>
+<pre><code>...
+# define primitive values on the namespace
+namespace.value1 = 100
+namespace.config = 33.3
+namespace.name = 'Tester'</code></pre>
+<p>Primitive variables may be read by de-referencing them directly.</p>
+<p>For example:</p>
+<pre><code>...
+# read primitive values from the namespace
+if namespace.value1 &gt; 50:
+	# ...
+</code></pre>
+<p>Although reading and writing values is process-safe, some operations are not.</p>
+<p>For example, it is not process-safe to add or subtract values from primitives on the namespace. This is because modifying a value is not atomic, instead it is a three step process of read, compute, and write.</p>
+<p>As such, modification operations like adding, subtracting and incrementing values are not process safe and should be avoided.</p>
+<p>For example:</p>
+<pre><code>...
+# this is not process-safe
+namespace.value1 += 1</code></pre>
+<p>You can learn more about process-safety in the tutorial:</p>
+<ul><li><a href="../process-safe-in-python/">Process-Safe in Python</a></li></ul>
+<p>Instead, a mutex lock can be created on the manager and used to limit modification of namespace variables to critical sections.</p>
+<p>For example:</p>
+<pre><code>...
+# create a managed lock
+lock = manager.Lock()
+# ...
+# acquire the lock
+with lock:
+	# increment variable on a namespace (this is safe)
+	namespace.value1 += 1
+</code></pre>
+<p>Finally, the namespace does not support data structures like list or dict.</p>
+<p>Although they may be defined readily enough, their contents will be local to the current process only. Meaning that the content of data structures will not be centralized and made available to all processes.</p>
+<p>For example:</p>
+<pre><code>...
+# define a list (local only)
+namespace.mylist = [1, 2, 3]</code></pre>
+<p>Now that we know how to use a namespace, let's look at a worked example.</p>
+<h2>Example of Using a Manager Namespace to Share Data</h2>
+<p>We can explore how to use a namespace to share primitive variable data among child processes.</p>
+<p>In this example we will use a manager to create a centralized hosted namespace. The main process will then define a variable on the namespace. A child process will then define its own variable and access the variable written by the main process. A second child process will define its own variable on the namespace and access the variable defined by the first child. Finally, the main process will access all variables.</p>
+<p>This example highlights a few things:</p>
+<ul><li>How to read and write variables in a namespace.</li><li>Multiple different processes can define variables in the same namespace.</li><li>Variables on the namespace are available to all processes.</li></ul>
+<p>Firstly, we can define the function to execute for the first child process.</p>
+<p>The task takes the shared namespace as an argument, generates a random number between 0 and 1, blocks for a fraction of a second to simulate computational effort, stores the generated number as "<strong>task1</strong>" on the namespace, then reports its generated number and a variable stored by the main process called "<strong>main</strong>".</p>
+<p>The <strong>task1()</strong> function below implements this.</p>
+<pre><code># task executed in a new process
+def task1(shared_ns):
+    # generate a number between 0 and 1
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # update the namespace variables
+    shared_ns.task1 = value
+    # report the data
+    print(f'Task1 sees {shared_ns.main} got {value}', flush=True)
+</code></pre>
+<p>Next, we can define the custom function for the second task.</p>
+<p>The function takes the shared namespace as an argument. Like the first task, it generates a random number between 0 and 1, then blocks to simulate computational effort. It then reports its generated value and the variable "task1" stored by the first task.</p>
+<p>The <strong>task2()</strong> function below implements this.</p>
+<pre><code># task executed in a new process
+def task2(shared_ns):
+    # generate a number between 0 and 1
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # report the data
+    print(f'Task2 sees {shared_ns.task1} got {value}', flush=True)
+    # update the namespace variables
+    shared_ns.task2 = value
+</code></pre>
+<p>Next, in the main process, a manager is created and started using the context manager interface.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>The manager is then used to create the hosted namespace.</p>
+<pre><code>...
+# create the shared namespace
+namespace = manager.Namespace()</code></pre>
+<p>The main process then defines a variable on the namespace that the <strong>task1()</strong> function will access later.</p>
+<pre><code>...
+# initialize the attribute
+namespace.main = 55</code></pre>
+<p>A new <strong>multiprocessing.Process</strong> instance is created and configured to execute the <strong>task1()</strong> function and pass the shared namespace as an argument. Once configured, the process is started and the main process blocks until the process has terminated.</p>
+<pre><code>...
+# start and run a process for task 1
+process = Process(target=task1, args=(namespace,))
+process.start()
+process.join()</code></pre>
+<p>A second <strong>multiprocessing.Process</strong> instance is created and this time configured to execute our <strong>task2()</strong> function. It is started and the main process blocks until the new child process has terminated.</p>
+<pre><code>...
+# start and run a process for task 2
+process = Process(target=task2, args=(namespace,))
+process.start()
+process.join()</code></pre>
+<p>Finally, the main process reports all variables defined on the shared namespace.</p>
+<p>This is achieved by reporting the string representation of the namespace object directly.</p>
+<pre><code>...
+# report everything
+print(f'Main sees: {namespace}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing data with a manager namespace
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import Manager
+
+# task executed in a new process
+def task1(shared_ns):
+    # generate a number between 0 and 1
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # update the namespace variables
+    shared_ns.task1 = value
+    # report the data
+    print(f'Task1 sees {shared_ns.main} got {value}', flush=True)
+
+# task executed in a new process
+def task2(shared_ns):
+    # generate a number between 0 and 1
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # report the data
+    print(f'Task2 sees {shared_ns.task1} got {value}', flush=True)
+    # update the namespace variables
+    shared_ns.task2 = value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared namespace
+        namespace = manager.Namespace()
+        # initialize the attribute
+        namespace.main = 55
+        # start and run a process for task 1
+        process = Process(target=task1, args=(namespace,))
+        process.start()
+        process.join()
+        # start and run a process for task 2
+        process = Process(target=task2, args=(namespace,))
+        process.start()
+        process.join()
+        # report everything
+        print(f'Main sees: {namespace}')
+</code></pre>
+<p>Running the example first creates the manager and starts the manager's server process.</p>
+<p>The manager is then used to create a namespace. The namespace is created in the Manager's server process and a proxy object is returned that may be shared and used to access the namespace in a process-safe manner.</p>
+<p>The main process then defines a variable on the namespace and assigns it an integer value.</p>
+<p>A child process is configured and started to execute our custom <strong>task1()</strong> function. The main process blocks until the process terminates.</p>
+<p>The first child process generates a random number, blocks, defines a new variable on the shared namespace, then reports the value defined by the main process as well as the random number that was generated.</p>
+<p>The child process terminates and the main process continues on.</p>
+<p>The main process configures and starts a second child process, this time to execute our <strong>task2()</strong> function. It blocks until the process terminates.</p>
+<p>The second child process generates a random number, blocks for a fraction of a second then reports the value on the namespace defined by the first child process, as well as the random number that was generated. It then defines a new variable on the namespace with the generated floating point value.</p>
+<p>The second process terminates and the main process continues on and reports the content of the shared namespace.</p>
+<p>We can see the integer value defined by the main process, the floating point value defined by the first child process and the floating point value defined by the second child process.</p>
+<p>This highlights that variables can be defined and accessed on the shared namespace arbitrarily by different processes.</p>
+<p>Note: output will vary each time the program is run given the use of random numbers.</p>
+<pre><code>Task1 sees 55 got 0.19925402509706536
+Task2 sees 0.19925402509706536 got 0.9487094130571998
+Main sees: Namespace(main=55, task1=0.19925402509706536, task2=0.9487094130571998)</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a namespace to share data primitives with processes in Python.</p>
+</main>
+</body>
+</html>

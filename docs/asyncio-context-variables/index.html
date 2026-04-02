@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Context Variables For Shared State – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Context Variables For Shared State</h1>
+<div class="post-meta">December 7, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can have <strong>task local storage in asyncio programs</strong> using context variables in the contextvars module.</p>
+<p>This provides thread-local-like storage for arbitrary contexts within one thread, such as within tasks in an asyncio program.</p>
+<p>In this tutorial, you will discover <strong>how to use context variables</strong> for private and local state within each asyncio task.</p>
+<p>Let's get started.</p>
+<h2>Need Task-Specific State in Asyncio</h2>
+<p>It is common to execute the same tasks in our program with different data.</p>
+<p>We can pass the data down to each task, then sub-tasks and sub-sub-tasks as arguments. This is fine for task-specific data.</p>
+<p>But what about data that is unique to the task but not required to execute the task? Data that we might use to uniquely identify the task, such as during logging.</p>
+<p>Data such as:</p>
+<ul>
+<li>Task id</li>
+<li>Session id</li>
+<li>Request id</li>
+<li>Error id</li>
+<li>etc.</li>
+</ul>
+<p>This data is generally cumbersome to pass down the call graph using arguments or up the call graph using return values or exception messages.</p>
+<p>One approach is to store this data in global variables and have each task access this shared data.</p>
+<p>Generally, global variables are discouraged, and there is an opportunity for tasks and their child tasks to access the wrong state by mistake.</p>
+<p>A common solution when using thread workers to execute tasks is to use thread-local storage. This is a private context available only to the thread. Each task accesses the same variable name, but the data stored and retrieved is unique and private.</p>
+<blockquote>
+<p>Thread-local data is data whose values are thread specific.</p>
+<cite>-- <a href="https://docs.python.org/3/library/threading.html">threading — Thread-based parallelism</a></cite></blockquote>
+<p>You can learn more about thread local storage in the tutorial:</p>
+<ul>
+<li><a href="../thread-local-data/">Thread-Local Data in Python</a></li>
+</ul>
+<p>What is needed is a version of thread local storage for asyncio tasks and coroutines.</p>
+<p>This would allow each task and subtasks to access the same variable name, although the data accessed would be unique and private for the task and subtasks scheduled by that task.</p>
+<p><strong>How can we have thread-local storage in asyncio for tasks coroutines?</strong></p>
+<p><em>How can we have task-specific local storage?</em></p>
+<h2>Use Context Variables For Shared Local State</h2>
+<p>We can can maintain task-specific state using context variables.</p>
+<p>Context variables or contextvars are a reasonably new API in the Python standard library.</p>
+<p>They provide a way to have a shared local state that is private within a thread, such as within one given call graph.</p>
+<blockquote>
+<p>This module provides APIs to manage, store, and access context-local state.</p>
+<cite>-- <a href="https://docs.python.org/3/library/contextvars.html">contextvars — Context Variables</a></cite></blockquote>
+<p>This capability was described in <a href="https://peps.python.org/pep-0567/">PEP 567</a>, specifically designed as a way of offering thread-local-like behavior for tasks within an asyncio program. The solution allows thread-local behavior generally within a thread and private to each call graph.</p>
+<p>This is opposed to thread-local memory which is a capability provided by the operating system native threads and offered within Python to have variables across threads and private to each thread.</p>
+<blockquote>
+<p>Thread-local variables are insufficient for asynchronous tasks that execute concurrently in the same OS thread. Any context manager that saves and restores a context value using threading.local() will have its context values bleed to other code unexpectedly when used in async/await code.</p>
+<cite>-- <a href="https://peps.python.org/pep-0567/">PEP 567 – Context Variables</a></cite></blockquote>
+<p>The contextvars module was introduced in Python in version 3.7.</p>
+<blockquote>
+<p>The new contextvars module and a set of new C APIs introduce support for context variables. Context variables are conceptually similar to thread-local variables. Unlike TLS, context variables support asynchronous code correctly.</p>
+<cite>-- <a href="https://docs.python.org/3/whatsnew/3.7.html">What’s New In Python 3.7</a></cite></blockquote>
+<p>This approach to shared local state is now generally recommended in Python instead of using thread local, providing a more flexible approach that can operate at the preferred scope.</p>
+<blockquote>
+<p>Context managers that have state should use Context Variables instead of threading.local() to prevent their state from bleeding to other code unexpectedly, when used in concurrent code.</p>
+<cite>-- <a href="https://docs.python.org/3/library/contextvars.html">contextvars — Context Variables</a></cite></blockquote>
+<p>It can be used for arbitrary call graphs within a Python program, and works with asyncio tasks and coroutines out of the box, without any additional configuration</p>
+<blockquote>
+<p>Context variables are natively supported in asyncio and are ready to be used without any extra configuration.</p>
+<cite>-- <a href="https://docs.python.org/3/library/contextvars.html">contextvars — Context Variables</a></cite></blockquote>
+<p>Now that we know what contextvars are, let's look at how we might use them in asyncio.</p>
+<h2>How to Use Context Variables in Asyncio</h2>
+<p>A context variable should be first created at the top level of the program, e.g. at the module level as a global variable.</p>
+<blockquote>
+<p>Important: Context Variables should be created at the top module level and never in closures. Context objects hold strong references to context variables which prevents context variables from being properly garbage collected.</p>
+<cite>-- <a href="https://docs.python.org/3/library/contextvars.html">contextvars — Context Variables</a></cite></blockquote>
+<p>A context variable is created via the <strong>contextvars.ContextVar()</strong> object and a unique name for the variable are provided as an argument.</p>
+<p>For example:</p>
+<pre><code>...
+# create shared context variable (for all coroutines/tasks)
+shared_request_id = contextvars.ContextVar('request_id')</code></pre>
+<p>Once created, a value for the variable can be set via the <strong>set()</strong> method.</p>
+<p>This will be private to the asyncio coroutine and any and all coroutines and tasks created by that task, as well as their descendants.</p>
+<p>For example:</p>
+<pre><code>...
+# write data in the context variable
+shared_request_id.set(value)</code></pre>
+<p>A value from a contextvar can be retrieved via the <strong>get()</strong> method.</p>
+<p>The value will be unique and private for the caller's context, e.g. call graph or block.</p>
+<p>For example:</p>
+<pre><code>...
+# read data from the context variable
+value = shared_request_id.get()</code></pre>
+<p>Importantly, the scope of the variable is the caller's context.</p>
+<p>I think the easiest way to think about this is in terms of call graphs, but you can also think of blocks or similar organizations of code.</p>
+<p>For example, tasks that create tasks that create tasks. All base-level tasks and their children may share state using a context variable.</p>
+<p>For example:</p>
+<ul>
+<li>Base Task: state.set(1)
+<ul>
+<li>Child Task: state.get() # 1
+<ul>
+<li>Grand Child Task: state.get() # 1</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Base Task: state.set(2)
+<ul>
+<li>Child Task: state.get() # 2
+<ul>
+<li>Grand Child Task: state.get() # 2</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Base Task: state.set(3)
+<ul>
+<li>Child Task: state.get() # 3
+<ul>
+<li>Grand Child Task: state.get() # 3</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>...</li>
+</ul>
+<p>All tasks access the same "variable" but "see" different values based on their "context" e.g. call graph.</p>
+<p>To make this clearer, let's consider some use cases:</p>
+<p>A common use case for context variables in an asyncio program would be:</p>
+<ol>
+<li>Create a context variable at the module level</li>
+<li>Assign values (e.g. at the root level in a call graph)</li>
+<li>Access values (e.g. at the leaf level of the call graph)</li>
+</ol>
+<p>That being said, values can be read/written at any level.</p>
+<p>For example, these are common patterns:</p>
+<ol>
+<li>Write state at the root level, read at leaf level of call graph.</li>
+<li>Write state at the leaf-level, read at the root level of the call graph.</li>
+</ol>
+<p>Now that we know how to use context variables in asyncio, let's look at some worked examples.</p>
+<h2>Example of Context Variables in Asyncio</h2>
+<p>We can explore an example of sharing private state from the root level of the task with all descendant tasks.</p>
+<p>Each separate root-level task will have a different task identifier which might be used for logging, reporting, error handling, and so on.</p>
+<p>In this case, the identifier is generated as a random number and stored by each task when it is started. The task then retrieves and reports this id and starts a sub-task. The sub-task retrieves and reports the id and starts its own sub-task which also reports the id.</p>
+<p>Multiple root-level tasks are then created, each with its own private version of the id, although accessed via the shared global context variable.</p>
+<p>Firstly, we can create the grandchild task that takes a name for the task, retrieves the shared local id, and reports the value.</p>
+<pre><code># grandchild task
+async def task_grandchild(name):
+    # read the id
+    result = shared_ids.get()
+    # report the id
+    print(f'Grand Child {name} id: {result}')
+</code></pre>
+<p>Next, we can define the child task that takes the task name, retrieves and reports the id, and starts and awaits the grandchild task.</p>
+<pre><code># child task
+async def task_child(name):
+    # read the id
+    result = shared_ids.get()
+    # report the id
+    print(f'Child {name} id: {result}')
+    # await a grandchild task
+    await task_grandchild(name)
+</code></pre>
+<p>Next, we can define the root-level task.</p>
+<p>The task first generates a unique task id using <strong>random.random()</strong>.</p>
+<p>This is first used to sleep the task, to ensure that each task and subtasks that are started store and accesses its context variable at different times. This is intentional, to demonstrate that reads and writes of the context variable are private to each call graph.</p>
+<p>The task then stores the id, retrieves it, and starts a child task.</p>
+<pre><code># task
+async def task(name):
+    # generate a random id
+    value = random.random()
+    # block for a random time to allow things to run out of order
+    await asyncio.sleep(value * 5)
+    # store id
+    shared_ids.set(value)
+    # read the id again
+    result = shared_ids.get()
+    # report the id
+    print(f'Task {name} id: {result}')
+    # await a child task
+    await task_child(name)
+</code></pre>
+<p>Finally, the <strong>main()</strong> coroutine starts 3 root level tasks using an <strong>asyncio.TaskGroup</strong> via the context manager interface and waits for them to complete.</p>
+<pre><code># entry point
+async def main():
+    # start a few root-level tasks
+    async with asyncio.TaskGroup() as group:
+        _ = group.create_task(task('A'))
+        _ = group.create_task(task('B'))
+        _ = group.create_task(task('C'))
+    # wait for tasks to complete
+</code></pre>
+<p>If you are new to the <strong>asyncio.TaskGroup</strong>, a preferred way to manage groups of tasks. You can learn more about it in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-taskgroup/">How to use asyncio.TaskGroup</a></li>
+</ul>
+<p>Finally, before starting the event loop we can declare and define our shared context variable.</p>
+<pre><code>...
+# create shared state
+shared_ids = contextvars.ContextVar('id')
+# start run time
+asyncio.run(main())
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of asyncio contextvars written at root, read at leaf
+import asyncio
+import contextvars
+import random
+
+# grandchild task
+async def task_grandchild(name):
+    # read the id
+    result = shared_ids.get()
+    # report the id
+    print(f'Grand Child {name} id: {result}')
+
+# child task
+async def task_child(name):
+    # read the id
+    result = shared_ids.get()
+    # report the id
+    print(f'Child {name} id: {result}')
+    # await a grandchild task
+    await task_grandchild(name)
+
+# task
+async def task(name):
+    # generate a random id
+    value = random.random()
+    # block for a random time to allow things to run out of order
+    await asyncio.sleep(value * 5)
+    # store id
+    shared_ids.set(value)
+    # read the id again
+    result = shared_ids.get()
+    # report the id
+    print(f'Task {name} id: {result}')
+    # await a child task
+    await task_child(name)
+
+# entry point
+async def main():
+    # start a few root-level tasks
+    async with asyncio.TaskGroup() as group:
+        _ = group.create_task(task('A'))
+        _ = group.create_task(task('B'))
+        _ = group.create_task(task('C'))
+    # wait for tasks to complete
+
+# create shared state
+shared_ids = contextvars.ContextVar('id')
+# start run time
+asyncio.run(main())
+</code></pre>
+<p>Running the example first declares and defines a context variable named "<strong>id</strong>" at the module level.</p>
+<p>This will be accessible throughout the program as a global variable, except the context under which it is accessed will define what values are written and read.</p>
+<p>Next, the asyncio event loop is started and the <strong>main()</strong> coroutine is run. The <strong>TaskGroup</strong> is created and 3 tasks named 'A', 'B', and 'C' are created and scheduled. The <strong>main()</strong> coroutine then blocks until all 3 tasks are done.</p>
+<p>Each task runs, first generating a random (and likely unique) id and sleeping for some fraction of 5 seconds.</p>
+<p>Each task then resumes in time and stores its id in the shared context global variable. Each task stores its own private version of value in the context variable.</p>
+<p>The variable is not overwritten by each task.</p>
+<p>The tasks retrieve their value and report it before starting a child task and awaiting it.</p>
+<p>Child tasks run, retrieve their id, and report it before starting and awaiting a grandchild task. The process repeats</p>
+<p>Reviewing the output we can see that Tasks in the "Task A" call graph all report the same id from the shared context variable.</p>
+<p>If the shared_ids global variable was a regular global variable, this would not be the case, as each <strong>task() </strong>would overwrite the same value. Instead, because it is a context variable, each context, in this case, “Task A” has its own private version of the variable.</p>
+<p>We see the same with "Task B" which maintains its own unique id, and "Task C".</p>
+<p>This highlights how we can use context variables to maintain private local state for tasks and their descendants in asyncio programs.</p>
+<pre><code>Task B id: 0.21006336891530553
+Child B id: 0.21006336891530553
+Grand Child B id: 0.21006336891530553
+Task A id: 0.889161691165258
+Child A id: 0.889161691165258
+Grand Child A id: 0.889161691165258
+Task C id: 0.909038679679102
+Child C id: 0.909038679679102
+Grand Child C id: 0.909038679679102</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use context variables for private and local state within each asyncio task.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,2994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python ThreadPool: The Complete Guide – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Python ThreadPool: The Complete Guide</h1>
+<div class="post-meta">October 28, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>The <strong>Python ThreadPool</strong> provides reusable worker threads in Python.</p>
+<p>The ThreadPool is a lesser-known class that is part of the Python standard library. It offers easy-to-use pools of worker threads and is ideal for making loops of I/O-bound tasks concurrent and for executing tasks asynchronously.</p>
+<p>This book-length guide provides a detailed and comprehensive walkthrough of the <strong>Python ThreadPool API</strong>.</p>
+<p>Some tips:</p>
+<ol>
+<li>You may want to bookmark this guide and read it over a few sittings.</li>
+<li>You can <a href="../zips/superfastpython-threadpool-guide.zip">download a zip</a> of all code used in this guide.</li>
+<li>You can get help, ask a question in the comments or <a href="../contact/">email me</a>.</li>
+<li>You can jump to the topics that interest you via the table of contents (below).</li>
+</ol>
+<p>Let's dive in.</p>
+<figure><img alt="Python ThreadPool: The Complete Guide" loading="lazy" src="../pics/ThreadPool-Guide600px.png"/><figcaption>Python ThreadPool: The Complete Guide</figcaption></figure>
+<h2>Python Threads and the Need for Threads Pools</h2>
+<p>So, what are threads and why do we care about thread pools?</p>
+<h3>What Are Python Threads</h3>
+<p>A thread refers to a <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread of execution</a> by a computer program.</p>
+<p>Every Python program is a process with one thread called the main thread used to execute your program instructions. Each process is in fact one instance of the Python interpreter that executes Python instructions (Python byte-code), which is a slightly lower level than the code you type into your Python program.</p>
+<p>Sometimes, we may need to create additional threads within our Python process to execute tasks concurrently.</p>
+<p>Python provides real naive (system-level) threads via the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>A task can be run in a new thread by creating an instance of the Thread class and specifying the function to run in the new thread via the target argument.</p>
+<pre><code>...
+# create and configure a new thread to run a function
+thread = Thread(target=task)</code></pre>
+<p>Once the thread is created, it must be started by calling the <strong>start()</strong> function.</p>
+<pre><code>...
+# start the task in a new thread
+thread.start()</code></pre>
+<p>We can then wait around for the task to complete by joining the thread; for example</p>
+<pre><code>...
+# wait for the task to complete
+thread.join()</code></pre>
+<p>We can demonstrate this with a complete example of a task that sleeps for a moment and prints a message.</p>
+<p>The complete example of executing a target task function in a separate thread is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of executing a target task function in a separate thread
+from time import sleep
+from threading import Thread
+
+# a simple task that blocks for a moment and prints a message
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print('This is coming from another thread')
+
+# create and configure a new thread to run a function
+thread = Thread(target=task)
+# start the task in a new thread
+thread.start()
+# display a message
+print('Waiting for the new thread to finish...')
+# wait for the task to complete
+thread.join()
+</code></pre>
+<p>Running the example creates the thread object to run the <strong>task()</strong> function.</p>
+<p>The thread is started and the <strong>task()</strong> function is executed in another thread. The task sleeps for a moment; meanwhile, in the main thread, a message is printed that we are waiting around and the main thread joins the new thread.</p>
+<p>Finally, the new thread finishes sleeping, prints a message, and closes. The main thread then carries on and also closes as there are no more instructions to execute.</p>
+<pre><code>Waiting for the new thread to finish...
+This is coming from another thread</code></pre>
+<p>You can learn more about Python threads in the tutorial:</p>
+<ul>
+<li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li>
+</ul>
+<p>This is useful for running one-off ad hoc tasks in a separate thread, although it becomes cumbersome when you have many tasks to run.</p>
+<p>Each thread that is created requires the application of resources (e.g. memory for the thread's stack space). The computational costs for setting up threads can become expensive if we are creating and destroying many threads over and over for ad hoc tasks.</p>
+<p>Instead, we would prefer to keep worker threads around for reuse if we expect to run many ad hoc tasks throughout our program.</p>
+<p>This can be achieved using a thread pool.</p>
+<h3>What Are Thread Pools</h3>
+<p>A <a href="https://en.wikipedia.org/wiki/Thread_pool">thread pool</a> is a programming pattern for automatically managing a pool of worker threads.</p>
+<p>The pool is responsible for a fixed number of threads.</p>
+<ul>
+<li>It controls when the threads are created, such as just-in-time when they are needed.</li>
+<li>It also controls what threads should do when they are not being used, such as making them wait without consuming computational resources.</li>
+</ul>
+<p>Each thread in the pool is called a worker or a worker thread. Each worker is agnostic to the type of tasks that are executed, along with the user of the thread pool to execute a suite of similar (homogeneous) or dissimilar tasks (heterogeneous) in terms of the function called, function arguments, task duration, and more.</p>
+<p>Worker threads are designed to be re-used once the task is completed and provide protection against the unexpected failure of the task, such as raising an exception, without impacting the worker thread itself.</p>
+<p>This is unlike a single thread that is configured for the single execution of one specific task.</p>
+<p>The pool may provide some facility to configure the worker threads, such as running an initialization function and naming each worker thread using a specific naming convention.</p>
+<p>Thread pools can provide a generic interface for executing ad hoc tasks with a variable number of arguments, but do not require that we choose a thread to run the task, start the thread, or wait for the task to complete.</p>
+<p>It can be significantly more efficient to use a thread pool instead of manually starting, managing, and closing threads, especially with a large number of tasks.</p>
+<p>Python provides a thread pool via the <strong>ThreadPool</strong> class.</p>
+<h2>ThreadPool Class in Python</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.ThreadPool"><strong>multiprocessing.pool.ThreadPool</strong> class in Python</a> provides a pool of reusable threads for executing ad hoc tasks.</p>
+<blockquote>
+<p>A thread pool object which controls a pool of worker threads to which jobs can be submitted.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The <strong>ThreadPool</strong> class extends the Pool class. The Pool class provides a pool of worker processes for process-based concurrency.</p>
+<p>Although the <strong>ThreadPool</strong> class is in the multiprocessing module it offers thread-based concurrency.</p>
+<p>We can create a thread pool by instantiating the <strong>ThreadPool</strong> class and specifying the number of threads via the "<strong>processes</strong>" argument; for example:</p>
+<pre><code>...
+# create a thread pool
+pool = ThreadPool(processes=10)</code></pre>
+<p>We can issue one-off tasks to the <strong>ThreadPool</strong> using methods such as <strong>apply()</strong> or we can apply the same function to an iterable of items using methods such as <strong>map()</strong>.</p>
+<p>The <strong>map()</strong> function matches the built-in <strong>map()</strong> function and takes a function name and an iterable of items. The target function will then be called for each item in the iterable as a separate task in the thread pool. An iterable of results will be returned if the target function returns a value.</p>
+<p>For example:</p>
+<pre><code>...
+# call a function on each item in a list and handle results
+for result in pool.map(task, items):
+	# handle the result...
+</code></pre>
+<p>The <strong>ThreadPool</strong> class offers many variations on the <strong>map()</strong> method for issuing tasks.</p>
+<p>We can issue tasks asynchronously to the <strong>ThreadPool</strong>, which returns an instance of an <strong>AsyncResult</strong> immediately. One-off tasks can be used via <strong>apply_async()</strong>, whereas the <strong>map_async()</strong> offers an asynchronous version of the <strong>map()</strong> method.</p>
+<p>The <strong>AsyncResult</strong> object provides a handle on the asynchronous task that we can use to query the status of the task, wait for the task to complete, or get the return value from the task, once it is available.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task to the pool and get an asyncresult immediately
+result = pool.apply_async(task)
+# get the result once the task is done
+value = result.get()</code></pre>
+<p>Once we are finished with the <strong>ThreadPool</strong>, it can be shut down by calling the <strong>close()</strong> method in order to release all of the worker threads and their resources.</p>
+<p>For example:</p>
+<pre><code>...
+# shutdown the thread pool
+pool.close()</code></pre>
+<p>The life-cycle of creating and shutting down the thread pool can be simplified by using the context manager that will automatically close the <strong>ThreadPool</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPool(10) as pool:
+	# call a function on each item in a list and handle results
+	for result in pool.map(task, items):
+		# handle the result...
+	# ...
+# shutdown automatically
+</code></pre>
+<p>You can learn more about how to use the <strong>ThreadPool</strong> class in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-class-in-python/">ThreadPool Class in Python</a></li>
+</ul>
+<p>Now that we are familiar with the functionality of a <strong>ThreadPool</strong> class, let's take a closer look at the lifecycle of the <strong>ThreadPool</strong> objects.</p>
+<h2>Life-Cycle of the ThreadPool</h2>
+<p>The <strong>multiprocessing.pool.ThreadPool</strong> provides a pool of generic worker threads.</p>
+<p>It was designed to be easy and straightforward to use thread-based wrapper for the <strong>multiprocessing.pool.Pool</strong> class.</p>
+<p>There are four main steps in the life-cycle of using the <strong>ThreadPool</strong> class, they are: create, submit, wait, and shutdown.</p>
+<ol>
+<li><strong>Create</strong>: Create the thread pool by calling the constructor ThreadPool().</li>
+<li><strong>Submit</strong>: Submit tasks synchronously or asynchronously.
+<ul>
+<li>2a. Submit Tasks Synchronously</li>
+<li>2b. Submit Tasks Asynchronously</li>
+</ul>
+</li>
+<li><strong>Wait</strong>: Wait and get results as tasks complete (optional).
+<ul>
+<li>3a. Wait on AsyncResult objects to Complete</li>
+<li>3b. Wait on AsyncResult objects for Result</li>
+</ul>
+</li>
+<li><strong>Shutdown</strong>: Shut down the thread pool by calling shutdown().
+<ul>
+<li>4a. Shutdown Automatically with the Context Manager</li>
+</ul>
+</li>
+</ol>
+<p>The following figure helps to picture the life-cycle of the ThreadPool class.</p>
+<figure><img alt="" loading="lazy" src="../pics/ThreadPool-Life-Cycle.png"/><figcaption>ThreadPool Life-Cycle</figcaption></figure>
+<p>Let's take a closer look at each life-cycle step in turn.</p>
+<h3>Step 1. Create the Thread Pool</h3>
+<p>First, a <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.ThreadPool">multiprocessing.pool.ThreadPool</a></strong> instance must be created.</p>
+<p>When an instance of a <strong>ThreadPool</strong> is created it may be configured.</p>
+<p>The thread pool can be configured by specifying arguments to the <strong>ThreadPool</strong> class constructor.</p>
+<p>The arguments to the constructor are as follows:</p>
+<ul>
+<li><strong>processes</strong>: Maximum number of worker threads (not processes) to use in the pool.</li>
+<li><strong>initializer</strong>: Function executed after each worker thread is created.</li>
+<li><strong>initargs</strong>: Arguments to the worker threads initialization function.</li>
+</ul>
+<p>Perhaps the most important argument is "<strong>processes</strong>" that specify the number of worker threads in the thread pool. It is named for the number of processes in the <strong>multiprocessing.pool.Pool</strong> class, although here it does refer to the number of threads.</p>
+<p>By default, the <strong>ThreadPool</strong> class constructor does not take any arguments.</p>
+<p>For example:</p>
+<pre><code>...
+# create a default thread pool
+pool = multiprocessing.pool.ThreadPool()</code></pre>
+<p>This will create a thread pool that will use a number of worker threads that match the number of logical CPU cores in your system.</p>
+<p>For example, if we had 4 physical CPU cores with hyperthreading, this would mean we would have 8 logical CPU cores and this would be the default number of workers in the thread pool.</p>
+<p>We can set the "<strong>processes</strong>" argument to specify the number of threads to create and use as workers in the thread pool.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool with 4 workers
+pool = multiprocessing.pool.ThreadPool(processes=4)</code></pre>
+<p>It is a good idea to test your application in order to determine the number of worker threads that result in the best performance.</p>
+<p>For example, for many blocking IO tasks, you may achieve the best performance by setting the number of threads to be equal to the number of tasks themselves, e.g. 100s or 1000s.</p>
+<p>Next, let's look at how we might issue tasks to the thread pool.</p>
+<h3>Step 2. Submit Tasks to the Thread Pool</h3>
+<p>Once the ThreadPool has been created, you can submit tasks execution.</p>
+<p>As discussed, there are two main approaches for submitting tasks to the thread pool, they are:</p>
+<ol>
+<li>Issue tasks synchronously.</li>
+<li>Issue tasks asynchronously.</li>
+</ol>
+<p>You can learn more about the different ways to issue tasks to the ThreadPool in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-apply-vs-map-vs-imap-vs-starmap/">ThreadPool apply() vs map() vs imap() vs starmap()</a></li>
+</ul>
+<p>Let's take a closer look at each approach in turn.</p>
+<h4>Step 2a. Issue Tasks Synchronously</h4>
+<p>Issuing tasks synchronously means that the caller will block until the issued task or tasks have been completed.</p>
+<p>Blocking calls to the thread pool include <strong>apply()</strong>, <strong>map()</strong>, and <strong>starmap()</strong>.</p>
+<ul>
+<li>Use apply()</li>
+<li>Use map()</li>
+<li>Use starmap()</li>
+</ul>
+<p>We can issue one-off tasks to the thread pool using the <strong>apply()</strong> function.</p>
+<p>The <strong>apply()</strong> function takes the name of the function to execute by a worker thread. The call will block until the function is executed by a worker thread, after which time it will return.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task to the thread pool
+pool.apply(task)</code></pre>
+<p>The thread pool provides a parallel version of the built-in <strong>map()</strong> function for issuing tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates return values from the issued tasks
+for result in map(task, items):
+	# ...
+</code></pre>
+<p>The <strong>starmap()</strong> function is the same as the parallel version of the <strong>map()</strong> function, except that it allows each function call to take multiple arguments. Specifically, it takes an iterable where each item is an iterable of arguments for the target function.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates return values from the issued tasks
+for result in starmap(task, items):
+	# ...
+</code></pre>
+<h4>Step 2b. Issue Tasks Asynchronously</h4>
+<p>Issuing tasks asynchronously to the thread pool means that the caller will not block, allowing the caller to continue on with other work while the tasks are executing.</p>
+<p>The non-blocking calls to issue tasks to the thread pool return immediately and provide a hook or mechanism to check the status of the tasks and get the results later. The caller can issue tasks and carry on with the program.</p>
+<p>Non-blocking calls to the thread pool include <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async()</strong>.</p>
+<p>The <strong>imap()</strong> and <strong>imap_unordered()</strong> are interesting. They return immediately, so they are technically non-blocking calls. The iterable that is returned will yield return values as tasks are completed. This means traversing the iterable will block.</p>
+<ul>
+<li>Use apply_async()</li>
+<li>Use map_async()</li>
+<li>Use imap()</li>
+<li>Use imap_unordered()</li>
+<li>Use starmap_async()</li>
+</ul>
+<p>The <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async()</strong> functions are asynchronous versions of the <strong>apply()</strong>, <strong>map()</strong>, and <strong>starmap()</strong> functions described above.</p>
+<p>They all return an <strong>AsyncResult</strong> object immediately that provides a handle on the issued task or tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the thread pool asynchronously
+result = map_async(task, items)</code></pre>
+<p>The <strong>imap()</strong> function takes the name of a target function and an iterable like the <strong>map()</strong> function.</p>
+<p>The difference is that the <strong>imap() function is lazier</strong> in two ways:</p>
+<ul>
+<li><strong>imap()</strong> issues multiple tasks to the thread pool one by one, instead of all at once like <strong>map()</strong>.</li>
+<li><strong>imap()</strong> returns an iterable that yields results one-by-one as tasks are completed, rather than one-by-one after all tasks have been completed like <strong>map()</strong>.</li>
+</ul>
+<p>For example:</p>
+<pre><code>...
+# iterates results as tasks are completed in order
+for result in imap(task, items):
+	# ...
+</code></pre>
+<p>The <strong>imap_unordered()</strong> is the same as <strong>imap()</strong>, except that the returned iterable will yield return values in the order that tasks are completed (e.g. out of order).</p>
+<p>For example:</p>
+<pre><code>...
+# iterates results as tasks are completed, in the order they are completed
+for result in imap_unordered(task, items):
+	# ...
+</code></pre>
+<p>Now that we know how to issue tasks to the thread pool, let's take a closer look at waiting for tasks to complete or getting results.</p>
+<h3>Step 3. Wait for Tasks to Complete (Optional)</h3>
+<p>An <strong>AsyncResult</strong> object is returned when issuing tasks to <strong>ThreadPool</strong> the thread pool asynchronously.</p>
+<p>This can be achieved via any of the following methods on the thread pool:</p>
+<ul>
+<li><strong>apply_async()</strong> to issue one task.</li>
+<li><strong>map_async()</strong> to issue multiple tasks.</li>
+<li><strong>starmap_async()</strong> to issue multiple tasks that take multiple arguments.</li>
+</ul>
+<p>An <strong>AsyncResult</strong> provides a handle on one or more issued tasks.</p>
+<p>It allows the caller to check on the status of the issued tasks, to wait for the tasks to complete, and get the results once tasks are completed.</p>
+<p>We do not need to use the returned <strong>AsyncResult</strong>, such as if issued tasks do not return values and we are not concerned with when the tasks are complete or whether they are completed successfully.</p>
+<p>That is why this step in the life cycle is optional.</p>
+<p>Nevertheless, there are two main ways we can use an <strong>AsyncResult</strong> to wait, they are:</p>
+<ol>
+<li>Wait for issued tasks to complete.</li>
+<li>Wait for a result from issued tasks.</li>
+</ol>
+<p>Let's take a closer look at each approach in turn.</p>
+<h4>3a. Wait on AsyncResult objects to Complete</h4>
+<p>We can wait for all tasks to be completed via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.wait"><strong>AsyncResult.wait()</strong> function</a>.</p>
+<p>This will block until all issued tasks are completed.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for issued task to complete
+result.wait()</code></pre>
+<p>If the tasks have already been completed, then the <strong>wait()</strong> function will return immediately.</p>
+<p>A "<strong>timeout</strong>" argument can be specified to set a limit in seconds for how long the caller is willing to wait.</p>
+<p>If the timeout expires before the tasks are complete, the <strong>wait()</strong> function will return.</p>
+<p>When using a timeout, the <strong>wait()</strong> function does not give an indication that it returned because tasks were completed or because the timeout elapsed. Therefore, we can check if the tasks are completed via the <strong>ready()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for issued task to complete with a timeout
+result.wait(timeout=10)
+# check if the tasks are all done
+if result.ready()
+	print('All Done')
+	...
+else :
+	print('Not Done Yet')
+	...
+</code></pre>
+<h4>3b. Wait on AsyncResult objects for Result</h4>
+<p>We can get the result of an issued task by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.get"><strong>AsyncResult.get()</strong> function</a>.</p>
+<p>This will return the result of the specific function called to issue the task.</p>
+<ul>
+<li><strong>apply_async()</strong>: Returns the return value of the target function.</li>
+<li><strong>map_async()</strong>: Returns an iterable over the return values of the target function.</li>
+<li><strong>starmap_async()</strong>: Returns an iterable over the return values of the target function.</li>
+</ul>
+<p>For example:</p>
+<pre><code>...
+# get the result of the task or tasks
+value = result.get()</code></pre>
+<p>If the issued tasks have not yet been completed, then <strong>get()</strong> will block until the tasks are finished.</p>
+<p>If an issued task raises an exception, the exception will be re-raised once the issued tasks are completed.</p>
+<p>We may need to handle this case explicitly if we expect a task to raise an exception on failure.</p>
+<p>A “<strong>timeout</strong>” argument can be specified. If the tasks are still running and do not completed within the specified number of seconds, a <strong>multiprocessing.TimeoutError</strong> is raised.</p>
+<p>You can learn more about the AsyncResult object in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-asyncresult/">How to Use ThreadPool AsyncResult</a></li>
+</ul>
+<p>Next, let's look at how we might shut down the thread pool once we are finished with it.</p>
+<h3>Step 4. Shutdown the Thread Pool</h3>
+<p>The <strong>ThreadPool</strong> can be closed once we have no further tasks to issue.</p>
+<p>There are two ways to shut down the thread pool.</p>
+<p>They are:</p>
+<ol>
+<li>Call <strong>close()</strong>.</li>
+<li>Call <strong>terminate()</strong>.</li>
+</ol>
+<p>The <strong>close()</strong> function will return immediately and the pool will not take any further tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# close the thread pool
+pool.close()</code></pre>
+<p>Alternatively, we may want to forcefully terminate all worker threads, regardless of whether they are executing tasks or not.</p>
+<p>This can be achieved via the <strong>terminate()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# forcefully close all worker threads
+pool.terminate()</code></pre>
+<p>You can learn more about shutting down the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-close-and-terminate/">How to Shutdown the ThreadPool in Python</a></li>
+</ul>
+<p>We may want to then wait for all tasks in the pool to finish.</p>
+<p>This can be achieved by calling the <strong>join()</strong> function on the pool.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all issued tasks to complete
+pool.join()</code></pre>
+<p>An alternate approach is to shut down the thread pool automatically with the context manager interface.</p>
+<h4>Step 4a. ThreadPool Context Manager</h4>
+<p>A context manager is an interface on Python objects for defining a new run context.</p>
+<p>Python provides a context manager interface on the thread pool.</p>
+<p>This achieves a similar outcome to using a try-except-finally pattern, with less code.</p>
+<p>Specifically, it is more like a try-finally pattern, where any exception handling must be added and occur within the code block itself.</p>
+<p>For example:</p>
+<pre><code>...
+# create and configure the thread pool
+with multiprocessing.pool.ThreadPool() as pool:
+	# issue tasks to the pool
+	# ...
+# close the pool automatically
+</code></pre>
+<p>There is an important difference with the try-finally block.</p>
+<p>The <strong>ThreadPool</strong> class extends the <strong>Pool</strong> class. As such, if we look at the <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/pool.py#L735">source code for the <strong>multiprocessing.Pool</strong> class</a>, we can see that the <strong>__exit__()</strong> method calls the <strong>terminate()</strong> method on the thread pool when exiting the context manager block.</p>
+<p>This means that the pool is forcefully closed once the context manager block is exited. It ensures that the resources of the thread pool are released before continuing on, but does not ensure that tasks that have already been issued are completed first.</p>
+<p>You can learn more about the <strong>ThreadPool</strong> context manager interface in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-context-manager/">How to Use the ThreadPool Context Manager</a></li>
+</ul>
+<h2>ThreadPool Example</h2>
+<p>In this section, we will look at a more complete example of using the <strong>ThreadPool</strong>.</p>
+<p>Consider a situation where we might want to check what ports are open on a remote server.</p>
+<p>This is called a port scanner and can be a fun exercise in socket programming.</p>
+<p>A simple way to implement a port scanner is to loop over all the ports you want to test and attempt to make a socket connection on each. If a connection can be made, we disconnect immediately and report that the port on the server is open.</p>
+<p>For example, we know that port 80 is open on python.org, but what other ports might be open?</p>
+<p>Historically, having many open ports on a server was a security risk, so it is common to lock down a public-facing server and close all non-essential ports to external traffic. This means scanning public servers will likely yield few open ports in the best case or will deny future access in the worst case if the server thinks you're trying to break in.</p>
+<p>As such, although developing a port scanner is a fun socket programming exercise, we must be careful in how we use it and what servers we scan.</p>
+<p>Next, let's look at how we can open a socket connection on a single port.</p>
+<h3>Open a Socket Connection on a Port</h3>
+<p>Python provides socket communication in the socket module.</p>
+<p>A socket must first be configured in terms of the type of host address and type of socket we will create, then the configured socket can be connected.</p>
+<p>You can learn more about the socket module in Python here:</p>
+<ul>
+<li><a href="https://docs.python.org/3/library/socket.html">socket — Low-level networking interface</a></li>
+</ul>
+<p>There are many ways to specify a host address, although perhaps the most common is the IP address (IPv4) or the domain name resolved by DNS. We can configure a socket to expect this type of address via the AF_INET constant.</p>
+<p>There are also different socket types, the most common being a TCP or stream type socket and a less reliable UDP type socket. We will attempt to open TCP sockets in this case, as they are more commonly used for services like email, web, FTP, and so on. We can configure our socket for TCP using the SOCK_STREAM constant.</p>
+<p>We can create and configure our socket as follows:</p>
+<pre><code>...
+# set a timeout of a few seconds
+sock = socket(AF_INET, SOCK_STREAM)</code></pre>
+<p>We must close our socket once we are finished with it by calling the <strong>close()</strong> function; for example:</p>
+<pre><code>...
+# close the socket
+sock.close()</code></pre>
+<p>While working with the socket, an exception may be raised for many reasons, such as an invalid address or a failure to connect. We must ensure that the connection is closed regardless, therefore we can automatically close the socket using the context manager; for example:</p>
+<pre><code>...
+# create and configure the socket
+with socket(AF_INET, SOCK_STREAM) as sock:
+	# ...
+</code></pre>
+<p>Next, we can further configure the socket before we open a connection.</p>
+<p>Specifically, it is a good idea to set a timeout because attempting to open network connections can be slow. We want to give up connecting and raise an exception if a given number of seconds elapses and we still haven't connected.</p>
+<p>This can be achieved by calling the <strong>settimeout()</strong> function on the socket. In this case, we will use a somewhat aggressive timeout of 3 seconds.</p>
+<pre><code>...
+# set a timeout of a few seconds
+sock.settimeout(3)</code></pre>
+<p>Finally, we can attempt to make a connection to a server.</p>
+<p>This requires a hostname and a port, which we can pair together into a tuple and pass to the <strong>connect()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# attempt to connect
+sock.connect((host, port))</code></pre>
+<p>If the connection succeeds, we could start sending data to the server and receive it back via this socket using the protocol suggested by the port number. We don't want to communicate with the server so we will close the connection immediately.</p>
+<p>If the connection fails, an exception will be raised indicating that the port is likely not open (or not open to us).</p>
+<p>Therefore, we can wrap the attempt to connect in some exception handling.</p>
+<pre><code>...
+# connecting may fail
+try:
+    # attempt to connect
+    sock.connect((host, port))
+    # a successful connection was made
+except:
+    # ignore the failure, the port is closed to us
+</code></pre>
+<p>Tying this together, the <strong>test_port_number()</strong> will take a host number and a port will return True if a socket can be opened or <strong>False</strong> otherwise.</p>
+<pre><code># returns True if a connection can be made, False otherwise
+def test_port_number(host, port):
+    # create and configure the socket
+    with socket(AF_INET, SOCK_STREAM) as sock:
+        # set a timeout of a few seconds
+        sock.settimeout(3)
+        # connecting may fail
+        try:
+            # attempt to connect
+            sock.connect((host, port))
+            # a successful connection was made
+            return True
+        except:
+            # ignore the failure
+            return False
+</code></pre>
+<p>Next, let's look at how we can use this function we have developed to scan a range of ports.</p>
+<h3>Scan a Range of Ports on a Server</h3>
+<p>We can scan a range of ports on a given host.</p>
+<p>Many common internet services are provided on ports between 0 and 1024.</p>
+<p>The viable range of ports is 0 to 65535, and you can see a list of the most common port numbers and the services that use them in the file /etc/services on POSIX systems.</p>
+<p>Wikipedia also has a page that lists the most common port numbers:</p>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers">List of TCP and UDP port numbers</a></li>
+</ul>
+<p>We will limit our scanning to the range of 0 to 1024.</p>
+<p>To scan a range of ports, we can repeatedly call our <strong>test_port_number()</strong> function that we developed in the previous section and report any ports that permit a connection as '<em>open</em>'.</p>
+<p>The <strong>port_scan()</strong> function below implements this reporting of any open ports that are discovered.</p>
+<pre><code># scan port numbers on a host
+def port_scan(host, ports):
+    print(f'Scanning {host}...')
+    # scan each port number
+    for port in ports:
+        if test_port_number(host, port):
+            print(f'&gt; {host}:{port} open')
+</code></pre>
+<p>Finally, we can call this function and specify the host and range of ports.</p>
+<p>In this case, we will port scan python.org (out of love for python, not malicious intent).</p>
+<pre><code>...
+# define host and port numbers to scan
+HOST = 'python.org'
+PORTS = range(1024)
+# test the ports
+port_scan(HOST, PORTS)
+</code></pre>
+<p>We would expect that at the least port 80 would be open for HTTP connections.</p>
+<p>Tying this together, the complete example of port scanning a host in Python is listed below.</p>
+<pre><code># SuperFastPython.com
+# scan a range of port numbers on the host one by one
+from socket import AF_INET
+from socket import SOCK_STREAM
+from socket import socket
+
+# returns True if a connection can be made, False otherwise
+def test_port_number(host, port):
+    # create and configure the socket
+    with socket(AF_INET, SOCK_STREAM) as sock:
+        # set a timeout of a few seconds
+        sock.settimeout(3)
+        # connecting may fail
+        try:
+            # attempt to connect
+            sock.connect((host, port))
+            # a successful connection was made
+            return True
+        except:
+            # ignore the failure
+            return False
+
+# scan port numbers on a host
+def port_scan(host, ports):
+    print(f'Scanning {host}...')
+    # scan each port number
+    for port in ports:
+        if test_port_number(host, port):
+            print(f'&gt; {host}:{port} open')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define host and port numbers to scan
+    host = 'python.org'
+    ports = range(1024)
+    # test the ports
+    port_scan(host, ports)
+</code></pre>
+<p>Running the example attempts to make a connection for each port number between 0 and 1023 (one minus 1024) and reports all open ports.</p>
+<p>In this case, we can see that port 80 for HTTP is open as expected, and port 443 is also open for HTTPS.</p>
+<p>The program works fine, but it is painfully slow.</p>
+<p>On my system, it took 235.8 seconds to complete (nearly 4 minutes).</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 open
+&gt; python.org:443 open</code></pre>
+<p>Next, let's explore how we might update the example to check ports concurrently using the <strong>ThreadPool</strong>.</p>
+<h3>How to Scan Ports Concurrently (fast)</h3>
+<p>The program for port scanning a server can be adapted to use the <strong>ThreadPool</strong> with very little change.</p>
+<p>The <strong>test_port_number()</strong> function was already called separately for each port. This can be performed in a separate thread so each port is tested concurrently.</p>
+<p>We want to report port numbers in numerical order. This can be achieved by submitting the tasks to the thread pool using the <strong>map()</strong> function and then iterating the True/False results returned for each port number.</p>
+<p>Firstly, we can create the thread pool with one thread per port to be tested.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPool(len(ports)) as pool:
+	# ...
+</code></pre>
+<p>We can issue the tasks to the <strong>ThreadPool</strong> using the <strong>map()</strong> method and then iterate the <strong>True</strong>/<strong>False</strong> results returned for each port number.</p>
+<p>The problem is that the <strong>map()</strong> method only supports target functions that take a single argument.</p>
+<p>Therefore, we must use the <strong>starmap()</strong> method instead.</p>
+<p>We can prepare the iterable of arguments for each call to the <strong>test_port_number()</strong> function using a list comprehension, then call <strong>starmap()</strong> directly, which will return an iterable of return values once all tasks are complete.</p>
+<pre><code>...
+# prepare arguments for starmap
+args = [(host,p) for p in ports]
+# dispatch all tasks
+results = pool.starmap(test_port_number, args)</code></pre>
+<p>We can then iterate over the return values and report the results.</p>
+<p>The problem is, that we want to report the return value (open True or False) along with the port number.</p>
+<p>This can be achieved using the <strong>zip()</strong> built-in function which can traverse two or more iterables at once and yield a value from each. In this case, we can <strong>zip()</strong> our return values and port numbers iterables.</p>
+<pre><code>...
+# report results in order
+for port,is_open in zip(ports,results):
+    if is_open:
+        print(f'&gt; {host}:{port} open')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# scan a range of port numbers on a host concurrently
+from socket import AF_INET
+from socket import SOCK_STREAM
+from socket import socket
+from multiprocessing.pool import ThreadPool
+
+# returns True if a connection can be made, False otherwise
+def test_port_number(host, port):
+    # create and configure the socket
+    with socket(AF_INET, SOCK_STREAM) as sock:
+        # set a timeout of a few seconds
+        sock.settimeout(3)
+        # connecting may fail
+        try:
+            # attempt to connect
+            sock.connect((host, port))
+            # a successful connection was made
+            return True
+        except:
+            # ignore the failure
+            return False
+
+# scan port numbers on a host
+def port_scan(host, ports):
+    print(f'Scanning {host}...')
+    # create the thread pool
+    with ThreadPool(len(ports)) as pool:
+        # prepare the arguments
+        args = [(host,port) for port in ports]
+        # dispatch all tasks
+        results = pool.starmap(test_port_number, args)
+        # report results in order
+        for port,is_open in zip(ports,results):
+            if is_open:
+                print(f'&gt; {host}:{port} open')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define host and port numbers to scan
+    host = 'python.org'
+    ports = range(1024)
+    # test the ports
+    port_scan(host, ports)
+</code></pre>
+<p>Running the program attempts to open a socket connection for all ports in the range 0 and 1023 and reports ports 80 and 443 open as before.</p>
+<p>In this case, the program is dramatically faster.</p>
+<p>On my system, it completed in about 3.1 seconds, compared to the 235.8 seconds for the serial case, which is about 76 times faster.</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 open
+&gt; python.org:443 open</code></pre>
+<p>Next, let's explore how we might configure the <strong>ThreadPool</strong>.</p>
+<h2>How to Configure the ThreadPool</h2>
+<p>The <strong>ThreadPool</strong> can be configured by specifying arguments to the <strong>multiprocessing.pool.ThreadPool</strong> class constructor.</p>
+<p>The arguments to the constructor are as follows:</p>
+<ul>
+<li><strong>processes</strong>: Maximum number of worker threads (not processes) to use in the pool.</li>
+<li><strong>initializer</strong>: Function executed after each worker thread is created.</li>
+<li><strong>initargs</strong>: Arguments to the worker thread initialization function.</li>
+</ul>
+<p>Unlike the <strong>multiprocessing.pool.Pool</strong> class that the <strong>ThreadPool</strong> extends, the <strong>ThreadPool</strong> does not have a "<strong>maxtasksperchild</strong>" argument to limit the number of tasks per worker. Also, because we are using threads instead of processes, we cannot configure the multiprocessing "<strong>context</strong>" used by the pool.</p>
+<p>By default the <strong>multiprocessing.pool.ThreadPool</strong> class constructor does not take any arguments.</p>
+<p>For example:</p>
+<pre><code>...
+# create a default thread pool
+pool = multiprocessing.pool.ThreadPool()</code></pre>
+<p>This will create a thread pool that will use a number of worker threads that match the number of logical CPU cores in your system.</p>
+<p>It will not call a function that initializes the worker threads when they are created.</p>
+<p>Each worker thread will be able to execute an unlimited number of tasks within the pool.</p>
+<p>Now that we know what configuration the <strong>ThreadPool</strong> takes, let's look at how we might configure each aspect of the <strong>ThreadPool</strong>.</p>
+<h3>How to Configure the Number of Worker Threads</h3>
+<p>We can configure the number of worker threads in the <strong>multiprocessing.pool.ThreadPool</strong> by setting the "<strong>processes</strong>" argument in the constructor.</p>
+<p>Although the argument is called "<strong>processes</strong>", it actually controls the number of worker threads.</p>
+<blockquote>
+<p>processes is the number of worker threads to use. If processes is None then the number returned by os.cpu_count() is used.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can set the "<strong>processes</strong>" argument to specify the number of worker threads to create and use as workers in the <strong>ThreadPool</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create a threads pool with 4 workers
+pool = multiprocessing.pool.ThreadPool(processes=4)</code></pre>
+<p>The "<strong>processes</strong>" argument is the first argument in the constructor and does not need to be specified by name to be set, for example:</p>
+<pre><code>...
+# create a thread pool with 4 workers
+pool = multiprocessing.pool.ThreadPool(4)</code></pre>
+<p>If we are using the context manager to create the thread pool so that it is automatically shut down, then you can configure the number of threads in the same manner.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool with 4 workers
+with multiprocessing.pool.ThreadPool(4):
+	# ...
+</code></pre>
+<p>You can learn more about how to configure the number of worker threads in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-number-of-workers/">ThreadPool Configure The Number of Workers Threads</a></li>
+</ul>
+<p>Next, let's look at how we might configure the worker thread initialization function.</p>
+<h3>How to Configure the Initialization Function</h3>
+<p>We can configure worker threads in the <strong>ThreadPool</strong> to execute an initialization function prior to executing tasks.</p>
+<p>This can be achieved by setting the "<strong>initializer</strong>" argument when configuring the <strong>ThreadPool</strong> via the class constructor.</p>
+<p>The "<strong>initializer</strong>" argument can be set to the name of a function that will be called to initialize the worker threads.</p>
+<blockquote>
+<p>If initializer is not None then each worker process will call initializer(*initargs) when it starts.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Although the API documentation describes worker processes, the function is used to initialize worker threads.</p>
+<p>For example:</p>
+<pre><code># worker thread initialization function
+def worker_init():
+	# ...
+
+...
+# create a thread pool and initialize workers
+pool = multiprocessing.pool.ThreadPool(initializer=worker_init)
+</code></pre>
+<p>If our worker thread initialization function takes arguments, they can be specified to the <strong>ThreadPool</strong> constructor via the "<strong>initargs</strong>" argument, which takes an ordered list or tuple of arguments for the custom initialization function.</p>
+<p>For example:</p>
+<pre><code># worker thread initialization function
+def worker_init(arg1, arg2, arg3):
+	# ...
+
+...
+# create a thread pool and initialize workers
+pool = multiprocessing.pool.ThreadPool(initializer=worker_init, initargs=(arg1, arg2, arg3))
+</code></pre>
+<p>You can learn more about how to initialize worker threads in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-worker-initializer/">ThreadPool Initialize Worker Threads in Python</a></li>
+</ul>
+<p>Next, let's explore how we might issue tasks to the <strong>ThreadPool</strong>.</p>
+<h2>ThreadPool Issue Tasks</h2>
+<p>In this section, we will take a closer look at the different ways we can issue tasks to the <strong>ThreadPool</strong>.</p>
+<p>The pool provides 8 ways to issue tasks to workers in the <strong>ThreadPool</strong>.</p>
+<p>They are:</p>
+<ol>
+<li>apply()</li>
+<li>apply_async()</li>
+<li>map()</li>
+<li>map_async()</li>
+<li>imap()</li>
+<li>imap_unordered()</li>
+<li>starmap()</li>
+<li>starmap_async()</li>
+</ol>
+<p>The <strong>ThreadPool</strong> extends the <strong>Pool</strong> class and the methods for issuing tasks are defined on the <strong>Pool</strong> class.</p>
+<p>Let's take a closer and brief look at each approach in turn.</p>
+<h3>How to Use apply()</h3>
+<p>We can issue one-off tasks to the <strong>ThreadPool</strong> using the <strong>apply()</strong> method.</p>
+<p>The <strong>apply()</strong> method takes the name of the function to execute by a worker thread. The call will block until the function is executed by a worker thread, after which time it will return.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task to the thread pool
+pool.apply(task)</code></pre>
+<p>The <strong>apply()</strong> method is a concurrent version of the now deprecated built-in <a href="https://docs.python.org/2/library/functions.html#apply"><strong>apply()</strong> function</a>.</p>
+<p>In summary, the capabilities of the <strong>apply()</strong> method are as follows:</p>
+<ul>
+<li>Issues a single task to the <strong>ThreadPool</strong>.</li>
+<li>Supports multiple arguments to the target function.</li>
+<li>Blocks until the call to the target function is complete.</li>
+</ul>
+<p>You can learn more about the <strong>apply()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-apply/">How to Use ThreadPool apply() in Python</a></li>
+</ul>
+<h3>How to Use apply_async()</h3>
+<p>We can issue asynchronous one-off tasks to the <strong>ThreadPool</strong> using the <strong>apply_async()</strong> method.</p>
+<p>Asynchronous means that the call to the <strong>ThreadPool</strong> does not block, allowing the caller that issued the task to carry on.</p>
+<p>The <strong>apply_async()</strong> method takes the name of the function to execute in a worker thread and returns immediately with an <strong>AsyncResult</strong> object for the task.</p>
+<p>It supports a callback function for the result and an error callback function if an error is raised.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task asynchronously to the thread pool
+result = pool.apply_async(task)</code></pre>
+<p>Later the status of the issued task may be checked or retrieved.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from the issued task
+value = result.get()</code></pre>
+<p>In summary, the capabilities of the <strong>apply_async()</strong> method are as follows:</p>
+<ul>
+<li>Issues a single task to the <strong>ThreadPool</strong>.</li>
+<li>Supports multiple arguments to the target function.</li>
+<li>Does not block, instead returns an <strong>AsyncResult</strong>.</li>
+<li>Supports callback for the return value and any raised errors.</li>
+</ul>
+<p>You can learn more about the <strong>apply_async()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-apply_async/">How to Use ThreadPool apply_async() in Python</a></li>
+</ul>
+<h3>How to Use map()</h3>
+<p>The <strong>ThreadPool</strong> provides a concurrent version of the built-in <strong>map()</strong> function for issuing tasks.</p>
+<p>The <strong>map()</strong> method takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable. It returns an iterable over the return values from each call to the target function.</p>
+<p>The iterable is first traversed and all tasks are issued at once. A “<strong>chunksize</strong>” argument can be specified to split the tasks into groups which may be sent to each worker thread to be executed in batch.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates return values from the issued tasks
+for result in map(task, items):
+	# ...
+</code></pre>
+<p>The <strong>map()</strong> method is a concurrent version of the built-in <a href="https://docs.python.org/3/library/functions.html#map"><strong>map()</strong> function</a>.</p>
+<p>In summary, the capabilities of the <strong>map()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the <strong>ThreadPool</strong> all at once.</li>
+<li>Returns an iterable over return values.</li>
+<li>Supports a single argument to the target function.</li>
+<li>Blocks until all issued tasks are completed.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+</ul>
+<p>You can learn more about the map() method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map/">How to Use ThreadPool map() in Python</a></li>
+</ul>
+<h3>How to Use map_async()</h3>
+<p>The <strong>ThreadPool</strong> provides an asynchronous version of the <strong>map()</strong> method for issuing tasks called <strong>map_async()</strong>.</p>
+<p>The <strong>map_async()</strong> method takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable. It does not block and returns immediately with an <strong>AsyncResult</strong> that may be used to access the results.</p>
+<p>The iterable is first traversed and all tasks are issued at once. A “<strong>chunksize</strong>” argument can be specified to split the tasks into groups which may be sent to each worker thread to be executed in batch. It supports a callback function for the result and an error callback function if an error is raised.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the thread pool asynchronously
+result = map_async(task, items)</code></pre>
+<p>Later the status of the tasks can be checked and the return values from each call to the target function may be iterated.</p>
+<p>For example:</p>
+<pre><code>...
+# iterate over return values from the issued tasks
+for value in result.get():
+	# ...
+</code></pre>
+<p>In summary, the capabilities of the <strong>map_async()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the <strong>ThreadPool</strong> all at once.</li>
+<li>Supports a single argument to the target function.</li>
+<li>Does not block, instead returns an <strong>AsyncResult</strong> for accessing results later.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+<li>Supports callback for the return value and any raised errors.</li>
+</ul>
+<p>You can learn more about the <strong>map_async()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map_async/">How to Use ThreadPool map_async() in Python</a></li>
+</ul>
+<h3>How to Use imap()</h3>
+<p>We can issue tasks to the <strong>ThreadPool</strong> one by one via the <strong>imap()</strong> method.</p>
+<p>The <strong>imap()</strong> method takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable.</p>
+<p>It returns an iterable over the return values from each call to the target function. The iterable will yield return values as tasks are completed, in the order that tasks were issued.</p>
+<p>The <strong>imap()</strong> function is lazy in that it traverses the provided iterable and issues tasks to the <strong>ThreadPool</strong> one by one as space becomes available in the <strong>ThreadPool</strong>. A “<strong>chunksize</strong>” argument can be specified to split the tasks into groups which may be sent to each worker thread to be executed in batch.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates results as tasks are completed in order
+for result in imap(task, items):
+	# ...
+</code></pre>
+<p>The <strong>imap()</strong> method is a concurrent version of the now deprecated <a href="https://docs.python.org/2/library/itertools.html#itertools.imap"><strong>itertools.imap()</strong> function</a>.</p>
+<p>In summary, the capabilities of the <strong>imap()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the <strong>ThreadPool</strong>, one by one.</li>
+<li>Returns an iterable over return values.</li>
+<li>Supports a single argument to the target function.</li>
+<li>Blocks until each task is completed in order they were issued.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+</ul>
+<p>You can learn more about the <strong>imap()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-imap/">How to Use ThreadPool imap() in Python</a></li>
+</ul>
+<h3>How to Use imap_unordered()</h3>
+<p>We can issue tasks to the <strong>ThreadPool</strong> one by one via the <strong>imap_unordered()</strong> method.</p>
+<p>The <strong>imap_unordered()</strong> method takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable.</p>
+<p>It returns an iterable over the return values from each call to the target function. The iterable will yield return values as tasks are completed, in the order that tasks were completed, not the order they were issued.</p>
+<p>The <strong>imap_unordered()</strong> function is lazy in that it traverses the provided iterable and issues tasks to the <strong>ThreadPool</strong> one by one as space becomes available in the <strong>ThreadPool</strong>. A “<strong>chunksize</strong>” argument can be specified to split the tasks into groups which may be sent to each worker thread to be executed in batch.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates results as tasks are completed, in the order they are completed
+for result in imap_unordered(task, items):
+	# ...
+</code></pre>
+<p>In summary, the capabilities of the <strong>imap_unordered()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the <strong>ThreadPool</strong>, one by one.</li>
+<li>Returns an iterable over return values.</li>
+<li>Supports a single argument to the target function.</li>
+<li>Blocks until each task is completed in the order they are completed.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+</ul>
+<p>You can learn more about the <strong>imap_unordered()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-imap_unordered/">How to Use ThreadPool imap_unordered() in Python</a></li>
+</ul>
+<h3>How to Use starmap()</h3>
+<p>We can issue multiple tasks to the <strong>ThreadPool</strong> using the <strong>starmap()</strong> method.</p>
+<p>The <strong>starmap()</strong> method takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable. Each item in the iterable may itself be an iterable, allowing multiple arguments to be provided to the target function.</p>
+<p>It returns an iterable over the return values from each call to the target function. The iterable is first traversed and all tasks are issued at once. A “<strong>chunksize</strong>” argument can be specified to split the tasks into groups which may be sent to each worker thread to be executed in batch.</p>
+<p>For example:</p>
+<pre><code>...
+# iterates return values from the issued tasks
+for result in starmap(task, items):
+	# ...
+</code></pre>
+<p>The <strong>starmap()</strong> method is a concurrent version of the <a href="https://docs.python.org/3/library/itertools.html#itertools.starmap"><strong>itertools.starmap()</strong> function</a>.</p>
+<p>In summary, the capabilities of the <strong>starmap()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the <strong>ThreadPool</strong> all at once.</li>
+<li>Returns an iterable over return values.</li>
+<li>Supports multiple arguments to the target function.</li>
+<li>Blocks until all issued tasks are completed.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+</ul>
+<p>You can learn more about the <strong>starmap()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-starmap/">How to Use ThreadPool starmap() in Python</a></li>
+</ul>
+<h3>How to Use starmap_async()</h3>
+<p>We can issue multiple tasks asynchronously to the <strong>ThreadPool</strong> using the <strong>starmap_async()</strong> function.</p>
+<p>The <strong>starmap_async()</strong> function takes the name of a target function and an iterable. A task is created to call the target function for each item in the provided iterable. Each item in the iterable may itself be an iterable, allowing multiple arguments to be provided to the target function.</p>
+<p>It does not block and returns immediately with an AsyncResult that may be used to access the results.</p>
+<p>The iterable is first traversed and all tasks are issued at once. A “<strong>chunksize</strong>” argument can be specified to split the tasks into groups which may be sent to each worker thread to be executed in batch. It supports a callback function for the result and an error callback function if an error is raised.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the thread pool asynchronously
+result = starmap_async(task, items)</code></pre>
+<p>Later the status of the tasks can be checked and the return values from each call to the target function may be iterated.</p>
+<p>For example:</p>
+<pre><code>...
+# iterate over return values from the issued tasks
+for value in result.get():
+	# ...
+</code></pre>
+<p>In summary, the capabilities of the <strong>starmap_async()</strong> method are as follows:</p>
+<ul>
+<li>Issue multiple tasks to the <strong>ThreadPool</strong> all at once.</li>
+<li>Supports multiple arguments to the target function.</li>
+<li>Does not block, instead returns an AsyncResult for accessing results later.</li>
+<li>Allows tasks to be grouped and executed in batches by workers.</li>
+<li>Supports callback for the return value and any raised errors.</li>
+</ul>
+<p>You can learn more about the <strong>starmap_async()</strong> method in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-starmap_async/">How to Use ThreadPool starmap_async() in Python</a></li>
+</ul>
+<h3>How To Choose The Method</h3>
+<p>There are so many methods to issue tasks to the <strong>ThreadPool</strong>, how do you choose?</p>
+<p>Some properties we may consider when comparing functions used to issue tasks to the <strong>ThreadPool</strong> include:</p>
+<ul>
+<li>The number of tasks we may wish to issue at once.</li>
+<li>Whether the function call to issue tasks is blocking or not.</li>
+<li>Whether all of the tasks are issued at once or one-by-one</li>
+<li>Whether the call supports zero, one, or multiple arguments to the target function.</li>
+<li>Whether results are returned in order or not.</li>
+<li>Whether the call supports callback functions or not.</li>
+</ul>
+<p>The table below summarizes each of these properties and whether they are supported by each call to the <strong>ThreadPool</strong>.</p>
+<p>A YES (green) cell in the table does not mean "good". It means that the function call has a given property that may or may not be useful or required for your specific use case.</p>
+<figure><img alt="Table Comparison of Issuing Tasks to the ThreadPool" loading="lazy" src="../pics/How-to-Issue-Tasks-to-the-ThreadPool.png"/><figcaption>Table Comparison of Issuing Tasks to the ThreadPool</figcaption></figure>
+<p>You can learn more about how to choose a method for issuing tasks to the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-apply-vs-map-vs-imap-vs-starmap/">ThreadPool apply() vs map() vs imap() vs starmap()</a></li>
+</ul>
+<h2>How to Use AsyncResult in Detail</h2>
+<p>An <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult"><strong>AsyncResult</strong> object</a> is returned when issuing tasks to <strong>ThreadPool</strong> asynchronously.</p>
+<p>This can be achieved via any of the following methods on the <strong>ThreadPool</strong>:</p>
+<ul>
+<li><strong>apply_async()</strong> to issue one task.</li>
+<li><strong>map_async()</strong> to issue multiple tasks.</li>
+<li><strong>starmap_async()</strong> to issue multiple tasks that take multiple arguments.</li>
+</ul>
+<p>An <strong>AsyncResult</strong> provides a handle on one or more issued tasks.</p>
+<p>It allows the caller to check on the status of the issued tasks, to wait for the tasks to complete, and to get the results once tasks are completed.</p>
+<p>The <strong>AsyncResult</strong> class is straightforward to use.</p>
+<p>First, you must get an <strong>AsyncResult</strong> object by issuing one or more tasks to the <strong>ThreadPool</strong> any of the <strong>apply_async()</strong>, <strong>map_async()</strong>, or <strong>starmap_async()</strong> functions.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task to the thread pool
+result = pool.apply_async(...)</code></pre>
+<p>Once you have an <strong>AsyncResult</strong> object, you can use it to query the status and get results from the task.</p>
+<h3>Get a Result</h3>
+<p>We can get the result of an issued task by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.get"><strong>AsyncResult.get()</strong> function</a>.</p>
+<blockquote>
+<p>Return the result when it arrives.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This will return the result of the specific function called to issue the task.</p>
+<ul>
+<li><strong>apply_async()</strong>: Returns the return value of the target function.</li>
+<li><strong>map_async()</strong>: Returns an iterable over the return values of the target function.</li>
+<li><strong>starmap_async()</strong>: Returns an iterable over the return values of the target function.</li>
+</ul>
+<p>For example:</p>
+<pre><code>...
+# get the result of the task or tasks
+value = result.get()</code></pre>
+<p>If the issued tasks have not yet been completed, then <strong>get()</strong> will block until the tasks are finished.</p>
+<p>A "<strong>timeout</strong>" argument can be specified. If the tasks are still running and do not completed within the specified number of seconds, a <strong>multiprocessing.TimeoutError</strong> is raised.</p>
+<blockquote>
+<p>If timeout is not None and the result does not arrive within timeout seconds then multiprocessing.TimeoutError is raised.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+try:
+	# get the task result with a timeout
+	value = result.get(timeout=10)
+except multiprocessing.TimeoutError as e:
+	# ...
+</code></pre>
+<p>If an issued task raises an exception, the exception will be re-raised once the issued tasks are completed.</p>
+<p>We may need to handle this case explicitly if we expect a task to raise an exception on failure.</p>
+<blockquote>
+<p>If the remote call raised an exception then that exception will be re-raised by get().</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+try:
+	# get the task result that might raise an exception
+	value = result.get()
+except Exception as e:
+	# ...
+</code></pre>
+<h3>Wait For Completion</h3>
+<p>We can wait for all tasks to be completed via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.wait"><strong>AsyncResult.wait()</strong> function</a>.</p>
+<p>This will block until all issued tasks are completed.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for issued task to complete
+result.wait()</code></pre>
+<p>If the tasks have already been completed, then the <strong>wait()</strong> function will return immediately.</p>
+<p>A "<strong>timeout</strong>" argument can be specified to set a limit in seconds for how long the caller is willing to wait.</p>
+<blockquote>
+<p>Wait until the result is available or until timeout seconds pass.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>If the timeout expires before the tasks are complete, the <strong>wait()</strong> function will return.</p>
+<p>When using a timeout, the <strong>wait()</strong> function does not give an indication that it returned because tasks were completed or because the timeout elapsed. Therefore, we can check if the tasks are completed via the <strong>ready()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for issued task to complete with a timeout
+result.wait(timeout=10)
+# check if the tasks are all done
+if result.ready()
+	print('All Done')
+	...
+else :
+	print('Not Done Yet')
+	...
+</code></pre>
+<h3>Check if Tasks Are Completed</h3>
+<p>We can check if the issued tasks are completed via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.ready"><strong>AsyncResult.ready()</strong> function</a>.</p>
+<blockquote>
+<p>Return whether the call has completed.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>It returns <strong>True</strong> if the tasks have been completed, successfully or otherwise, or <strong>False</strong> if the tasks are still running.</p>
+<p>For example:</p>
+<pre><code>...
+# check if tasks are still running
+if result.ready():
+	print('Tasks are done')
+else:
+	print('Tasks are not done')
+</code></pre>
+<h3>Check if Tasks Were Successful</h3>
+<p>We can check if the issued tasks were completed successfully via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.AsyncResult.successful"><strong>AsyncResult.successful()</strong> function</a>.</p>
+<p>Issued tasks are successful if no tasks raised an exception.</p>
+<p>If at least one issued task raised an exception, then the call was not successful and the <strong>successful()</strong> function will return <strong>False</strong>.</p>
+<p>This function should be called after it is known that the tasks have been completed, e.g. <strong>ready()</strong> returns True.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the tasks have completed
+if result.read():
+	# check if the tasks were successful
+	if result.successful():
+		print('Successful')
+	else:
+		print('Unsuccessful')</code></pre>
+<p>If the issued tasks are still running, a <strong>ValueError</strong> is raised.</p>
+<blockquote>
+<p>Return whether the call completed without raising an exception. Will raise ValueError if the result is not ready.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+try:
+	# check if the tasks were successful
+	if result.successful():
+		print('Successful')
+except ValueError as e:
+	print('Tasks still running')
+</code></pre>
+<p>You can learn more about how to use an <strong>AsyncResult</strong> object in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-asyncresult/">How to Use ThreadPool AsyncResult</a></li>
+</ul>
+<p>Next, let's take a look at how to use callback functions with asynchronous tasks.</p>
+<h2>ThreadPool Callback Functions</h2>
+<p>The <strong>ThreadPool</strong> supports custom callback functions.</p>
+<p>Callback functions are called in two situations:</p>
+<ol>
+<li>With the results of a task.</li>
+<li>When an error is raised in a task.</li>
+</ol>
+<p>Let’s take a closer look at each in turn.</p>
+<h3>How to Configure a Callback Function</h3>
+<p>Result callbacks are supported in the <strong>ThreadPool</strong> when issuing tasks asynchronously with any of the following functions:</p>
+<ul>
+<li><strong>apply_async()</strong>: For issuing a single task asynchronously.</li>
+<li><strong>map_async()</strong>: For issuing multiple tasks with a single argument asynchronously.</li>
+<li><strong>starmap_async()</strong>: For issuing multiple tasks with multiple arguments asynchronously.</li>
+</ul>
+<p>A result callback can be specified via the "<strong>callback</strong>" argument.</p>
+<p>The argument specifies the name of a custom function to call with the result of an asynchronous task or tasks.</p>
+<p>Note, a configured callback function will be called, even if your task function does not have a return value. In that case, a default return value of <strong>None</strong> will be passed as an argument to the callback function.</p>
+<p>The function may have any name you like, as long as it does not conflict with a function name already in use.</p>
+<blockquote>
+<p>If callback is specified then it should be a callable which accepts a single argument. When the result becomes ready callback is applied to it</p>
+<cite>--<a href="https://docs.python.org/3/library/multiprocessing.html"> multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example, if <strong>apply_async()</strong> is configured with a callback, then the callback function will be called with the return value of the task function that was executed.</p>
+<pre><code># result callback function
+def result_callback(result):
+	print(result)
+
+...
+# issue a single task
+result = apply_async(..., callback=result_callback)
+</code></pre>
+<p>Alternatively, if <strong>map_async()</strong> or <strong>starmap_async()</strong> are configured with a callback, then the callback function will be called with an iterable of return values from all tasks issued to the <strong>ThreadPool</strong>.</p>
+<pre><code># result callback function
+def result_callback(result):
+	# iterate all results
+	for value in result:
+		print(value)
+
+...
+# issue a single task
+result = map_async(..., callback=result_callback)
+</code></pre>
+<p>Result callbacks should be used to perform a quick action with the result or results of issued tasks from the <strong>ThreadPool</strong>.</p>
+<p>They should not block or execute for an extended period as they will occupy the resources of the <strong>ThreadPool</strong> while running.</p>
+<blockquote>
+<p>Callbacks should complete immediately since otherwise the thread which handles the results will get blocked.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<h3>How to Configure an Error Callback Function</h3>
+<p>Error callbacks are supported in the <strong>ThreadPool</strong> when issuing tasks asynchronously with any of the following functions:</p>
+<ul>
+<li><strong>apply_async()</strong>: For issuing a single task asynchronously.</li>
+<li><strong>map_async()</strong>: For issuing multiple tasks with a single argument asynchronously.</li>
+<li><strong>starmap_async()</strong>: For issuing multiple tasks with multiple arguments asynchronously.</li>
+</ul>
+<p>An error callback can be specified via the "<strong>error_callback</strong>" argument.</p>
+<p>The argument specifies the name of a custom function to call with the error raised in an asynchronous task.</p>
+<p>Note, the first task to raise an error will be called, not all tasks that raise an error.</p>
+<p>The function may have any name you like, as long as it does not conflict with a function name already in use.</p>
+<blockquote>
+<p>If error_callback is specified then it should be a callable which accepts a single argument. If the target function fails, then the error_callback is called with the exception instance.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example, if <strong>apply_async()</strong> is configured with an error callback, then the callback function will be called with the error raised in the task.</p>
+<pre><code># error callback function
+def custom_callback(error):
+	print(error)
+
+...
+# issue a single task
+result = apply_async(..., error_callback=custom_callback)
+</code></pre>
+<p>Error callbacks should be used to perform a quick action with the error raised by a task in the <strong>ThreadPool</strong>.</p>
+<p>They should not block or execute for an extended period as they will occupy the resources of the <strong>ThreadPool</strong> while running.</p>
+<p>Next, let’s look at common usage patterns for the <strong>ThreadPool</strong>.</p>
+<h2>ThreadPool Common Usage Patterns</h2>
+<p>The <strong>ThreadPool</strong> class provides a lot of flexibility for executing concurrent tasks in Python</p>
+<p>Nevertheless, there are a handful of common usage patterns that will fit most program scenarios.</p>
+<p>This section lists the common usage patterns with worked examples that you can copy and paste into your own project and adapt as needed.</p>
+<p>The patterns we will look at are as follows:</p>
+<ol>
+<li>map() and Iterate Results Pattern</li>
+<li>apply_async() and Forget Pattern</li>
+<li>map_async() and Forget Pattern</li>
+<li>imap_unordered() and Use as Completed Pattern</li>
+<li>imap_unordered() and Wait for First Pattern</li>
+</ol>
+<p>We will use a contrived task in each example that will sleep for a random amount of time equal to less than one second. You can easily replace this example task with your own task in each pattern.</p>
+<p>Let's start with the first usage pattern.</p>
+<h3>map() and Iterate Results Pattern</h3>
+<p>This pattern involves calling the same function with different arguments and then iterating over the results.</p>
+<p>It is a concurrent version of the built-in <strong>map()</strong> function with the main difference that all function calls are issued to the <strong>ThreadPool</strong> immediately and we cannot handle results until all tasks are completed.</p>
+<p>It requires that we call the <strong>map()</strong> function with our target function and an iterable of arguments and handle return values from each function call in a for-loop.</p>
+<pre><code>...
+# issue tasks and handle results
+for result in pool.map(task, range(10)):
+    print(f'&gt;got {result}')
+</code></pre>
+<p>You can learn more about how to use the <strong>map()</strong> function on the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map/">How to Use ThreadPool map() in Python</a></li>
+</ul>
+<p>This pattern can be used for target functions that take multiple arguments by changing the <strong>map()</strong> function for the <strong>starmap()</strong> function.</p>
+<p>You can learn more about the <strong>starmap()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-starmap/">How to Use ThreadPool starmap() in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the map an iterate results usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # return a value
+    return (value, random_value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue tasks and thread results
+        for result in pool.map(task, range(10)):
+            print(f'&gt;got {result}')
+</code></pre>
+<p>Running the example, we can see that the <strong>map()</strong> function is called the <strong>task()</strong> function for each argument in the range 0 to 9.</p>
+<p>Watching the example run, we can see that all tasks are issued to the <strong>ThreadPool</strong>, complete, then once all results are available will the main thread iterate over the return values.</p>
+<pre><code>&gt;got (0, 0.310223620846512)
+&gt;got (1, 0.5534422426763196)
+&gt;got (2, 0.9145594152075625)
+&gt;got (3, 0.9854963211949936)
+&gt;got (4, 0.9032837400483694)
+&gt;got (5, 0.3747364017403312)
+&gt;got (6, 0.6199419223860916)
+&gt;got (7, 0.44890520908189024)
+&gt;got (8, 0.20945564922787074)
+&gt;got (9, 0.8415252597808756)</code></pre>
+<h3>apply_async() and Forget Pattern</h3>
+<p>This pattern involves issuing one task to the <strong>ThreadPool</strong> and then not waiting for the result. Fire and forget.</p>
+<p>This is a helpful approach for issuing ad hoc tasks asynchronously to the <strong>ThreadPool</strong>, allowing the main thread to continue on with other aspects of the program.</p>
+<p>This can be achieved by calling the <strong>apply_async()</strong> function with the name of the target function and any arguments the target function may take.</p>
+<p>The <strong>apply_async()</strong> function will return an <strong>AsyncResult</strong> object that can be ignored.</p>
+<p>For example:</p>
+<pre><code>...
+# issue task
+_ = pool.apply_async(task, args=(1,))</code></pre>
+<p>You can learn more about the <strong>apply_async()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-apply_async/">How to Use ThreadPool apply_async() in Python</a></li>
+</ul>
+<p>Once all ad hoc tasks have been issued, we may want to wait for the tasks to be complete before closing the <strong>ThreadPool</strong>.</p>
+<p>This can be achieved by calling the <strong>close()</strong> function on the pool to prevent it from receiving any further tasks, then joining the pool to wait for the issued tasks to be completed.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>You can learn more about joining the thread pool in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-join/">How to Join a ThreadPool in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the apply_async and forget usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # prepare result
+    result = (value, random_value)
+    # report results
+    print(f'&gt;task got {result}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue task
+        _ = pool.apply_async(task, args=(1,))
+        # close the pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example fires a task into the <strong>ThreadPool</strong> and forgets about it, allowing it to complete in the background.</p>
+<p>The task is issued and the main thread is free to continue on with other parts of the program.</p>
+<p>In this simple example, there is nothing else to go on with, so the main thread then closes the pool and waits for all ad hoc fire-and-forget tasks to complete before terminating.</p>
+<pre><code>&gt;task got (1, 0.21185811282105182)</code></pre>
+<h3>map_async() and Forget Pattern</h3>
+<p>This pattern involves issuing many tasks to the <strong>ThreadPool</strong> and then moving on. Fire-and-forget for multiple tasks.</p>
+<p>This is helpful for applying the same function to each item in an iterable and then not being concerned with the result or return values.</p>
+<p>The tasks are issued asynchronously, allowing the caller to continue on with other parts of the program.</p>
+<p>This can be achieved with the <strong>map_async()</strong> function that takes the name of the target task and an iterable of arguments for each function call.</p>
+<p>The function returns an <strong>AsyncResult</strong> object that provides a handle on the issued tasks, which can be ignored in this case.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the thread pool
+_ = pool.map_async(task, range(10))</code></pre>
+<p>You can learn more about the <strong>map_async()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map_async/">How to Use ThreadPool map_async() in Python</a></li>
+</ul>
+<p>Once all asynchronous tasks have been issued and there is nothing else in the program to do, we can close the <strong>ThreadPool</strong> and wait for all issued tasks to complete.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the map_async and forget usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # prepare result
+    result = (value, random_value)
+    # report results
+    print(f'&gt;task got {result}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        _ = pool.map_async(task, range(10))
+        # close the pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example issues ten tasks to the <strong>ThreadPool</strong>.</p>
+<p>The call returns immediately and the tasks are executed asynchronously. This allows the main thread to continue on with other parts of the program.</p>
+<p>There is nothing else to do in this simple example, so the <strong>ThreadPool</strong> is then closed and the main thread blocks, waiting for the issued tasks to complete.</p>
+<pre><code>&gt;task got (3, 0.01656785957523077)
+&gt;task got (1, 0.16636687341149126)
+&gt;task got (8, 0.3578403325183659)
+&gt;task got (0, 0.3902136572761431)
+&gt;task got (2, 0.5132666358386517)
+&gt;task got (5, 0.5361330353348999)
+&gt;task got (6, 0.578456028719465)
+&gt;task got (4, 0.7078182459226122)
+&gt;task got (9, 0.6892519284915574)
+&gt;task got (7, 0.9930438937948564)</code></pre>
+<h3>imap_unordered() and Use as Completed Pattern</h3>
+<p>This pattern is about issuing tasks to the pool and using results for tasks as they become available.</p>
+<p>This means that results are received out of order, if tasks take a variable amount of time, rather than in the order that the tasks were issued to the <strong>ThreadPool</strong>.</p>
+<p>This can be achieved with the <strong>imap_unordered()</strong> function. It takes a function and an iterable of arguments, just like the <strong>map()</strong> function.</p>
+<p>It returns an iterable that yields return values from the target function as the tasks are completed.</p>
+<p>We can call the <strong>imap_unordered()</strong> function and iterate the return values directly in a for-loop.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks and handle results
+for result in pool.imap_unordered(task, range(10)):
+    print(f'&gt;got {result}')
+</code></pre>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-imap_unordered/">How to Use ThreadPool imap_unordered() in Python</a></li>
+</ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the imap_unordered and use as completed usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # return result
+    return (value, random_value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue tasks and handle results
+        for result in pool.imap_unordered(task, range(10)):
+            print(f'&gt;got {result}')
+</code></pre>
+<p>Running the example issues all tasks to the pool then receives and handles results in the order that tasks are completed, not the order that tasks were issued to the pool, e.g. unordered.</p>
+<pre><code>&gt;got (0, 0.20226779909365256)
+&gt;got (2, 0.2834202553495814)
+&gt;got (5, 0.3386592672484412)
+&gt;got (7, 0.3766044907699312)
+&gt;got (1, 0.38721574549008964)
+&gt;got (8, 0.28434196524133903)
+&gt;got (9, 0.5267175537767974)
+&gt;got (3, 0.8388712753727219)
+&gt;got (4, 0.985834525306049)
+&gt;got (6, 0.9933519000644436)</code></pre>
+<h3>imap_unordered() and Wait for First Pattern</h3>
+<p>This pattern involves issuing many tasks to the <strong>ThreadPool</strong> asynchronously, then waiting for the first result or first task to finish.</p>
+<p>It is a helpful pattern when there may be multiple ways of getting a result but only a single or the first result is required, after which, all other tasks become irrelevant.</p>
+<p>This can be achieved by the <strong>imap_unordered()</strong> function that, like the <strong>map()</strong> function, takes the name of a target function and an iterable of arguments.</p>
+<p>It returns an iterable that yields return values in the order that tasks completed.</p>
+<p>This iterable can then be traversed once manually via the <strong>next()</strong> built-in function which will return only once the first task to finish returns.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks and handle results
+it = pool.imap_unordered(task, range(10))
+# get the result from the first task to complete
+result = next(it)</code></pre>
+<p>The result can then be handled and the <strong>ThreadPool</strong> can be terminated, forcing any remaining tasks to stop immediately. This happens automatically via the context manager interface.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the imap_unordered and wait for first result usage pattern
+from time import sleep
+from random import random
+from multiprocessing.pool import ThreadPool
+
+# task to execute in a new thread
+def task(value):
+    # generate a random value
+    random_value = random()
+    # block for moment
+    sleep(random_value)
+    # return result
+    return (value, random_value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPool() as pool:
+        # issue tasks and handle results
+        it = pool.imap_unordered(task, range(10))
+        # get the result from the first task to complete
+        result = next(it)
+        # report first result
+        print(f'&gt;got {result}')
+</code></pre>
+<p>Running the example first issues all of the tasks asynchronously.</p>
+<p>The result from the first task to complete is then requested, which blocks until a result is available.</p>
+<p>One task completes, returns a value, which is then handled, then the <strong>ThreadPool</strong> and all remaining tasks are terminated automatically.</p>
+<pre><code>&gt;got (0, 0.06283170442191666)</code></pre>
+<h2>When to Use the ThreadPool</h2>
+<p>The <strong>ThreadPool</strong> is powerful and flexible, although it is not suited for all situations where you need to run a background task.</p>
+<p>In this section, we will look at some general cases where it is a good fit, and where it isn't, then we'll look at broad classes of tasks and why they are or are not appropriate for the <strong>ThreadPool</strong>.</p>
+<h3>Use ThreadPool When...</h3>
+<ul>
+<li>Your tasks can be defined by a pure function that has no state or side effects.</li>
+<li>Your task can fit within a single Python function, likely making it simple and easy to understand.</li>
+<li>You need to perform the same task many times, e.g. homogeneous tasks.</li>
+<li>You need to apply the same function to each object in a collection in a for-loop.</li>
+</ul>
+<p>Thread pools work best when applying the same pure function on a set of different data (e.g. homogeneous tasks, heterogeneous data). This makes code easier to read and debug. This is not a rule, just a gentle suggestion.</p>
+<h3>Use Multiple ThreadPools When…</h3>
+<ul>
+<li>You need to perform groups of different types of tasks; one thread pool could be used for each task type.</li>
+<li>You need to perform a pipeline of tasks or operations; one thread pool can be used for each step.</li>
+</ul>
+<p>Thread pools can operate on tasks of different types (e.g. heterogeneous tasks), although it may make the organization of your program and debugging easy if a separate thread pool is responsible for each task type. This is not a rule, just a gentle suggestion.</p>
+<h3>Don't Use ThreadPool When...</h3>
+<ul>
+<li>You have a single task; consider using the <strong>Thread</strong> class with the target argument.</li>
+<li>You have long-running tasks, such as monitoring or scheduling; consider extending the <strong>Thread</strong> class.</li>
+<li>Your task functions require state; consider extending the <strong>Thread</strong> class.</li>
+<li>Your tasks require coordination; consider using a <strong>Thread</strong> and patterns like a <strong>Barrier</strong> or <strong>Semaphore</strong>.</li>
+<li>Your tasks require synchronization; consider using a <strong>Thread</strong> and <strong>Locks</strong>.</li>
+<li>You require a thread trigger on an event; consider using the <strong>Thread</strong> class.</li>
+</ul>
+<p>The sweet spot for thread pools is in dispatching many similar tasks, the results of which may be used later in the program. Tasks that don't fit neatly into this summary are probably not a good fit for thread pools. This is not a rule, just a gentle suggestion.</p>
+<p><strong>Do you know any other good or bad cases where using a ThreadPool?</strong><br/>Let me know in the comments below.</p>
+<h3>Use Threads for IO-Bound Tasks</h3>
+<p>You should use threads for IO-bound tasks.</p>
+<p>An IO-bound task is a type of task that involves reading from or writing to a device, file, or socket connection.</p>
+<p>The operations involve input and output (IO), and the speed of these operations is bound by the device, hard drive, or network connection. This is why these tasks are referred to as IO-bound.</p>
+<p>CPUs are really fast. Modern CPUs, like a 4GHz, can execute 4 billion instructions per second, and you likely have more than one CPU in your system.</p>
+<p>Doing IO is very slow compared to the speed of CPUs.</p>
+<p>Interacting with devices, reading and writing files, and socket connections involves calling instructions in your operating system (the kernel), which will wait for the operation to complete. If this operation is the main focus for your CPU, such as executing in the main thread of your Python program, then your CPU is going to wait many milliseconds or even many seconds doing nothing.</p>
+<p>That is potentially billions of operations prevented from executing.</p>
+<p>We can free-up the CPU from IO-bound operations by performing IO-bound operations on another thread of execution. This allows the CPU to start the process and pass it off to the operating system (kernel) to do the waiting, and free it up to execute in another application thread.</p>
+<p>There's more to it under the covers, but this is the gist.</p>
+<p>Therefore, the tasks we execute with a <strong>ThreadPool</strong> should be tasks that involve IO operations.</p>
+<p>Examples include:</p>
+<ul>
+<li>Reading or writing a file from the hard drive.</li>
+<li>Reading or writing to standard output, input or error (stdin, stdout, stderr).</li>
+<li>Printing a document.</li>
+<li>Downloading or uploading a file.</li>
+<li>Querying a server.</li>
+<li>Querying a database.</li>
+<li>Taking a photo or recording a video.</li>
+<li>And so much more.</li>
+</ul>
+<p>If your task is not IO-bound, perhaps threads and using a thread pool is not appropriate.</p>
+<h3>Don't Use the ThreadPool for CPU-Bound Tasks</h3>
+<p>You should probably not use threads for CPU-bound tasks.</p>
+<p>A CPU-bound task is a type of task that involves performing computation and does not involve IO.</p>
+<p>The operations only involve data in main memory (RAM) or cache (CPU cache) and performing computations on or with that data. As such, the limit on these operations is the speed of the CPU. This is why we call them CPU-bound tasks.</p>
+<p>Examples include:</p>
+<ul>
+<li>Calculating points in a fractal.</li>
+<li>Estimating Pi</li>
+<li>Factoring primes.</li>
+<li>Parsing HTML, JSON, etc. documents.</li>
+<li>Processing text.</li>
+<li>Running simulations.</li>
+</ul>
+<p>CPUs are very fast, and we often have more than one CPU. We would like to perform our tasks and make full use of multiple CPU cores in modern hardware.</p>
+<p>Using threads and thread pools via the <strong>ThreadPool</strong> class in Python is probably not a path toward achieving this end.</p>
+<p>This is because of a technical reason behind the way that the Python interpreter was implemented. The implementation prevents two Python operations from executing at the same time inside the interpreter and it does this with a master lock that only one thread can hold at a time. This is called the global interpreter lock, or GIL.</p>
+<p>The GIL is not evil and is not frustrating; it is a design decision in the python interpreter that we must be aware of and consider in the design of our applications.</p>
+<p>I said that you "probably" should not use threads for CPU-bound tasks.</p>
+<p>You can and are free to do so, but your code will not benefit from concurrency because of the GIL. It will likely perform worse because of the additional overhead of context switching (the CPU jumping from one thread of execution to another) introduced by using threads.</p>
+<p>Additionally, the GIL is a design decision that affects the reference implementation of Python, which you download from Python.org. If you use a different implementation of the Python interpreter (such as PyPy, IronPython, Jython, and perhaps others), then you may not be subject to the GIL and can use threads for CPU-bound tasks directly.</p>
+<p>Python provides a multiprocessing module for multi-core task execution as well as a sibling of the <strong>ThreadPool</strong> that uses processes called the <strong>Pool</strong> that can be used for concurrency of CPU-bound tasks.</p>
+<p>You can learn more about the <strong>Pool</strong> class in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-python/">Multiprocessing Pool in Python: The Complete Guide</a></li>
+</ul>
+<h2>ThreadPool Exception Handling</h2>
+<p>Exception handling is an important consideration when using threads.</p>
+<p>Code may raise an exception when something unexpected happens and the exception should be dealt with by your application explicitly, even if it means logging it and moving on.</p>
+<p>Python threads are well suited for use with IO-bound tasks, and operations within these tasks often raise exceptions, such as if a server cannot be reached, if the network goes down if a file cannot be found, and so on.</p>
+<p>There are three points you may need to consider exception handling when using the <strong>ThreadPool</strong>, they are:</p>
+<ol>
+<li>Worker Initialization</li>
+<li>Task Execution</li>
+<li>Task Completion Callbacks</li>
+</ol>
+<p>Let's take a closer look at each point in turn.</p>
+<h3>Exception Handling in Worker Initialization</h3>
+<p>You can specify a custom initialization function when configuring your <strong>ThreadPool</strong>.</p>
+<p>This can be set via the "<strong>initializer</strong>" argument to specify the function name and "<strong>initargs</strong>" to specify a tuple of arguments to the function.</p>
+<p>Each thread started by the <strong>ThreadPool</strong> will call your initialization function before starting the thread.</p>
+<p>For example:</p>
+<pre><code># worker thread initialization function
+def worker_init():
+	# ...
+
+...
+# create a thread pool and initialize workers
+pool = ThreadPool(initializer=worker_init)
+</code></pre>
+<p>You can learn more about configuring the pool with worker initializer functions in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-worker-initializer/">ThreadPool Initialize Worker Threads in Python</a></li>
+</ul>
+<p>If your initialization function raises an exception it will break your <strong>ThreadPool</strong>.</p>
+<p>We can demonstrate this with an example of a contrived initializer function that raises an exception.</p>
+<pre><code># SuperFastPython.com
+# example of an exception raised in the worker initializer function
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# function for initializing the worker thread
+def init():
+    # raise an exception
+    raise Exception('Something bad happened!')
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool(initializer=init) as pool:
+        # issue a task
+        pool.apply(task)
+</code></pre>
+<p>Running the example fails with an exception, as we expected.</p>
+<p>The <strong>ThreadPool</strong> is created and nearly immediately, the internal worker threads are created and initialized.</p>
+<p>Each worker thread fails to be initialized given that the initialization function raises an exception.</p>
+<p>The <strong>ThreadPool</strong> then attempts to restart new replacement thread workers for each thread that was started and failed. These too fail with exceptions.</p>
+<p>The problem repeats many times until some internal limit is reached and the program exits.</p>
+<p>A truncated example of the output is listed below.</p>
+<pre><code>Exception in thread Exception in thread Thread-2:
+Traceback (most recent call last):
+  ...
+Exception in thread Thread-3:
+Traceback (most recent call last):
+  ...
+Thread-1:
+Traceback (most recent call last):
+  ...
+...
+</code></pre>
+<p>This highlights that if you use a custom initializer function, you must carefully consider the exceptions that may be raised and perhaps handle them, otherwise out at risk for all tasks that depend on the <strong>ThreadPool</strong>.</p>
+<h3>Exception Handling in Task Execution</h3>
+<p>An exception may occur while executing your task.</p>
+<p>This will cause the task to stop executing, but will not break the <strong>ThreadPool</strong>.</p>
+<p>If tasks were issued with a synchronous function, such as <strong>apply()</strong>, <strong>map()</strong>, or <strong>starmap()</strong> the exception will be re-raised in the caller.</p>
+<p>If tasks are issued with an asynchronous function such as <strong>apply_async()</strong>, <strong>map_async()</strong>, or <strong>starmap_async()</strong>, an <strong>AsyncResult</strong> object will be returned. If a task issued asynchronously raises an exception, it will be caught by the <strong>ThreadPool</strong> and re-raised if you call <strong>get()</strong> function in the <strong>AsyncResult</strong> object in order to get the result.</p>
+<p>It means that you have two options for handling exceptions in tasks, they are:</p>
+<ol>
+<li>Handle exceptions within the task function.</li>
+<li>Handle exceptions when getting results from tasks.</li>
+</ol>
+<p>Let's take a closer look at each approach in turn.</p>
+<h4>Exception Handling Within the Task</h4>
+<p>Handling the exception within the task means that you need some mechanism to let the recipient of the result know that something unexpected happened.</p>
+<p>This could be via the return value from the function, e.g. None.</p>
+<p>Alternatively, you can re-raise an exception and have the recipient handle it directly. A third option might be to use some broader state or global state, perhaps passed by reference into the call to the function.</p>
+<p>The example below defines a work task that will raise an exception but will catch the exception and return a result indicating a failure case.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    try:
+        raise Exception('Something bad happened!')
+    except Exception:
+        return 'Unable to get the result'
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issue a task
+        result = pool.apply_async(task)
+        # get the result
+        value = result.get()
+        # report the result
+        print(value)
+</code></pre>
+<p>Running the example starts the <strong>ThreadPool</strong> as per normal, issues the task, then blocks waiting for the result.</p>
+<p>The task raises an exception and the result received is an error message.</p>
+<p>This approach is reasonably clean for the recipient code and would be appropriate for tasks issued by both synchronous and asynchronous functions like <strong>apply()</strong>, <strong>apply_async()</strong>, and <strong>map()</strong>.</p>
+<p>It may require special handling of a custom return value for the failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<h4>Exception Handling Outside the Task</h4>
+<p>An alternative to handling the exception in the task is to leave the responsibility to the recipient of the result.</p>
+<p>This may feel like a more natural solution, as it matches the synchronous version of the same operation, e.g. if we were performing the function call in a for-loop.</p>
+<p>It means that the recipient must be aware of the types of errors that the task may raise and handle them explicitly.</p>
+<p>The example below defines a simple task that raises an Exception, which is then handled by the recipient when issuing the task asynchronously and then attempting to get the result from the returned AsyncResult object.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task in the caller
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+    # unreachable return value
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issue a task
+        result = pool.apply_async(task)
+        # get the result
+        try:
+            value = result.get()
+            # report the result
+            print(value)
+        except Exception:
+            print('Unable to get the result')
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and submits the work as per normal.</p>
+<p>The task fails with an exception, the <strong>ThreadPool</strong> catches the exception, stores it, then re-raises it when we call the get() function in the AsyncResult object.</p>
+<p>The recipient of the result accepts the exception and catches it, reporting a failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<p>This approach will also work for any task issued synchronously to the <strong>ThreadPool</strong>.</p>
+<p>In this case, the exception raised by the task is caught by the <strong>ThreadPool</strong> and re-raised in the caller when getting the result.</p>
+<p>The example below demonstrates handling an exception in the caller for a task issued synchronously.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task in the caller
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+    # unreachable return value
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        try:
+            # issue a task and get the result
+            value = pool.apply(task)
+            # report the result
+            print(value)
+        except Exception:
+            print('Unable to get the result')
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and issues the work as per normal.</p>
+<p>The task fails with an error, the <strong>ThreadPool</strong> catches the exception, stores it, then re-raises it in the caller rather than returning the value.</p>
+<p>The recipient of the result accepts the exception and catches it, reporting a failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<h4>Check for a Task Exception</h4>
+<p>We can also check for the exception directly via a call to the <strong>successful()</strong> function on the AsyncResult object for tasks issued asynchronously to the <strong>ThreadPool</strong>.</p>
+<p>This function must be called after the task has finished and indicates whether the task finished normally (<strong>True</strong>) or whether it failed with an <strong>Exception</strong> or similar (<strong>False</strong>).</p>
+<p>We can demonstrate the explicit checking for an exceptional case in the task in the example below.</p>
+<pre><code># SuperFastPython.com
+# example of checking for an exception raised in the task
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+    # unreachable return value
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issue a task
+        result = pool.apply_async(task)
+        # wait for the task to finish
+        result.wait()
+        # check for a failure
+        if result.successful():
+            # get the result
+            value = result.get()
+            # report the result
+            print(value)
+        else:
+            # report the failure case
+            print('Unable to get the result')
+</code></pre>
+<p>Running the example creates and submits the task as per normal.</p>
+<p>The recipient waits for the task to complete and then checks for an unsuccessful case.</p>
+<p>The failure of the task is identified and an appropriate message is reported.</p>
+<pre><code>Unable to get the result</code></pre>
+<h4>Exception Handling When Calling map()</h4>
+<p>We may issue many tasks to the <strong>ThreadPool</strong> using the synchronous version of the <strong>map()</strong> function or <strong>starmap()</strong>.</p>
+<p>One or more of the issued tasks may fail, which will effectively cause all issued tasks to fail as the results will not be accessible.</p>
+<p>We can demonstrate this with an example, listed below.</p>
+<pre><code># SuperFastPython.com
+# exception in one of many tasks issued to the thread pool synchronously
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(value):
+    # block for a moment
+    sleep(1)
+    # check for failure case
+    if value == 2:
+        raise Exception('Something bad happened!')
+    # report a value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issues tasks to the thread pool
+        for result in pool.map(task, range(5)):
+            print(result)
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and issues 5 tasks using <strong>map()</strong>.</p>
+<p>One of the 5 tasks fails with an exception.</p>
+<p>The exception is then re-raised in the caller instead of returning the iterator over return values.</p>
+<pre><code>Traceback (most recent call last):
+...
+Exception: Something bad happened!</code></pre>
+<p>This also happens when issuing tasks using the asynchronous versions of <strong>map()</strong>, such as <strong>map_async()</strong>.</p>
+<p>The example below demonstrates this.</p>
+<pre><code># SuperFastPython.com
+# exception in one of many tasks issued to the thread pool asynchronously
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(value):
+    # block for a moment
+    sleep(1)
+    # check for failure case
+    if value == 2:
+        raise Exception('Something bad happened!')
+    # report a value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issues tasks to the thread pool
+        result = pool.map_async(task, range(5))
+        # iterate over the results
+        for value in result.get():
+            print(value)
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and issues 5 tasks using <strong>map_async()</strong>.</p>
+<p>One of the 5 tasks fails with an exception.</p>
+<p>The exception is then re-raised in the caller instead of returning the iterator over return values.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+</code></pre>
+<p>If we issue tasks with <strong>imap()</strong> and <strong>imap_unordered()</strong>, the exception is not re-raised in the caller until the return value for the specific task that failed is requested from the returned iterator.</p>
+<p>The example below demonstrates this.</p>
+<pre><code># SuperFastPython.com
+# exception in one of many tasks issued to the thread pool synchronously
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(value):
+    # block for a moment
+    sleep(1)
+    # check for failure case
+    if value == 2:
+        raise Exception('Something bad happened!')
+    # report a value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issues tasks to the thread pool
+        for result in pool.imap(task, range(5)):
+            print(result)
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and issues 5 tasks using <strong>map_async()</strong>.</p>
+<p>One of the 5 tasks fails with an exception.</p>
+<p>We see return values for the first two tasks that complete successfully.</p>
+<p>Then, when we access the result for the third task that failed, the exception is re-raised in the caller and the program is terminated.</p>
+<pre><code>0
+1
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+</code></pre>
+<p>These examples highlight that if <strong>map()</strong> or equivalents are used to issue tasks to the <strong>ThreadPool</strong>, then the tasks should handle their own exceptions or be simple enough that exceptions are not expected.</p>
+<h3>Exception Handling in Task Completion Callbacks</h3>
+<p>A final case we must consider for exception handling when using the <strong>ThreadPool</strong> is in callback functions.</p>
+<p>When issuing tasks to the <strong>ThreadPool</strong> asynchronously with a call to <strong>apply_async()</strong> or <strong>map_async()</strong> we can add a callback function to be called with the result of the task or a callback function to call if there was an error in the task.</p>
+<p>For example:</p>
+<pre><code># result callback function
+def result_callback(result):
+	print(result)
+
+...
+# issue a single task
+result = apply_async(..., callback=result_callback)
+</code></pre>
+<p>You can learn more about using callback function with asynchronous tasks in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-callback/">ThreadPool Callback Functions in Python</a></li>
+</ul>
+<p>The callback function is executed in a helper thread in the main thread, the same thread that creates the <strong>ThreadPool</strong>.</p>
+<p>If an exception is raised in the callback function, it will break the helper thread and in turn break the <strong>ThreadPool</strong>.</p>
+<p>Any tasks waiting for a result from the <strong>ThreadPool</strong> will wait forever and will have to be killed manually.</p>
+<p>We can demonstrate this with a worked example.</p>
+<pre><code># SuperFastPython.com
+# example in a callback function for the thread pool
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# callback function
+def handler(result):
+    # report result
+    print(f'Got result {result}')
+    # fail with an exception
+    raise Exception('Something bad happened!')
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    # return a value
+    return 22
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issue a task to the thread pool
+        result = pool.apply_async(task, callback=handler)
+        # wait for the task to finish
+        result.wait()
+</code></pre>
+<p>Running the example starts the <strong>ThreadPool</strong> as per normal and issues the task.</p>
+<p>When the task completes, the callback function is called which fails with a raised exception.</p>
+<p>The helper thread (Thread-3 in this case) unwinds and breaks the <strong>ThreadPool</strong>.</p>
+<p>The caller in the main thread of the main thread then waits forever for the result.</p>
+<p>Note, that you must terminate the program forcefully by pressing Control-C.</p>
+<pre><code>Got result 22
+Exception in thread Thread-11:
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+</code></pre>
+<p>This highlights that if callbacks are expected to raise an exception, it must be handled explicitly otherwise it puts all the entire thread pool at risk.</p>
+<h2>ThreadPool vs ThreadPoolExecutor</h2>
+<p>This section compares the <strong>ThreadPool</strong> to another popular thread pool provided by the <strong>ThreadPoolExecutor</strong> class.</p>
+<h3>What is ThreadPoolExecutor</h3>
+<p>The <strong>ThreadPoolExecutor</strong> class provides a thread pool in Python.</p>
+<p>We can create a thread pool by instantiating the class and specifying the number of threads via the <strong>max_workers</strong> argument; for example:</p>
+<pre><code>...
+# create a thread pool
+executor = ThreadPoolExecutor(max_workers=10)</code></pre>
+<p>We can then submit tasks to be executed by the thread pool using the <strong>map()</strong> and the <strong>submit()</strong> functions.</p>
+<p>The <strong>map()</strong> function matches the built-in <strong>map()</strong> function and takes a function name and an iterable of items. The target function will then be called for each item in the iterable as a separate task in the thread pool. An iterable of results will be returned if the target function returns a value.</p>
+<p>The call to <strong>map()</strong> does not block, but each result yielded in the returned iterator will block until the associated task is completed.</p>
+<p>For example:</p>
+<pre><code>...
+# call a function on each item in a list and handle results
+for result in executor.map(task, items):
+	# handle the result...
+</code></pre>
+<p>We can also issue tasks to the pool via the <strong>submit()</strong> function that takes the target function name and any arguments and returns a <strong>Future</strong> object.</p>
+<p>The <strong>Future</strong> object can be used to query the status of the task (e.g. <strong>done()</strong>, <strong>running()</strong>, or <strong>cancelled()</strong>) and can be used to get the result or exception raised by the task once completed. The calls to <strong>result()</strong> and <strong>exception()</strong> will block until the task associated with the <strong>Future</strong> is done.</p>
+<p>For example:</p>
+<pre><code>...
+# submit a task to the pool and get a future immediately
+future = executor.submit(task, item)
+# get the result once the task is done
+result = future.result()</code></pre>
+<p>Once we are finished with the thread pool, it can be shut down by calling the <strong>shutdown()</strong> function in order to release all of the worker threads and their resources.</p>
+<p>For example:</p>
+<pre><code>...
+# shutdown the thread pool
+executor.shutdown()</code></pre>
+<p>The life-cycle of creating and shutting down the thread pool can be simplified by using the context manager that will automatically call the <strong>shutdown()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(max_workers=10) as executor:
+	# call a function on each item in a list and handle results
+	for result in executor.map(task, items):
+		# handle the result...
+	# ...
+# shutdown is called automatically
+</code></pre>
+<p>You can learn more about the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor in Python: The Complete Guide</a></li>
+</ul>
+<p>Next, let's compare and contrast the ThreadPool to the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Now that we are familiar with the <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> classes, let's review their similarities and differences.</p>
+<h3>Similarities Between ThreadPool and ThreadPoolExecutor</h3>
+<p>The <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> classes are very similar. They are both thread pools that provide a collection of workers for executing ad hoc tasks.</p>
+<p>The most important <strong>similarities</strong> are as follows:</p>
+<ol>
+<li>Both Use Threads</li>
+<li>Both Can Run Ad Hoc Tasks</li>
+<li>Both Support Asynchronous Tasks</li>
+<li>Both Can Wait For All Tasks</li>
+<li>Both Have Process-Based Equivalents</li>
+</ol>
+<p>Let's take a closer look at each in turn.</p>
+<h4>1. Both Use Threads</h4>
+<p>Both the <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> create and use worker threads.</p>
+<p>These are real native or system-level threads. This means they are created and managed by the underlying operating system.</p>
+<p>As such, the workers used in each class use thread-based concurrency.</p>
+<p>This means tasks issued to each thread pool will execute concurrently and are well suited to IO-bound tasks, not CPU-bound tasks because of the Global Interpreter Lock.</p>
+<p>It also means that tasks issued to each thread pool can share data directly with other threads in the process because of the shared memory model supported by threads.</p>
+<h4>2. Both Can Run Ad Hoc Tasks</h4>
+<p>Both the <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> may be used to execute ad hoc tasks defined by custom functions.</p>
+<p>The Thread can issue one-off tasks using the <strong>apply()</strong> and <strong>apply_async()</strong> function, and may issue multiple tasks that use the same function with different arguments with the <strong>map()</strong>, <strong>imap()</strong>, <strong>imap_unordered()</strong>, and <strong>starmap()</strong> functions and their asynchronous equivalents <strong>map_async()</strong> and <strong>starmap_async()</strong>.</p>
+<p>The <strong>ThreadPoolExecutor</strong> can issue one-off tasks via the <strong>submit()</strong> function, and may issue multiple tasks that use the same function with different arguments via the <strong>map()</strong> function.</p>
+<h4>3. Both Support Asynchronous Tasks</h4>
+<p>Both the <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> can be used to issue tasks asynchronously.</p>
+<p>Recall that issuing tasks asynchronously means that the main thread can issue a task without blocking. The function call will return immediately with some handle on the issued task and allow the main thread to continue on with the program.</p>
+<p>The <strong>ThreadPool</strong> supports issuing tasks asynchronously via the <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async()</strong> functions that return an <strong>AsyncResult</strong> object that provides a handle on the issued tasks.</p>
+<p>The <strong>ThreadPoolExecutor</strong> provides the <strong>submit()</strong> function for issuing tasks asynchronously that returns a <strong>Future</strong> object that provides a handle on the issued task.</p>
+<p>Additionally, both thread pools provide helpful mechanisms for working with asynchronous tasks, such as checking their status, getting their results, and adding callback functions.</p>
+<h4>4. Both Can Wait For All Tasks</h4>
+<p>Both the <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> provide the ability to wait for tasks that were issued asynchronously.</p>
+<p>The <strong>ThreadPool</strong> provides a <strong>wait()</strong> function on the <strong>AsyncResult</strong> object returned as a handle on asynchronous tasks. It also allows the pool to be shut down and joined, which will not return until all issued tasks have been completed.</p>
+<p>The <strong>ThreadPoolExecutor</strong> provides the wait() module function that can take a collection of Future objects on which to wait. It also allows the thread pool to be shut down, which can be configured to block until all tasks in the pool have been completed.</p>
+<h4>5. Both Have Process-Based Equivalents</h4>
+<p>Both the <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> thread pools have process-based equivalents.</p>
+<p>The <strong>ThreadPool</strong> has the <strong>multiprocessing.pool.Pool</strong> that provides the same API, except that it uses process-based concurrency instead of thread-based concurrency.</p>
+<p>Similarly, the <strong>ThreadPoolExecutor</strong> has the <strong>concurrent.futures.ProcessPoolExecutor</strong> provides the same API as the <strong>ThreadPoolExecutor</strong> (e.g. extends the same <strong>Executor</strong> base class) except that it is implemented using process-based concurrency.</p>
+<p>This is helpful as both thread pools can be used and switch to use process-based concurrency with very little change to the program code.</p>
+<h3>Differences Between ThreadPool and ThreadPoolExecutor</h3>
+<p>The <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong> are also subtly different.</p>
+<p>The differences between these two thread pools are focused on differences in APIs on the classes themselves.</p>
+<p>The main differences are as follows:</p>
+<ol>
+<li>Ability to Cancel Tasks</li>
+<li>Operations on Groups of Tasks</li>
+<li>Asynchronous Map Functions</li>
+<li>Ability to Access Exception</li>
+</ol>
+<p>Let's take a closer look at each in turn.</p>
+<h4>1. Ability to Cancel Tasks</h4>
+<p>Tasks issued to the <strong>ThreadPoolExecutor</strong> can be canceled, whereas tasks issued to the Thread cannot.</p>
+<p>The <strong>ThreadPoolExecutor</strong> provides the ability to cancel tasks that have been issued to the thread pool but have not yet started executing.</p>
+<p>This is provided via the <strong>cancel()</strong> function on the Future object returned from issuing a task via <strong>submit()</strong>.</p>
+<p>The <strong>ThreadPool</strong> does not provide this capability.</p>
+<h4>2. Operations on Groups of Tasks</h4>
+<p>The <strong>ThreadPoolExecutor</strong> provides tools to work with groups of asynchronous tasks, whereas the <strong>ThreadPool</strong> does not.</p>
+<p>The <strong>concurrent.futures</strong> module provides the <strong>wait()</strong> and <strong>as_completed()</strong> module functions. These functions are designed to work with collections of <strong>Future</strong> objects returned when issuing tasks asynchronously to the thread pool via the <strong>submit()</strong> function.</p>
+<p>They allow the caller to wait for an event on a collection of heterogeneous tasks in the thread pool, such as for all tasks to complete, for the first task to complete, or for the first task to fail.</p>
+<p>They also allow the caller to handle the results from a collection of heterogeneous tasks in the order that the tasks are completed, rather than the order the tasks were issued.</p>
+<p>The <strong>ThreadPool</strong> does not provide this capability.</p>
+<h4>3. Asynchronous Map Functions</h4>
+<p>The <strong>ThreadPool</strong> provides a focus on map() based concurrency, whereas the <strong>ThreadPoolExecutor</strong> does not.</p>
+<p>The <strong>ThreadPoolExecutor</strong> does provide a parallel version of the built-in <strong>map()</strong> function which will apply the same function to an iterable of arguments. Each function call is issued as a separate task to the thread pool.</p>
+<p>The <strong>ThreadPool</strong> provides three versions of the built-in <strong>map()</strong> function for applying the same function to an iterable of arguments in parallel as tasks in the thread pool.</p>
+<p>They are: the <strong>map()</strong>, a lazier version of <strong>map()</strong> called <strong>imap()</strong>, and a version of <strong>map()</strong> that takes multiple arguments for each function call called <strong>starmap()</strong>.</p>
+<p>It also provides a version <strong>imap()</strong> where the iterable of results has return values in the order that tasks are complete rather than the order that tasks are issued called <strong>imap_unordered()</strong>.</p>
+<p>Finally, it has asynchronous versions of the <strong>map()</strong> function called <strong>map_async()</strong> and of the <strong>starmap()</strong> function called <strong>starmap_async()</strong>.</p>
+<p>In all, the <strong>ThreadPool</strong> provides 6 parallel versions of the built-in <strong>map()</strong> function.</p>
+<h4>4. Ability to Access Exception</h4>
+<p>The <strong>ThreadPoolExecutor</strong> provides a way to access an exception raised in an asynchronous task directly, whereas the <strong>ThreadPool</strong> does not.</p>
+<p>Both thread pools provide the ability to check if a task was successful or not, and will re-raise an exception when getting the task result if an exception was raised and not handled in the task.</p>
+<p>Nevertheless, only the <strong>ThreadPoolExecutor</strong> provides the ability to directly get an exception raised in a task.</p>
+<p>A task issued into the <strong>ThreadPoolExecutor</strong> asynchronously via the <strong>submit()</strong> function will return a Future object. The exception() function on the Future object allows the caller to check if an exception was raised in the task and if so, to access it directly.</p>
+<p>The <strong>ThreadPool</strong> does not provide this ability.</p>
+<h3>Summary of Differences</h3>
+<p>It may help to summarize the differences between <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong>.</p>
+<h4>ThreadPool</h4>
+<ul>
+<li>Does not provide the ability to cancel tasks, whereas the <strong>ThreadPoolExecutor</strong> does.</li>
+<li>Does not provide the ability to work with collections of heterogeneous tasks, whereas the <strong>ThreadPoolExecutor</strong> does.</li>
+<li>Provides the ability to forcefully terminate all tasks, whereas the <strong>ThreadPoolExecutor</strong> does not.</li>
+<li>Provides a focus on parallel versions of the <strong>map()</strong> function, whereas the <strong>ThreadPoolExecutor</strong> does not.</li>
+<li>Does not provide the ability to access an exception raised in a task, whereas the <strong>ThreadPoolExecutor</strong> does.</li>
+</ul>
+<h4>ThreadPoolExecutor</h4>
+<ul>
+<li>Provides the ability to cancel tasks, whereas the <strong>ThreadPool</strong> does not.</li>
+<li>Provides the ability to work with collections of heterogeneous tasks, whereas the <strong>ThreadPool</strong> does not.</li>
+<li>Does not provide the ability to forcefully terminate all tasks, whereas the <strong>ThreadPool</strong> does.</li>
+<li>Does not provide multiple parallel versions of the <strong>map()</strong> function, whereas the <strong>ThreadPool</strong> does.</li>
+<li>Provides the ability to access an exception raised in a task, whereas the <strong>ThreadPool</strong> does not.</li>
+</ul>
+<p>The figure below provides a helpful side-by-side comparison of the key differences between <strong>ThreadPool</strong> and <strong>ThreadPoolExecutor</strong>.</p>
+<figure><img alt="Differences Between ThreadPool and ThreadPoolExecutor" loading="lazy" src="../pics/Differences-Between-ThreadPool-and-ThreadPoolExecutor.png"/><figcaption>Differences Between ThreadPool and ThreadPoolExecutor</figcaption></figure>
+<h2>ThreadPool Best Practices</h2>
+<p>Now that we know how the <strong>ThreadPool</strong> works and how to use it, let's review some best practices to consider when bringing the <strong>ThreadPool</strong> into our Python programs.</p>
+<p>To keep things simple, there are 6 best practices when using the <strong>ThreadPool</strong>, they are:</p>
+<ol>
+<li>Use the Context Manager</li>
+<li>Use map() for Concurrent For-Loops</li>
+<li>Use imap_unordered() For Responsive Code</li>
+<li>Use map_async() to Issue Tasks Asynchronously</li>
+<li>Use Independent Functions as Tasks</li>
+<li>Use for IO-Bound Tasks</li>
+</ol>
+<p>Let's get started with the first practice, which is to use the context manager.</p>
+<h3>Use the Context Manager</h3>
+<p>Use the context manager when using the <strong>ThreadPool</strong> to ensure the pool is always closed correctly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool via the context manager
+with ThreadPool(4) as pool:
+	# ...
+</code></pre>
+<p>Remember to configure your <strong>ThreadPool</strong> when creating it in the context manager, specifically by setting the number of thread workers to use in the pool.</p>
+<p>Using the context manager avoids the situation where you have explicitly instantiated the <strong>ThreadPool</strong> and forget to shut it down manually by calling <strong>close()</strong> or <strong>terminate()</strong>.</p>
+<p>It is also less code and better grouped than managing instantiation and shutdown manually, for example:</p>
+<pre><code>...
+# create a thread pool manually
+executor = ThreadPool(4)
+# ...
+executor.close()</code></pre>
+<p>Don't use the context manager when you need to dispatch tasks and get results over a broader context (e.g. multiple functions) and/or when you have more control over the shutdown of the pool.</p>
+<p>You can learn more about how to use the <strong>ThreadPool</strong> context manager in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-context-manager/">How to Use the ThreadPool Context Manager</a></li>
+</ul>
+<h3>Use map() for Concurrent For-Loops</h3>
+<p>If you have a for-loop that applies a function to each item in a list or iterable, then use the <strong>map()</strong> function to dispatch all tasks and handle results once all tasks are completed.</p>
+<p>For example, you may have a for-loop over a list that calls <strong>task()</strong> for each item:</p>
+<pre><code>...
+# apply a function to each item in an iterable
+for item in mylist:
+	result = task(item)
+	# do something...
+</code></pre>
+<p>Or, you may already be using the built-in <a href="https://docs.python.org/3/library/functions.html#map"><strong>map()</strong> function</a>:</p>
+<pre><code>...
+# apply a function to each item in an iterable
+for result in map(task, mylist):
+	# do something...
+</code></pre>
+<p>Both of these cases can be made concurrent using the <strong>map()</strong> function on the <strong>ThreadPool</strong>.</p>
+<pre><code>...
+# apply a function to each item in an iterable concurrently
+for result in pool.map(task, mylist):
+	# do something...
+</code></pre>
+<p>Probably do not use the <strong>map()</strong> function if your target task function has side effects.</p>
+<p>Do not use the <strong>map()</strong> function if your target task function has no arguments or more than one argument. If you have multiple arguments, you can use the <strong>starmap()</strong> function instead.</p>
+<p>Do not use the <strong>map()</strong> function if you need control over exception handling for each task, or if you would like to get results to tasks in the order that tasks are completed.</p>
+<p>Do not use the <strong>map()</strong> function if you have many tasks (e.g. hundreds or thousands) as all tasks will be dispatched at once. Instead, consider the more lazy <strong>imap()</strong> function.</p>
+<p>You can learn more about the concurrent version of <strong>map()</strong> with the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map/">How to Use ThreadPool map() in Python</a></li>
+</ul>
+<h3>Use imap_unordered() For Responsive Code</h3>
+<p>If you would like to handle results in the order that tasks are completed, rather than the order that tasks are submitted, then use <strong>imap_unordered()</strong> function.</p>
+<p>Unlike the <strong>map()</strong> function, the <strong>imap_unordered()</strong> function will iterate the provided iterable one item at a time and issue tasks to the <strong>ThreadPool</strong>.</p>
+<p>Unlike the <strong>imap()</strong> function, the <strong>imap_unordered()</strong> function will yield return values in the order that tasks are completed, not the order that tasks were issued to the <strong>ThreadPool</strong>.</p>
+<p>This allows the caller to handle results from issued tasks as they become available, making the program more responsive.</p>
+<p>For example:</p>
+<pre><code>...
+# apply a function to each item in the iterable in parallel
+for result in pool.imap_unordered(task, items):
+	# ...
+</code></pre>
+<p>Do not use the <strong>imap_unordered()</strong> function if you need to handle the results in the order that the tasks were submitted to the <strong>ThreadPool</strong>, instead, use <strong>map()</strong> function.</p>
+<p>Do not use the <strong>imap_unordered()</strong> function if you need results from all tasks before continuing on in the program, instead, you may be better off using <strong>map_async()</strong> and the <strong>AsyncResult.wait() </strong>function.</p>
+<p>Do not use the <strong>imap_unordered()</strong> function for a simple parallel for-loop, instead, you may be better off using <strong>map()</strong>.</p>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-imap_unordered/">How to Use ThreadPool imap_unordered() in Python</a></li>
+</ul>
+<h3>Use map_async() to Issue Tasks Asynchronously</h3>
+<p>If you need to issue many tasks asynchronously, e.g. fire-and-forget use the <strong>map_async()</strong> function.</p>
+<p>The <strong>map_async()</strong> function does not block while the function is applied to each item in the iterable, instead, it returns an <strong>AsyncResult</strong> object from which the results may be accessed.</p>
+<p>Because <strong>map_async()</strong> does not block, it allows the caller to continue and retrieve the result when needed.</p>
+<p>The caller can choose to call the <strong>wait()</strong> function on the returned <strong>AsyncResult</strong> object in order to wait for all of the issued tasks to complete, or call the <strong>get()</strong> function to wait for the task to complete and access an iterable of return values.</p>
+<p>For example:</p>
+<pre><code>...
+# apply the function
+result = map_async(task, items)
+# wait for all tasks to complete
+result.wait()</code></pre>
+<p>Do not use the <strong>map_async()</strong> function if you want to issue the tasks and then handle the results once all tasks are complete. You would be better off using the <strong>map()</strong> function.</p>
+<p>Do not use the <strong>map_async()</strong> function if you want to issue tasks one-by-one in a lazy manner in order to conserve memory, instead, use the <strong>imap()</strong> function.</p>
+<p>Do not use the <strong>map_async()</strong> function if you wish to issue tasks that take multiple arguments, instead use the <strong>starmap_async()</strong> function.</p>
+<p>You can learn more about the <strong>map_async()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-map_async/">How to Use ThreadPool map_async() in Python</a></li>
+</ul>
+<h3>Use Independent Functions as Tasks</h3>
+<p>Use the <strong>ThreadPool</strong> if your tasks are independent.</p>
+<p>This means that each task is not dependent on other tasks that could execute at the same time. It also may mean tasks that are not dependent on any data other than data provided via function arguments to the task.</p>
+<p>The <strong>ThreadPool</strong> is ideal for tasks that do not change any data, e.g. have no side effects, so-called <a href="https://en.wikipedia.org/wiki/Pure_function">pure functions</a>.</p>
+<p>The <strong>ThreadPool</strong> can be organized into data flows and pipelines for linear dependence between tasks, perhaps with one <strong>ThreadPool</strong> per task type.</p>
+<p>The <strong>ThreadPool</strong> is not designed for tasks that require coordination, you should consider using the <strong>threading.Thread</strong> class and coordination patterns like the <strong>Barrier</strong> and <strong>Semaphore</strong>.</p>
+<p>The <strong>ThreadPool</strong> is not designed for tasks that require synchronization, you should consider using the <strong>threading.Thread</strong> class and locking patterns like <strong>Lock</strong> and <strong>RLock</strong>.</p>
+<h3>Use for IO-Bound Tasks</h3>
+<p>Use <strong>ThreadPool</strong> for IO-bound tasks only.</p>
+<p>These are tasks that may involve interacting with an external device, such as a peripheral (e.g. a camera or a printer), a storage device (e.g. a storage device or a hard drive), or another computer (e.g. socket communication).</p>
+<p>Threads and thread pools like the <strong>ThreadPool</strong> are probably not appropriate for CPU-bound tasks, like computation on data in memory.</p>
+<p>This is because of design decisions within the Python interpreter that makes use of a master lock called the Global Interpreter Lock (GIL) that prevents more than one Python instruction from executing at the same time.</p>
+<p>This design decision was made within the reference implementation of the Python interpreter (CPython) but may not impact other interpreters (such as PyPy, Iron Python, and Jython).</p>
+<h2>Common Errors When Using the ThreadPool</h2>
+<p>There are a number of common errors when using the <strong>ThreadPool</strong>.</p>
+<p>These errors are typically made because of bugs introduced by copy-and-pasting code, or from a slight misunderstanding in how the <strong>ThreadPool</strong> works.</p>
+<p>We will take a closer look at some of the more common errors made when using the <strong>ThreadPool</strong>, such as:</p>
+<ol>
+<li>Using a Function Call in submit()</li>
+<li>Using a Function Call in map()</li>
+<li>Incorrect Function Signature for map()</li>
+<li>Incorrect Function Signature for Future Callbacks</li>
+<li>Tasks Fail Silently</li>
+<li>Joining Pool While Running</li>
+<li>Issuing Tasks to a Closed Pool</li>
+</ol>
+<p>You can learn more about common errors with the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-common-errors/">7 Common Errors When Using the ThreadPool</a></li>
+</ul>
+<h3>Error 1: Using a Function Call in apply_async()</h3>
+<p>A common error is to call your function when using the <strong>apply_async()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue the task
+result = pool.apply_async(task())</code></pre>
+<p>A complete example of this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling submit with a function call
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# custom function executed in another thread
+def task():
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the thread pool
+    with ThreadPool() as pool:
+        # issue the task
+        result = pool.apply_async(task())
+        # get the result
+        value = result.get()
+        print(value)
+</code></pre>
+<p>Running this example will fail with an error.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+TypeError: 'str' object is not callable
+</code></pre>
+<p>You can fix the error by updating the call to <strong>apply_async()</strong> to take the name of your function and any arguments, instead of calling the function in the call to execute.</p>
+<p>For example:</p>
+<pre><code>...
+# issue the task
+result = pool.apply_async(task)</code></pre>
+<h3>Error 2: Using a Function Call in map()</h3>
+<p>A common error is to call your function when using the <strong>map()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue all tasks
+for result in pool.map(task(), range(5)):
+    print(result)
+</code></pre>
+<p>A complete example of this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map with a function call
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# custom function executed in another thread
+def task(value):
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the thread pool
+    with ThreadPool() as pool:
+        # issue all tasks
+        for result in pool.map(task(), range(5)):
+            print(result)
+</code></pre>
+<p>Running the example results in a TypeError.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+TypeError: task() missing 1 required positional argument: 'value'
+</code></pre>
+<p>This error can be fixed by changing the call to <strong>map()</strong> to pass the name of the target task function instead of a call to the function.</p>
+<pre><code>...
+# issue all tasks
+for result in pool.map(task, range(5)):
+    print(result)
+</code></pre>
+<h3>Error 3: Incorrect Function Signature for map()</h3>
+<p>Another common error when using map() is to provide no second argument to the function, e.g. the iterable.</p>
+<p>For example:</p>
+<pre><code>...
+# issue all tasks
+for result in pool.map(task):
+    print(result)
+</code></pre>
+<p>A complete example of this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map without an iterable
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# custom function executed in another thread
+def task(value):
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the thread pool
+    with ThreadPool() as pool:
+        # issue all tasks
+        for result in pool.map(task):
+            print(result)
+</code></pre>
+<p>Running the example does not issue any tasks to the <strong>ThreadPool</strong> as there was no iterable for the <strong>map()</strong> function to iterate over.</p>
+<p>Running the example results in a <strong>TypeError</strong>.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+TypeError: map() missing 1 required positional argument: 'iterable'
+</code></pre>
+<p>The fix involves providing an iterable in the call to <strong>map()</strong> along with your function name.</p>
+<pre><code>...
+# issue all tasks
+for result in pool.map(task, range(5)):
+    print(result)
+</code></pre>
+<h3>Error 4: Incorrect Function Signature for Callbacks</h3>
+<p>Another common error is forgetting to include the result in the signature for the callback function when issuing tasks asynchronously.</p>
+<p>For example:</p>
+<pre><code># result callback function
+def handler():
+    print(f'Callback got: {result}')
+</code></pre>
+<p>A complete example of this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a callback function for apply_async()
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# result callback function
+def handler():
+    print(f'Callback got: {result}')
+
+# custom function executed in another thread
+def task():
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        result = pool.apply_async(task, callback=handler)
+        # get the result
+        value = result.get()
+        print(value)
+</code></pre>
+<p>Running this example will result in an error when the callback is called by the <strong>ThreadPool</strong>.</p>
+<p>This will break the <strong>ThreadPool</strong> and the program will have to be killed manually with a Control-C.</p>
+<pre><code>Exception in thread Thread-11:
+Traceback (most recent call last):
+  ...
+TypeError: handler() takes 0 positional arguments but 1 was given
+</code></pre>
+<p>Fixing this error involves updating the signature of your callback function to include the result from the task.</p>
+<pre><code># result callback function
+def handler(result):
+    print(f'Callback got: {result}')
+</code></pre>
+<p>You can learn more about using callback functions with asynchronous tasks in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-callback/">ThreadPool Callback Functions in Python</a></li>
+</ul>
+<p>This error can also happen with the error callback and forgetting to add the error as an argument in the error callback function.</p>
+<h3>Error 5: Tasks Fail Silently</h3>
+<p>A common error is when tasks are issued to the <strong>ThreadPool</strong> but fail silently.</p>
+<p>The expected result or output does not occur and no message is provided by the <strong>ThreadPool</strong>.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of asynchronous tasks failing silently in the thread pool
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    # fail
+    raise Exception('Something bad happened')
+    # report a message
+    print(f'Task done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue an asynchronous task into the thread pool
+        result = pool.apply_async(task)
+        # wait for all tasks to finish
+        result.wait()
+</code></pre>
+<p>Running the example results in no message from the task or the <strong>ThreadPool</strong> itself.</p>
+<p>In order to trigger the error, we must attempt to retrieve the result from the asynchronous task.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result
+result.get()</code></pre>
+<p>Alternatively, we can register an error callback function with the task.</p>
+<p>For example:</p>
+<pre><code># error callback function
+def callback(error):
+    print(f'Error: {error}')
+
+...
+# issue task and register an error callback
+result = pool.apply_async(task, error_callback=callback)
+</code></pre>
+<p>You can learn more about tasks failing silently in the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-fail-silently/">ThreadPool Tasks Fail Silently (and how to fix it)</a></li>
+</ul>
+<h3>Error 6: Joining ThreadPool While Running</h3>
+<p>Another common error occurs when attempting to join the <strong>ThreadPool</strong> in order to wait for all running tasks to complete.</p>
+<p>This is achieved by calling the <strong>join()</strong> method.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of an error while joining the pool
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# custom function executed in another thread
+def task():
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the thread pool
+    with ThreadPool() as pool:
+        # issue the task
+        result = pool.apply_async(task)
+        # wait for all tasks to finish
+        pool.join()
+</code></pre>
+<p>Running the example results in an exception.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+ValueError: Pool is still running
+</code></pre>
+<p>This error occurs because you attempt to join the <strong>ThreadPool</strong> while it is still running.</p>
+<p>You can fix this error by first closing the pool by calling <strong>close()</strong> or <strong>terminate()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all tasks to finish
+pool.join()</code></pre>
+<p>You can learn more about joining the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-join/">How to Join a ThreadPool in Python</a></li>
+</ul>
+<h3>Error 7: Issuing Tasks to a Closed Pool</h3>
+<p>A common error occurs when attempting to issue tasks to the <strong>ThreadPool</strong>.</p>
+<p>This can happen if the pool was inadvertently closed before the task was issued.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of issuing tasks to a pool that is closed
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# custom function executed in another thread
+def task():
+    # block for a moment
+    sleep(1)
+    return 'all done'
+
+# protect the entry point
+if __name__ == '__main__':
+    # start the thread pool
+    with ThreadPool() as pool:
+        # issue the task
+        result = pool.apply_async(task)
+        # close the pool
+        pool.close()
+        # wait for all tasks to finish
+        pool.join()
+        # issue another task
+        result = pool.apply_async(task)
+</code></pre>
+<p>Running the example results in an exception.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+ValueError: Pool not running
+</code></pre>
+<p>This error occurs because you have closed the <strong>ThreadPool</strong> and then attempted to issue tasks to execute.</p>
+<p>The pool cannot execute tasks if it is not running.</p>
+<p>You must start a new pool or issue tasks before closing the pool.</p>
+<p>You can learn more about correctly shutting down the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-close-and-terminate/">How to Shutdown the ThreadPool in Python</a></li>
+</ul>
+<h2>Common Questions When Using the ThreadPool</h2>
+<p>This section answers common questions asked by developers when using the <strong>ThreadPool</strong>.</p>
+<p><strong>Do you have a question about the ThreadPool?</strong><br/>Ask your question in the comments below and I will do my best to answer it and perhaps add it to this list of questions.</p>
+<h3>How Do You Safely Stop Running Tasks?</h3>
+<p>The <strong>ThreadPool</strong> does not provide a mechanism to safely stop all currently running tasks.</p>
+<p>Instead, we can develop a mechanism to safely stop all running tasks in a <strong>ThreadPool</strong> using an <strong>Event</strong> object.</p>
+<p>Firstly, an <strong>Event</strong> object must be created and shared among all running tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared event
+event = Event()</code></pre>
+<p>Recall that an event provides a thread-safe boolean variable.</p>
+<p>It is created in the <strong>False</strong> state and can be checked via the <strong>is_set()</strong> function and made <strong>True</strong> via the <strong>set()</strong> function.</p>
+<p>You can learn more about how to use threading <strong>Event</strong> objects in the tutorial:</p>
+<ul>
+<li><a href="../thread-event-object-in-python/">Threading Event Object In Python</a></li>
+</ul>
+<p>We can create a shared <strong>Event</strong> object in the main thread, then pass it as an argument to any task that needs to be stopped.</p>
+<p>For example:</p>
+<pre><code># function executed in worker threads
+def task(event, ...):
+	# ...
+</code></pre>
+<p>The custom function executing the task can check the status of the <strong>Event</strong> object periodically, such as each iteration of a loop.</p>
+<p>If the <strong>Event</strong> set, the target task function can then choose to stop, closing any resources if necessary.</p>
+<pre><code># function executed in worker threads
+def task(event, ...):
+	# ...
+	while True:
+		# ...
+		if event.is_set():
+			return</code></pre>
+<p>There are some limitations to this approach.</p>
+<p>It requires that you have complete control over the target task function or functions executed in the thread pool.</p>
+<p>This control is required so that the functions can be changed to take the event as an argument and then check the status of the event periodically.</p>
+<ul>
+<li>The target task function must take the <strong>Event</strong> as an argument.</li>
+<li>The target task function must check the status of the <strong>Event</strong> periodically.</li>
+</ul>
+<p>The first limitation can be removed by inheriting the shared Event from the main thread as a global variable. Nevertheless, all tasks that you want to stop will need to check the status of the event all the time.</p>
+<p>This can be a problem if tasks are performing blocking operations such as reading and/or writing from/to files or sockets.</p>
+<p>In this example below, we will define a task function that takes a shared event as an argument that loops a number of times and sleeps each iteration. It will check the status of the shared event each iteration and stop the task if the event is set. The main thread will issue a number of tasks to the <strong>ThreadPool</strong>, wait a moment then request that all issued tasks safely stop, then wait for the tasks to stop.</p>
+<pre><code># SuperFastPython.com
+# example of safely stopping all tasks in the thread pool
+from time import sleep
+from threading import Event
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(identifier, event):
+    print(f'Task {identifier} running')
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+        # check if the task should stop
+        if event.is_set():
+            print(f'Task {identifier} stopping...')
+            # stop the task
+            break
+    # report all done
+    print(f'Task {identifier} Done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared event
+    event = Event()
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # prepare arguments
+        items = [(i,event) for i in range(4)]
+        # issue tasks asynchronously
+        result = pool.starmap_async(task, items)
+        # wait a moment
+        sleep(2)
+        # safely stop the issued tasks
+        print('Safely stopping all tasks')
+        event.set()
+        # wait for all tasks to stop
+        result.wait()
+        print('All stopped')
+</code></pre>
+<p>Running the example first creates the shared Event object.</p>
+<p>The <strong>ThreadPool</strong> is then created using the default configuration.</p>
+<p>The arguments for the tasks are prepared, then the four tasks are issued asynchronously to the <strong>ThreadPool</strong>.</p>
+<p>The main thread then blocks for a moment.</p>
+<p>Each task starts, reporting a message and then starting its main loop.</p>
+<p>The main thread wakes up and sets the event, requesting all issued tasks to stop. It then waits on the <strong>AsyncResult</strong> for the issued tasks to stop.</p>
+<p>Each task checks the status of the event in each iteration of its main loop. They notice that the event is set, break their main loop, report a final message then return, stopping the task safely.</p>
+<p>All tasks stop, allowing the main thread to continue on, ending the application.</p>
+<p>This highlights how we can safely stop all tasks in the <strong>ThreadPool</strong> in a controlled manner.</p>
+<pre><code>Task 0 running
+Task 1 running
+Task 2 running
+Task 3 running
+Safely stopping all tasks
+Task 0 stopping...
+Task 2 stopping...
+Task 2 DoneTask 0 Done
+Task 1 stopping...
+Task 1 Done
+Task 3 stopping...
+Task 3 Done
+All stopped</code></pre>
+<p>You can learn more about how to safely stop all tasks in the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-stop-all-tasks/">ThreadPool Stop All Tasks in Python</a></li>
+</ul>
+<h3>How to Kill All Tasks?</h3>
+<p>The <strong>ThreadPool</strong> API does not provide a facility to kill all running tasks.</p>
+<p>This capability is provided in the Pool that uses process-based concurrency via the <strong>terminate()</strong> method.</p>
+<p>This method is provided in the <strong>ThreadPool</strong>, but does not terminate the running thread.</p>
+<p>You can learn more about the <strong>terminate()</strong> method for the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-terminate/">ThreadPool Does Not Support terminate() in Python</a></li>
+</ul>
+<h3>How Do You Wait for All Tasks to Complete?</h3>
+<p>There are two ways that we can wait for tasks to finish in the <strong>ThreadPool</strong>.</p>
+<p>They are:</p>
+<ul>
+<li>Wait for an asynchronous set of tasks to complete with the <strong>wait()</strong> method.</li>
+<li>Wait for all issued tasks to complete after shutdown with the <strong>join()</strong> method.</li>
+</ul>
+<p>Let's take a closer look at each approach.</p>
+<h4>How to Wait For All Tasks in a Batch</h4>
+<p>Tasks may be issued asynchronously to the <strong>ThreadPool</strong>.</p>
+<p>This can be achieved using a method such as <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async()</strong>. These methods return an <strong>AsyncResult</strong> object.</p>
+<p>We can wait for a single batch of tasks issued asynchronously to the <strong>ThreadPool</strong> to complete by calling the wait() method on the returned AsyncResult object.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks
+result = pool.map_async(...)
+# wait for issued tasks to complete
+result.wait()
+</code></pre>
+<p>If multiple batches of asynchronous tasks are issued to the <strong>ThreadPool</strong>, we can collect the <strong>AsyncResult</strong> objects that are returned and wait on each in turn.</p>
+<p>You can learn more about how to wait on the <strong>AsyncResult</strong> object in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-asyncresult/">How to Use ThreadPool AsyncResult</a></li>
+</ul>
+<h4>How to Wait For All Tasks After Shutdown</h4>
+<p>We may issue many batches of asynchronous tasks to the <strong>ThreadPool</strong> and not hang onto the <strong>AsyncResult</strong> objects that are returned.</p>
+<p>Instead, we can wait for all tasks in the <strong>ThreadPool</strong> to complete by first shutting down the <strong>ThreadPool</strong>, then joining it to wait for all issued tasks to be completed.</p>
+<p>This can be achieved by first calling the <strong>close()</strong> method that will prevent any further tasks to be issued to the ThreadPool and close down the worker threads once all tasks are complete.</p>
+<p>We can then call the <strong>join()</strong> method. This will block the caller until all tasks in the <strong>ThreadPool</strong> are completed and the worker threads in the <strong>ThreadPool</strong> have closed.</p>
+<p>For example:</p>
+<pre><code>...
+# close the thread pool
+pool.close()
+# block until all tasks are complete and threads close
+pool.join()</code></pre>
+<p>The downside of this approach is that we cannot issue tasks to the pool after it is closed. This approach can only be used once you know that you have no further tasks to issue to the <strong>ThreadPool</strong>.</p>
+<p>You can learn more about joining the ThreadPool after shutdown in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-join/">How to Join a ThreadPool in Python</a></li>
+</ul>
+<p>We can explore how to wait for a batch of issued tasks to complete in the <strong>ThreadPool</strong>.</p>
+<p>In this example, we will define a task that blocks for a moment and then reports a message. From the main thread, we will issue a batch of tasks to the ThreadPool asynchronously. We will then explicitly wait on the batch of tasks to complete by waiting on the returned <strong>AsyncResult</strong> object.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for all tasks in a batch to finish
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(identifier):
+    # block for a moment
+    sleep(0.5)
+    # report done
+    print(f'Task {identifier} done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks into the thread pool
+        result = pool.map_async(task, range(10))
+        # wait for tasks to complete
+        result.wait()
+        # report all tasks done
+        print('All tasks are done')
+    # thread pool is closed automatically
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPool</strong>.</p>
+<p>The ten tasks are then issued to the <strong>ThreadPool</strong> asynchronously. An <strong>AsyncResult</strong> object is returned and the main thread then blocks until the issued tasks are completed.</p>
+<p>Each task is issued in the <strong>ThreadPool</strong>, first blocking for a fraction of a second, then printing a message.</p>
+<p>All ten tasks are issued as a batch to the <strong>ThreadPool</strong> are complete, then the wait() method returns and the main thread continues on.</p>
+<p>A final message is reported, then the <strong>ThreadPool</strong> is closed automatically via the context manager interface.</p>
+<pre><code>Task 0 done
+Task 5 done
+Task 2 done
+Task 3 done
+Task 6 done
+Task 7 done
+Task 1 done
+Task 4 done
+Task 8 done
+Task 9 done
+All tasks are done</code></pre>
+<p>You can learn more about how to wait for tasks to complete in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-wait-for-all-tasks/">ThreadPool Wait For All Tasks To Finish in Python</a></li>
+</ul>
+<h3>How Do You Get The First Result?</h3>
+<p>There are two main approaches we can use to get the result from the first task to complete in the <strong>ThreadPool</strong>.</p>
+<p>They are:</p>
+<ol>
+<li>Have tasks put their result on a shared queue.</li>
+<li>Issue tasks using the imap_unordered() function.</li>
+</ol>
+<p>Let's take a closer look at each approach in turn.</p>
+<h4>Put Results on a Shared Queue</h4>
+<p>A <strong>queue.Queue</strong> can be created and shared among all tasks issued to the <strong>ThreadPool</strong>.</p>
+<p>As tasks finish, they can put their results on the queue.</p>
+<p>The parent thread waiting for the first result can get the first result made available via the shared queue.</p>
+<p>A <strong>ThreadPool</strong> can be created as per normal.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared queue
+queue = queue.Queue()</code></pre>
+<p>We can share the queue with the <strong>ThreadPool</strong> directly as an argument to the task function.</p>
+<p>Alternatively, we can share the queue as a global variable accessible by the main thread and the worker threads in the thread pool.</p>
+<p>Tasks can then put results on the queue by calling the <strong>put()</strong> function and passing the result object.</p>
+<p>For example:</p>
+<pre><code>...
+# put result on the queue
+queue.put(result)</code></pre>
+<p>The main thread can then retrieve the first result made available via the <strong>get()</strong> function on the queue. This call will block until a result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the first result
+result = queue.get()</code></pre>
+<p>You can learn more about using the thread-safe queue in the tutorial:</p>
+<ul>
+<li><a href="../thread-queue/">Thread-Safe Queue in Python</a></li>
+</ul>
+<h4>Issue Tasks Using imap_unordered()</h4>
+<p>Another approach to getting the first result from the <strong>ThreadPool</strong> is to issue tasks using the <strong>imap_unordered()</strong>.</p>
+<p>This function will issue tasks in a lazy manner and will return an iterable that yields results in the order that tasks are completed, rather than the order that tasks were issued.</p>
+<p>Therefore, tasks can be issued as per normal via a call to the <strong>imap_unordered()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# issue tasks to the thread pool
+it = pool.imap_unordered(task, items)</code></pre>
+<p>We can then call the <a href="https://docs.python.org/3/library/functions.html#next">built-in <strong>next()</strong> function</a> on the returned iterable to get the result from the first task to complete in the <strong>ThreadPool</strong>.</p>
+<p>Recall, that the <strong>next()</strong> function returns the next item in an iterable.</p>
+<p>For example,</p>
+<pre><code>...
+# get the first result
+result = next(it)</code></pre>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-imap_unordered/">How to Use ThreadPool imap_unordered() in Python</a></li>
+</ul>
+<p>We can explore how to get the result from the first task to complete using a queue.</p>
+<p>In this example, we will define a queue and share it with workers in the <strong>ThreadPool</strong> via a global variable. We will then define a target task function that will generate a random number, block, then store the result on the shared queue. The randomness will mean the task that finishes first will differ each time the code is run. Finally, we will issue many tasks and wait for and report the first result received in the main thread.</p>
+<pre><code># SuperFastPython.com
+# example of getting the first result from the thread pool with a queue
+from random import random
+from time import sleep
+from queue import SimpleQueue
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(identifier):
+    # generate a value
+    value = 2 + random() * 10
+    # report a message
+    print(f'Task {identifier} executing with {value}')
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    queue.put((identifier, value))
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared queue
+    queue = SimpleQueue()
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue many tasks
+        _ = pool.map_async(task, range(30))
+        # get the first result, blocking
+        identifier, value = queue.get()
+        # report the first result
+        print(f'First result: identifier={identifier}, value={value}')
+</code></pre>
+<p>Running the example first creates the shared queue.</p>
+<p>The <strong>ThreadPool</strong> is then created, and configured with the custom initialization function that shares the queue with each worker thread.</p>
+<p>The tasks are then issued to the pool asynchronously. The main thread then blocks, waiting for the first result to be retrieved from the shared queue.</p>
+<p>Only a subset of the tasks is able to run at a time. Each task generates a random number, reports a message, blocks, then stores its result in the queue.</p>
+<p>The main thread gets the result from the first task to complete. It reports the value, then exits the context manager block for the pool.</p>
+<p>This terminates the pool and all running tasks, then the program ends.</p>
+<p>This highlights one approach we can use to get the first result from tasks in the <strong>ThreadPool</strong>.</p>
+<p>Note, results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>Task 0 executing with 4.388392181354002
+Task 1 executing with 3.0102164339752298
+Task 2 executing with 4.9214826220804815
+Task 3 executing with 10.350379291238756
+Task 4 executing with 7.736914173034551
+Task 5 executing with 6.7523327230496974
+Task 6 executing with 9.969935912716616
+Task 7 executing with 10.794115864831909
+Task 8 executing with 5.037455046767715
+First result: identifier=1, value=3.0102164339752298</code></pre>
+<p>You can learn more about how to wait for the first task to complete in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-first-result/">ThreadPool Get The First Result</a></li>
+</ul>
+<h3>How Do You Dynamically Change the Number of Workers</h3>
+<p>You cannot dynamically increase or decrease the number of workers in a <strong>ThreadPool</strong>.</p>
+<p>The number of workers is fixed when the <strong>ThreadPool</strong> is configured in the call to the object constructor.</p>
+<p>For example:</p>
+<pre><code>...
+# configure a thread pool
+pool = ThreadPool(4)</code></pre>
+<h3>How Do You Unit Tasks and the ThreadPool?</h3>
+<p>You can unit test your target task functions directly, perhaps mocking any external resources required.</p>
+<p>You can unit test your usage of the <strong>ThreadPool</strong> with mock tasks that do not interact with external resources.</p>
+<p>Unit testing of tasks and the <strong>ThreadPool</strong> itself must be considered as part of your design and may require that the connection to the IO resource be configurable so that it can be mocked, and that the target task function called by your <strong>ThreadPool</strong> is configurable so that it can be mocked.</p>
+<h3>How Do You Compare Serial to Parallel Performance?</h3>
+<p>You can compare the performance of your program with and without the <strong>ThreadPool</strong>.</p>
+<p>This can be a useful exercise to confirm that making use of the <strong>ThreadPool</strong> in your program has resulted in a speed-up.</p>
+<p>Perhaps the simplest approach is to manually record the start and end time of your code and subtract the end from the start time to report the total execution time. Then record the time with and without the use of the <strong>ThreadPool</strong>.</p>
+<pre><code># SuperFastPython.com
+# example of recording the execution time of a program
+import time
+
+# record the start time
+start_time = time.time()
+# do work with or without a thread pool
+# ....
+time.sleep(3)
+# record the end time
+end_time = time.time()
+# report execution time
+total_time = end_time - start_time
+print(f'Execution time: {total_time:.1f} seconds.')
+</code></pre>
+<p>Using an average program execution time might give a more stable program timing than a one-off run.</p>
+<p>You can record the execution time 3 or more times for your program without the <strong>ThreadPool</strong> then calculate the average as the sum of times divided by the total runs. Then repeat this exercise to calculate the average time with the <strong>ThreadPool</strong>.</p>
+<p>This would probably only be appropriate if the running time of your program is minutes rather than hours.</p>
+<p>You can then compare the serial vs. parallel version by calculating the speed up multiple as:</p>
+<ul>
+<li>Speed-Up Multiple = Serial Time / Parallel Time</li>
+</ul>
+<p>For example, if the serial run of a program took 15 minutes (900 seconds) and the parallel version with a <strong>ThreadPool</strong> took 5 minutes (300 seconds), then the percentage multiple up would be calculated as:</p>
+<ul>
+<li>Speed-Up Multiple = Serial Time / Parallel Time</li>
+<li>Speed-Up Multiple = 900 / 300</li>
+<li>Speed-Up Multiple = 3</li>
+</ul>
+<p>That is, the parallel version of the program with the <strong>ThreadPool</strong> is 3 times faster or 3x faster.</p>
+<p>You can multiply the speed-up multiple by 100 to give a percentage</p>
+<ul>
+<li>Speed-Up Percentage = Speed-Up Multiple * 100</li>
+</ul>
+<p>In this example, the parallel version is 300% faster than the serial version.</p>
+<h3>How Do You Set chunksize in map()?</h3>
+<p>The <strong>map()</strong> method, and related methods like <strong>starmap()</strong> and <strong>imap()</strong> on the <strong>ThreadPool</strong> take a parameter called “<strong>chunksize</strong>“.</p>
+<p>The “<strong>chunksize</strong>” argument controls the mapping of items in the iterable passed to <strong>map()</strong> to tasks used in the <strong>ThreadPool</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# apply a function to each item in an iterable with a chunksize
+for result in pool.map(task, items, chunksize=1)
+    # ...
+</code></pre>
+<p>A value of one means that one item is mapped to one task.</p>
+<p>Recall that the data for each task in terms of arguments sent to the target task function and values that are returned must be serialized by pickle. This happens automatically, but incurs some computational and memory costs, adding overhead to each task executed by the <strong>ThreadPool</strong>.</p>
+<p>When there are a vast number of tasks or tasks are relatively quick to compute, then the chunksize should be tuned to maximize the grouping of items to <strong>ThreadPool</strong> tasks in order to minimize the overhead per task and in turn reduce the overall compute time.</p>
+<p>By default, the chunksize is set to None. In this case, the chunksize will not be set to 1 as we might expect, instead, a chunksize is calculated automatically.</p>
+<p>We can see this in the <a href="https://github.com/python/cpython/blob/d793ebc11dd248d626bf2da14775703307b47887/Lib/multiprocessing/pool.py#L481">source code for the <strong>Pool</strong> class</a>:</p>
+<pre><code>...
+if chunksize is None:
+    chunksize, extra = divmod(len(iterable), len(self._pool) * 4)
+    if extra:
+        chunksize += 1
+</code></pre>
+<p>The <a href="https://docs.python.org/3/library/functions.html#divmod"><strong>divmod()</strong> function</a> will return the result (quotient) and remainder.</p>
+<p>Here, we are dividing the length of the input by 4 times the number of workers in the pool.</p>
+<p>If we had 4 worker threads and a list of items with 1,000,000 elements, then the default chunksize would be calculated as follows:</p>
+<ul>
+<li>chunksize, extra = divmod(1,000,000, 4 * 4)</li>
+<li>chunksize, extra = divmod(1,000,000, 16)</li>
+<li>chunksize, extra = divmod(1,000,000, 16)</li>
+<li>chunksize, extra = 62500, 0</li>
+</ul>
+<p>Given there is no extra (remainder), one is not added to the chunksize.</p>
+<p>This means that the default chunksize in this example is 62,500.</p>
+<p>This will likely require some tuning of the chunksize that you may be able to perform with real task data, or perhaps a test harness with mock data and task threads.</p>
+<p>Some values to try might include:</p>
+<ul>
+<li>None: The default.</li>
+<li>1: A one-to-one mapping of items to tasks in the pool.</li>
+<li>len(items) / number_of_workers: Splits all items into a number of worker groups, e.g. one batch of items per thread.</li>
+</ul>
+<p>Note: the (len(items) / number_of_workers) division may need to be rounded as the "<strong>chunksize</strong>" argument must be a positive integer.</p>
+<p>For example:</p>
+<pre><code>...
+# estimate the chunksize
+size = round(len(items) / number_of_workers)
+# apply a function to each item in an iterable with a chunksize
+for result in pool.map(task, items, chunksize=size)
+    # ...
+</code></pre>
+<p>Compare the performance to see if one configuration is better than another, and if so, use it as a starting point for similar values to evaluate.</p>
+<h3>How Do You Submit a Follow-up Task?</h3>
+<p>We can execute follow-up tasks in the <strong>ThreadPool</strong>.</p>
+<p>There are two main approaches we can use, they are:</p>
+<ol>
+<li>Manually issue follow-up tasks.</li>
+<li>Automatically issue follow-up tasks via a callback.</li>
+</ol>
+<p>We will also consider an approach that does not work:</p>
+<ul>
+<li>Issue a task from a task already running in the <strong>ThreadPool</strong>.</li>
+</ul>
+<p>Let's take a closer look at each approach of executing a follow-up task.</p>
+<p>We can manually issue a follow-up task based on the results of a first-round task.</p>
+<p>For example, we may issue a task asynchronously using the <strong>apply_async()</strong> function that returns a <strong>ResultAsync</strong>.</p>
+<pre><code>...
+# issue a task
+result = pool.apply_async(...)</code></pre>
+<p>We can then get the result of the issued task, once available, and conditionally issue a follow-up task.</p>
+<p>For example:</p>
+<pre><code>...
+# check the result of an issued task
+if result.get() &gt; 1.0:
+	# issue a follow-up task
+	pool.apply_async(...)
+</code></pre>
+<p>We can automatically issue follow-up tasks to the <strong>ThreadPool</strong>.</p>
+<p>This can be achieved by configuring issued tasks to have a result callback function.</p>
+<p>The callback function is a custom function that takes the result of the function call used to issue tasks, e.g. a single return value or an iterator of return values if multiple tasks are issued.</p>
+<p>The callback function is executed in the main thread of the main thread.</p>
+<p>If the <strong>ThreadPool</strong> is created and used within the main thread, then it may be available as a global variable to the result callback function.</p>
+<p>As such, we can directly issue follow-up tasks from the callback function.</p>
+<p>For example:</p>
+<pre><code># result callback function
+def result_callback(result):
+	# check the result of an issued task
+	if result.get() &gt; 1.0:
+		# issue a follow-up task
+		pool.apply_async(...)</code></pre>
+<p>The callback function can be specified when issuing tasks in the main thread via the "<strong>callback</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task with a result callback
+result = pool.apply_async(..., callback=result_callback)</code></pre>
+<p>We can explore how to issue follow-up tasks automatically using a callback function.</p>
+<p>This can be achieved by defining a callback function that handles the results from first-round tasks and issues follow-tasks to the <strong>ThreadPool</strong>. The main thread is only responsible for issuing the first-round tasks.</p>
+<p>A complete example to demonstrate this is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of issuing a follow-up task automatically with a result callback
+from random import random
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# handle results of the task (in the main thread)
+def result_callback(result_iterator):
+    # unpack result
+    for i,v in result_iterator:
+        # check result
+        if v &gt; 0.5:
+            # issue a follow-up task
+            _ = pool.apply_async(task2, args=(i, v))
+
+# task executed in a worker thread
+def task2(identifier, result):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;&gt;{identifier} with {result}, generated {value}')
+    # return result
+    return (identifier, result, value)
+
+# task executed in a worker thread
+def task1(identifier):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;{identifier} generated {value}')
+    # return result
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks asynchronously to the thread pool
+        result = pool.map_async(task1, range(10), callback=result_callback)
+        # wait for issued tasks to complete
+        result.wait()
+        # close the pool
+        pool.close()
+        # wait for all issued tasks to complete
+        pool.join()
+    # all done
+    print('All done.')
+</code></pre>
+<p>Running the example first creates and starts the <strong>ThreadPool</strong> with a default configuration.</p>
+<p>Next, 10 calls to <strong>task1()</strong> are issued as tasks to the <strong>ThreadPool</strong>, and an <strong>AsyncResult</strong> is returned. The main thread then blocks waiting for all first-round tasks to be completed.</p>
+<p>Each first-round task generates a random number, blocks, reports a message, and returns a tuple.</p>
+<p>Once all first-round tasks finish, the result callback is then called with an iterable of the return values from the first-round tasks. The iterable is traversed and any second-round tasks are issued to the <strong>ThreadPool</strong>.</p>
+<p>The main thread carries on, closing the pool and blocking until all second-round tasks are completed.</p>
+<p>The second-round tasks generate another random number, report the value, and return a tuple. The return results from this task are not considered.</p>
+<p>All second-round tasks are completed, and the main thread unblocks and continues on, terminating the application.</p>
+<p>Note, that the results will differ each time the program is run given the use of random numbers. Try running the example a few times.</p>
+<p>This highlights how we can automatically issue follow-up tasks to the <strong>ThreadPool</strong> from the main thread.</p>
+<pre><code>&gt;3 generated 0.2387321541129851
+&gt;6 generated 0.2905473999983814
+&gt;1 generated 0.4747636145164348
+&gt;2 generated 0.5917820472473575
+&gt;4 generated 0.8272344029491345
+&gt;5 generated 0.8663920475565895
+&gt;8 generated 0.655281648334691
+&gt;0 generated 0.9258262409168762
+&gt;7 generated 0.9521778472629924
+&gt;9 generated 0.8818478510866756
+&gt;&gt;0 with 0.9258262409168762, generated 0.012142433405473163
+&gt;&gt;9 with 0.8818478510866756, generated 0.2185535145295543
+&gt;&gt;7 with 0.9521778472629924, generated 0.28010278928179344
+&gt;&gt;2 with 0.5917820472473575, generated 0.4547263678109016
+&gt;&gt;4 with 0.8272344029491345, generated 0.48682374727972644
+&gt;&gt;5 with 0.8663920475565895, generated 0.7814307314216037
+&gt;&gt;8 with 0.655281648334691, generated 0.823282476450547
+All done.</code></pre>
+<p>You can learn more about how to issue a follow-up task in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-follow-up-tasks/">ThreadPool Follow-Up Tasks in Python</a></li>
+</ul>
+<h3>How Do You Show Progress of All Tasks?</h3>
+<p>We can show the progress of tasks in the <strong>ThreadPool</strong> using the callback function.</p>
+<p>This can be achieved by issuing tasks asynchronously to the <strong>ThreadPool</strong>, such as via the <strong>apply_async()</strong> function and specifying a callback function via the "<strong>callback</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task to the thread pool
+pool.apply_async(task, callback=progress)</code></pre>
+<p>Our custom callback function will then be called after each task in the <strong>ThreadPool</strong> is completed.</p>
+<p>We can then perform some action to show the progress of completed tasks in the callback function, such as printing a dot to standard out.</p>
+<p>For example:</p>
+<pre><code># progress indicator for tasks in the thread pool
+def progress(results):
+    print('.', end='')
+</code></pre>
+<p>We can explore how to show the progress of tasks issued to the <strong>ThreadPool</strong>.</p>
+<p>In this example, we will define a task that will block for a fraction of a second. We will then issue many of these tasks to the <strong>ThreadPool</strong>. A callback will be called as each task is finished and will print a message to show the progress of tasks as they are completed.</p>
+<p>A complete example to demonstrate this is listed below.</p>
+</main>
+</body>
+</html>

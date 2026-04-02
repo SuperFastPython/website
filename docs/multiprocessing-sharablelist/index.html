@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to use a ShareableList in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to use a ShareableList in Python</h1>
+<div class="post-meta">March 21, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can efficiently share the same list among multiple processes via the <strong>ShareableList</strong> class.</p>
+<p>In this tutorial, you will discover <strong>how to use a ShareableList</strong> with processes in Python.</p>
+<p>Let's get started.</p>
+<h2>What is a ShareableList</h2>
+<p>A <strong><a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html#multiprocessing.shared_memory.ShareableList">multiprocessing.shared_memory.ShareableList</a></strong> is a list that can be shared efficiently between multiple processes.</p>
+<p>Shared between processes means that changes made to the list in one process will be visible and accessible in another process.</p>
+<p>It is backed by a shared memory block and can be used to store up to 10 megabytes of data as any of Python's primitive types, e.g. integers, floats, and strings.</p>
+<blockquote>
+<p>Provides a mutable list-like object where all values stored within are stored in a shared memory block. This constrains storable values to only the int, float, bool, str (less than 10M bytes each), bytes (less than 10M bytes each), and None built-in data types.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>Unlike the built-in list type, the size of the <strong>ShareableList</strong> cannot be changed after it is created. Additionally, many of the operations that a regular list support are not supported on the <strong>ShareableList</strong>.</p>
+<blockquote>
+<p>It also notably differs from the built-in list type in that these lists can not change their overall length (i.e. no append, insert, etc.) and do not support the dynamic creation of new ShareableList instances via slicing.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>The <strong>ShareableList</strong> can be used as an alternative of a list hosted server process via a <strong>multiprocessing.Manager</strong> and as an alternative to a shared ctype <strong>Array</strong>.</p>
+<p>Now that we know what a <strong>ShareableList</strong> is, let's look at how to use it.</p>
+<h2>How to Use a ShareableList</h2>
+<p>A ShareableList can be created by calling the class constructor and specifying a sequence.</p>
+<p>This initial sequence, like a list or a range, will define both the size of the <strong>ShareableList</strong> and the initial values.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shareable list
+sl = ShareableList([0, 0, 0, 0, 0])</code></pre>
+<p>We can assign a <strong>ShareableList</strong> a unique and meaningful name via the <strong>name</strong> argument to the constructor.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shareable list with a name
+sl = ShareableList([0, 0, 0, 0, 0], name=’MyList’)
+</code></pre>
+<p>This meaningful name can be used to attach directly to the shareable list from another process.</p>
+<p>This can be achieved by creating a new <strong>ShareableList</strong> and only specifying the name of the existing <strong>ShareableList</strong>, perhaps created in another process.</p>
+<p>For example:</p>
+<pre><code>…
+# attach to a shareable list by name
+sl = ShareableList(name=’MyList))
+</code></pre>
+<p>Unlike a shared ctype <strong>multiprocessing.Array</strong>, the <strong>ShareableList</strong> can hold a variety of types.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shareable list with different types
+sl = ShareableList([0, 1.0, 'test'])</code></pre>
+<p>Once created, the list can be shared directly with multiple processes.</p>
+<p>Values in the list can be accessed and changed like a regular list using the bracket syntax.</p>
+<p>For example:</p>
+<pre><code>...
+# report a value
+print(sl[0])
+# change a value
+sl[1] = 1000</code></pre>
+<p>The <strong>ShareableList</strong> provides methods like <strong>count()</strong> for getting the number of occurrences of a given value and <strong>index()</strong> to return the first index of a value.</p>
+<p>Once we are finished with the <strong>ShareableList</strong>, the shared memory block must be explicitly released.</p>
+<p>This can be achieved by accessing the "<strong>shm</strong>" attribute of the <strong>ShareableList</strong> and calling the <strong>close()</strong> method followed by the <strong>unlink()</strong> method.</p>
+<p>The <strong>close()</strong> method signals that no further access is required to the memory. The <strong>unlink()</strong> method signals that the shared memory block can be destroyed.</p>
+<p>For example:</p>
+<pre><code>...
+# close the shared memory
+sl.shm.close()
+# destroy the shared memory
+sl.shm.unlink()</code></pre>
+<p>Failing to shutdown the <strong>ShareableList</strong> in this way will result in a runtime warning.</p>
+<p>Now that we know how to use the <strong>ShareableList</strong>, let's look at some worked examples.</p>
+<h2>Example of Using ShareableList From Multiple Processes</h2>
+<p>We can explore how to create a <strong>ShareableList</strong> and share it between processes.</p>
+<p>In this example, we will define a task that takes a <strong>ShareableList</strong> object as an argument, reports its values, then changes the values in the list. The main process will create the shared list, share it with the task executed in a child process, then report the status of the list to confirm that the changes made in the child process are available to the main process.</p>
+<p>Firstly, we can define a task that takes a <strong>ShareableList</strong> object and modifies it.</p>
+<p>In this case, we will expect the <strong>ShareableList</strong> contains numbers and the task will multiply each value by ten.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task(sl):
+    # report the shared list
+    print(sl)
+    # change the list
+    for i in range(len(sl)):
+        sl = sl * 10
+</code></pre>
+<p>Next, in the main process, we can create an instance of a <strong>ShareableList</strong> with the values 1 to 5 and report the list values.</p>
+<pre><code>...
+# create a shared list
+sl = ShareableList([1, 2, 3, 4, 5])
+# report the shared list
+print(sl)</code></pre>
+<p>Next, we can configure and start a child process to execute our <strong>task()</strong> function and pass it the <strong>ShareableList</strong> instance. The main process then waits for the task to complete.</p>
+<pre><code>...
+# create a child process
+process = Process(target=task, args=(sl,))
+# start the child process
+process.start()
+# wait for the child process to finish
+process.join()</code></pre>
+<p>The main process then reports any changes to the list, then releases the shared memory block.</p>
+<pre><code>...
+# report the shared list
+print(sl)
+# close the shared memory
+sl.shm.close()
+# release the shared memory
+sl.shm.unlink()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a sharablelist between processes
+from multiprocessing import Process
+from multiprocessing.shared_memory import ShareableList
+
+# task executed in a child process
+def task(sl):
+    # report the shared list
+    print(sl)
+    # change the list
+    for i in range(len(sl)):
+        sl = sl * 10
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a shared list
+    sl = ShareableList([1, 2, 3, 4, 5])
+    # report the shared list
+    print(sl)
+    # create a child process
+    process = Process(target=task, args=(sl,))
+    # start the child process
+    process.start()
+    # wait for the child process to finish
+    process.join()
+    # report the shared list
+    print(sl)
+    # close the shared memory
+    sl.shm.close()
+    # release the shared memory
+    sl.shm.unlink()
+</code></pre>
+<p>Running the example first creates the <strong>ShareableList</strong> and reports its values.</p>
+<p>Next, the child process is created to execute our custom task, then started and awaited.</p>
+<p>The task runs in the child process. It first reports the <strong>ShareableList</strong> confirming that it contains the values that we initialized it with. The values in the list are then changed and multiplied by ten.</p>
+<p>The child process completes and the main process resumes, reporting the values of the list.</p>
+<p>In this case, we can see that the changes made by the child to the <strong>ShareableList</strong> are reflected in the main process. Each value in the list has been multiplied by ten.</p>
+<p>This highlights how we can create and share a <strong>ShareableList</strong> among multiple processes that are able to access and modify the same list data.</p>
+<pre><code>ShareableList([1, 2, 3, 4, 5], name='psm_033fda8d')
+ShareableList([1, 2, 3, 4, 5], name='psm_033fda8d')
+ShareableList([10, 20, 30, 40, 50], name='psm_033fda8d')</code></pre>
+<p>Next, let's look at an example of not releasing the shared memory block.</p>
+<h2>Example of Not Closing and Unlinking a ShareableList</h2>
+<p>We can explore a case of failing to release the shared memory block.</p>
+<p>In this example, we will update the above example of not close and unlike the <strong>ShareableList</strong> object.</p>
+<p>We expect that the program will generate a warning that shared memory has not been released.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of not closing and unlinking a sharablelist
+from multiprocessing import Process
+from multiprocessing.shared_memory import ShareableList
+
+# task executed in a child process
+def task(sl):
+    # report the shared list
+    print(sl)
+    # change the list
+    for i in range(len(sl)):
+        sl = sl * 10
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a shared list
+    sl = ShareableList([1, 2, 3, 4, 5])
+    # report the shared list
+    print(sl)
+    # create a child process
+    process = Process(target=task, args=(sl,))
+    # start the child process
+    process.start()
+    # wait for the child process to finish
+    process.join()
+    # report the shared list
+    print(sl)
+</code></pre>
+<p>Running the example first creates the <strong>ShareableList</strong> and reports its values.</p>
+<p>Next, the child process is created to execute our custom task, then started and awaited.</p>
+<p>The task runs in the child process. It first reports the <strong>ShareableList</strong> confirming that it contains the values that we initialized it with. The values in the list are then changed and multiplied by ten.</p>
+<p>The child process completes and the main process resumes, reporting the values of the list.</p>
+<p>The changes to the shared list are reflected as we expect.</p>
+<p>The program ends without closing and releasing the shared memory.</p>
+<p>A <strong>UserWarning</strong> is reported highlighting the memory leak due to the shared memory block not being correctly shut down.</p>
+<p>This highlights the need to correctly release the <strong>ShareableList</strong> once it is no longer required by the program.</p>
+<pre><code>ShareableList([1, 2, 3, 4, 5], name='psm_47882f94')
+ShareableList([1, 2, 3, 4, 5], name='psm_47882f94')
+ShareableList([10, 20, 30, 40, 50], name='psm_47882f94')
+...
+UserWarning: resource_tracker: There appear to be 1 leaked shared_memory objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+</code></pre>
+<p>Next, let's explore the process safety of the <strong>ShareableList</strong> data.</p>
+<h2>Example of ShareableList Not Process-Safe</h2>
+<p>We would expect race conditions, such as data loss and corruption if multiple processes modify the same <strong>ShareableList</strong> object at the same time. The <strong>ShareableList</strong> does guarantee process safety.</p>
+<p>You can learn more about process safety in the tutorial:</p>
+<ul>
+<li><a href="../process-safe-in-python/">Process-Safe in Python</a></li>
+</ul>
+<p>We can explore what happens if multiple processes modify the contents of a <strong>ShareableList</strong> in parallel.</p>
+<p>In this example, we will define a task function that loops 100 times. In each loop the task will iterate through each position in the <strong>ShareableList</strong> and increment the values.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task(sl):
+    # increment values in the shareable list
+    for i in range(100):
+        for j in range(len(sl)):
+            # get the current value
+            val = sl
+            # update the value
+            val = val + 1
+            # store the new value
+            sl = val
+</code></pre>
+<p>The shared list will be initialized with all zero values.</p>
+<pre><code>...
+# create a shared list
+sl = ShareableList([0, 0, 0, 0, 0])
+</code></pre>
+<p>The main process will then start 10 processes to perform this task on the same <strong>ShareableList</strong> object in parallel, then report the values in the list.</p>
+<pre><code>...
+# create processes
+processes = [Process(target=task, args=(sl,)) for i in range(10)]
+# start processes
+for process in processes:
+    process.start()
+# wait for processes to finish
+for process in processes:
+    process.join()
+# report the shared list
+print(sl)
+</code></pre>
+<p>Without race conditions, we would expect the final values in the <strong>ShareableList</strong> object to be 1000 because each value is incremented 100 times by 10 processes (100 * 10).</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example showing that the sharablelist is not process safe
+from multiprocessing import Process
+from multiprocessing.shared_memory import ShareableList
+
+# task executed in a child process
+def task(sl):
+    # increment values in the shareable list
+    for i in range(100):
+        for j in range(len(sl)):
+            # get the current value
+            val = sl
+            # update the value
+            val = val + 1
+            # store the new value
+            sl = val
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a shared list
+    sl = ShareableList([0, 0, 0, 0, 0])
+    # create processes
+    processes = [Process(target=task, args=(sl,)) for i in range(10)]
+    # start processes
+    for process in processes:
+        process.start()
+    # wait for processes to finish
+    for process in processes:
+        process.join()
+    # report the shared list
+    print(sl)
+    # close the shared memory
+    sl.shm.close()
+    # release the shared memory
+    sl.shm.unlink()
+</code></pre>
+<p>Running the example first crests the <strong>ShareableList</strong> object, with values initialized to zero.</p>
+<p>The 10 child processes are configured to run our custom task function, started then awaited.</p>
+<p>The child process iterates as fast as possible in parallel, incrementing the values of the <strong>ShareableList</strong>.</p>
+<p>The child processes finish and the values in the <strong>ShareableList</strong> object are reported before the memory block is released.</p>
+<p>We can see that race conditions occurred. The values in the list are all different and none are the expected value of 1,000.</p>
+<p>This highlights that process safety must be considered when using and modifying the <strong>ShareableList</strong> from multiple processes in parallel.</p>
+<pre><code>ShareableList([907, 903, 910, 778, 884], name='psm_46626831')</code></pre>
+<p>The program does not run cleanly every time it executes.</p>
+<p>Occasionally, it may report a <strong>ValueError</strong>.</p>
+<p>For example:</p>
+<pre><code>Process Process-1:
+Traceback (most recent call last):
+  ...
+ValueError: not enough values to unpack (expected 1, got 0)
+Process Process-8:
+Traceback (most recent call last):
+  ...
+ValueError: not enough values to unpack (expected 1, got 0)
+ShareableList([807, 801, 810, 661, 810], name='psm_d8c801a9')
+</code></pre>
+<p>This is not suprising given the abuse we are performing to the <strong>ShareableList</strong> object.</p>
+<p>We can update the example to be process safe when modifying the <strong>ShareableList</strong> object in parallel.</p>
+<p>This can be achieved by using a shared lock and treating changes to the <strong>ShareableList</strong> object as a critical section.</p>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task executed in a child process
+def task(sl, lock):
+    # increment values in the shareable list
+    for i in range(100):
+        for j in range(len(sl)):
+            # acquire the lock before the change
+            with lock:
+                # get the current value
+                val = sl
+                # update the value
+                val = val + 1
+                # store the new value
+                sl = val
+</code></pre>
+<p>If you are new to using mutex locks to protect data from race conditions in process-based concurrency, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<p>The main process can create the shared mutex lock and share it with each child process.</p>
+<pre><code>...
+# create a shared lock
+lock = Lock()
+# create a shared list
+sl = ShareableList([0, 0, 0, 0, 0])
+# create processes
+processes = [Process(target=task, args=(sl,lock)) for i in range(10)]</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of making sharablelist process safe
+from multiprocessing.shared_memory import ShareableList
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# task executed in a child process
+def task(sl, lock):
+    # increment values in the shareable list
+    for i in range(100):
+        for j in range(len(sl)):
+            # acquire the lock before the change
+            with lock:
+                # get the current value
+                val = sl
+                # update the value
+                val = val + 1
+                # store the new value
+                sl = val
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a shared lock
+    lock = Lock()
+    # create a shared list
+    sl = ShareableList([0, 0, 0, 0, 0])
+    # create processes
+    processes = [Process(target=task, args=(sl,lock)) for i in range(10)]
+    # start processes
+    for process in processes:
+        process.start()
+    # wait for processes to finish
+    for process in processes:
+        process.join()
+    # report the shared list
+    print(sl)
+    # close the shared memory
+    sl.shm.close()
+    # release the shared memory
+    sl.shm.unlink()
+</code></pre>
+<p>Running the example first creates the shared Lock and the <strong>ShareableList</strong> object.</p>
+<p>The 10 child processes are configured to run our custom task function, started then awaited.</p>
+<p>The child process iterates as fast as possible in parallel, incrementing the values of the <strong>ShareableList</strong>. In this case, changes to the <strong>ShareableList</strong> are made sequentially via the use of the mutex lock. Only one process can acquire the lock and make changes at a time and all other processes must wait.</p>
+<p>The child processes finish and the values in the <strong>ShareableList</strong> object are reported before the memory block is released.</p>
+<p>We can see that the use of the mutex lock removed all race conditions with the <strong>ShareableList</strong> in the child processes and all values in the list have the expected value of 1,000.</p>
+<p>This highlights how a <strong>ShareableList</strong> object can be protected from race conditions using a mutex lock.</p>
+<pre><code>ShareableList([1000, 1000, 1000, 1000, 1000], name='psm_fdb8e0b8')</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a <strong>ShareableList</strong> with processes in Python.</p>
+</main>
+</body>
+</html>

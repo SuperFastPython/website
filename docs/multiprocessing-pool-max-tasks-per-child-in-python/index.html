@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool Max Tasks Per Child in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool Max Tasks Per Child in Python</h1>
+<div class="post-meta">June 30, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can limit the <strong>maximum tasks</strong> executed by <strong>child worker processes</strong> in the <strong><a href="../multiprocessing-pool-python/">process pool</a></strong> by setting the "<strong>maxtasksperchild</strong>" argument in the <strong>multiprocessing.pool.Pool</strong> class constructor.</p>
+<p>In this tutorial you will discover how to <strong>limit the maximum tasks per child process</strong> in <strong>Python process pools</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Limit Maximum Tasks Per Child</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>. Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>Each worker process in the pool is a separate child process.</p>
+<p>It is possible for child processes to become unstable or accumulate resources without releasing them, such as if there are subtle bugs in the tasks that are being executed.</p>
+<p>As such, it is a good practice to limit the number of tasks executed by each worker process and create a new replacement worker process once the limit on the number of tasks has been reached.</p>
+<blockquote><p>A frequent pattern found in other systems (such as Apache, mod_wsgi, etc) to free resources held by workers is to allow a worker within a pool to complete only a set amount of work before being exiting, being cleaned up and a new process spawned to replace the old one.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p><strong>How can we limit the maximum number of tasks completed by each worker child process in the process pool?</strong></p>
+<h2>How To Limit Maximum Tasks Per Child</h2>
+<p>We can limit the maximum number of tasks completed by each child process in the process pool by setting the "<strong>maxtasksperchild</strong>" argument in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> class constructor</a> when configuring a new process pool.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process loop and limit the number of tasks in each worker
+pool = multiprocessing.pool.Pool(maxtasksperchild=5)</code></pre>
+<p>The <strong>maxtasksperchild</strong> takes a positive integer number of tasks that may be completed by a child worker process, after which the process will be terminated and a new child worker process will be created to replace it.</p>
+<blockquote><p>maxtasksperchild is the number of tasks a worker process can complete before it will exit and be replaced with a fresh worker process, to enable unused resources to be freed.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>By default the <strong>maxtasksperchild</strong> argument is set to <strong>None</strong>, which means each child worker process will run for the lifetime of the process pool.</p>
+<blockquote><p>The default maxtasksperchild is None, which means worker processes will live as long as the pool.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Now that we know how to configure the maximum number of tasks per worker child process in the process pool, let's look at a worked example.</p>
+<h2>Example of Maximum Tasks Per Child</h2>
+<p>We can explore how to limit the maximum number of tasks per child worker process with a worked example.</p>
+<p>In this example we will define a simple task to execute in the process pool that will report the process name and block for a moment. We will then configure a process pool with two processes and to limit the number of tasks per child process to three. We will then issue ten tasks to the pool and see as each child process executes three tasks each before being replaced.</p>
+<p>Firstly, we can define a function to execute the task by workers in the process pool.</p>
+<p>The function will first get the current <strong>multiprocessing.Process</strong> instance that is executing the task via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.current_process"><strong>multiprocessing.current_process()</strong> function</a>. It then reports the name of the process executing the task along with an integer identifying the task, and blocks for one second.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(value):
+    # get the current process
+    process = current_process()
+    # report a message
+    print(f'Worker is {process.name} with {value}', flush=True)
+    # block for a moment
+    sleep(1)
+</code></pre>
+<p>Next, in the main process we can first create and configure a process pool.</p>
+<p>We will use the context manager interface to create the process pool and configure the pool with two child worker processes and limit each worker to three tasks.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool(2, maxtasksperchild=3) as pool:
+	# ...
+</code></pre>
+<p>Next, we will issue ten tasks to the process pool. The tasks will be issued asynchronously via the <strong>apply_async()</strong> to execute our <strong>task()</strong> function and provide a unique integer as an argument to the task function for each task, e.g. from 0 to 9.</p>
+<pre><code>...
+# issue tasks to the process pool
+for i in range(10):
+    pool.apply_async(task, args=(i,))
+</code></pre>
+<p>Finally, we will explicitly close the process pool and wait for all tasks to complete.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of limiting the number of tasks per child in the process pool
+from time import sleep
+from multiprocessing.pool import Pool
+from multiprocessing import current_process
+
+# task executed in a worker process
+def task(value):
+    # get the current process
+    process = current_process()
+    # report a message
+    print(f'Worker is {process.name} with {value}', flush=True)
+    # block for a moment
+    sleep(1)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool(2, maxtasksperchild=3) as pool:
+        # issue tasks to the process pool
+        for i in range(10):
+            pool.apply_async(task, args=(i,))
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>Ten tasks are then issued to the pool, then the main process closes the pool and waits for all issued tasks to complete.</p>
+<p>Two worker child processes are created in the pool to execute tasks, <strong>SpawnPoolWorker-1</strong> and <strong>SpawnPoolWorker-2</strong>.</p>
+<p>Each worker then executes three tasks each, then terminates.</p>
+<p>Two new child worker processes are then created and started, <strong>SpawnPoolWorker-3</strong> and <strong>SpawnPoolWorker-4</strong>. They proceed to execute two tasks each before the process pool is closed.</p>
+<p>This highlights how we can automatically replace worker processes after a fixed number of tasks executed in the process pool.</p>
+<pre><code>Worker is SpawnPoolWorker-1 with 0
+Worker is SpawnPoolWorker-2 with 1
+Worker is SpawnPoolWorker-1 with 2
+Worker is SpawnPoolWorker-2 with 3
+Worker is SpawnPoolWorker-2 with 4
+Worker is SpawnPoolWorker-1 with 5
+Worker is SpawnPoolWorker-3 with 6
+Worker is SpawnPoolWorker-4 with 7
+Worker is SpawnPoolWorker-4 with 8
+Worker is SpawnPoolWorker-3 with 9</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to limit the maximum number of tasks per child worker process in the process pool.</p>
+</main>
+</body>
+</html>

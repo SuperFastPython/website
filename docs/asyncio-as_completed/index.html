@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Use Asyncio as_completed() in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Use Asyncio as_completed() in Python</h1>
+<div class="post-meta">November 24, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>It is common to issue many tasks at once, then need to process the results from each task <strong>as the tasks are completed</strong>.</p>
+<p>This can be more efficient than waiting for all tasks to complete before handling the results.</p>
+<p>We can achieve this and iterate tasks in the order they are done using the <strong>as_completed()</strong> function.</p>
+<p>In this tutorial, you will discover how to use the <strong>as_completed()</strong> function in asyncio.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>How to use the <strong>as_completed()</strong> to iterate over a collection of tasks in the order they are completed.</li>
+<li>How to retrieve results from coroutines and tasks that are traversed in completion order.</li>
+<li>How to set and use a timeout when iterating tasks in completion order.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is Asyncio as_completed()</h2>
+<p>The <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.as_completed"><strong>asyncio.as_completed()</strong> function</a> will run a collection of tasks and coroutines concurrently.</p>
+<p>More importantly, it returns an iterable that we can use to retrieve the awaitables in the order that they are completed.</p>
+<blockquote>
+<p>Run awaitable objects in the aws iterable concurrently. Return an iterator of coroutines. Each coroutine returned can be awaited to get the earliest next result from the iterable of the remaining awaitables.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>It allows us to execute many coroutines or tasks concurrently and get the results from tasks in the order that they are completed, rather than the order we issued them.</p>
+<p>Now that we know what <strong>as_completed()</strong> is, let's look at how we might use it.</p>
+<h2>How to Use Asyncio as_completed()</h2>
+<p>The asyncio.as_completed() function is called with a collection of awaitables.</p>
+<p>This may be a <strong>list</strong>, <strong>dict</strong>, or <strong>set</strong>, and may contain <strong>asyncio.Task</strong> objects, coroutines, or other awaitables.</p>
+<p>Any coroutines provided to <strong>as_completed()</strong> will be wrapped in a <strong>Task</strong> object for independent execution.</p>
+<p>It returns an iterable that when traversed will yield awaitables (or wrapped awaitables) in the provided list. These can be awaited by the caller in order to get results in the order that tasks are completed, e.g. get the result from the next task to complete.</p>
+<p>For example:</p>
+<pre><code>...
+# iterate over awaitables
+for task in asyncio.as_completed(tasks):
+	# get the next result
+	result = await task
+</code></pre>
+<p>The <strong>as_completed()</strong> also takes a "<strong>timeout</strong>" argument.</p>
+<p>This specifies how long the caller is willing to wait for all awaitables to be done.</p>
+<p>For example:</p>
+<pre><code>...
+# iterate over awaitables with a timeout
+for task in asyncio.as_completed(tasks, timeout=10):
+	# get the next result
+	result = await task
+</code></pre>
+<p>If the timeout elapses before all awaitables are done, a <strong>asyncio.TimeoutError</strong> is raised and may need to be handled.</p>
+<p>For example, we could handle it within the loop:</p>
+<pre><code>...
+# iterate over awaitables with a timeout
+for task in asyncio.as_completed(tasks, timeout=10):
+	# handle a timeout
+	try:
+		# get the next result
+		result = await task
+	except asyncio.TimeoutError:
+		# ...</code></pre>
+<p>This is not desirable because once the timeout has elapsed, an <strong>asyncio.TimeoutError</strong> will be raised each time <strong>next()</strong> is called on the generator.</p>
+<p>Therefore, it is better to wrap the entire loop in a try-except block.</p>
+<p>For example:</p>
+<pre><code>...
+# handle a timeout
+try:
+	# iterate over awaitables with a timeout
+	for task in asyncio.as_completed(tasks, timeout=10):
+		# get the next result
+		result = await task
+except asyncio.TimeoutError:
+	# ...
+</code></pre>
+<p>Now that we know how to use the <strong>as_completed()</strong> function, let's take a moment to consider how it works.</p>
+<h2>How does Asyncio as_completed() Work</h2>
+<p>The works by providing a generator that yields coroutines, where each coroutine will return a result of a provided awaitable.</p>
+<p>The <strong>asyncio.as_completed()</strong> function does not block (suspend the current coroutine) but instead returns a generator.</p>
+<p>For example:</p>
+<pre><code>...
+# get a generator that yields awaitables in completion order
+generator = asyncio.as_completed(tasks)</code></pre>
+<p>Calling the <strong>next()</strong> built-in function on the generator does not block, but instead yields a coroutine.</p>
+<p>The returned coroutine is not one of the provided awaitables, but rather an internal coroutine from the <strong>as_completed()</strong> function that manages and monitors which issued task will return a result next.</p>
+<p>For example:</p>
+<pre><code>...
+# get the next coroutine
+coro = next(generator)</code></pre>
+<p>It is not until one of the returned coroutines is awaited that the caller will block.</p>
+<p>For example:</p>
+<pre><code>...
+# get a result from the next task to complete
+result = await coro</code></pre>
+<p>Now that we have an idea of how to use the <strong>as_completed()</strong> function and how it works, let's look at some worked examples.</p>
+<h2>Example of as_completed() with Coroutines</h2>
+<p>We can explore how to execute coroutines concurrently and get coroutine results as tasks are completed with the <strong>asyncio.as_completed()</strong> function.</p>
+<p>In this example, we will define a simple coroutine task that takes an integer argument, generates a random value, sleeps for a fraction of a second then returns the integer argument multiplied by the generated value.</p>
+<p>A list of the task coroutine is created and passed to the <strong>as_completed()</strong> function. This returns a generator that is traversed using a for loop.</p>
+<p>In each iteration of the loop a coroutine is yielded from the generator and is then awaited in the body of the loop. A result from the next coroutine to complete is returned and the result is reported.</p>
+<p>The complete example is listed below.</p>
+</main>
+</body>
+</html>

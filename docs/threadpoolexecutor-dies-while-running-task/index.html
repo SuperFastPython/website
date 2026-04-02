@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor Dies While Running Task – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor Dies While Running Task</h1>
+<div class="post-meta">July 4, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>Simple usage of the <strong>ThreadPoolExecutor</strong> in Python can result in unexpected behavior.</p>
+<p>Issuing a task to the thread pool that in turn issues a subsequent task can fail unexpectedly. This is not a forbidden activity, and it is not clear why this happens.</p>
+<p>In fact, this is a common "gotcha" when using the <strong>ThreadPoolExecutor</strong>, where the pool is shutdown while the task is running, but before the second task has been issued, resulting in an exception: </p>
+<ul>
+<li><strong>cannot schedule new futures after shutdown</strong></li>
+</ul>
+<p>In this tutorial, you will discover the problem of unintentionally issuing tasks to the <strong>ThreadPoolExecutor</strong> after it has shutdown.</p>
+<p>Let's get started.</p>
+<h2>ThreadPoolExecutor Dies While Task is Running</h2>
+<p>I came across an interesting situation recently that is worth exploring.</p>
+<p>I was <a href="../threadpoolexecutor-first-result-from-stream/">developing a program</a> that made use of the <strong>ThreadPoolExecutor</strong>. A task was issued that in turn issued many tasks to the same instance of the <strong>ThreadPoolExecutor</strong>.</p>
+<p>The task would start and then the program would abruptly end. Subtasks were not submitted to the <strong>ThreadPoolExecutor</strong>.</p>
+<p>This should not be possible because shutting down the <strong>ThreadPoolExecutor</strong> normally blocks until all issued and running tasks are done.</p>
+<p>Therefore an investigation was needed!</p>
+<h2>Example of ThreadPoolExecutor Dies While Task is Running</h2>
+<p>We can develop the simplest possible example that makes use of the <strong>ThreadPoolExecutor</strong> and fails in the way described above, namely, the task appears to die while processing.</p>
+<p>A <strong>ThreadPoolExecutor</strong> is created using the context manager interface.</p>
+<p>You can learn more about this interface in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-context-manager/">How to Use the ThreadPoolExecutor Context Manager</a></li>
+</ul>
+<p>Next, a task is issued to the <strong>ThreadPoolExecutor</strong>, then this task in turn issues at least one task to the <strong>ThreadPoolExecutor</strong>.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the ThreadPoolExecutor with context manager not waiting for task to complete
+from concurrent.futures import ThreadPoolExecutor
+
+# task to execute in the thread pool
+def task(tpe):
+    # report a message
+    print('&gt;Hello from task')
+    # issue a task to the same thread pool
+    _ = tpe.submit(print, '&gt;&gt;Hello from subtask')
+    # report a final message
+    print('&gt;Task is done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # report a message
+    print('Starting program...')
+    # create the thread pool using the context manager interface
+    with ThreadPoolExecutor() as tpe:
+        # issue task
+        _ = tpe.submit(task, tpe)
+        # block and wait for all tasks to complete...
+    # report a final message
+    print('All done')
+</code></pre>
+<p>Running the program first reports a message from the main thread. This works as expected.</p>
+<p>Next, a <strong>ThreadPoolExecutor</strong> is created with the default number of workers using the context manager interface.</p>
+<p>The <strong>task()</strong> function is then issued to the <strong>ThreadPoolExecutor</strong>.</p>
+<p>The main thread then exits the context manager for the <strong>ThreadPoolExecutor</strong> which calls <strong>shutdown()</strong> with default arguments. This causes the main thread to block until all issued tasks are complete, e.g. the <strong>task()</strong> function, and does not cancel issued but not executing tasks.</p>
+<p>The <strong>task()</strong> function executes, first reporting a message. It then attempts to issue a subtask to the same <strong>ThreadPoolExecutor</strong>, in this case, a call to <strong>print()</strong> with a string argument.</p>
+<p>This message is not seen.</p>
+<p>Instead, it seems the <strong>task()</strong> dies abruptly.</p>
+<p>The program ends with an "All done" message reported by the main thread.</p>
+<pre><code>Starting program...
+&gt;Hello from task
+All done</code></pre>
+<p><strong>What is happening here?</strong></p>
+<h2>Debugging the Example And Quick Fix</h2>
+<p>Initially, I was stumped.</p>
+<p>My first thought was that I was not saving a reference to the <strong>Future</strong> object, so the garbage collector was destroying the task. Something akin to unsaved references coroutines in asyncio.</p>
+<p>This was mad of course. Nevertheless, I saved references to my <strong>Future</strong> objects.</p>
+<p>For example:</p>
+<pre><code>...
+# issue task
+future1 = tpe.submit(task, tpe)</code></pre>
+<p>And:</p>
+<pre><code>...
+# issue a task to the same thread pool
+future2 = tpe.submit(print, '&gt;&gt;Hello from subtask')</code></pre>
+<p>This had no effect.</p>
+<p>I then thought it was something to do with the context manager interface.</p>
+<p>I swapped it out for manually creating and shutting down the <strong>ThreadPoolExecutor</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create the thread pool using the context manager interface
+tpe = ThreadPoolExecutor()
+# issue task
+_ = tpe.submit(task, tpe)
+# shutdown the pool
+tpe.shutdown()</code></pre>
+<p>No effect.</p>
+<p>I also tried removing the explicit call to <strong>shutdown()</strong>, just to see what would happen.</p>
+<p>This too had no effect.</p>
+<p>I had to get on with things, so I explicitly waited on the top-level task within the context manager via the <strong>concurrent.futures.wait()</strong> module function.</p>
+<p>For example:</p>
+</main>
+</body>
+</html>

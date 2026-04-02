@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmark Tasks in the ProcessPoolExecutor – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Benchmark Tasks in the ProcessPoolExecutor</h1>
+<div class="post-meta">November 25, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Benchmarking</a></div>
+
+<p>You can <strong>benchmark tasks executed in the ProcessPoolExecutor</strong>.</p>
+<p>This can be achieved by benchmarking the overall execution time of the program that executes tasks. We can also benchmark the execution time of individual tasks themselves by manually adding benchmark code to the task functions or using a function decorator and reporting summary statistics for task execution time, such as the minimum, maximum, and mean execution time.</p>
+<p>This can help us determine whether different configurations of the process pool are faster overall and whether changes to the task functions themselves offer a speedup.</p>
+<p>In this tutorial, you will discover how to benchmark tasks executed in the <strong>ProcessPoolExecutor</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Benchmark Tasks in the ProcessPoolExecutor</h2>
+<p>The <strong>ProcessPoolExecutor</strong> allows us to execute ad hoc tasks concurrently in a process pool with a simple API.</p>
+<p>Given that it makes use of processes, it is appropriate for tasks that perform blocking CPU-bound tasks such as parsing files, mathematical calculations, and model fitting.</p>
+<p>We can use the <strong>ProcessPoolExecutor</strong> by first creating an instance and specifying the number of worker processes to create in the pool, then calling methods like the <strong>submit()</strong> method to issue tasks to the pool.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor(4) as exe:
+	# issue a task
+	future = exe.submit(task, data)
+</code></pre>
+<p>You can learn more about the <strong>ProcessPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor: The Complete Guide</a></li>
+</ul>
+<p>We typically intend to use the <strong>ProcessPoolExecutor</strong> to speed up our program.</p>
+<p>This is why we wish to perform many CPU-bound tasks in parallel so that the overall execution time of the program is reduced.</p>
+<p><strong>How can we know that the execution time is lower after updating our program to use the ProcessPoolExecutor?</strong></p>
+<p>We may also want to seek to optimize the execution time of each task in the process pool. This might involve changing the code to optimize performance so that each task itself executes faster.</p>
+<p>In this case, we need to be able to benchmark the execution time of individual tasks to confirm that they are completed faster after a change to the code.</p>
+<h2>How can we benchmark tasks in the ProcessPoolExecutor?</h2>
+<p>How to Benchmark Tasks in the <strong>ProcessPoolExecutor</strong></p>
+<p>There are a few ways that we can benchmark tasks executed by the <strong>ProcessPoolExecutor</strong>.</p>
+<p>Some approaches include:</p>
+<ul>
+<li>Benchmark the overall execution time of the program.</li>
+<li>Wrap target function in benchmark code.</li>
+</ul>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Benchmark Execution Time of Program</h3>
+<p>The simplest approach is to benchmark the execution time of the entire program.</p>
+<p>This can be achieved by recording the start time before all tasks are issued, then again after all tasks are done, and calculating the difference as the overall execution time.</p>
+<p>For example:</p>
+<pre><code>...
+# record start time
+time_start = perf_counter()
+# execute the program
+...
+# record end time
+time_end = perf_counter()
+# calculate execution time
+time_duration = time_end - time_start
+# report execution time
+print(f'Took: {time_duration:.3f} seconds')</code></pre>
+<p>We prefer to use the <strong>time.perf_counter()</strong> function for benchmarking as it uses a high-precision clock that cannot be adjusted, unlike <strong>time.time()</strong>.</p>
+<p>You can learn more about how to benchmark with the <strong>time.perf_counter()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../benchmark-time-perf-counter/">Benchmark Python with time.perf_counter()</a></li>
+</ul>
+<h3>Benchmark The Task Function Manually</h3>
+<p>We can benchmark the execution time of tasks manually.</p>
+<p>This involves updating the task function itself and adding timing code.</p>
+<p>The times can be stored in a global variable, like a list for reporting later. Unfortunately, we cannot have shared global variables when using multiple processes, but we can simulate it using a <strong>multiprocessing.Manager</strong> and proxy objects.</p>
+<p>This will require that we create and start a <strong>Manager</strong> and use it to create a list hosted in the server process.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # create the shared list
+    task_times = manager.list()
+</code></pre>
+<p>It will require that we pass the proxy of the shared list as an argument with our task function.</p>
+<p>For example:</p>
+<pre><code># task to execute in the process pool
+def task(task_times):
+    # record start time
+    time_start = perf_counter()
+    # execute task
+    ...
+    # record end time
+    time_end = perf_counter()
+    # calculate execution time
+    time_duration = time_end - time_start
+    # store time in the shared list
+    task_times.append(time_duration)
+</code></pre>
+<p>If you are new to the multiprocessing Manager, you can learn more in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li>
+</ul>
+<p>After all tasks are completed, the list of all task run times can be retrieved and used to report details about task execution times.</p>
+<p>This might include the minimum, average, and maximum task run time.</p>
+<p>For example:</p>
+<pre><code>...
+# reports task benchmark results
+time_min, time_max = min(task_times), max(task_times)
+time_mean = sum(task_times) / len(task_times)
+print(f'Tasks Times: min={time_min:.3f}, mean={time_mean:.3f}, max={time_max:.3f}')</code></pre>
+<p>This is helpful to see if task execution time is faster or slower on average and at the limits after a code change.</p>
+<p>The downside of this approach is that we have to change our task function.</p>
+<p>Now that we know how to benchmark tasks in the <strong>ProcessPoolExecutor</strong>, let's look at some worked examples.</p>
+<h2>Example of Tasks Executed with the ProcessPoolExecutor</h2>
+<p>Before we explore how to benchmark tasks in the <strong>ProcessPoolExecutor</strong>, let's define a simple program that executes tasks in parallel.</p>
+<p>In this example, we will define a task that takes about 5 seconds to complete and then report a message. We will create a process pool with 5 worker processes and issue 20 tasks to the pool to complete. Once all tasks are done, a final message is reported.</p>
+<p>With 20 tasks, each talking about 5 seconds, executed by 5 workers, we expect the program to complete in about 20 seconds, e.g. (20/5) * 5 seconds.</p>
+<p>The complete example is listed below.</p>
+</main>
+</body>
+</html>

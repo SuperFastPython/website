@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor Pause and Resume Tasks – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor Pause and Resume Tasks</h1>
+<div class="post-meta">November 21, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You can pause and resume tasks in the <strong>ThreadPoolExecutor</strong> by using a shared <strong>threading.Event</strong>.</p>
+<p>In this tutorial, you will discover how to pause and resume tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Pause and Resume Tasks</h2>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of reusable worker threads using the executor design pattern.</p>
+<p>Tasks executed in new threads are executed concurrently in Python, making the <strong>ThreadPoolExecutor</strong> appropriate for I/O-bound tasks.</p>
+<p>A <strong>ThreadPoolExecutor</strong> can be created directly or via the context manager interface and tasks can be issued one-by-one via the <strong>submit()</strong> method or in batch via the <strong>map()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# issue a task
+	future = tpe.submit(task)
+	# the task result once the task is done
+	result = future.result()
+</code></pre>
+<p>You can learn more about the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor in Python: The Complete Guide</a></li>
+</ul>
+<p>When using the <strong>ThreadPoolExecutor</strong>, we may need to pause all running tasks.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>The user requests that all tasks pause.</li>
+<li>A shared resource is temporarily unavailable.</li>
+<li>A fault or error has occurred.</li>
+</ul>
+<p>Once paused, we may then want to resume all paused tasks again and continue their execution.</p>
+<p><strong>How can we pause and resume tasks in the ThreadPoolExecutor?</strong></p>
+<h2>How to Pause and Resume Tasks</h2>
+<p>The ThreadPoolExecutor does not provide a facility to pause and resume tasks.</p>
+<p>Instead, we must develop this capability ourselves.</p>
+<p>We can pause and resume tasks in the <strong>ThreadPoolExecutor</strong> using a <strong>threading.Event</strong>.</p>
+<p>A <strong>threading.Event</strong> is a thread-safe shared boolean variable. It can be set (<strong>True</strong>) or cleared (<strong>False</strong>) and threads can block and wait for the event to be set.</p>
+<p>A <strong>threading.Event</strong> can be used as the center of the capability to pause and resume tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>If you are new to the <strong>threading.Event</strong>, see the tutorial:</p>
+<ul>
+<li><a href="../thread-event-object-in-python/">Threading Event Object In Python</a></li>
+</ul>
+<p>This can be achieved by updating target task functions to frequently check a shared <strong>threading.Event</strong> and suspending execution until the event is set.</p>
+<p>For example:</p>
+<pre><code>...
+# check if the task is paused
+if not event.is_set():
+    # wait for the event to be set
+    event.wait()
+</code></pre>
+<p>Checking first, allows us to handle the request to pause, if needed.</p>
+<p>If this is not needed, the <strong>wait()</strong> method can be called directly. This will only block if the task is to be paused, otherwise it will return immediately.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the event to be set
+event.wait()</code></pre>
+<p>The main thread can then pause tasks on demand by calling the <strong>clear()</strong> method to unset the event.</p>
+<p>For example:</p>
+<pre><code>...
+# pause all tasks
+event.clear()</code></pre>
+<p>Tasks can resume on demand by calling the <strong>set()</strong> method on the event.</p>
+<p>For example:</p>
+<pre><code>...
+# resume all tasks
+event.set()</code></pre>
+<p>And that's it.</p>
+<p>Note, pausing and resuming tasks in the <strong>ThreadPoolExecutor</strong> is very similar to canceling all running tasks. You can learn more about canceling and stopping tasks in the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-stop-tasks/">How To Stop Running Tasks in the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>Next, let's look at a worked example of pausing and resuming tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+<h2>Example of Pausing and Resuming Tasks</h2>
+<p>We can explore an example of pausing and resuming tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>In this example we will define a task that does very little, looping 10 times, reporting a message, and blocking for half a second each iteration. We will then issue one of these tasks to the thread pool and let it run. We will then pause the task for a moment, then later resume it and allow it complete.</p>
+<p>This same approach can be used to pause and resume many tasks in the thread pool.</p>
+<p>Firstly, we can define the task.</p>
+<p>The task must take the shared <strong>threading.Event</strong> and must check the status of the event each iteration. If the event is not set, the task must block and wait for it to be set. This can be achieved by first checking the <strong>is_set()</strong> method on the event and if not set, calling the <strong>wait()</strong> method until the event is set.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in the thread pool
+def task(event):
+    # main loop of the task
+    for i in range(10):
+        # check if the task is paused
+        if not event.is_set():
+            # report a message
+            print('Task is PAUSED')
+            # wait for the event to be set
+            event.wait()
+        # report a message
+        print(f'Task is running [{i}]...')
+        # do work
+        sleep(0.5)
+</code></pre>
+<p>Next in the main thread, we must first create the shared event. We can then set the event so that the task can begin running immediately.</p>
+<pre><code>...
+# create the shared event
+event = Event()
+# set the event, allowing tasks to run freely
+event.set()</code></pre>
+<p>Next, we can create the thread pool and issue the <strong>task()</strong> function for execution and block while the task begins running.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as tpe:
+    # issue the task
+    _ = tpe.submit(task, event)
+    # wait a moment
+    sleep(2)
+</code></pre>
+<p>The main thread can then pause the task by setting the event to <strong>False</strong>.</p>
+<p>This can be achieved via the <strong>clear()</strong> method.</p>
+<pre><code>...
+# pause all tasks
+print('Main Pausing Tasks')
+event.clear()
+# wait a moment
+sleep(2)</code></pre>
+<p>Finally, the main thread can resume the task by setting the event to true.</p>
+<p>This can be achieved via the <strong>set()</strong> method.</p>
+<pre><code>...
+# resume
+print('Main Resuming Tasks')
+event.set()</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of pausing and resuming a task in the <strong>ThreadPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of pausing and resuming tasks in the threadpoolexecutor
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+from time import sleep
+
+# task executed in the thread pool
+def task(event):
+    # main loop of the task
+    for i in range(10):
+        # check if the task is paused
+        if not event.is_set():
+            # report a message
+            print('Task is PAUSED')
+            # wait for the event to be set
+            event.wait()
+        # report a message
+        print(f'Task is running [{i}]...')
+        # do work
+        sleep(0.5)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared event
+    event = Event()
+    # set the event, allowing tasks to run freely
+    event.set()
+    # create the thread pool
+    with ThreadPoolExecutor() as tpe:
+        # issue the task
+        _ = tpe.submit(task, event)
+        # wait a moment
+        sleep(2)
+        # pause all tasks
+        print('Main Pausing Tasks')
+        event.clear()
+        # wait a moment
+        sleep(2)
+        # resume
+        print('Main Resuming Tasks')
+        event.set()
+</code></pre>
+<p>Running the example first creates the shared event and sets it to True.</p>
+<p>The <strong>ThreadPoolExecutor</strong> is created with the default number of workers using the context manager interface.</p>
+<p>The single task is then issued to the thread pool and the main thread blocks, sleeping for two seconds.</p>
+<p>The task runs, checking the event each iteration, which is set, reporting a message, and sleeping for half a second.</p>
+<p>The main thread resumes and clears the event, setting it to false. The main thread then blocks for two seconds.</p>
+<p>The task checks the event and notices that it is cleared. The task then reports a message that it is paused and waits on the event until it is set. The task is paused.</p>
+<p>The main thread resumes and sets the event and blocks until all tasks in the thread pool are complete, via the context manager.</p>
+<p>The task resumes and completes the iterations of the loop, reporting messages, and sleeps.</p>
+<p>This highlights how we can pause and resume tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+<pre><code>Task is running [0]...
+Task is running [1]...
+Task is running [2]...
+Task is running [3]...
+Main Pausing Tasks
+Task is PAUSED
+Main Resuming Tasks
+Task is running [4]...
+Task is running [5]...
+Task is running [6]...
+Task is running [7]...
+Task is running [8]...
+Task is running [9]...
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to pause and resume tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+</main>
+</body>
+</html>

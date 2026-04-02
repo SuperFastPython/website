@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Limit BLAS Threads in Numpy with threadpoolctl – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Limit BLAS Threads in Numpy with threadpoolctl</h1>
+<div class="post-meta">April 13, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can configure the <strong>number of threads used by BLAS</strong> via numpy with the <strong>threadpoolctl library</strong>.</p>
+<p>In this tutorial, you will discover how to control the number of threads used by BLAS with <strong>threadpoolctl</strong> library.</p>
+<p>Let's get started.</p>
+<h2>Need to Limit Number of BLAS Threads</h2>
+<p>NumPy is an array library in Python.</p>
+<p>It makes use of third-party libraries to perform array functions efficiently.</p>
+<p>One example is the BLAS and LAPACK specifications used by NumPy to execute vector, matrix, and linear algebra operations.</p>
+<p>The benefit of BLAS libraries is that it makes specific linear algebra operations more efficient by using advanced algorithms and multithreading.</p>
+<p>You can learn more about BLAS and LAPACK for numpy in the tutorial:</p>
+<ul>
+<li><a href="../what-is-blas-and-lapack-in-numpy/">What is BLAS and LAPACK in NumPy</a></li>
+</ul>
+<p>Many BLAS and LAPACK functions are multithreaded, including matrix operations like matrix multiplication (dot product) and matrix decompositions like singular value decomposition (SVD).</p>
+<p>We may need to configure the number of threads used by the installed BLAS library.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>We want the BLAS calculation to be single-threaded.</li>
+<li>We want the BLAS calculation to use fewer threads.</li>
+<li>We want the BLAS calculation to use one thread per physical CPU core.</li>
+<li>We want the BLAS calculation to use one thread per logical CPU core.</li>
+</ul>
+<p>These cases may come up in our program if we are using concurrency elsewhere in our program, such as via Python threads, Python processes, or Asyncio coroutines.</p>
+<p><strong>How can we configure the number of threads used by BLAS in NumPy?</strong></p>
+<h2>How to Limit BLAS Threads With threadpoolctl</h2>
+<p>One way to configure the number of threads used by BLAS via numpy is via an environment variable.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-number-blas-threads/">Configure the Number of NumPy BLAS Threads</a></li>
+</ul>
+<p>Another way to configure the number of threads used by BLAS via numpy is with the <a href="https://github.com/joblib/threadpoolctl"><strong>threadpoolctl</strong> library</a>.</p>
+<p>The threadpoolctl library is an open-source project that provides tools to configure the number of threads used in external libraries, such as BLAS and OpenMP.</p>
+<blockquote>
+<p>Python helpers to limit the number of threads used in the threadpool-backed of common native libraries used for scientific computing and data science (e.g. BLAS and OpenMP).</p>
+<cite>-- <a href="https://github.com/joblib/threadpoolctl">threadpoolctl GitHub Project</a></cite></blockquote>
+<p>Firstly, we must install the threadpoolctl library using a Python package manager, such as pip.</p>
+<p>For example:</p>
+<pre><code>sudo pip install threadpoolctl</code></pre>
+<p>The API provides methods to configure the number of threads used by BLAS within a scope, such as within a context manager.</p>
+<p>This can be achieved via the <strong>threadpoolctl.threadpool_limits()</strong> function and specifies the maximum number of threads via the "<strong>limits</strong>" argument and the underlying library as "<strong>blas</strong>" via the "<strong>user_api</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# limit the number of blas threads
+with threadpool_limits(limits=4, user_api='blas'):
+	# ...
+</code></pre>
+<p>This will limit the number of threads used by BLAS within the scope of the context manager.</p>
+<p>This is helpful as we can change the number of threads to be equal to the number of physical cores in a block of code, or configure a block of code to not use BLAS multithreading at all, such as if we want to use a <strong>ThreadPool</strong>.</p>
+<p>The threadpoolctl works by configuring the number of BLAS directly at runtime via the public API.</p>
+<blockquote>
+<p>threadpoolctl only interacts with native libraries via their public runtime APIs.</p>
+<cite>-- <a href="https://github.com/joblib/threadpoolctl">threadpoolctl GitHub Project</a></cite></blockquote>
+<p>You can learn more about the project here:</p>
+<ul>
+<li><a href="https://github.com/joblib/threadpoolctl">Thread-pool Controls (threadpoolctl), GitHub Project</a>.</li>
+</ul>
+<p>Now that we know how to configure the number of threads used by BLAS via NumPy, let's look at some worked examples.</p>
+<h2>Example of Matrix Multiplication with All BLAS Threads</h2>
+<p>Before we explore how to control the number of BLAS threads with the threadpoolctl library, let's first develop an example that uses the default number of BLAS threads.</p>
+<p>In this example, we will create two modestly large matrices and multiply them together.</p>
+<p>Numpy matrix multiplication can be achieved using the dot() method on the arrays. The operation is performed using the installed BLAS library and is multithreaded.</p>
+<p>Firstly, we will define two 8,000x8,000 matrices of one values.</p>
+<pre><code>...
+# size of arrays
+n = 8000
+# create an array of random values
+data1 = ones((n, n))
+data2 = ones((n, n))</code></pre>
+<p>We will then multiply one matrix by the other.</p>
+<pre><code>...
+# matrix multiplication
+result = data1.dot(data2)</code></pre>
+<p>We will time the whole operation and report the duration.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example of numpy matrix multiplication with blas threads
+from numpy import ones
+from time import time
+# size of arrays
+n = 8000
+# create an array of random values
+data1 = ones((n, n))
+data2 = ones((n, n))
+# record start time
+start = time()
+# matrix multiplication
+result = data1.dot(data2)
+# calculate duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first creates two numpy arrays and then multiplies them together.</p>
+<p>The operation is performed using the BLAS library with multiple threads.</p>
+<p>In this case, on my system, the operation takes about 7.117 seconds.</p>
+<p>We will use this as a baseline and compare it to the same example when controlling the number of threads used by BLAS with threadpoolctl.</p>
+<p>Try repeating the operation a few times and average the duration. We do not need a precise measurement, instead, we are interested in a directional change when controlling the number of threads via the threadpoolctl library.</p>
+<pre><code>Took 7.117 seconds</code></pre>
+<p>Next, let's update the example to control the number of threads used by BLAS.</p>
+<h2>Example of Matrix Multiplication with Limited BLAS Threads</h2>
+<p>We can update the previous example to control the number of threads used by BLAS via the threadpoolctl library.</p>
+<p>There are two common scenarios we can explore.</p>
+<p>The first is to configure BLAS to use one thread per physical CPU core. This can offer better performance for some operations, such as matrix multiplication.</p>
+<p>The other scenario is to turn off the multithreaded capability of BLAS. This is helpful in programs where we want to use Python multithreading for parallelism instead of parallelism at the operation level in BLAS.</p>
+<p>Let's take a closer look at each example.</p>
+<h3>Example of One Thread Per Physical CPU Core</h3>
+<p>In this example, we can configure BLAS to use one thread per physical CPU core in the system.</p>
+<p>I have 4 physical CPU cores in my system, so we will configure the <strong>threadpool_limits()</strong> function to use 4 worker threads in BLAS when performing the matrix multiplication.</p>
+<pre><code>...
+# limit the number of blas threads
+with threadpool_limits(limits=4, user_api='blas'):
+    # matrix multiplication
+    result = data1.dot(data2)
+</code></pre>
+<p>Update the example to use the number of physical CPU cores in your system.</p>
+<p>If you need help with determining the number of CPU cores in your system or more information on physical vs logical CPU cores, see the tutorial:</p>
+<ul>
+<li><a href="../number-of-cpus-python/">Number of CPUs in Python</a></li>
+</ul>
+<p>Tying this together the complete example with this change is listed below.</p>
+<pre><code># example of numpy matrix multiplication with limited blas threads
+from numpy import ones
+from time import time
+from threadpoolctl import threadpool_limits
+# size of arrays
+n = 8000
+# create an array of random values
+data1 = ones((n, n))
+data2 = ones((n, n))
+# record start time
+start = time()
+# limit the number of blas threads
+with threadpool_limits(limits=4, user_api='blas'):
+    # matrix multiplication
+    result = data1.dot(data2)
+# calculate duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first creates the two matrices.</p>
+<p>The number of threads is then configured to be equal to the number of physical CPU cores.</p>
+<p>The matrix operation is then performed using BLAS.</p>
+<p>In this case, the example takes about 4.863 seconds.</p>
+<p>This is about 2.254 seconds faster than the same operation with the default number of BLAS threads, or a speedup of about 1.46x.</p>
+<pre><code>Took 4.863 seconds</code></pre>
+<p>Next, let's look at how we can <strong>turn-off BLAS multithreading</strong> in numpy.</p>
+<h3>Example of Single-Threaded BLAS Operations</h3>
+<p>We can update the example to disable BLAS threads using the threadpoolctl library.</p>
+<p>This can be achieved via the <strong>threadpool_limits()</strong> and setting the "<strong>limits</strong>" argument to 1.</p>
+<p>This will use a single BLAS thread to perform the matrix multiplication.</p>
+<p>For example:</p>
+<pre><code>...
+# limit the number of blas threads
+with threadpool_limits(limits=1, user_api='blas'):
+    # matrix multiplication
+    result = data1.dot(data2)
+</code></pre>
+<p>Tying this together, the complete example with this change is listed below.</p>
+<pre><code># example of numpy matrix multiplication with no blas threads
+from numpy import ones
+from time import time
+from threadpoolctl import threadpool_limits
+# size of arrays
+n = 8000
+# create an array of random values
+data1 = ones((n, n))
+data2 = ones((n, n))
+# record start time
+start = time()
+# limit the number of blas threads
+with threadpool_limits(limits=1, user_api='blas'):
+    # matrix multiplication
+    result = data1.dot(data2)
+# calculate duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example first creates the two matrices.</p>
+<p>The number of threads is then configured to be one.</p>
+<p>The matrix operation is then performed using BLAS.</p>
+<p>In this case, the operation took about 16.165 seconds.</p>
+<p>This is about 9.048 seconds slower than the default number of threads used by BLAS, or a slowdown of about 2.27x.</p>
+<pre><code>Took 16.165 seconds</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to control the number of threads used by BLAS via numpy with the threadpoolctl library.</p>
+</main>
+</body>
+</html>

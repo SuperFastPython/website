@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool Follow-Up Tasks in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool Follow-Up Tasks in Python</h1>
+<div class="post-meta">July 31, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>issue follow-up tasks</strong> with the <strong><a href="../multiprocessing-pool-python/">multiprocessing pool</a></strong> either manually by checking the results of tasks, or automatically using a result callback function.</p>
+<p>In this tutorial you will discover <strong>how to execute follow-up tasks to the process pool in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Issue Follow-Up Tasks</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the process pool, we may need to execute follow-up tasks. This may be for many reasons, such as based on the results of tasks already issued to the process pool.</p>
+<p><strong>How can we execute follow-up tasks in the process pool?</strong></p>
+<h2>How to Issue Follow-Up Tasks to the Process Pool</h2>
+<p>We can execute follow-up tasks in the process pool.</p>
+<p>There are two main approaches we can use, they are:</p>
+<ol><li>Manually issue follow-up tasks.</li><li>Automatically issue follow-up tasks via a callback.</li></ol>
+<p>We will also consider an approach that does not work:</p>
+<ul><li>Issue a task from a task already running in the process pool.</li></ul>
+<p>Let's take a closer look at each approach of executing a follow-up task.</p>
+<h3>Manually Execute a Follow-Up Task</h3>
+<p>We can manually issue a follow-up task based on the results of a first-round task.</p>
+<p>For example, we may issue a task asynchronously using the <strong>apply_async()</strong> function that returns a <strong>ResultAsync</strong>.</p>
+<pre><code>...
+# issue a task
+result = pool.apply_async(...)</code></pre>
+<p>We can then get the result of the issued task, once available, and conditionally issue a follow-up task.</p>
+<p>For example:</p>
+<pre><code>...
+# check the result of an issued task
+if result.get() &gt; 1.0:
+	# issue a follow-up task
+	pool.apply_async(...)
+</code></pre>
+<h3>Automatically Execute a Follow-Up Task with a Callback</h3>
+<p>We can automatically issue follow-up tasks to the process pool.</p>
+<p>This can be achieved by configuring issued tasks to have a result callback function.</p>
+<p>The callback function is a custom function that takes the result of the function call used to issue tasks, e.g. a single return value or an iterator of return values if multiple tasks are issued.</p>
+<p>The callback function is executed in the main thread of the main process.</p>
+<p>If the process pool is created and used within the main process, then it may be available as a global variable to the result callback function.</p>
+<p>As such, we can directly issue follow-up tasks from the callback function.</p>
+<p>For example:</p>
+<pre><code># result callback function
+def result_callback(result):
+	# check the result of an issued task
+	if result.get() &gt; 1.0:
+		# issue a follow-up task
+		pool.apply_async(...)</code></pre>
+<p>The callback function can be specified when issuing tasks in the main process via the "<strong>callback</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task with a result callback
+result = pool.apply_async(..., callback=result_callback)</code></pre>
+<h3>Issue a Follow-Up Task From A Running Task</h3>
+<p>We might be tempted to try and issue a task to the process pool from a task already running in the process pool.</p>
+<p>This approach does not work.</p>
+<p>It requires that we share the process pool with the task, which fails with an error because the process pool cannot be serialized.</p>
+<p>For example:</p>
+<pre><code>NotImplementedError: pool objects cannot be passed between processes or pickled</code></pre>
+<p>Instead, we must signal to another process to issue a follow-up task on our behalf.</p>
+<p>This can easily be achieved using return values to the main process, as in the above two approaches.</p>
+<p>Now that we know how to issue follow-up tasks to the process pool, let's look at some worked examples.</p>
+<h2>Example of Manually Issuing Follow-Up Tasks to the Process Pool</h2>
+<p>We can explore how to manually issue follow-up tasks to the process pool.</p>
+<p>In this example, we will define a task that takes an integer argument, generates a random number, blocks for a moment, reports the value, then returns the integer argument and generated value. The main process will issue many of these tasks asynchronously then check the result. If the result is above a threshold, a follow-up task will be issued that will do much the same as the first task, it will generate a random number, block for a moment and report the values.</p>
+<p>Firstly, we can define the function to execute for the follow-up or second-round task.</p>
+<p>The function takes an integer identifier for the task and a floating point value generated by the first round task.</p>
+<p>The function then generates a random number between 0 and 1 and then blocks for this many seconds to simulate computational effort. It then reports the value and returns a tuple of the two arguments as well as the generated value.</p>
+<p>The <strong>task2()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task2(identifier, result):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;&gt;{identifier} with {result}, generated {value}', flush=True)
+    # return result
+    return (identifier, result, value)
+</code></pre>
+<p>Next, we can define the function to execute first, the first-round task.</p>
+<p>This function takes an integer identifier for the task. It then generates a random value between 0 and 1 and blocks for a fraction of a second. It then reports the value and returns a tuple of the integer argument and the generated value.</p>
+<p>The <strong>task1()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task1(identifier):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;{identifier} generated {value}', flush=True)
+    # return result
+    return (identifier, value)
+</code></pre>
+<p>We then define a process pool with the default number of worker processes. In this case we use the context manager interface to ensure the process pool closes automatically once we are finished with it.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+    # ...
+</code></pre>
+<p>You can learn more about the context manager interface in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<p>We can then issue 10 calls to <strong>task1()</strong> asynchronously with integer values from 0 to 9. We will issue the tasks using the <strong>imap_unordered()</strong> function as it will return results as tasks are completed out of order.</p>
+<p>We will iterate the results of <strong>task1()</strong> directly in a for-loop.</p>
+<pre><code>...
+# issue tasks to the process pool and process results
+for i,v in pool.imap_unordered(task1, range(10)):
+	# ...
+</code></pre>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-imap_unordered/">Multiprocessing Pool.imap_unordered() in Python</a></li></ul>
+<p>For each result from the first-round task, we will check if the generated value is above 0.5, and if so, we will issue a single follow-up task using the <strong>apply_async()</strong> function to call task2().</p>
+<pre><code>...
+# issue a follow-up task
+_ = pool.apply_async(task2, args=(i, v))</code></pre>
+<p>You can learn more about the <strong>apply_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-apply_async/">Multiprocessing Pool.apply_async() in Python</a></li></ul>
+<p>Once the results from all first-round tasks have been processed and any follow-up tasks issued, we will close the process pool to prevent any further tasks from being issued, then join the pool to wait for all issued tasks to complete.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all issued tasks to complete
+pool.join()</code></pre>
+<p>You can learn more about joining the process pool in the tutorial:</p>
+<ul><li><a href="../join-a-multiprocessing-pool-in-python/">Join a Process Pool in Python</a></li></ul>
+<p>Finally, an "<em>all done</em>" message is reported once all worker processes are closed.</p>
+<pre><code>...
+# all done
+print('All done.')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of manually issuing a follow-up tasks to the process pool
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task2(identifier, result):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;&gt;{identifier} with {result}, generated {value}', flush=True)
+    # return result
+    return (identifier, result, value)
+
+# task executed in a worker process
+def task1(identifier):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;{identifier} generated {value}', flush=True)
+    # return result
+    return (identifier, value)
+
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool and process results
+        for i,v in pool.imap_unordered(task1, range(10)):
+            # check result
+            if v &gt; 0.5:
+                # issue a follow-up task
+                _ = pool.apply_async(task2, args=(i, v))
+        # close the pool
+        pool.close()
+        # wait for all issued tasks to complete
+        pool.join()
+    # all done
+    print('All done.')
+</code></pre>
+<p>Running the example first creates and starts the process pool with a default configuration.</p>
+<p>Next, 10 calls to <strong>task1()</strong> are issued as tasks to the process pool and the results of the tasks are processed in the order that the tasks are completed.</p>
+<p>Each first-round task generates a random number, blocks, reports a message and returns a tuple.</p>
+<p>The main process receives results from first-round tasks as they complete and checks if the generated number was above 0.5. If so, it issues a follow-up task to call <strong>task2()</strong> asynchronously.</p>
+<p>The second-round tasks generate another random number, report the value, and return a tuple. The return results from this task are not considered.</p>
+<p>Once the results from all first-round tasks are processed, the main process closes the pool and waits for all remaining tasks to complete, e.g. any remaining <strong>task2()</strong> tasks.</p>
+<p>All tasks complete, the main process unblocks and continues on, terminating the application.</p>
+<p>Note, the results will differ each time the program is run given the use of random numbers. Try running the example a few times.</p>
+<p>This highlights how we can manually issue follow-up tasks to the process pool from the main process.</p>
+<pre><code>&gt;3 generated 0.2605878019636232
+&gt;6 generated 0.27359550984496794
+&gt;0 generated 0.40999955327713244
+&gt;4 generated 0.4519214058440285
+&gt;1 generated 0.5499098580952393
+&gt;2 generated 0.6852001923395571
+&gt;8 generated 0.4681425515972236
+&gt;7 generated 0.9082498918840236
+&gt;&gt;1 with 0.5499098580952393, generated 0.4148749468523081
+&gt;5 generated 0.9607853615700284
+&gt;9 generated 0.8586973247929102
+&gt;&gt;2 with 0.6852001923395571, generated 0.4512218980620065
+&gt;&gt;5 with 0.9607853615700284, generated 0.6103151596080635
+&gt;&gt;7 with 0.9082498918840236, generated 0.8080954535903131
+&gt;&gt;9 with 0.8586973247929102, generated 0.6552476786576102</code></pre>
+<p>Next, let's look at how we might issue follow-up tasks automatically using a callback function.</p>
+<h2>Example of Issuing Follow-Up Tasks From a Callback</h2>
+<p>We can explore how to issue follow-up tasks automatically using a callback function.</p>
+<p>This can be achieved by updating the previous example to define a callback function that processes the results from first-round tasks and issues follow-tasks to the process pool. The main process is only responsible for issuing the first round tasks.</p>
+<p>This makes the code much cleaner to read and manage.</p>
+<p>Importantly, this is only possible because the callback function is executed in the main process, which means it has access to the process pool directly as a global variable.</p>
+<p>Firstly, we can define a callback function. This function is called only once all first-round tasks are completed and is passed an iterable of all results from the first round tasks.</p>
+<p>This is a downside of using a callback. Specifically, that it is not called until all tasks are completed, compared to the previous approach of issuing follow-up tasks manually as first-round tasks are completed.</p>
+<p>The callback function iterates over the return values from each first-round task, checks the floating point value, and issues a follow-up task call to <strong>task2()</strong> as needed.</p>
+<p>The <strong>result_callback()</strong> function below implements this.</p>
+<pre><code># handle results of the task (in the main process)
+def result_callback(result_iterator):
+    # unpack result
+    for i,v in result_iterator:
+        # check result
+        if v &gt; 0.5:
+            # issue a follow-up task
+            _ = pool.apply_async(task2, args=(i, v))
+</code></pre>
+<p>Next, in the main process we can issue all 10 first-round tasks asynchronously using the <strong>map_async()</strong> function and specify the result callback function.</p>
+<p>This returns an <strong>ResultAsync</strong> object.</p>
+<pre><code>...
+# issue tasks asynchronously to the process pool
+result = pool.map_async(task1, range(10), callback=result_callback)</code></pre>
+<p>You can learn more about the <strong>map_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li></ul>
+<p>We can then wait for all first-round tasks to complete by waiting on the <strong>ResultAsync</strong> object.</p>
+<pre><code>...
+# wait for issued tasks to complete
+result.wait()</code></pre>
+<p>After we know that all first-round tasks are completed and any follow-up tasks have been issued, we can then close the pool and wait for all second-round tasks to complete.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all issued tasks to complete
+pool.join()</code></pre>
+<p>If we did not wait for the first-round tasks to complete first and closed the pool immediately, then we would not be able to issue any follow-up tasks, and an error would be raised.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of issuing a follow-up task automatically with a result callback
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# handle results of the task (in the main process)
+def result_callback(result_iterator):
+    # unpack result
+    for i,v in result_iterator:
+        # check result
+        if v &gt; 0.5:
+            # issue a follow-up task
+            _ = pool.apply_async(task2, args=(i, v))
+
+# task executed in a worker process
+def task2(identifier, result):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;&gt;{identifier} with {result}, generated {value}', flush=True)
+    # return result
+    return (identifier, result, value)
+
+# task executed in a worker process
+def task1(identifier):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;{identifier} generated {value}', flush=True)
+    # return result
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks asynchronously to the process pool
+        result = pool.map_async(task1, range(10), callback=result_callback)
+        # wait for issued tasks to complete
+        result.wait()
+        # close the pool
+        pool.close()
+        # wait for all issued tasks to complete
+        pool.join()
+    # all done
+    print('All done.')
+</code></pre>
+<p>Running the example first creates and starts the process pool with a default configuration.</p>
+<p>Next, 10 calls to <strong>task1()</strong> are issued as tasks to the process pool and an <strong>AsyncResult</strong> is returned. The main process then blocks waiting for all first-round tasks to complete.</p>
+<p>Each first-round task generates a random number, blocks, reports a message and returns a tuple.</p>
+<p>Once all first round tasks finish, the result callback is then called with an iterable of the return values from the first round tasks. The iterable is traversed and any second round tasks are issued to the process pool.</p>
+<p>The main process carries on, closing the pool and blocking until all second round tasks complete.</p>
+<p>The second-round tasks generate another random number, report the value, and return a tuple. The return results from this task are not considered.</p>
+<p>All second-round tasks complete, the main process unblocks and continues on, terminating the application.</p>
+<p>Note, the results will differ each time the program is run given the use of random numbers. Try running the example a few times.</p>
+<p>This highlights how we can automatically issue follow-up tasks to the process pool from the main process.</p>
+<pre><code>&gt;3 generated 0.026053470123407307
+&gt;5 generated 0.10861107021623373
+&gt;1 generated 0.283776825109049
+&gt;2 generated 0.3812563597749301
+&gt;0 generated 0.47683270636655106
+&gt;4 generated 0.5622089438427635
+&gt;6 generated 0.62617584793209
+&gt;7 generated 0.7745782124217487
+&gt;8 generated 0.9132687159744634
+&gt;9 generated 0.9283828682129988
+&gt;&gt;7 with 0.7745782124217487, generated 0.07060930439614588
+&gt;&gt;6 with 0.62617584793209, generated 0.155765787897853
+&gt;&gt;4 with 0.5622089438427635, generated 0.7745894701213474
+&gt;&gt;8 with 0.9132687159744634, generated 0.8280977095949135
+&gt;&gt;9 with 0.9283828682129988, generated 0.9937548669689297
+All done.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to execute follow-up tasks to the process pool in Python.</p>
+</main>
+</body>
+</html>

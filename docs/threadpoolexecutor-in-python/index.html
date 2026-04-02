@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor in Python: The Complete Guide – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor in Python: The Complete Guide</h1>
+<div class="post-meta">January 19, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>The <strong>Python ThreadPoolExecutor</strong> provides reusable worker threads in Python.</p>
+<p>The <strong>ThreadPoolExecutor</strong> class is part of the Python standard library. It offers easy-to-use pools of worker threads via the modern executor design pattern. It is ideal for making loops of I/O-bound tasks concurrent and for issuing tasks asynchronously.</p>
+<p>This book-length guide provides a detailed and comprehensive walkthrough of the <strong>Python ThreadPoolExecutor API</strong>.</p>
+<p>Some tips:</p>
+<ol>
+<li>You may want to bookmark this guide and read it over a few sittings.</li>
+<li>You can <a href="../zips/superfastpython-threadpoolexecutor-guide.zip">download a zip</a> of all code used in this guide.</li>
+<li>You can get help, ask a question in the comments or <a href="../contact/">email me</a>.</li>
+<li>You can jump to the topics that interest you via the table of contents (below).</li>
+</ol>
+<p>Let's dive in.</p>
+<figure><img alt="ThreadPoolExecutor in Python: The Complete Guide" loading="lazy" src="../pics/ThreadPoolExecutor-Guide-1.png"/><figcaption>ThreadPoolExecutor in Python: The Complete Guide</figcaption></figure>
+<h2>Python Threads and the Need for Thread Pools</h2>
+<p>So, what are threads and why do we care about thread pools?</p>
+<h3>What Are Python Threads</h3>
+<p>A <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread</a> refers to a thread of execution by a computer program.</p>
+<p>Every Python program is a process with one thread called the main thread used to execute your program instructions. Each process is in fact one instance of the Python interpreter that executes Python instructions (Python bytecode), which is a slightly lower level than the code you type into your Python program.</p>
+<p>Sometimes, we may need to create additional threads within our Python process to execute tasks concurrently.</p>
+<p>Python provides real naive (system-level) threads via the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>A task can be run in a new thread by creating an instance of the <strong>Thread</strong> class and specifying the function to run in the new thread via the target argument.</p>
+<pre><code>...
+# create and configure a new thread to run a function
+thread = Thread(target=task)</code></pre>
+<p>Once the thread is created, it must be started by calling the <strong>start()</strong> function.</p>
+<pre><code>...
+# start the task in a new thread
+thread.start()</code></pre>
+<p>We can then wait around for the task to complete by joining the thread; for example</p>
+<pre><code>...
+# wait for the task to complete
+thread.join()</code></pre>
+<p>We can demonstrate this with a complete example with a task that sleeps for a moment and prints a message.</p>
+<p>The complete example of executing a target task function in a separate thread is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of executing a target task function in a separate thread
+from time import sleep
+from threading import Thread
+
+# a simple task that blocks for a moment and prints a message
+def task():
+    # block for a moment
+    sleep(1)
+    # display a message
+    print('This is coming from another thread')
+
+# create and configure a new thread to run a function
+thread = Thread(target=task)
+# start the task in a new thread
+thread.start()
+# display a message
+print('Waiting for the new thread to finish...')
+# wait for the task to complete
+thread.join()
+</code></pre>
+<p>Running the example creates the thread object to run the <strong>task()</strong> function.</p>
+<p>The thread is started and the <strong>task() </strong>function is executed in another thread. The task sleeps for a moment; meanwhile, in the main thread, a message is printed that we are waiting around and the main thread joins the new thread.</p>
+<p>Finally, the new thread finishes sleeping, prints a message, and closes. The main thread then carries on and also closes as there are no more instructions to execute.</p>
+<pre><code>Waiting for the new thread to finish...
+This is coming from another thread</code></pre>
+<p>You can learn more about Python threads in the guide:</p>
+<ul>
+<li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li>
+</ul>
+<p>This is useful for running one-off ad hoc tasks in a separate thread, although it becomes cumbersome when you have many tasks to run.</p>
+<p>Each thread that is created requires the application of resources (e.g. memory for the thread's stack space). The computational costs for setting up threads can become expensive if we are creating and destroying many threads over and over for ad hoc tasks.</p>
+<p>Instead, we would prefer to keep worker threads around for reuse if we expect to run many ad hoc tasks throughout our program.</p>
+<p>This can be achieved using a thread pool.</p>
+<h3>What Are Thread Pools</h3>
+<p>A <a href="https://en.wikipedia.org/wiki/Thread_pool">thread pool</a> is a programming pattern for automatically managing a pool of worker threads.</p>
+<p>The pool is responsible for a fixed number of threads.</p>
+<ul>
+<li>It controls when the threads are created, such as just-in-time when they are needed.</li>
+<li>It also controls what threads should do when they are not being used, such as making them wait without consuming computational resources.</li>
+</ul>
+<p>Each thread in the pool is called a worker or a worker thread. Each worker is agnostic to the type of tasks that are executed, along with the user of the thread pool to execute a suite of similar (homogeneous) or dissimilar tasks (heterogeneous) in terms of the function called, function arguments, task duration, and more.</p>
+<p>Worker threads are designed to be re-used once the task is completed and provide protection against the unexpected failure of the task, such as raising an exception, without impacting the worker thread itself.</p>
+<p>This is unlike a single thread that is configured for the single execution of one specific task.</p>
+<p>The pool may provide some facility to configure the worker threads, such as running an initialization function and naming each worker thread using a specific naming convention.</p>
+<p>Thread pools can provide a generic interface for executing ad hoc tasks with a variable number of arguments, but do not require that we choose a thread to run the task, start the thread, or wait for the task to complete.</p>
+<p>It can be significantly more efficient to use a thread pool instead of manually starting, managing, and closing threads, especially with a large number of tasks.</p>
+<p>Python provides a thread pool via the <strong>ThreadPoolExecutor</strong> class.</p>
+<h2>ThreadPoolExecutor for Thread Pools in Python</h2>
+<p>The <strong>ThreadPoolExecutor</strong> Python class is used to create and manage thread pools and is provided in the <a href="https://docs.python.org/3/library/concurrent.futures.html">concurrent.futures module</a>.</p>
+<p>The concurrent.futures module was introduced in Python 3.2 written by <a href="http://sweetapp.com/">Brian Quinlan</a> and provides both thread pools and process pools, although we will focus our attention on thread pools in this guide.</p>
+<p>If you're interested, you can access the Python source code for the <strong>ThreadPoolExecutor</strong> class directly via <a href="https://github.com/python/cpython/tree/3.10/Lib/concurrent/futures/thread.py">thread.py</a>. It may be interesting to dig into how the class works internally, perhaps after you are familiar with how it works from the outside.</p>
+<p>The <strong>ThreadPoolExecutor</strong> extends the Executor class and will return <strong>Future</strong> objects when it is called.</p>
+<ul>
+<li><strong>Executor</strong>: Parent class for the ThreadPoolExecutor that defines basic lifecycle operations for the pool.</li>
+<li><strong>Future</strong>: Object returned when submitting tasks to the thread pool that may complete later.</li>
+</ul>
+<p>Let's take a closer look at <strong>Executors</strong>, <strong>Futures</strong>, and the lifecycle of using the <strong>ThreadPoolExecutor</strong> class.</p>
+<h3>What Are Executors</h3>
+<p>The <strong>ThreadPoolExecutor</strong> class extends the abstract <strong>Executor</strong> class.</p>
+<p>The <strong>Executor</strong> class defines three methods used to control our thread pool; they are: <strong>submit()</strong>, <strong>map()</strong>, and <strong>shutdown()</strong>.</p>
+<ul>
+<li><strong>submit()</strong>: Dispatch a function to be executed and return a future object.</li>
+<li><strong>map()</strong>: Apply a function to an iterable of elements.</li>
+<li><strong>shutdown()</strong>: Shut down the executor.</li>
+</ul>
+<p>The <strong>Executor</strong> is started when the class is created and must be shut down explicitly by calling <strong>shutdown()</strong>, which will release any resources held by the <strong>Executor</strong>. We can also shut down automatically, but we will look at that a little later.</p>
+<p>The <strong>submit()</strong> and <strong>map()</strong> functions are used to submit tasks to the Executor for asynchronous execution.</p>
+<p>The <strong>map()</strong> function operates just like the <strong>built-in map()</strong> function and is used to apply a function to each element in an iterable object, like a list. Unlike the built-in <strong>map()</strong> function, each application of the function to an element will happen asynchronously instead of sequentially.</p>
+<p>The <strong>submit() </strong>function takes a function, as well as any arguments, and will execute it asynchronously, although the call returns immediately and provides a <strong>Future</strong> object.</p>
+<p>We will take a closer look at each of these three functions in a moment. Firstly, what is a Future?</p>
+<h3>What Are Futures</h3>
+<p>A future is an object that represents a <a href="https://en.wikipedia.org/wiki/Futures_and_promises">delayed result for an asynchronous task</a>.</p>
+<p>It is also sometimes called a promise or a delay. It provides a context for the result of a task that may or may not be executing and a way of getting a result once it is available.</p>
+<p>In Python, the <strong>Future</strong> object is returned from an <strong>Executor</strong>, such as a <strong>ThreadPoolExecutor</strong> when calling the <strong>submit()</strong> function to dispatch a task to be executed asynchronously.</p>
+<p>In general, we do not create <strong>Future</strong> objects; we only receive them and we may need to call functions on them.</p>
+<p>There is always one <strong>Future</strong> object for each task sent into the <strong>ThreadPoolExecutor</strong> via a call to <strong>submit()</strong>.</p>
+<p>The Future object provides a number of helpful functions for inspecting the status of the task such as: <strong>cancelled()</strong>, <strong>running()</strong>, and <strong>done()</strong> to determine if the task was cancelled, is currently running, or has finished execution.</p>
+<ul>
+<li><strong>cancelled()</strong>: Returns <strong>True</strong> if the task was cancelled before being executed.</li>
+<li><strong>running()</strong>: Returns <strong>True</strong> if the task is currently running.</li>
+<li><strong>done()</strong>: Returns <strong>True</strong> if the task has completed or was cancelled.</li>
+</ul>
+<p>A running task cannot be cancelled and a done task could have been cancelled.</p>
+<p>A <strong>Future</strong> object also provides access to the result of the task via the <strong>result()</strong> function. If an exception was raised while executing the task, it will be re-raised when calling the <strong>result()</strong> function or can be accessed via the <strong>exception()</strong> function.</p>
+<ul>
+<li><strong>result()</strong>: Access the result from running the task.</li>
+<li><strong>exception()</strong>: Access any exception raised while running the task.</li>
+</ul>
+<p>Both the <strong>result()</strong> and <strong>exception()</strong> functions allow a timeout to be specified as an argument, which is the number of seconds to wait for a return value if the task is not yet complete. If the timeout expires, then a <strong>TimeoutError</strong> will be raised.</p>
+<p>Finally, we may want to have the thread pool automatically call a function once the task is completed.</p>
+<p>This can be achieved by attaching a callback to the <strong>Future</strong> object for the task via the <strong>add_done_callback()</strong> function.</p>
+<ul>
+<li><strong>add_done_callback()</strong>: Add a callback function to the task to be executed by the thread pool once the task is completed.</li>
+</ul>
+<p>We can add more than one callback to each task and they will be executed in the order they were added. If the task has already completed before we add the callback, then the callback is executed immediately.</p>
+<p>Any exceptions raised in the callback function will not impact the task or thread pool.</p>
+<p>We will take a closer look at the <strong>Future</strong> object in a later section.</p>
+<p>Now that we are familiar with the functionality of a <strong>ThreadPoolExecutor</strong> provided by the <strong>Executor</strong> class and of <strong>Future</strong> objects returned by calling <strong>submit(),</strong> let's take a closer look at the lifecycle of the <strong>ThreadPoolExecutor</strong> class.</p>
+<h2>LifeCycle of the ThreadPoolExecutor</h2>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of generic worker threads.</p>
+<p>The <strong>ThreadPoolExecutor</strong> was designed to be easy and straightforward to use.</p>
+<p>If multithreading was like the transmission for changing gears in a car, then using threading.Thread is a manual transmission (e.g. hard to learn and and use) whereas <strong>concurrency.futures.ThreadPoolExecutor</strong> is an automatic transmission (e.g. easy to learn and use).</p>
+<ul>
+<li><strong>threading.Thread</strong>: Manual threading in Python.</li>
+<li><strong>concurrency.futures.ThreadPoolExecutor</strong>: Automatic or "<em>just work</em>" mode for threading in Python.</li>
+</ul>
+<p>There are four main steps in the <a href="../threadpoolexecutor-quick-start-guide/">lifecycle of using the ThreadPoolExecutor class</a>; they are: create, submit, wait, and shut down.</p>
+<ul>
+<li>1. Create: Create the thread pool by calling the constructor <strong>ThreadPoolExecutor()</strong>.</li>
+<li>2. Submit: Submit tasks and get futures by calling <strong>submit() </strong>or <strong>map()</strong>.</li>
+<li>3. Wait: Wait and get results as tasks complete (optional).</li>
+<li>4. Shut down: Shut down the thread pool by calling <strong>shutdown()</strong>.</li>
+</ul>
+<p>The following figure helps to picture the lifecycle of the ThreadPoolExecutor class.</p>
+<figure><img alt="ThreadPoolExecutor Life-Cycle" loading="lazy" src="../pics/ThreadPoolExecutor-Life-Cycle.png"/><figcaption>ThreadPoolExecutor Life-Cycle</figcaption></figure>
+<p>Let's take a closer look at each lifecycle step in turn.</p>
+<h3>Step 1. Create the Thread Pool</h3>
+<p>First, a <strong>ThreadPoolExecutor</strong> instance must be created.</p>
+<p>When an instance of a <strong>ThreadPoolExecutor</strong> is created, it must be configured with the fixed number of threads in the pool, a prefix used when naming each thread in the pool, and the name of a function to call when initializing each thread along with any arguments for the function.</p>
+<p>The pool is created with one thread for each CPU in your system plus four. This is good for most purposes.</p>
+<ul>
+<li>Default Total Threads = (Total CPUs) + 4</li>
+</ul>
+<p>For example, if you have 4 CPUs, each with hyperthreading (most modern CPUs have this), then Python will see 8 CPUs and will allocate (8 + 4) or 12 threads to the pool by default.</p>
+<pre><code>...
+# create a thread pool with the default number of worker threads
+executor = ThreadPoolExecutor()</code></pre>
+<p>It is a good idea to test your application in order to determine the number of threads that results in the best performance, anywhere from a few threads to hundreds of threads.</p>
+<p>It is typically not a good idea to have thousands of threads as it may start to impact the amount of available RAM and results in a large amount of switching between threads, which may result in worse performance.</p>
+<p>Well discuss tuning the number of threads for your pool more later on.</p>
+<p>You can specify the number of threads to create in the pool via the max_workers argument; for example:</p>
+<pre><code>...
+# create a thread pool with 10 worker threads
+executor = ThreadPoolExecutor(max_workers=10)</code></pre>
+<h3>Step 2. Submit Tasks to the Thread Pool</h3>
+<p>Once the thread pool has been created, you can submit tasks for asynchronous execution.</p>
+<p>As discussed, there are two main approaches for submitting tasks defined on the Executor parent class. They are: map() and submit().</p>
+<h4>Step 2a. Submit Tasks With map()</h4>
+<p>The <strong>map()</strong> function is an asynchronous version of the <a href="https://docs.python.org/3/library/functions.html#map">built-in map() function</a> for applying a function to each element in an iterable, like a list.</p>
+<p>You can call the <a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Executor.map">map() function</a> on the pool and pass it the name of your function and the iterable.</p>
+<p>You are most likely to use <strong>map()</strong> when converting a for loop to run using one thread per loop iteration.</p>
+<pre><code>...
+# perform all tasks in parallel
+results = pool.map(my_task, my_items) # does not block</code></pre>
+<p>Where "<strong>my_task</strong>" is your function that you wish to execute and "<strong>my_items</strong>" is your iterable of objects, each to be executed by your "<strong>my_task</strong>" function.</p>
+<p>The tasks will be queued up in the thread pool and executed by worker threads in the pool as they become available.</p>
+<p>The <strong>map()</strong> function will return an iterable immediately. This iterable can be used to access the results from the target task function as they are available in the order that the tasks were submitted (e.g. order of the iterable you provided).</p>
+<pre><code>...
+# iterate over results as they become available
+for result in executor.map(my_task, my_items):
+	print(result) 
+</code></pre>
+<p>You can also set a timeout when calling <strong>map()</strong> via the "<strong>timeout</strong>" argument in seconds if you wish to impose a limit on how long you're willing to wait for each task to complete as you're iterating, after which a <strong>TimeOut</strong> error will be raised.</p>
+<pre><code>...
+# perform all tasks in parallel
+# iterate over results as they become available
+for result in executor.map(my_task, my_items, timeout=5):
+	# wait for task to complete or timeout expires
+	print(result)
+</code></pre>
+<h4>2a. Submit Tasks With submit()</h4>
+<p>The <strong>submit()</strong> function submits one task to the thread pool for execution.</p>
+<p>The function takes the name of the function to call and all arguments to the function, then returns a <strong>Future</strong> object immediately.</p>
+<p>The <strong>Future</strong> object is a promise to return the results from the task (if any) and provides a way to determine if a specific task has been completed or not.</p>
+<pre><code>...
+# submit a task with arguments and get a future object
+future = executor.submit(my_task, arg1, arg2) # does not block
+</code></pre>
+<p>Where "<strong>my_task</strong>" is the function you wish to execute and "<strong>arg1</strong>" and "<strong>arg2</strong>" are the first and second arguments to pass to the "<strong>my_task</strong>" function.</p>
+<p>You can use the <strong>submit()</strong> function to submit tasks that do not take any arguments; for example:</p>
+<pre><code>...
+# submit a task with no arguments and get a future object
+future = executor.submit(my_task) # does not block</code></pre>
+<p>You can access the result of the task via the <strong>result()</strong> function on the returned <strong>Future</strong> object. This call will block until the task is completed.</p>
+<pre><code>...
+# get the result from a future
+result = future.result() # blocks</code></pre>
+<p>You can also set a timeout when calling <strong>result()</strong> via the "<strong>timeout</strong>" argument in seconds if you wish to impose a limit on how long you're willing to wait for each task to complete, after which a <strong>TimeOut</strong> error will be <meta/>raised.</p>
+<pre><code>...
+# wait for task to complete or timeout expires
+result = future.result(timeout=5) # blocks</code></pre>
+<h3>Step 3. Wait for Tasks to Complete (Optional)</h3>
+<p>The <strong>concurrent.futures</strong> module provides two module utility functions for waiting for tasks via their <strong>Future</strong> objects.</p>
+<p>Recall that <strong>Future</strong> objects are only created when we call <strong>submit()</strong> to push tasks into the thread pool.</p>
+<p>These wait functions are optional to use, as you can wait for results directly after calling <strong>map()</strong> or <strong>submit()</strong> or wait for all tasks in the thread pool to finish.</p>
+<p>These two module functions are <strong>wait()</strong> for waiting for <strong>Future</strong> objects to complete and <strong>as_completed()</strong> for getting <strong>Future</strong> objects as their tasks complete.</p>
+<ul>
+<li><strong>wait()</strong>: Wait on one or more <strong>Future</strong> objects until they are completed.</li>
+<li><strong>as_completed()</strong>: Returns <strong>Future</strong> objects from a collection as they complete their execution.</li>
+</ul>
+<p>You can use both functions with <strong>Future</strong> objects created by one or more thread pools, they are not specific to any given thread pool in your application. This is helpful if you want to perform waiting operations across multiple thread pools that are executing different types of tasks.</p>
+<p>Both functions are useful to use with an idiom of dispatching multiple tasks into the thread pool via submit in a list compression; for example:</p>
+</main>
+</body>
+</html>

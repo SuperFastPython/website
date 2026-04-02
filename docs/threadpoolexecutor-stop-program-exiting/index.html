@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor Workers Stop Main Thread From Exiting – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor Workers Stop Main Thread From Exiting</h1>
+<div class="post-meta">July 20, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>The <strong>ThreadPoolExecutor</strong> will block the Python interpreter from exiting if there are running tasks.</p>
+<p>This can cause a program to hang before exiting, if exited normally, exiting with an exception, or exiting explicitly via a call to <strong>sys.exit()</strong>.</p>
+<p>In this tutorial, you will discover what happens if we forget or are unable to shut down the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Let's get started.</p>
+<h2>Does the ThreadPoolExecutor Stop The Program From Exiting?</h2>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of reusable worker threads using the executor design pattern.</p>
+<p>Tasks executed in new threads are executed concurrently in Python, making the <strong>ThreadPoolExecutor</strong> appropriate for I/O-bound tasks.</p>
+<p>A <strong>ThreadPoolExecutor</strong> can be created directly or via the context manager interface and tasks can be issued one-by-one via the <strong>submit()</strong> method or in batch via the <strong>map()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# issue a task
+	future = tpe.submit(task)
+	# the the task result once the task is done
+	result = future.result()
+</code></pre>
+<p>You can learn more about the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor in Python: The Complete Guide</a></li>
+</ul>
+<p>One concern with the <strong>ThreadPoolExecutor</strong> is whether it will prevent the program from exiting if it is not explicitly shut down.</p>
+<p>For example, we may not shut down the <strong>ThreadPoolExecutor</strong> correctly for many reasons, such as:</p>
+<ul>
+<li>We forget to call the <strong>shutdown()</strong> method.</li>
+<li>An error is raised that prevents a normal exit.</li>
+</ul>
+<p>Sometimes in Python concurrency, a running thread or running child process can prevent the main process, and therefore the program from exiting normally.</p>
+<p>Additionally, we may be concerned that if the <strong>ThreadPoolExecutor</strong> is not shut down properly, the worker threads will keep running if the main thread of the main process exits.</p>
+<p>Will a running <strong>ThreadPoolExecutor</strong> prevent the program from exiting normally (or will the program hang)?</p>
+<h2>ThreadPoolExecutor Workers Stop The Program From Exiting</h2>
+<p>A running <strong>ThreadPoolExecutor</strong> can stop the program from exiting, if there are running tasks.</p>
+<p>This means that if we issue long-duration tasks to the <strong>ThreadPoolExecutor</strong> and attempt to exit the program normally or fail via an exception, then the program will not exit and instead will hang until all tasks in the thread pool have been completed.</p>
+<p>This is by design.</p>
+<p>The API documentation for the <strong>ThreadPoolExecutor</strong> indicates that the main thread will join the internal worker threads of the <strong>ThreadPoolExecutor</strong> when exiting, causing it to block until all threads in the <strong>ThreadPoolExecutor</strong> have terminated.</p>
+<blockquote>
+<p>All threads enqueued to ThreadPoolExecutor will be joined before the interpreter can exit.</p>
+<cite>-- <a href="https://docs.python.org/3/library/concurrent.futures.html">concurrent.futures — Launching parallel tasks</a></cite></blockquote>
+<p>If there are no running tasks in the <strong>ThreadPoolExecutor</strong> and the main thread attempts to exit, normally or with an exception, then the Python interpreter will shut down the <strong>ThreadPoolExecutor</strong> automatically for us and the program will exit.</p>
+<p>You can learn more about closing the <strong>ThreadPoolExecutor</strong> implicitly via the Python interpreter in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-shutdown/">How to Shutdown the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>This means that we should expect the program to continue running until tasks in the <strong>ThreadPoolExecutor</strong> have been completed normally.</p>
+<p>It is possible to explicitly terminate the <strong>ThreadPoolExecutor</strong>, including all running tasks. For an example of this, see the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-kill-running-tasks/">ThreadPoolExecutor Kill Running Tasks</a></li>
+</ul>
+<p>Now that we know that the <strong>ThreadPoolExecutor</strong> will stop the program from exiting, let's look at some worked examples.</p>
+<h2>Example of Running Tasks Stopping the Program From Exiting</h2>
+<p>In this section, we can explore a number of cases where a running task in the <strong>ThreadPoolExecutor</strong> prevents the Python interpreter from closing.</p>
+<h3>Running Task Prevents Normal Exit</h3>
+<p>We can explore the case where running tasks in the <strong>ThreadPoolExecutor</strong> stops a Python program from exiting.</p>
+<p>In this example, we will define a task that takes a while to complete. We will then create a <strong>ThreadPoolExecutor</strong>, issue the task, then attempt to exit the program. The expectation is that the program will not exit until the task in the <strong>ThreadPoolExecutor</strong> has been completed.</p>
+<p>Firstly, we can define a task that takes a moment to complete. A message is reported when the task is started, then the task blocks for two seconds to simulate computational effort then prints a final message to show that the task is done.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in the thread pool
+def task():
+    print('Task started')
+    sleep(2)
+    print('Task done')
+</code></pre>
+<p>Next, we can create a <strong>ThreadPoolExecutor</strong> and issue the task.</p>
+<pre><code>...
+# create the thread pool
+tpe = ThreadPoolExecutor(10)
+# issue the task
+future = tpe.submit(task)
+</code></pre>
+<p>The main thread will wait a brief moment, report a final message and then attempt to exit.</p>
+<pre><code>...
+# wait a moment
+sleep(0.5)
+# attempt to exit the program...
+print('Main done.')</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of running task stops main from exiting
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+
+# task executed in the thread pool
+def task():
+    print('Task started')
+    sleep(2)
+    print('Task done')
+
+# create the thread pool
+tpe = ThreadPoolExecutor(10)
+# issue the task
+future = tpe.submit(task)
+# wait a moment
+sleep(0.5)
+# attempt to exit the program...
+print('Main done.')
+</code></pre>
+<p>Running the program first creates a <strong>ThreadPoolExecutor</strong> with 10 worker threads.</p>
+<p>Next, the task is issued to the <strong>ThreadPoolExecutor</strong> and a <strong>Future</strong> object is returned.</p>
+<p>The main thread then blocks for half a second.</p>
+<p>The task begins running, reports a message, then sleeps.</p>
+<p>The main thread continues running and reports a final message before attempting to exit.</p>
+<p>The Python interpreter joins the threads in the <strong>ThreadPoolExecutor</strong>, blocking the program from exiting.</p>
+<p>The task in the <strong>ThreadPoolExecutor</strong> resumes and reports a final message for exiting.</p>
+<p>Finally, the threads in the <strong>ThreadPoolExecutor</strong> are terminated, and the program exits.</p>
+<p>This highlights how a task running in the <strong>ThreadPoolExecutor</strong> prevents a normal exit from Python.</p>
+<pre><code>Task started
+Main done.
+Task done</code></pre>
+<h3>Running Task Prevents Exit on Underhanded Exception</h3>
+<p>We can explore the case where an unhandled exception in the main thread occurs, but the program is not able to exit because there are running tasks in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>In this example, we will update the above example to raise an <strong>Exception</strong> that is not handled. The expectation is that the exception causes the main thread to terminate but the program will not exit because of the running task in the <strong>ThreadPoolExecutor</strong>.</p>
+<pre><code>...
+# fail with a raised exception
+raise Exception('something bad happened')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of running task stops main from exiting when an exception is raised
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+
+# task executed in the thread pool
+def task():
+    print('Task started')
+    sleep(2)
+    print('Task done')
+
+# create the thread pool
+tpe = ThreadPoolExecutor(10)
+# issue the task
+future = tpe.submit(task)
+# wait a moment
+sleep(0.5)
+# fail with a raised exception
+raise Exception('something bad happened')
+</code></pre>
+<p>Running the program first creates a <strong>ThreadPoolExecutor</strong> with 10 worker threads.</p>
+<p>Next, the task is issued to the ThreadPoolExecutor and a <strong>Future</strong> object is returned.</p>
+<p>The main thread then blocks for half a second.</p>
+<p>The task begins running, reports a message, then sleeps.</p>
+<p>The main thread continues running and raises an exception. The exception is not handled and terminates the main thread and details are reported.</p>
+<p>The Python interpreter joins the threads in the <strong>ThreadPoolExecutor</strong>, blocking the program from exiting.</p>
+<p>The task in the <strong>ThreadPoolExecutor</strong> resumes and reports a final message before exiting.</p>
+<p>Finally, the threads in the <strong>ThreadPoolExecutor</strong> are terminated, and the program exits.</p>
+<p>This highlights how a task running in the <strong>ThreadPoolExecutor</strong> prevents Python from exiting when an unhandled exception is raised.</p>
+<pre><code>Task started
+Traceback (most recent call last):
+  ..., in &lt;module&gt;
+    raise Exception('something bad happened')
+Exception: something bad happened
+Task done
+</code></pre>
+<h3>Running Task Prevents Exit via sys.exit()</h3>
+<p>We can explore the case where we attempt to explicitly exit the Python interpreter via a call to the <a href="https://docs.python.org/3/library/sys.html#sys.exit"><strong>sys.exit()</strong> function</a> while tasks are still running in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>If you are new to terminating a program with <strong>sys.exit()</strong>, see the tutorial:</p>
+<ul>
+<li><a href="../exit-process/">Exit a Process with sys.exit() in Python</a></li>
+</ul>
+<p>In this example, we update the above example to call the <strong>sys.exit()</strong> function from the main thread in an effort to immediately exit the program.</p>
+<pre><code>...
+# attempt to exit
+sys.exit(0)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of running task stops main from exiting when calling sys.exit()
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+import sys
+
+# task executed in the thread pool
+def task():
+    print('Task started')
+    sleep(2)
+    print('Task done')
+
+# create the thread pool
+tpe = ThreadPoolExecutor(10)
+# issue the task
+future = tpe.submit(task)
+# wait a moment
+sleep(0.5)
+# attempt to exit
+sys.exit(0)
+</code></pre>
+<p>Running the program first creates a <strong>ThreadPoolExecutor</strong> with 10 worker threads.</p>
+<p>Next, the task is issued to the <strong>ThreadPoolExecutor</strong> and a <strong>Future</strong> object is returned.</p>
+<p>The main thread then blocks for half a second.</p>
+<p>The task begins running, reports a message, then sleeps.</p>
+<p>The main thread continues running and attempts to exit with a call to <strong>sys.exit()</strong>. The main thread is then terminated.</p>
+<p>The Python interpreter joins the threads in the <strong>ThreadPoolExecutor</strong>, blocking the program from exiting.</p>
+<p>The task in the <strong>ThreadPoolExecutor</strong> resumes and reports a final message before exiting.</p>
+<p>Finally, the threads in the <strong>ThreadPoolExecutor</strong> are terminated, and the program exits.</p>
+<p>This highlights how a task running in the <strong>ThreadPoolExecutor</strong> prevents Python from exiting when the main thread attempts to explicitly exit via a call to <strong>sys.exit()</strong>.</p>
+<pre><code>Task started
+Task done</code></pre>
+<h2>Example of No Running Tasks Not Stopping the Program From Exiting</h2>
+<p>We can explore the case where the Python interpreter will exit immediately if the <strong>ThreadPoolExecutor</strong> is not shut down and there are no running tasks.</p>
+<p>In this example, we will start a <strong>ThreadPoolExecutor</strong>, issue a task that takes a moment, wait for the task to complete, then attempt to exit the program without shutting down the <strong>ThreadPoolExecutor</strong>. The expectation is that we can exit immediately because there are no tasks running.</p>
+<p>We can update the above example to explicitly wait for the issued task to complete before attempting to exit the program.</p>
+<pre><code>...
+# wait for the task to complete
+_ = future.result()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of no running tasks does not stop main from exiting
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+
+# task executed in the thread pool
+def task():
+    print('Task started')
+    sleep(2)
+    print('Task done')
+
+# create the thread pool
+tpe = ThreadPoolExecutor(10)
+# issue the task
+future = tpe.submit(task)
+# wait for the task to complete
+_ = future.result()
+# attempt to exiting the program...
+print('Main done.')
+</code></pre>
+<p>Running the program first creates a <strong>ThreadPoolExecutor</strong> with 10 worker threads.</p>
+<p>Next, the task is issued to the <strong>ThreadPoolExecutor</strong> and a <strong>Future</strong> object is returned.</p>
+<p>The main thread then blocks, waiting for the task to complete.</p>
+<p>The task begins running, reports a message, then sleeps.</p>
+<p>The task in the <strong>ThreadPoolExecutor</strong> resumes and reports a final message for exiting.</p>
+<p>A final message is reported in the main thread and the program attempts to exit.</p>
+<p>The Python interpreter joins the threads in the <strong>ThreadPoolExecutor</strong>. All threads in the <strong>ThreadPoolExecutor</strong> are terminated and the program exits immediately.</p>
+<p>This highlights how the <strong>ThreadPoolExecutor</strong> does not stop the program from exiting when there are no running tasks.</p>
+<pre><code>Task started
+Task done
+Main done.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know what happens if we forget or are unable to shut down the <strong>ThreadPoolExecutor</strong>.</p>
+</main>
+</body>
+</html>

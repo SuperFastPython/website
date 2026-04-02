@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Share Numpy Array Between Processes Using Global Variable – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Share Numpy Array Between Processes Using Global Variable</h1>
+<div class="post-meta">June 4, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>share numpy arrays with child processes</strong> by inheriting global variables.</p>
+<p>In this tutorial, you will discover how to share a numpy array with child processes by variable inheritance.</p>
+<p>Let's get started.</p>
+<h2>Need to Share Numpy Array Between Processes</h2>
+<p>Python offers process-based concurrency via the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a>.</p>
+<p>Process-based concurrency is appropriate for those tasks that are CPU-bound, as opposed to thread-based concurrency in Python which is generally suited to IO-bound tasks given the presence of the Global Interpreter Lock (GIL).</p>
+<p>You can learn more about process-based concurrency and the multiprocessing module in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing: The Complete Guide</a></li>
+</ul>
+<p>Consider the situation where we need to share numpy arrays between processes.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>Data is loaded as an array in one process and analyzed differently in different subprocesses.</li>
+<li>Many child processes load small data as arrays that are sent to a parent process for handling.</li>
+<li>Data arrays are loaded in the parent process and processed in a suite of child processes.</li>
+</ul>
+<p>Sharing Python objects and data between processes is slow.</p>
+<p>This is because any data, like numpy arrays, shared between processes must be transmitted using inter-process communication (ICP) requiring the data first be pickled by the sender and then unpickled by the receiver.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>This means that if we share numpy arrays between processes, it assumes that we receive some benefit, such as a speedup, that overcomes the slow speed of data transmission.</p>
+<p>For example, it may be the case that the arrays are relatively small and fast to transmit, whereas the computation performed on each array is slow and can benefit from being performed in separate processes.</p>
+<p>Alternatively, preparing the array may be computationally expensive and benefit from being performed in a separate process, and once prepared, the arrays are small and fast to transmit to another process that requires them.</p>
+<p><strong>Given these situations, how can we share data between Processes in Python?</strong></p>
+<h2>How to Share a Numpy Array Between Processes via a Global Variable</h2>
+<p>One way to share a numpy array with other processes is via a global variable.</p>
+<p>That is, a process can load or create a numpy array, store it in a global variable, and other processes can access it directly.</p>
+<p>The benefit of this approach is that it is really fast.</p>
+<p>It can be up to 34x faster than sending the array between processes using other methods, such as a function argument.</p>
+<p>You can learn more about this approach to sharing data between processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-inherit-vs-sending-data/">Inheriting is 34x Faster Than Sending Data Between Processes in Python</a></li>
+</ul>
+<p>There are some limitations to this approach though, they are:</p>
+<ol>
+<li>The array must be stored in a global variable by a parent process.</li>
+<li>The array can only be accessed by child processes.</li>
+<li>Child processes must be created using the 'fork' start method.</li>
+<li>Changes to the array made by child processes will not be reflected in each other or in the parent process.</li>
+</ol>
+<p>Let's consider these concerns in detail.</p>
+<p>A python program can declare an explicit global variable using the '<strong>global</strong>' keyword.</p>
+<p>For example:</p>
+<pre><code>...
+# declare the global variable
+global data</code></pre>
+<p>This is not needed in the parent process when preparing the numpy array, but may be needed in the function executed in the child process to ensure that the program is referred to the inherited global variable and not a newly created local variable.</p>
+<p>This is called inheriting a global variable.</p>
+<p>You can learn more about inheriting global variables in child processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-inherit-global-variables-in-python/">Multiprocessing Inherit Global Variables in Python</a></li>
+</ul>
+<p>Child processes can be created either by spawning a new instance of the Python interpreter or by forking an existing instance of the Python interpreter. Spawning is the current default on Windows and macOS, whereas forking is the default on Linux.</p>
+<p>We can explicitly set the method used to start child processes via the <strong>multiprocessing.set_start_method()</strong> function and specify the method as a string, such as 'fork'.</p>
+<p>For example:</p>
+<pre><code>...
+# ensure we are using fork start method
+set_start_method('fork')</code></pre>
+<p>The fork start method is not supported on Windows at the time of writing.</p>
+<p>You can learn more about setting the start method used for creating child processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-start-method/">Multiprocessing Start Methods</a></li>
+</ul>
+<p>The child process will inherit a copy of all global variables from the parent process.</p>
+<p>Because they are a copy, any changes made to the global variable in the child process will only be available to the child process. Similarly, any changes to the global variable made in the parent process after the child processes are created will not be reflected in the child processes.</p>
+<p>As such, this approach to sharing an array between processes is appropriate in certain situations, such as:</p>
+<ol>
+<li>The array is large, but the machine can afford to store multiple copies in memory at the same time.</li>
+<li>Child processes compute something using the array, but changes to the array itself are not required in the parent process or other processes.</li>
+</ol>
+<p>A common example that may be appropriate for this approach would be where one or more arrays are prepared or loaded and a suite of computationally expensive statistics needs to be calculated on each. Each statistic or set of statistics can be calculated using a copy of the array in a separate process.</p>
+<p>Now that we know how to share a numpy array between processes by inheriting it, let's look at a worked example.</p>
+<h2>Example of Sharing a Numpy Array as a Global Variable</h2>
+<p>We can explore how to share a numpy array as an inherited global variable with child processes.</p>
+<p>In this example, we will create a modestly sized numpy array in a parent process and store it as a global variable. We will then start a child process using the fork start method and have it access the inherited numpy array.</p>
+<p>Firstly, we can define a task to be executed in a child process.</p>
+<p>In this case, the task does not take any arguments. Instead, it declares an inherited global variable, then accesses a portion of it directly.</p>
+<p>It then changes the contents of the array, by assigning all values to zero and confirming that the change took effect.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task():
+    # declare the global variable
+    global data
+    # check some data in the array
+    print(data[:5,:5])
+    # change data in the array
+    data.fill(0.0)
+    # confirm the data was changed
+    print(data[:5,:5])
+</code></pre>
+<p>Next, we can set the start method to fork.</p>
+<pre><code>...
+# ensure we are using fork start method
+set_start_method('fork')</code></pre>
+<p>We can then create a modestly sized numpy array, stored in a variable.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000
+# create the numpy array
+data = ones((n,n))</code></pre>
+<p>We can then create a child process, configured to execute our <strong>task()</strong> function, and then start the process.</p>
+<p>This will make a copy of the parent process, including the numpy array stored in the '<strong>data</strong>' variable.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task)
+# start the child process
+child.start()</code></pre>
+<p>You can learn more about running a function in a child process in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<p>Finally, we can wait for the child process to terminate and then report the contents of the array.</p>
+<pre><code>...
+# wait for the child process to complete
+child.join()
+# check some data in the array
+print(data[:5,:5])</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<p>Note, this example may not run on Windows as it requires support for the 'fork' start method.</p>
+<pre><code># share a numpy array as a global variable
+from multiprocessing import set_start_method
+from multiprocessing import Process
+from numpy import ones
+from numpy import zeros
+
+# task executed in a child process
+def task():
+    # declare the global variable
+    global data
+    # check some data in the array
+    print(data[:5,:5])
+    # change data in the array
+    data.fill(0.0)
+    # confirm the data was changed
+    print(data[:5,:5])
+
+# protect the entry point
+if __name__ == '__main__':
+    # ensure we are using fork start method
+    set_start_method('fork')
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,n))
+    # create a child process
+    child = Process(target=task)
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check some data in the array
+    print(data[:5,:5])
+</code></pre>
+<p>Running the example first sets the 'fork' start method for creating child processes.</p>
+<p>Next, the numpy array is created and initialized to the value.</p>
+<p>The child process is then created and started, and the main process blocks until it is terminated.</p>
+<p>A forked copy of the parent process is created and runs the <strong>task()</strong> function. The inherited global variable is declared and then accessed, reporting a small subset of the data.</p>
+<p>This confirms that the array was inherited correctly and contains the data initialized in the parent process.</p>
+<p>The child process then fills the array with zero values and accesses them to confirm the data was changed.</p>
+<p>The child process terminates and the main process then resumes. It reports the contents of a small portion of the array, confirming that the data change made in the child process was not propagated to the parent process.</p>
+<p>This highlights how to share a numpy array with child processes by inheritance and that changes made in the child process to the inherited array do not propagate.</p>
+<pre><code>[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+[[0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]]
+[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share a numpy array with child processes by variable inheritance.</p>
+</main>
+</body>
+</html>

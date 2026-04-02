@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Check PIDs and Thread Names in the ProcessPoolExecutor – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Check PIDs and Thread Names in the ProcessPoolExecutor</h1>
+<div class="post-meta">January 21, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>The <a href="../processpoolexecutor-in-python/"><strong>ProcessPoolExecutor</strong> in Python</a> creates <strong>internal processes and threads</strong>.</p>
+<p>In this tutorial you will discover how to check the ids and names of processes and threads created in Python process pools.</p>
+<p>Let's get started.</p>
+<h2 id="process-identifier-and-main-thread">Process Identifier and Main Thread</h2>
+<p>When you run a Python program you will create one Python process with one thread.</p>
+<p>The process has a process identifier or a pid.</p>
+<p>This can be checked for the pid for your Python program via the <strong>os.get_pid() </strong>function.</p>
+<p>For example, we can report the pid for our program as follows:</p>
+<pre><code>...
+# report the process
+print(f'Main pid: {getpid()}')</code></pre>
+<p>Each process is created with one thread to execute the instructions, called the "<strong>MainThread</strong>".</p>
+<p>We can access the current thread context via the <strong>threading.current_thread() </strong>function.</p>
+<p>The <strong>threading.current_thread()</strong> function returns a <strong>threading.Thread</strong> instance for the current working thread, on which we can access details like the (typically unique) name of the thread via the name property.</p>
+<p>For example, we can report the name of the current thread in our Python program (the main thread) as follows:</p>
+<pre><code>...
+# report the thread
+print(f'Main thread: {current_thread().name}')</code></pre>
+<p>Tying this together, the complete example of checking the pid and thread name in a Python program is as follows.</p>
+<pre><code># SuperFastPython.com
+# check the pid and thread names of a program
+from os import getpid
+from threading import current_thread
+
+# entry point
+if __name__ == '__main__':
+     # report the process
+    print(f'Main pid: {getpid()}')
+    # report the thread
+    print(f'Main thread: {current_thread().name}')
+</code></pre>
+<p>Running the example reports the process id and thread name for our program.</p>
+<p>In this case, we can see that the process id was 47791 and the name of the main thread was <strong>MainThread</strong>.</p>
+<p>Note, you will have a different pid than the one listed below, and likely a different pid each time the program is run. This is because the pid is allocated by your operating system.</p>
+<pre><code>Main pid: 47791
+Main thread: MainThread</code></pre>
+<h2 id="processpoolexecutor-worker-processes-and-main-threads">ProcessPoolExecutor Worker Processes and Main Threads</h2>
+<p>The <strong>ProcessPoolExecutor</strong> will create worker processes, by design.</p>
+<p>Each worker process will also have its own main thread.</p>
+<p>We can define a target task function that will report the pid and name of the thread it is running in.</p>
+<p>We would expect each worker process to have a separate pid from the main process and perhaps the same thread name, given that all main threads for each process are named "<strong>MainThread</strong>".</p>
+<p>We can also check the parent process for each worker process via the <strong>os.get_ppid()</strong> function.</p>
+<pre><code># target task function
+def work(value):
+    sleep(0.1)
+    # report the worker process details
+    print(f'Worker pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+</code></pre>
+<p>We can then create a process pool with two worker processes and use map() on the process pool to submit two tasks to report their details.</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor(2) as executor:
+    # submit some tasks
+    _ = executor.map(work, range(2))
+</code></pre>
+<p>Tying this together, the complete example of reporting the details of worker processes in the <strong>ProcessPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# report pid and thread name for each worker process in the process pool
+from time import sleep
+from os import getpid
+from os import getppid
+from threading import current_thread
+from concurrent.futures import ProcessPoolExecutor
+
+# target task function
+def work(value):
+    sleep(0.1)
+    # report the worker process details
+    print(f'Worker pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+
+# entry point
+if __name__ == '__main__':
+    # report the main process details
+    print(f'Main pid={getpid()}, ppid={getppid()} thread={current_thread().name}')
+    # create a process pool
+    with ProcessPoolExecutor(2) as executor:
+        # submit some tasks
+        _ = executor.map(work, range(2))
+</code></pre>
+<p>Running the example first reports the details of the main process and we can see it has a process id, a separate process id for each worker and a main thread.</p>
+<p>We then report the details for each worker process.</p>
+<p>We can see that each worker has a different pid as we expected, and that they both have the same parent, which is the main process in which we created the process pool.</p>
+<p>Finally, we can see that each process has a main thread.</p>
+<pre><code>Main pid=47838, ppid=472 thread=MainThread
+Worker pid=47840, ppid=47838 thread=MainThread
+Worker pid=47841, ppid=47838 thread=MainThread
+</code></pre>
+<h2 id="processpoolexecutor-creates-internal-helper-threads">ProcessPoolExecutor Creates Internal Helper Threads</h2>
+<p>The <strong>ProcessPoolExecutor</strong> will also create two internal worker threads used by the process pool for the internal maintenance of tasks.</p>
+<p>We can see this if we report all threads that exist within the main process.</p>
+<p>This can be achieved by using the <strong>threading.enumerate()</strong> function that will return a <strong>threading.Thread</strong> instance for each thread in the process.</p>
+<p>For example:</p>
+<pre><code>...
+# report all thread names
+for thread in threading.enumerate():
+    print(thread.name)
+</code></pre>
+<p>We can create a process pool and then submit some tasks, to ensure that the worker processes are created and that the internal worker threads are created.</p>
+<p>If we report all threads in the main process after submitting some tasks, we would expect to see three threads, the main thread and two internal helper threads.</p>
+<p>Tying this together, the complete example of inspecting the <strong>ProcessPoolExecutor</strong> internal helper threads is listed below.</p>
+</main>
+</body>
+</html>

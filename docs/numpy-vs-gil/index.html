@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NumPy vs the Global Interpreter Lock (GIL) – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>NumPy vs the Global Interpreter Lock (GIL)</h1>
+<div class="post-meta">May 9, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>parallelize numpy tasks</strong> with threads in Python because most numpy functions release the <strong>global interpreter lock</strong> or GIL.</p>
+<p>In this tutorial, you will discover that most numpy array functions will release the global interpreter lock.</p>
+<p>Let's get started.</p>
+<h2>Numpy and the Global Interpreter Lock</h2>
+<p>NumPy is an array library in Python.</p>
+<p>Data from many domains can be represented using arrays of numbers, such as image data and machine learning data.</p>
+<p>Arrays can be treated like mathematical vectors and matrices. As such, it is common to perform mathematical operations on numpy arrays.</p>
+<p>We may need to perform operations on many numpy arrays (e.g. hundreds or thousands of arrays) or on numpy arrays that are very large (e.g. gigabytes in size). These operations can be performed efficiently using numpy, via vectorization, e.g. operations applied to an entire array or portion of an array at once.</p>
+<p>If we are working with many arrays, we may want to perform numpy array operations in parallel using threads.</p>
+<p>Generally, Python only allows one thread to run at a time, given the Global Interpreter Lock or GIL. This lock is released in some circumstances, such as performing a computationally intensive operation in a third-party c-library.</p>
+<p>Numpy calls C library functions when performing array operations. This raises an important question when it comes to parallelizing Python programs that use numpy:</p>
+<p><strong>Does numpy release the GIL when performing operations on arrays?</strong></p>
+<h2>What is the Global Interpreter Lock (GIL)</h2>
+<p>The internals of the Python interpreter are not thread-safe.</p>
+<p>This means that there can be race conditions between multiple threads within a single Python process, potentially resulting in unexpected behavior and corrupt data.</p>
+<p>As such, the Python interpreter makes use of a <a href="https://en.wikipedia.org/wiki/Global_interpreter_lock">Global Interpreter Lock</a>, or GIL for short, to make instructions executed by the Python interpreter (called Python bytecodes) thread-safe.</p>
+<p>The GIL is a programming pattern in the reference Python interpreter called CPython, although similar locks exist in other interpreted languages, such as Ruby. It is a lock in the sense that it uses a synchronization primitive called a mutual exclusion or mutex lock to ensure that only one thread of execution can execute instructions at a time within a Python process.</p>
+<blockquote>
+<p>In CPython, the global interpreter lock, or GIL, is a mutex that protects access to Python objects, preventing multiple threads from executing Python bytecodes at once. The GIL prevents race conditions and ensures thread safety.</p>
+<cite>-- <a href="https://wiki.python.org/moin/GlobalInterpreterLock">Global Interpreter Lock, Python Wiki</a>.</cite></blockquote>
+<p>The effect of the GIL is that whenever a thread within a Python program wants to run, it must acquire the lock before executing. This is not a problem for most Python programs that have a single thread of execution, called the main thread.</p>
+<p>It can become a problem in multi-threaded Python programs, such as programs that make use of the threading.Thread class, the multiprocessing.pool.ThreadPool class, or the concurrent.futures.ThreadPoolExecutor class.</p>
+<p>The lock is explicitly released and re-acquired periodically by each Python thread, specifically after approximately every 100 bytecode instructions executed within the interpreter. This allows other threads within the Python process to run, if present.</p>
+<p>The lock is also released in some circumstances, allowing other threads to run.</p>
+<p>An important example is when a thread performs an I/O operation, such as reading or writing from an external resource like a file, socket, or device.</p>
+<p>The lock is also explicitly released by some third-party Python libraries when performing computationally expensive operations in C-code.</p>
+<p>The GIL is a simple and effective solution to thread safety in the Python interpreter, but it has the major downside that full multithreading is not supported by Python.</p>
+<h2>NumPy Is Not Limited by the GIL</h2>
+<p>Numpy will release the GIL when performing most operations on arrays.</p>
+<blockquote>
+<p>... Luckily, many potentially blocking or long-running operations, such as I/O, image processing, and NumPy number crunching, happen outside the GIL.</p>
+<cite>-- <a href="https://wiki.python.org/moin/GlobalInterpreterLock">Python Global Interpreter Lock, Python Wiki</a>.</cite></blockquote>
+<p>This includes many operations with numpy arrays, such as:</p>
+<ul>
+<li>Methods on the ndarray objects, like <strong>sum()</strong></li>
+<li>Operators such as +, -, *, / and more.</li>
+<li>Math functions such as <strong>power()</strong>, <strong>sqrt()</strong> and more.</li>
+</ul>
+<p>The API documentation suggests that generally, all operations on arrays will release the GIL, except those that are operating upon arrays of Python objects.</p>
+<blockquote>
+<p>The exceptions are few but important: while a thread is waiting for IO [...] python releases the GIL so other threads can run. And, more importantly for us, while numpy is doing an array operation, python also releases the GIL.</p>
+<cite>-- <a href="https://scipy-cookbook.readthedocs.io/items/ParallelProgramming.html">Parallel Programming with numpy and scipy</a></cite></blockquote>
+<h2>How to Find NumPy Functions That Release the GIL</h2>
+<p>Not all numpy functions will release the GIL.</p>
+<p>Numpy must be compiled on your system with support for releasing the GIL. This can be achieved by setting the <strong>NPY_ALLOW_THREADS</strong> constant when configuring numpy during compilation.</p>
+<blockquote>
+<p>If NPY_ALLOW_THREADS is defined during compilation, then as long as no object arrays are involved, the Python Global Interpreter Lock (GIL) is released prior to calling the loops.</p>
+<cite>-- <a href="https://numpy.org/doc/stable/dev/internals.code-explanations.html">NumPy C code explanations</a></cite></blockquote>
+<p>The good news is that this is almost always performed automatically when configuring, compiling, and installing numpy on modern multi-core systems, running modern operating systems such as Windows, MacOS, and Linux.</p>
+<p>The <strong>NPY_ALLOW_THREADS</strong> constant is used throughout the C code used by numpy for array operations.</p>
+<p>In fact, there is a hierarchy of related constants for fine-grained control over when the GIL can and should be released, with additional constants such as <strong>WITH_THREADS</strong> and <strong>NPY_NOSMP</strong>.</p>
+<blockquote>
+<p>When calling out to a compiled function that may take time to compute (and does not have side-effects for other threads like updated global variables), the GIL should be released so that other Python threads can run while the time-consuming calculations are performed. This can be accomplished using two groups of macros. Typically, if one macro in a group is used in a code block, all of them must be used in the same code block. Currently, NPY_ALLOW_THREADS is defined to the python-defined WITH_THREADS constant unless the environment variable NPY_NOSMP is set in which case NPY_ALLOW_THREADS is defined to be 0.</p>
+<cite>-- <a href="https://numpy.org/doc/stable/dev/internals.code-explanations.html">NumPy C code explanations</a></cite></blockquote>
+<p>You can search the numpy C code base for the constants to confirm that the GIL will be released for a given array operation.</p>
+<p>Alternatively, can develop a small program that performs the same operation in one, two, three, and more threads and see if there is a speed-up for the operation that you need to use.</p>
+<h2>NumPy Functions Can Run in Parallel with Python Threads</h2>
+<p>Numpy will release the GIL for most array operations on most systems.</p>
+<p>The implication of this is that we can use threads to parallelize our programs that make use of numpy arrays.</p>
+<p>This can offer a significant speed-up, especially in programs where we need to perform the same mathematical operation on many arrays.</p>
+<p>This also impacts the many open-source libraries that make use of numpy arrays, such as scipy, scikit-learn, pandas, and more.</p>
+<p>It also means that we don't have to use multiprocessing and process-based concurrency to achieve parallelism with numpy.</p>
+<p>This is critical, as using process-based parallelism with numpy arrays can be painfully slow in those cases where we need to transmit arrays between processes, up to 4x slower in some cases. This is because each array must be pickled before being transmitted and unpickled at the other end. The cost of this inter-process communication typically overwhelms the benefits of parallel processing with processes.</p>
+<p>For more about the cost of transferring data between processes, see the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>Python processes are also significantly slower to start than threads, up to 40x slower in some cases. This too can add unwanted overhead when using process-based concurrency.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../processes-slower-than-threads/">Processes Are About 40x Slower Than Threads in Python</a></li>
+</ul>
+<h2>Warning About Multithreaded Numpy Tasks</h2>
+<p>Python will still acquire and release the GIL in tasks executed by Python threads.</p>
+<p>This means that we should perform as much of our tasks with numpy arrays within numpy functions. For example, using vectorized operations and the most specific versions of numpy functions.</p>
+<p>For example, use an SVD function via <strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.svd.html">numpy.linalg.svd()</a></strong> rather than performing the sequence of SVD calculations step by step on the arrays.</p>
+<p>We may lose some benefits of parallelism in tasks executed by threads that involve a sequence of math functions on a numpy array.</p>
+<p>For example, we can make this clear with a small example:</p>
+<pre><code>...
+# add arrays
+b = a + c
+# calculate square root
+result = numpy.sqrt(b)</code></pre>
+<p>In the above case, the GIL would be released for the array addition, then acquired again, then released again for the array square root, then acquired again.</p>
+<p>For example:</p>
+<pre><code>...
+# GIL is currently held...
+# RELEASE GIL
+b = a + c
+# ACQUIRE GIL
+# RELEASE GIL
+result = numpy.sqrt(b)
+# ACQUIRE GIL</code></pre>
+<p>Each time the GIL is held, other threads that require it cannot run.</p>
+<p>Often there is little we can do about this, other than keep it in mind when designing and optimizing our multithreaded tasks.</p>
+<h2>Takeaways</h2>
+<p>You now know that most numpy array functions will release the global interpreter lock.</p>
+</main>
+</body>
+</html>

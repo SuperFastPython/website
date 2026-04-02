@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread Lock Overhead in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread Lock Overhead in Python</h1>
+<div class="post-meta">April 21, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>The <strong>lock overhead</strong> can be about 3.19 times to 4.40 times slower than not using a lock.</p>
+<p>In this tutorial you will discover how to <strong>calculate lock overhead in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Problem of Lock Overhead</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Mutual_exclusion">mutual exclusion lock</a> or mutex lock is a synchronization primitive intended to prevent a race condition.</p>
+<p>A mutex lock can be used to ensure that only one thread at a time executes a critical section of code at a time, while all other threads trying to execute the same code must wait until the currently executing thread is finished with the critical section and releases the lock.</p>
+<p>Python provides a mutual exclusion lock via the <strong>threading.Lock</strong> class.</p>
+<p>An instance of the lock can be created and then acquired by threads before accessing a critical section, and released after the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = Lock()
+# acquire the lock
+lock.acquire()
+# critical section
+# ...
+# release the lock
+lock.release()</code></pre>
+<p>Only one thread can have the lock at any time. If a thread does not release an acquired lock, it cannot be acquired again.</p>
+<p>The thread attempting to acquire the lock will block until the lock is acquired, such as if another thread currently holds the lock then releases it.</p>
+<p>We can also use the lock via the context manager. This will allow the critical section to be a block within the usage of the lock and for the lock to be released automatically once the block has completed.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = Lock()
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>You can learn more about mutex locks in the tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>A problem with using a mutex lock is that it adds a computational overhead.</p>
+<p>That is, using a lock can make code slower than not using the lock.</p>
+<p>This is referred to as lock overhead, or the computational overhead for protecting a critical section using a mutex lock.</p>
+<p><strong>What is the computational overhead for using a lock in Python?</strong></p>
+<h2>How to Calculate Lock Overhead</h2>
+<p>The computational overhead for using a lock can be calculated by comparing the same code with and without a mutex lock.</p>
+<p>This requires a baseline task with a critical section executed in a loop without a lock. The time to complete this task can be determined and used as a point of reference.</p>
+<ul><li><strong>Baseline</strong>: Time taken to execute a baseline task without a lock.</li></ul>
+<p>The baseline task can then be updated so that the critical section is protected by a mutex lock each iteration.</p>
+<ul><li><strong>Protected</strong>: Time taken to execute the baseline task protected by a lock.</li></ul>
+<p>The protected version of the task can then be timed and the result compared to the baseline.</p>
+<p>The difference between timings will provide an indication of the overhead for using a mutex lock.</p>
+<p>That is, the lock overhead can be calculated as the time taken for the protected version of the task minus the time taken for the baseline version of the task.</p>
+<ul><li><strong>Lock Overhead</strong> = Protected - Baseline</li></ul>
+<p>Next, let's define a baseline task.</p>
+<h2>Baseline Without Lock</h2>
+<p>In this section, we will define a baseline program used as a point of reference for calculating the lock overhead.</p>
+<p>The task will involve iterating a loop a large number of times (100 million) and incrementing a variable. We will then time the execution of this task three times and report the average time taken.</p>
+<p>Firstly, we can define the task function to be executed in a <a href="../threading-in-python/">new thread</a>. The task will take the mutex lock as an argument, but will not use it in this case. A local variable is defined and then a loop is performed many times, incrementing the local variable.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task to execute in a new thread
+def task(lock):
+    variable = 0
+    for i in range(100000000):
+        variable += 1
+</code></pre>
+<p>Next, we can define a function that will create the mutex lock, then create and configure the thread to execute our <strong>task()</strong> function. The thread will be started and the function will block until the task is complete.</p>
+<p>The entry() function below implements this.</p>
+<pre><code># create and start thread
+def entry():
+    # create the shared lock
+    lock = Lock()
+    # create the new thread
+    thread = Thread(target=task, args=(lock,))
+    thread.start()
+    # wait for the new thread to terminate
+    thread.join()
+</code></pre>
+<p>So far, we have defined a function to execute in a new thread named <strong>task()</strong> and a function that will create and start the thread to execute our task function named <strong>entry()</strong>.</p>
+<p>We can execute our <strong>entry()</strong> function a number of times, then report the average time it takes for the function to execute.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/timeit.html"><strong>timeit</strong> module</a>, designed to time how long functions take to execute.</p>
+<p>We can use the <a href="https://docs.python.org/3/library/timeit.html#timeit.timeit"><strong>timeit.timeit()</strong> function</a> and specify the function to execute, e.g. <strong>entry()</strong> and the number of times to execute it, in this case 3 times.</p>
+<p>The call to the <strong>entry()</strong> function can be specified as a string to be evaluated, in which case we must also specify where the <strong>entry()</strong> function is defined, e.g. in the main module.</p>
+<p>For example:</p>
+<pre><code>...
+# time the function
+report = timeit('entry()', 'from __main__ import entry', number=3)</code></pre>
+<p>The function will return a time for how long the entry() function took to execute three times in seconds. We can then divide the result by the number of repeats, e.g. 3, to get the average time in seconds.</p>
+<pre><code>...
+print(report / 3)</code></pre>
+<p>Tying this together, the complete baseline example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of mutex lock overhead without the lock
+from timeit import timeit
+from threading import Thread
+from threading import Lock
+
+# task to execute in a new thread
+def task(lock):
+    variable = 0
+    for i in range(100000000):
+        variable += 1
+
+# create and start thread
+def entry():
+    # create the shared lock
+    lock = Lock()
+    # create the new thread
+    thread = Thread(target=task, args=(lock,))
+    thread.start()
+    # wait for the new thread to terminate
+    thread.join()
+
+# time the function
+report = timeit('entry()', 'from __main__ import entry', number=3)
+print(report / 3)
+</code></pre>
+<p>Running the example executes our <strong>entry()</strong> function three times.</p>
+<p>Each execution will create a thread to execute our <strong>task()</strong> function. The <strong>task()</strong> function will iterate 100 million times adding to a local variable then the thread will terminate.</p>
+<p>In this case, we can see that the entry() function took about 4.457 seconds to execute.</p>
+<p>Your results will differ. It will run faster or slower depending on the speed of your computer.<br/>What result did you get, let me know in the comments below.</p>
+<pre><code>4.457686631333334</code></pre>
+<p>Next, let's look at how much slower the task is when we add a mutex lock.</p>
+<h2>Overhead of Lock With acquire() and release()</h2>
+<p>We can calculate the overhead of using a lock via calls to <strong>acquire()</strong> and <strong>release()</strong>.</p>
+<h3>Add Lock To Task Via Acquire/Release</h3>
+<p>The example in the previous section can be updated to make use of the lock within the <strong>task()</strong> function.</p>
+<p>We can pretend that updating the local variable is a critical section, and require that the lock is acquired prior to the critical section, then released after the critical section each loop iteration.</p>
+<pre><code>...
+lock.acquire()
+variable += 1
+lock.release()</code></pre>
+<p>The updated version of the task() function with this change is listed below.</p>
+<pre><code># task to execute in a new thread
+def task(lock):
+    variable = 0
+    for i in range(100000000):
+        lock.acquire()
+        variable += 1
+        lock.release()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of mutex lock overhead using the lock with acquire and release
+from timeit import timeit
+from threading import Thread
+from threading import Lock
+
+# task to execute in a new thread
+def task(lock):
+    variable = 0
+    for i in range(100000000):
+        lock.acquire()
+        variable += 1
+        lock.release()
+
+# create and start thread
+def entry():
+    # create the shared lock
+    lock = Lock()
+    # create the new thread
+    thread = Thread(target=task, args=(lock,))
+    thread.start()
+    # wait for the new thread to terminate
+    thread.join()
+
+# time the function
+report = timeit('entry()', 'from __main__ import entry', number=3)
+print(report / 3)
+</code></pre>
+<p>Running the example executes our <strong>entry()</strong> function three times.</p>
+<p>In this case, the <strong>task() </strong>function that is executed in a new thread each time will acquire the lock then release the lock each iteration, looped 100 million times.</p>
+<p>In this case, we can see that the <strong>entry()</strong> function took about 14.200 seconds to execute when protecting the critical section with a mutex lock.</p>
+<p>Your results will differ. It will run faster or slower depending on the speed of your computer.</p>
+<p>What result did you get? Let me know in the comments below.</p>
+<pre><code>14.200713367333334</code></pre>
+<p>Let's analyze this result.</p>
+<h3>Lock With Acquire/Release vs No Lock</h3>
+<p>As expected, the program is slower when using the lock, e.g. 14.200 seconds, than not using the lock, e.g. 4.457 seconds.</p>
+<p>We can now calculate the lock overhead as the time taken with the lock minus the time taken without the lock.</p>
+<p>For example:</p>
+<ul><li>Lock Overhead = Task With Lock - Task Without Lock</li><li>Lock Overhead = 14.200 - 4.457</li><li>Lock Overhead = 9.743</li></ul>
+<p>That is, this task took 9.743 seconds longer when using the lock. The lock overhead was 9.743.</p>
+<p>We can also calculate the difference as a rate by dividing the time taken with the lock by the time taken without the lock.</p>
+<p>For example:</p>
+<ul><li>Rate Difference = Task With Lock / Task Without Lock</li><li>Rate Difference = 14.200 / 4.457</li><li>Rate Difference = 3.19</li></ul>
+<p>That is, using the program when using the lock was about 3.19 times or 3.19x slower than not using the lock.</p>
+<p>Next, let's explore if using the lock via the context manager has a similar effect on the performance of the task.</p>
+<h2>Overhead of Lock with Context Manager</h2>
+<p>We can update the baseline task to use the mutex lock each iteration via the context manager.</p>
+<h3>Add Lock To Task Via Context Manager</h3>
+<p>This will provide a calculation for the lock overhead for the context manager usage of the lock compared to the manual acquire/release usage of the lock.</p>
+<p>This can be achieved by updating the <strong>task()</strong> function to acquire the lock each iteration via the context manager.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+    variable += 1
+</code></pre>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task to execute in a new thread
+def task(lock):
+    variable = 0
+    for i in range(100000000):
+        # acquire the lock
+        with lock:
+            variable += 1
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of mutex lock overhead using the lock with context manager
+from timeit import timeit
+from threading import Thread
+from threading import Lock
+
+# task to execute in a new thread
+def task(lock):
+    variable = 0
+    for i in range(100000000):
+        # acquire the lock
+        with lock:
+            variable += 1
+
+# create and start thread
+def entry():
+    # create the shared lock
+    lock = Lock()
+    # create the new thread
+    thread = Thread(target=task, args=(lock,))
+    thread.start()
+    # wait for the new thread to terminate
+    thread.join()
+
+# time the function
+report = timeit('entry()', 'from __main__ import entry', number=3)
+print(report / 3)
+</code></pre>
+<p>Running the example executes our <strong>entry()</strong> function three times.</p>
+<p>In this case, the <strong>task()</strong> function that is executed in a new thread each time will acquire the lock then release the lock each iteration using the context manager, looped 100 million times.</p>
+<p>In this case, we can see that the <strong>entry()</strong> function took about 19.593 seconds to execute when protecting the critical section with a mutex lock via a context manager.</p>
+<p>Your results will differ. It will run faster or slower depending on the speed of your computer.<br/>What result did you get, let me know in the comments below.</p>
+<pre><code>19.593936963666668</code></pre>
+<p>Let's analyze this result.</p>
+<h3>Overhead of Lock With Context Manager vs No Lock</h3>
+<p>Not surprisingly, the program is slower to use the lock with a context manager, e.g. 19.593 seconds, than to perform the task without the lock, e.g. 4.457 seconds.</p>
+<p>We can calculate the lock overhead for using the lock with the context manager compared to not using the lock.</p>
+<p>For example:</p>
+<ul><li>Lock Overhead = Task With Lock - Task Without Lock</li><li>Lock Overhead = 19.593 - 4.457</li><li>Lock Overhead = 15.136</li></ul>
+<p>That is, it is about 15.136 seconds slower to complete the task with a lock using the context manager than completing the task without the lock at all.</p>
+<p>We can also calculate the rate difference of using the lock via the context manager compared to the task not using the lock.</p>
+<ul><li>Rate Difference = Task With Lock / Task Without Lock</li><li>Rate Difference = 19.593 / 4.457</li><li>Rate Difference = 4.40</li></ul>
+<p>That is, the program when using the lock via the context manager was about 4.40 times or 4.40x slower than not using the lock at all.</p>
+<h3>Overhead Lock With Context Manager vs Lock With Acquire/Release</h3>
+<p>It is a surprising result because it is slower to use the lock with a context manager, e.g. 19.593 seconds, than to use the lock by manually calling the acquire/release functions, e.g. 14.200.</p>
+<p>We can calculate the overhead of using the lock via context manager vs using the lock via acquire/release.</p>
+<ul><li>Lock Overhead = Lock With Context Manager - Lock With Acquire/Release</li><li>Lock Overhead = 19.593 - 14.201</li><li>Lock Overhead = 5.393</li></ul>
+<p>That is, it was about 5.393 seconds slower in this example to use the context manager than to manually call <strong>acquire()</strong> and <strong>release()</strong>.</p>
+<p>Finally, we can compare the two approaches to using the lock by calculating the rate difference.</p>
+<ul><li>Rate Difference = Lock With Context Manager / Lock With Acquire/Release</li><li>Rate Difference = 19.593 / 14.201</li><li>Rate Difference = 1.38</li></ul>
+<p>That is, the program using the lock via the context manager was about 1.38 times or 1.38x slower than not the same program using the lock via manual calls to acquire/release.</p>
+<h2>Takeaways</h2>
+<p>You now know the computational overhead for using a lock in Python.</p>
+</main>
+</body>
+</html>

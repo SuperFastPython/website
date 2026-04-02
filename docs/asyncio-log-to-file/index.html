@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Log To File – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Log To File</h1>
+<div class="post-meta">January 9, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can <strong>log to a file from an asyncio program </strong>by initializing the Python logging infrastructure and configuring it to use a <strong>FileHandler</strong>.</p>
+<p>In this tutorial, you will discover how to log to a file from an asyncio program.</p>
+<p>Let's get started.</p>
+<h2>Need to Log To File in Asyncio Program</h2>
+<p>Logging is a way of tracking events within a program.</p>
+<p>We may need to log from our asyncio program to a file.</p>
+<p>This is perhaps one of the most common requirements when logging from Python programs generally, and from asyncio programs specifically.</p>
+<p>Unlike logging to standard output, the log file is persisted and can be checked at a later date.</p>
+<p>Logging to a file from Python is a common practice with several compelling reasons:</p>
+<ol>
+<li><strong>Persistent Record Keeping</strong>: Logging to a file allows you to maintain a persistent record of application events and activities. These logs can serve as valuable historical records for auditing, debugging, and troubleshooting.</li>
+<li><strong>Troubleshooting and Debugging</strong>: When issues or errors occur in your application, log files provide detailed information about what went wrong, making it easier to diagnose and debug problems.</li>
+<li><strong>Monitoring and Analysis</strong>: Log files enable real-time or post-analysis of application behavior, performance, and usage patterns. They can help identify bottlenecks, performance degradation, and usage trends.</li>
+<li><strong>Error Tracking</strong>: Logging errors and exceptions to a file allows developers to track and prioritize issues. Error logs provide crucial details like error messages, stack traces, and context information for efficient resolution.</li>
+<li><strong>Performance Monitoring</strong>: Log files can contain performance-related data, including execution times, memory usage, and resource consumption. Monitoring these metrics over time helps identify performance trends and optimization opportunities.</li>
+<li><strong>Debugging in Production</strong>: Logging to a file allows debugging in production environments without affecting end-users. Developers can access log files to investigate issues without interrupting normal operations.</li>
+</ol>
+<p>It provides critical insights into application behavior.</p>
+<p>A log file can be inspected periodically and after a program has run to check for normal operation and identify issues. It can also be inspected after a failure event in order to discover the cause of the problem.</p>
+<p><strong>How can we log to file in asyncio?</strong></p>
+<h2>How to Log to File With Asyncio</h2>
+<p>We can log to a file in an asyncio program by first getting access to the logging infrastructure.</p>
+<p>For example, we can get access to the root logger directly via the <a href="https://docs.python.org/3/library/logging.html#logging.basicConfig"><strong>logging.basicConfig()</strong> module function</a>.</p>
+<pre><code>...
+# get the root logger
+log = logging.basicConfig()</code></pre>
+<p>We can then configure a new <strong>logging.FileHandler</strong> object that specifies the path and filename in which to store log messages.</p>
+<p>For example:</p>
+<pre><code>...
+# create log file handler
+log_fh = logging.FileHandler('application.log')</code></pre>
+<p>This can then be added to the root logger via the <strong>addHandler()</strong> method on the log.</p>
+<pre><code>...
+# add the log file handler to the root logger
+log.addHandler(log_fh)</code></pre>
+<p>Finally, we can configure the level of messages to be logged via the <strong>setLevel()</strong> method on the log, e.g. <strong>DEBUG</strong> messages and above.</p>
+<p>For example:</p>
+<pre><code>...
+# log debug message and above
+log.setLevel(logging.DEBUG)</code></pre>
+<p>We can do all of this in one line in a call to the <strong>logging.basicConfig()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# configure the root logger to log to file with debug level and above
+_ = logging.basicConfig(filename='application.log', level=logging.DEBUG)</code></pre>
+<p>We can then sprinkle log messages throughout our asyncio program.</p>
+<p>For example:</p>
+<pre><code>...
+# log a message
+logger.info('Application has started')</code></pre>
+<p>Next, let's explore how we might log to a file without blocking.</p>
+<h2>How to Log to File With Asyncio Without Blocking</h2>
+<p>Logging from an asyncio program is blocking.</p>
+<p>This means that logging a is a function call that will prevent the asyncio event loop from progressing.</p>
+<p>Often this is not a problem, such as when logging a few messages to standard output.</p>
+<p>It does become a problem when there are a large number of log messages and/or the target of the logging infrastructure is a blocking I/O call, such as storing messages to a file, database, or network connection.</p>
+<blockquote>
+<p>... it should be noted that when logging from async code, network and even file handlers could lead to problems (blocking the event loop) because some logging is done from asyncio internals.</p>
+<cite>-- <a href="https://docs.python.org/3/howto/logging-cookbook.html">Logging Cookbook</a></cite></blockquote>
+<p>Therefore, it is recommended to perform logging from asyncio using a different thread.</p>
+<p>We can log in asyncio programs without blocking using a <strong>QueueHandler</strong> and <strong>QueueListener</strong>.</p>
+<p>A <strong><a href="../thread-queue/">queue.Queue</a></strong> can be created and used to store log messages.</p>
+<p>We can create a <strong><a href="https://docs.python.org/3/library/logging.handlers.html#logging.handlers.QueueHandler">QueueHandler</a></strong> that is configured to use our <strong>Queue</strong> object and store messages in the queue.</p>
+<p>This is a quick function call that will return nearly immediately, assuming the size of the Queue is unbounded in memory (reasonable for most programs).</p>
+<blockquote>
+<p>... attach only a QueueHandler to those loggers which are accessed from performance-critical threads. They simply write to their queue, which can be sized to a large enough capacity or initialized with no upper bound to their size. The write to the queue will typically be accepted quickly</p>
+<cite>-- <a href="https://docs.python.org/3/howto/logging-cookbook.html">Logging Cookbook</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# get the root logger
+log = logging.getLogger()
+# create the shared queue
+que = Queue()
+# add a handler that uses the shared queue
+log.addHandler(QueueHandler(que))</code></pre>
+<p>We can then configure a <strong><a href="https://docs.python.org/3/library/logging.handlers.html#logging.handlers.QueueListener">QueueListener</a></strong> to consume log messages from a shared queue and store them in some way.</p>
+<p>The <strong>QueueListener</strong> takes the shared <strong>Queue</strong> object as an argument, as well as a logging handler object. This could be a <strong>FileHandler</strong>, some network-based handler for storing log messages remotely, or even a simple StreamHandler for reporting messages on standard output.</p>
+<blockquote>
+<p>... QueueListener, which has been designed as the counterpart to QueueHandler. A QueueListener is very simple: it's passed a queue and some handlers, and it fires up an internal thread which listens to its queue for LogRecords sent from QueueHandlers (or any other source of LogRecords, for that matter). The LogRecords are removed from the queue and passed to the handlers for processing.</p>
+<cite>-- <a href="https://docs.python.org/3/howto/logging-cookbook.html">Logging Cookbook</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# create the file handler for logging
+file_handler = FileHandler('asyncio.log')
+# create a listener for messages on the queue
+listener = QueueListener(que, file_handler)</code></pre>
+<p>The <strong>QueueListener</strong> is not connected to the logging infrastructure directly, only the shared queue.</p>
+<p>Internally, it has a daemon worker thread that will consume log messages. As such the <strong>QueueListener</strong> must be started and stopped explicitly.</p>
+<p>For example:</p>
+<pre><code>...
+# start the listener
+listener.start()
+...
+# ensure the listener is closed
+listener.stop()</code></pre>
+<p>In asyncio, we can develop a coroutine that can initialize the logging infrastructure and configure the shared <strong>Queue</strong> and <strong>QueueHandler</strong>. It can then configure the <strong>QueueListener</strong> and manage its life cycle, starting it initially, and stopping it once the task is canceled.</p>
+<p>This helper coroutine can then be run as a background task, which will be canceled automatically when the event loop is terminated.</p>
+<p>You can learn more about when asyncio tasks are automatically canceled in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-when-are-tasks-cancelled/">When Are Asyncio Tasks Canceled</a></li>
+</ul>
+<p>Below is an example of a helper coroutine for initializing non-blocking logging in an asyncio program</p>
+<pre><code># helper coroutine to setup and manage the logger
+async def init_logger():
+    # get the root logger
+    log = logging.getLogger()
+    # create the shared queue
+    que = Queue()
+    # add a handler that uses the shared queue
+    log.addHandler(QueueHandler(que))
+    # log all messages, debug and up
+    log.setLevel(logging.DEBUG)
+    # create the file handler for logging
+    file_handler = FileHandler('asyncio.log')
+    # create a listener for messages on the queue
+    listener = QueueListener(que, file_handler)
+    try:
+        # start the listener
+        listener.start()
+        # report the logger is ready
+        logging.debug(f'Logger has started')
+        # wait forever
+        while True:
+            await asyncio.sleep(60)
+    finally:
+        # report the logger is done
+        logging.debug(f'Logger is shutting down')
+        # ensure the listener is closed
+        listener.stop()
+</code></pre>
+<p>This coroutine can then be run as a background task as the first step in our asyncio program.</p>
+<p>We must suspend the caller in order to allow the background task to run and start the worker thread within the <strong>QueueListener</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# initialize the logger
+logger = asyncio.create_task(init_logger())
+# allow the logger to start
+await asyncio.sleep(0)</code></pre>
+<p>You can learn more about non-blocking logging for asyncio in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-log-blocking/">Log in Asyncio Without Blocking</a></li>
+</ul>
+<p>Now that we know how to log to a file from an asyncio program, let's look at a worked example.</p>
+<h2>Example of Asyncio Logging to File (Blocking)</h2>
+<p>We can explore an example of logging to a file from an asyncio program that is blocking.</p>
+<p>That is, each call to the logging infrastructure blocks the asyncio event loop until the log message is stored in the file. Generally, this is not a concern unless writing to disk is slow or there are an enormous number of log messages.</p>
+<p>We will use our <strong>init_logger()</strong> function developed above.</p>
+<p>It initializes the root logger to log all messages from a <strong>DEBUG</strong> level and up and configures a <strong>FileHandler</strong> to store all logged messages into a file "<strong>asyncio.log</strong>" in the current working directory (same as the script file).</p>
+<pre><code># helper function to setup the logger
+def init_logger():
+    # get the root logger
+    log = logging.getLogger()
+    # log all messages, debug and up
+    log.setLevel(logging.DEBUG)
+    # create the file handler for logging
+    file_handler = FileHandler('asyncio.log')
+    # add the handler to the logger
+    log.addHandler(file_handler)
+</code></pre>
+<p>We can then define a task that takes a unique id and blocks for a random fraction of 5 seconds, logging a message before and after it is blocked.</p>
+<p>This is to ensure we see log messages reported randomly during the operation of our program.</p>
+<p>The <strong>task()</strong> coroutine below implements this.</p>
+<pre><code># task that does work and logs
+async def task(value):
+    # log a message
+    logging.info(f'Task {value} is starting')
+    # simulate doing work
+    await asyncio.sleep(random() * 5)
+    # log a message
+    logging.info(f'Task {value} is done')
+</code></pre>
+<p>We can then define the <strong>main()</strong> coroutine that first initializes the logging infrastructure, and then issues ten tasks using an <strong>asyncio.TaskGroup</strong>.</p>
+<p>This will ensure we have many different tasks logging many messages randomly, all of which are blocking calls.</p>
+<pre><code># main coroutine
+async def main():
+    # initialize the logger
+    init_logger()
+    # log a message
+    logging.info(f'Main is starting')
+    # issue many tasks
+    async with asyncio.TaskGroup() as group:
+        for i in range(10):
+            _ = group.create_task(task(i))
+    # log a message
+    logging.info(f'Main is done')
+</code></pre>
+<p>If you are new to the asyncio.<strong>TaskGroup</strong>, you can learn how to use it in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-taskgroup/">How to use asyncio.TaskGroup</a></li>
+</ul>
+<p>Finally, we can start the asyncio event loop.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of asyncio logging to file, blocking
+import logging
+from logging import FileHandler
+from random import random
+import asyncio
+
+# helper function to setup the logger
+def init_logger():
+    # get the root logger
+    log = logging.getLogger()
+    # log all messages, debug and up
+    log.setLevel(logging.DEBUG)
+    # create the file handler for logging
+    file_handler = FileHandler('asyncio.log')
+    # add the handler to the logger
+    log.addHandler(file_handler)
+
+# task that does work and logs
+async def task(value):
+    # log a message
+    logging.info(f'Task {value} is starting')
+    # simulate doing work
+    await asyncio.sleep(random() * 5)
+    # log a message
+    logging.info(f'Task {value} is done')
+
+# main coroutine
+async def main():
+    # initialize the logger
+    init_logger()
+    # log a message
+    logging.info(f'Main is starting')
+    # issue many tasks
+    async with asyncio.TaskGroup() as group:
+        for i in range(10):
+            _ = group.create_task(task(i))
+    # log a message
+    logging.info(f'Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the asyncio event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and initializes the logger, ensuring that all log messages at a <strong>DEBUG</strong> level and higher are reported and that all messages are stored in the local file "<strong>asyncio.log</strong>" in the current working directory.</p>
+<p>No messages are reported on standard output.</p>
+<p>The <strong>main()</strong> coroutine then logs an initial message.</p>
+<p>A <strong>TaskGroup</strong> is created and 10 instances of the <strong>task()</strong> coroutine are created and issued as tasks. The <strong>main()</strong> coroutine then blocks until all tasks are done.</p>
+<p>The <strong>task()</strong> coroutines run, each reporting its own unique start message, sleeping for a fraction of 5 seconds, then reporting a unique done message.</p>
+<p>Once all tasks are done, the <strong>main()</strong> coroutine resumes and reports a final done message.</p>
+<p>A copy of the contents of the log file "<strong>asyncio.log</strong>" are listed below.</p>
+<p>This highlights how we can log to a file from an asyncio program in a way that will block the event loop each time a record is stored in the file.</p>
+<pre><code>Main is starting
+Task 0 is starting
+Task 1 is starting
+Task 2 is starting
+Task 3 is starting
+Task 4 is starting
+Task 5 is starting
+Task 6 is starting
+Task 7 is starting
+Task 8 is starting
+Task 9 is starting
+Task 2 is done
+Task 3 is done
+Task 9 is done
+Task 8 is done
+Task 6 is done
+Task 0 is done
+Task 1 is done
+Task 5 is done
+Task 7 is done
+Task 4 is done
+Main is done
+</code></pre>
+<p>Next, let's explore how we might update this example so that logging does not block the asyncio event loop.</p>
+<h2>Example of Asyncio Logging to File (Non-Blocking)</h2>
+<p>We can explore an example of non-blocking logging to a file from an asyncio program.</p>
+<p>In this case, we can update the above example to initialize the logging infrastructure using our helper coroutine developed above.</p>
+<p>This helper first creates a shared queue, and then configures a <strong>QueueHandler</strong> so that the act of logging is limited to putting a message in the queue. A <strong>QueueListener</strong> is then created and configured to consume messages from the shared queue in an internal worker thread, then report those messages to a separate handler, in this case, a <strong>FileHandler</strong> that reports log messages to a local file "<strong>asyncio.log</strong>".</p>
+<p>The <strong>init_logger()</strong> coroutine below implements this. It is designed to run as a background task for as long as the program is running, sleeping most of the time. It will be canceled automatically when the event loop is terminated, allowing the QueueListener to be closed correctly and purge any messages that may be on the queue.</p>
+<pre><code># helper coroutine to setup and manage the logger
+async def init_logger():
+    # get the root logger
+    log = logging.getLogger()
+    # create the shared queue
+    que = Queue()
+    # add a handler that uses the shared queue
+    log.addHandler(QueueHandler(que))
+    # log all messages, debug and up
+    log.setLevel(logging.DEBUG)
+    # create the file handler for logging
+    file_handler = FileHandler('asyncio.log')
+    # create a listener for messages on the queue
+    listener = QueueListener(que, file_handler)
+    try:
+        # start the listener
+        listener.start()
+        # report the logger is ready
+        logging.debug(f'Logger has started')
+        # wait forever
+        while True:
+            await asyncio.sleep(60)
+    finally:
+        # report the logger is done
+        logging.debug(f'Logger is shutting down')
+        # ensure the listener is closed
+        listener.stop()
+</code></pre>
+<p>We can then update the <strong>main()</strong> coroutine to schedule the <strong>init_logger()</strong> as a background task and then suspend to allow the task to begin executing.</p>
+<pre><code># main coroutine
+async def main():
+    # initialize the logger
+    logger = asyncio.create_task(init_logger())
+    # allow the logger to start
+    await asyncio.sleep(0)
+    ...
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of asyncio logging to file, non-blocking
+import logging
+from logging import FileHandler
+from logging.handlers import QueueHandler
+from logging.handlers import QueueListener
+from random import random
+from queue import Queue
+import asyncio
+
+# helper coroutine to setup and manage the logger
+async def init_logger():
+    # get the root logger
+    log = logging.getLogger()
+    # create the shared queue
+    que = Queue()
+    # add a handler that uses the shared queue
+    log.addHandler(QueueHandler(que))
+    # log all messages, debug and up
+    log.setLevel(logging.DEBUG)
+    # create the file handler for logging
+    file_handler = FileHandler('asyncio.log')
+    # create a listener for messages on the queue
+    listener = QueueListener(que, file_handler)
+    try:
+        # start the listener
+        listener.start()
+        # report the logger is ready
+        logging.debug(f'Logger has started')
+        # wait forever
+        while True:
+            await asyncio.sleep(60)
+    finally:
+        # report the logger is done
+        logging.debug(f'Logger is shutting down')
+        # ensure the listener is closed
+        listener.stop()
+
+# task that does work and logs
+async def task(value):
+    # log a message
+    logging.info(f'Task {value} is starting')
+    # simulate doing work
+    await asyncio.sleep(random() * 5)
+    # log a message
+    logging.info(f'Task {value} is done')
+
+# main coroutine
+async def main():
+    # initialize the logger
+    logger = asyncio.create_task(init_logger())
+    # allow the logger to start
+    await asyncio.sleep(0)
+    # log a message
+    logging.info(f'Main is starting')
+    # issue many tasks
+    async with asyncio.TaskGroup() as group:
+        for i in range(10):
+            _ = group.create_task(task(i))
+    # log a message
+    logging.info(f'Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the asyncio event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine then schedules the <strong>init_logger()</strong> coroutine as a background task and suspends to allow it to run.</p>
+<p>The <strong>init_logger()</strong> task runs and configures the root logger to log all messages at a <strong>DEBUG</strong> level and above and creates and configures the shared <strong>Queue</strong> and the <strong>QueueHandler</strong> that makes use of it and configures the logging infrastructure to use the <strong>QueueHandler</strong>.</p>
+<p>It then creates the <strong>QueueListener</strong> and starts its internal thread to consume log messages from the shared queue and handle them with a <strong>FileHandler</strong> that stores the log messages in the file "<strong>asyncio.log</strong>". The <strong>init_logger()</strong> task then logs an initial message then runs forever in a loop, suspending itself with calls to sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and logs an initial message.</p>
+<p>A <strong>TaskGroup</strong> is created and 10 instances of the <strong>task()</strong> coroutine are created and issued as tasks. The <strong>main()</strong> coroutine then blocks until all tasks are done.</p>
+<p>The <strong>task()</strong> coroutines run, each reporting its own unique start message, sleeping for a fraction of 5 seconds, then reporting a unique done message.</p>
+<p>The log messages are put into the shared queue via the <strong>QueueHandler</strong> and the calls return almost immediately. The internal thread of the <strong>QueueListener</strong> runs and consumes log messages from the queue and reports them to standard output.</p>
+<p>Once all tasks are done, the <strong>main()</strong> coroutine resumes and reports a final done message.</p>
+<p>A copy of the contents of the "<strong>asyncio.log</strong>" log file is reported below.</p>
+<p>This highlights how we can log to a file from an asyncio program without blocking.</p>
+<pre><code>Logger has started
+Main is starting
+Task 0 is starting
+Task 1 is starting
+Task 2 is starting
+Task 3 is starting
+Task 4 is starting
+Task 5 is starting
+Task 6 is starting
+Task 7 is starting
+Task 8 is starting
+Task 9 is starting
+Task 8 is done
+Task 5 is done
+Task 1 is done
+Task 4 is done
+Task 0 is done
+Task 2 is done
+Task 9 is done
+Task 7 is done
+Task 6 is done
+Task 3 is done
+Main is done
+Logger is shutting down
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to log to file from an asyncio program.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multithreaded File Appending in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multithreaded File Appending in Python</h1>
+<div class="post-meta">December 30, 2021&ensp;<a class="category" href="../tutorial-archive.html">Concurrent File I/O</a></div>
+
+<p>Appending a file from multiple threads is not thread-safe and will result in overwritten data and file corruption.</p>
+<p>In this tutorial, you will explore how to <strong>append to a file from multiple threads</strong>.</p>
+<p>Let's dive in.</p>
+<h2>Appending a File From Multiple Threads is Not Thread-Safe</h2>
+<p>There are many situations where we may want to append the same file from multiple threads.</p>
+<p>For example, you can imagine using a <strong>ThreadPoolExecutor</strong> where each worker is computing a value or interacting with a resource to prepare some unique data, then having all worker threads store or log their data as a line in the same file.</p>
+<p>There are few ways we might implement this.</p>
+<p>For example, we might naively try to open the file for appending in each worker thread, write the line, then close the file.</p>
+<p>Alternatively, we may open the file once in the program, share the file handle with each worker thread, then have each worker thread write a message to the file when they are done.</p>
+<p>The problem with these approaches is that messages in the resulting file will overwrite each other and the file will become corrupt.</p>
+<p>The reason for this is because writing to a file is not thread-safe.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>First, let's define a task function that takes a unique identifier (e.g. an integer) and a file handle. The task calculates some data, blocks for a variable amount of time, then writes a unique message to the file.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task that blocks for a moment and write to a file
+def task(identifier, file_handle):
+    # block for a moment
+    value = random()
+    sleep(value)
+    # write to a file
+    file_handle.write(f'Task {identifier} blocked for {value} of a second.\n')
+</code></pre>
+<p>Next, in the main thread of our program, we can open the file and get a file handle.</p>
+<p>This can be achieved using the <strong>open()</strong> built-in function and setting the mode to <strong>'a'</strong> for appending ASCII strings to the file. We will use the context manager to ensure that the file is closed automatically once we are finished with it.</p>
+<pre><code>...
+# open a file
+with open('results.txt', 'a', encoding='utf-8') as handle:
+	# ...
+</code></pre>
+<p>Next, we can create a thread pool via the <strong>ThreadPoolExecutor</strong> and specify the number of worker threads. We will use 1,000 workers in this case as we are trying to force a failure case. Again, we will use the context manager to ensure the thread pool is closed down once all submitted tasks are completed.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor(1000) as executor:
+	# ...
+</code></pre>
+<p>Finally, we will submit 10,000 tasks to the thread pool as calls to our <strong>task()</strong> function.</p>
+<p>This can be achieved by calling the <strong>submit()</strong> function in a list comprehension, assigning each call to the <strong>task()</strong> function a unique integer from 0 to 9,999. Each call to the <strong>submit()</strong> function returns a <strong>Future</strong> object to keep track of the task, which we will ignore in this case as we do not require any result from our task.</p>
+</main>
+</body>
+</html>

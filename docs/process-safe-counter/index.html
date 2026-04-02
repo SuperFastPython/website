@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Process-Safe Counter in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Process-Safe Counter in Python</h1>
+<div class="post-meta">February 14, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can develop a process-safe counter class using a <strong>multiprocessing.Value</strong> and a mutex lock.</p>
+<p>In this tutorial, you will discover <strong>how to develop a process-safe counter</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>Need a Process-Safe Counter</h2>
+<p>A counter is an object that maintains a private variable that changes via methods, e.g. incremented, and accessed.</p>
+<p>We often need to share a custom counter object among many processes, such as when using process pools via the <strong>Pool</strong> or <strong>ProcessPoolExecutor</strong> class or child processes via the <strong>multiprocessing.Process</strong> class.</p>
+<p>This is challenging because, by default, for two reasons:</p>
+<ol>
+<li>Instance variables of an object cannot be shared between processes.</li>
+<li>If the object is updated to use shareable variables, they may suffer race conditions.</li>
+</ol>
+<p>You can learn more about how instance variables are not shared among processes in the tutorial:</p>
+<ul>
+<li><a href="../share-process-attributes/">Shared Process Class Attributes in Python</a></li>
+</ul>
+<p>You can learn more about race conditions among processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-race-condition-python/">Multiprocessing Race Conditions in Python</a></li>
+</ul>
+<p>As such, creating a counter object and sharing and using it in multiple processes can be difficult.</p>
+<p>This problem represents a general class of problems, namely safely sharing custom objects when using process-based concurrency in Python.</p>
+<p><strong>How can we share a custom class with private instance variables among processes in Python?</strong></p>
+<p><strong>Note</strong>, developing a process-safe counter is very different to developing a thread-safe counter because of the lack of shared memory between processes. You can learn more about developing a thread-safe counter in the tutorial:</p>
+<ul>
+<li><a href="../thread-safe-counter-in-python/">Thread-Safe Counter in Python</a></li>
+</ul>
+<p>Next, let's look at how we can develop a process-safe counter in Python.</p>
+<h2>How to Develop a Process-Safe Counter</h2>
+<p>We can develop a process safe counter using two capabilities provided by the multiprocessing module, shared ctypes, and a mutex lock.</p>
+<p>A shared ctype can be used as a primitive variable that can be shared among processes, where changes will be propagated and visible to all processes.</p>
+<p>A mutex lock can be used to protect access and changes to the instance variables of the custom class to ensure changes to the variables are process-safe, e..g to avoid race conditions.</p>
+<ol>
+<li>Use a shared ctype for sharable instance variables.</li>
+<li>Use a mutex lock to protect instance variables against race conditions.</li>
+</ol>
+<p>Let's explore the steps to developing a process-safe counter</p>
+<h3>Step 1: Process Unsafe Counter (not shared)</h3>
+<p>First;y, let's define an unsafe <strong>UnsafeCounter</strong> class that we might use in a single-process program.</p>
+<p>The class constructor defines and initializes a private instance variable for the count that is to be maintained.</p>
+<p>An <strong>increment()</strong> method adds one to the counter instance variable and a <strong>value()</strong> method retrieves the current value of the counter.</p>
+<pre><code># define a counter
+class UnsafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = 0
+
+    # increment the counter
+    def increment(self):
+        self._counter += 1
+
+    # get the counter value
+    def value(self):
+        return self._counter
+</code></pre>
+<p>Sharing an instance of this class among processes will not work as intended.</p>
+<p>Changes to the instance variable in each process will not be propagated to other processes.</p>
+<h3>Step 2: Change Variable to Shared ctype (race)</h3>
+<p>We can change the private instance variable to a shared ctype.</p>
+<p>This is a data type that can be a primitive value, like an integer or floating point value, and changes will be propagated between processes.</p>
+<p>This can be achieved by using the <strong>multiprocessing.Value</strong> class and configuring it to hold an integer value initialized to zero.</p>
+<p>For example:</p>
+<pre><code>...
+# initialize counter
+self._counter = Value('i', 0)</code></pre>
+<p>You can learn more about shared ctypes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>The integer within the <strong>multiprocessing.Value</strong> object can be accessed and modified via the "<strong>value</strong>" attribute.</p>
+<p>For example, the updated class with this change to use a <strong>multiprocessing.Value</strong> is listed below:</p>
+<pre><code># define a counter
+class UnsafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = Value('i', 0)
+
+    # increment the counter
+    def increment(self):
+        self._counter.value += 1
+
+    # get the counter value
+    def value(self):
+        return self._counter.value
+</code></pre>
+<p>This is an improvement but still has a problem.</p>
+<p>Changes to the instance variable are not process-safe, leading to race conditions.</p>
+<h3>Step 3: Protect Instance Variable With Mutex (process safe)</h3>
+<p>We can use a mutex lock to protect access and changes to the private instance variable in the counter object.</p>
+<p>One approach would be to create an instance of a <strong>multiprocessing.Lock</strong> class and use it in methods whenever the private instance variable is being accessed or modified.</p>
+<p>For example:</p>
+<pre><code># define a counter
+class SafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = Value('i', 0)
+        # initialize lock
+        self._lock = Lock()
+
+    # increment the counter
+    def increment(self):
+        # get the lock
+        with self._lock:
+            self._counter.value += 1
+
+    # get the counter value
+    def value(self):
+    	with self._lock:
+        	return self._counter.value</code></pre>
+<p>You can learn more about mutex locks in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<p>This approach would be effective if we had multiple instance variables to protect in the custom class.</p>
+<p>In this case, we do not need to create and manage a new mutex lock.</p>
+<p>The reason is the <strong>multiprocessing.Value</strong> already has a lock within it that we can use.</p>
+<p>It is accessible via the <strong>get_lock()</strong> method.</p>
+<p>For example:</p>
+<pre><code># define a counter
+class SafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = Value('i', 0)
+
+    # increment the counter
+    def increment(self):
+        # get the lock
+        with self._counter.get_lock():
+            self._counter.value += 1
+
+    # get the counter value
+    def value(self):
+        # get the lock
+        with self._counter.get_lock():
+            return self._counter.value
+</code></pre>
+<p>We probably don't need to protect the access to the value of the counter using the lock as it likely uses the lock internally. Nevertheless, I've left it in for consistency (i.e. the default lock used by a <strong>multiprocessing.Value</strong> is a reentrant lock).</p>
+<p>And that's it.</p>
+<p>We can now see how to develop a process-safe counter.</p>
+<p>Next, let's look at some worked examples of working with process-unsafe and process-safe counters in Python.</p>
+<h2>Example of Process-Unsafe Counter (Not Shared Correctly)</h2>
+<p>We can explore developing a process-unsafe counter where changes to the instance variables are not propagated between processes.</p>
+<p>This can be achieved by defining a normal Python class with one instance variable, as we did above.</p>
+<p>For example:</p>
+<pre><code># define a counter
+class UnsafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = 0
+
+    # increment the counter
+    def increment(self):
+        self._counter += 1
+
+    # get the counter value
+    def value(self):
+        return self._counter
+</code></pre>
+<p>We can then define a target task function that takes the shared counter object as an argument and iterates it many times, incrementing the counter each iteration.</p>
+<pre><code># task executed by processes
+def task(counter):
+    # increment the counter
+    for _ in range(100000):
+        counter.increment()
+</code></pre>
+<p>We can then start many processes that share the same counter object and execute the same task at the same time in parallel.</p>
+<pre><code># protect the entry point
+if __name__ == '__main__':
+    # create the shared counter
+    counter = UnsafeCounter()
+    # create 10 processes to increment the counter
+    processes = [Process(target=task, args=(counter,)) for _ in range(10)]
+    # start all processes
+    for process in processes:
+        process.start()
+    # wait for all processes to finish
+    for process in processes:
+        process.join()
+    # report the value of the counter
+    print(counter.value())
+</code></pre>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a process unsafe counter that is not shared correctly
+from multiprocessing import Process
+
+# define a counter
+class UnsafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = 0
+
+    # increment the counter
+    def increment(self):
+        self._counter += 1
+
+    # get the counter value
+    def value(self):
+        return self._counter
+
+# task executed by processes
+def task(counter):
+    # increment the counter
+    for _ in range(100000):
+        counter.increment()
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared counter
+    counter = UnsafeCounter()
+    # create 10 processes to increment the counter
+    processes = [Process(target=task, args=(counter,)) for _ in range(10)]
+    # start all processes
+    for process in processes:
+        process.start()
+    # wait for all processes to finish
+    for process in processes:
+        process.join()
+    # report the value of the counter
+    print(counter.value())
+</code></pre>
+<p>Running the example first creates the shared <strong>UnsafeCounter</strong> object.</p>
+<p>Then, 10 child processes are created and configured to execute our custom task() function and passed the shared counter object.</p>
+<p>The main process then starts all processes and waits for them to complete.</p>
+<p>Each process executes the custom <strong>task()</strong> function and increments the shared counter 100,000 times.</p>
+<p>We would expect the final value of the counter to be 1,000,000, e.g. 10 processes multiplied by 100,000 increments.</p>
+<p>The tasks are completed and the final value of the counter is reported.</p>
+<p>In this case, the counter is zero.</p>
+<pre><code>0</code></pre>
+<p>The reason this example failed is that each child process receives a new copy of the <strong>UnsafeCounter</strong> object.</p>
+<p>Each process does increment the counter, but locally. The changes are not shared among processes or with the main process.</p>
+<p>The <strong>UnsafeCounter</strong> object in the main process is never incremented and therefore remains at the value of zero.</p>
+<p>Next, let's look at updating the counter to use instance variables whose changes are propagated among processes.</p>
+<h2>Example of Process-Unsafe Counter (With Race Conditions)</h2>
+<p>We can update the custom counter object to use instance variables that are shared among multiple processes.</p>
+<p>In this example, we will change the instance variable to be an instance of a <strong>multiprocessing.Value</strong> object.</p>
+<p>Changes to the <strong>Value</strong> object are propagated to all processes that share the object. If the <strong>Value</strong> object is an instance variable within an <strong>UnsafeCounter</strong> object, then all processes that share the <strong>UnsafeCounter</strong> will share the same instance variable.</p>
+<p>For example:</p>
+<pre><code># define a counter
+class UnsafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = Value('i', 0)
+
+    # increment the counter
+    def increment(self):
+        self._counter.value += 1
+
+    # get the counter value
+    def value(self):
+        return self._counter.value
+</code></pre>
+<p>The complete example with this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a process unsafe counter with race conditions
+from multiprocessing import Process
+from multiprocessing import Value
+
+# define a counter
+class UnsafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = Value('i', 0)
+
+    # increment the counter
+    def increment(self):
+        self._counter.value += 1
+
+    # get the counter value
+    def value(self):
+        return self._counter.value
+
+# task executed by processes
+def task(counter):
+    # increment the counter
+    for _ in range(100000):
+        counter.increment()
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared counter
+    counter = UnsafeCounter()
+    # create 10 processes to increment the counter
+    processes = [Process(target=task, args=(counter,)) for _ in range(10)]
+    # start all processes
+    for process in processes:
+        process.start()
+    # wait for all processes to finish
+    for process in processes:
+        process.join()
+    # report the value of the counter
+    print(counter.value())
+</code></pre>
+<p>Running the example first creates the shared <strong>UnsafeCounter</strong> object.</p>
+<p>Then, 10 child processes are created and configured to execute our custom <strong>task()</strong> function and passed the shared counter object.</p>
+<p>The main process then starts all processes and waits for them to complete.</p>
+<p>Each process executes the custom <strong>task()</strong> function and increments the shared counter 100,000 times.</p>
+<p>All child processes executing their tasks share the same shared <strong>Value</strong> instance variable. Changes are propagated among processes.</p>
+<p>We would expect the final value of the counter to be 1,000,000, e.g. 10 processes multiplied by 100,000 increments.</p>
+<p>The tasks are completed and the final value of the counter is reported.</p>
+<p>In this case, the value is different every time the example is run and is not the expected value of one million.</p>
+<pre><code>165690</code></pre>
+<p>Running the program again produces a different final value of the count.</p>
+<pre><code>162723</code></pre>
+<p>The reason the program gives a count value that is different every time is because of a race condition.</p>
+<p>The processes step on each other when updating the internal value of the counter.</p>
+<p>Consider how the value of the counter is updated:</p>
+<pre><code>...
+self._counter.value += 1</code></pre>
+<p>Unrolled, this is performing at least 3 operations, they are:</p>
+<ol>
+<li>Read the current counter value into a copy.</li>
+<li>Add one to the copy of the current counter value.</li>
+<li>Replace the current counter value with the updated copy.</li>
+</ol>
+<p>If these operations are interleaved among multiple processes, even just two processes, then the value of the counter will be corrupted.</p>
+<p>For example, an updated copy of the value may overwrite a stale version or an already updated version of the variable.</p>
+<p>For example:</p>
+<ol>
+<li><strong>Process 1</strong>: Read the current counter value into a copy.</li>
+<li><strong>Process 1</strong>: Add one to the copy of the current counter value.</li>
+<li><strong>Process 2</strong>: Read the current counter value into a copy.</li>
+<li><strong>Process 2</strong>: Add one to the copy of the current counter value.</li>
+<li><strong>Process 2</strong>: Replace the current counter value with the updated copy.</li>
+<li><strong>Process 1</strong>: Replace the current counter value with the updated copy.</li>
+</ol>
+<p>This is called a race condition.</p>
+<p>Next, let's explore how we might make the counter process-safe using a mutex lock.</p>
+<h2>Example of Process-Safe Counter</h2>
+<p>We can update the <strong>UnsafeCounter</strong> to be process-safe by protecting the critical section, e.g. changes to the instance variable, to be mutually exclusive.</p>
+<p>This means that only one process can read or write the variable at a time, and other processes attempting the same action at the same time, must wait their turn.</p>
+<p>This can be achieved by protecting reads and changes to the <strong>multiprocessing.Value</strong> variable with a mutex lock used internally within the <strong>Value</strong> object.</p>
+<p>The updated counter with this change is listed below:</p>
+<pre><code># define a counter
+class SafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = Value('i', 0)
+
+    # increment the counter
+    def increment(self):
+        # get the lock
+        with self._counter.get_lock():
+            self._counter.value += 1
+
+    # get the counter value
+    def value(self):
+        # get the lock
+        with self._counter.get_lock():
+            return self._counter.value
+</code></pre>
+<p>This <strong>SafeCounter</strong> class is process-safe.</p>
+<p>Read and writes to the instance variable are protected with a mutex lock and changes to the variable itself are shared among processes, simulated shared memory.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a process safe counter
+from multiprocessing import Process
+from multiprocessing import Value
+
+# define a counter
+class SafeCounter():
+    # constructor
+    def __init__(self):
+        # initialize counter
+        self._counter = Value('i', 0)
+
+    # increment the counter
+    def increment(self):
+        # get the lock
+        with self._counter.get_lock():
+            self._counter.value += 1
+
+    # get the counter value
+    def value(self):
+        # get the lock
+        with self._counter.get_lock():
+            return self._counter.value
+
+# task executed by processes
+def task(counter):
+    # increment the counter
+    for _ in range(100000):
+        counter.increment()
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared counter
+    counter = SafeCounter()
+    # create 10 processes to increment the counter
+    processes = [Process(target=task, args=(counter,)) for _ in range(10)]
+    # start all processes
+    for process in processes:
+        process.start()
+    # wait for all processes to finish
+    for process in processes:
+        process.join()
+    # report the value of the counter
+    print(counter.value())
+</code></pre>
+<p>Running the example first creates the shared <strong>SafeCounter</strong> object.</p>
+<p>Then, 10 child processes are created and configured to execute our custom <strong>task()</strong> function and passed the shared counter object.</p>
+<p>The main process then starts all processes and waits for them to complete.</p>
+<p>Each process executes the custom <strong>task()</strong> function and increments the shared counter 100,000 times.</p>
+<p>All child processes executing their tasks share the same shared <strong>Value</strong> instance variable. Changes are propagated among processes.</p>
+<p>All reads and writes to the instance variable on the <strong>SafeCounter</strong> are safe, ensuring only a single child process can access or change the variable at a time.</p>
+<p>We would expect the final value of the counter to be 1,000,000, e.g. 10 processes multiplied by 100,000 increments.</p>
+<p>The tasks are completed and the final value of the counter is reported.</p>
+<p>As we expect, the final value of the counter is one million.</p>
+<p>This highlights how to develop and use a process-safe counter in Python.</p>
+<pre><code>1000000</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to develop a process-safe counter in Python.</p>
+</main>
+</body>
+</html>

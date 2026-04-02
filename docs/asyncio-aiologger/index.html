@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Non-Blocking Logging With aiologger – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Non-Blocking Logging With aiologger</h1>
+<div class="post-meta">January 28, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can log without blocking in asyncio programs by using <strong>aiologger</strong>.</p>
+<p>In this tutorial, you will discover how to log in asyncio programs without blocking using the <strong>aiologger</strong> library.</p>
+<p>Let's get started.</p>
+<h2>Logging From Asyncio is Blocking</h2>
+<p>Logging from an asyncio program is blocking.</p>
+<p>This means that logging a is a function call that will prevent the asyncio event loop from progressing.</p>
+<p>Often this is not a problem, such as when logging a few messages to standard output.</p>
+<p>It does become a problem when there are a large number of log messages and/or the target of the logging infrastructure is a blocking I/O call, such as storing messages to a file, database, or network connection.</p>
+<blockquote>
+<p>... it should be noted that when logging from async code, network and even file handlers could lead to problems (blocking the event loop) because some logging is done from asyncio internals.</p>
+<cite>-- <a href="https://docs.python.org/3/howto/logging-cookbook.html">Logging Cookbook</a></cite></blockquote>
+<p>Therefore, it is recommended to perform logging from asyncio using a different thread.</p>
+<p>Naively, this could be achieved by wrapping each call to the logging infrastructure in a call like asyncio.to_thread() so that it happens in a new Python thread.</p>
+<p>This is cumbersome.</p>
+<p>Instead, a better approach is to configure the logging infrastructure so that messages are issued using a data structure and a separate logging thread is responsible for storing log messages and performing any blocking calls to files or network resources.</p>
+<blockquote>
+<p>Network logging can block the event loop. It is recommended to use a separate thread for handling logs or use non-blocking IO.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-dev.html">Developing with asyncio</a></cite></blockquote>
+<p>Now that we know that logging in asyncio is blocking, let's explore how we might log in asyncio without blocking.</p>
+<h2>How to Log Without Blocking With aiologger</h2>
+<p>One approach to logging in asyncio programs without blocking is to log in a separate thread.</p>
+<p>This can be achieved by using a <strong>QueueHandler</strong> and <strong>QueueListener</strong> with the built-in logging module.</p>
+<p>This can be a lot of work.</p>
+<p>You can learn more about how to manually log without blocking in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-log-blocking/">Asyncio Logging Without Blocking</a></li>
+</ul>
+<p>An alternative to manually logging in asyncio programs without blocking is to use the <strong>aiologger</strong> library.</p>
+<p>This library does all the heavy lifting for us, providing a ready-to-use logging module for asyncio programs that will perform the log operations in a separate thread, behind the scenes.</p>
+<blockquote>
+<p>The builtin python logger is IO blocking. This means that using the builtin logging module will interfere with your asynchronous application performance. aiologger aims to be the standard Asynchronous non blocking logging for python and asyncio.</p>
+<cite>-- <a href="https://async-worker.github.io/aiologger/">Welcome to aiologger docs!</a></cite></blockquote>
+<p>Let's look at how we can log without blocking in our asyncio programs using aiologger.</p>
+<h3>How to Install aiologger</h3>
+<p>The first step is to install the <strong>aiologger</strong> library.</p>
+<p>You can install <strong>aiologger</strong> using your favorite package manager, such as pip.</p>
+<p>For example:</p>
+<pre><code>pip install aiologger</code></pre>
+<h3>How to Use aiologger</h3>
+<p>Once aiologger is installed, we can use it in our asyncio programs.</p>
+<p>This requires first importing the <strong>aiologger.Logger</strong> class.</p>
+<pre><code>from aiologger import Logger</code></pre>
+<p>Once imported, we can then configure the Logger class in terms of the log name, handlers, and log level we wish to use.</p>
+<p>This can be achieved via the <strong>Logger.with_default_handlers()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# configure the logger
+logger = Logger.with_default_handlers(name='my-logger')</code></pre>
+<p>We can use the <strong>aiologger.LogLevel</strong> enum to configure the log level.</p>
+<p>For example:</p>
+<pre><code>...
+# configure the logger
+logger = Logger.with_default_handlers(level=LogLevel.DEBUG)</code></pre>
+<p>The instance of the Logger class must be used as a global variable throughout our asyncio program.</p>
+<p>For example, we can use the Logger instance to log directly, without blocking.</p>
+<p>For example:</p>
+<pre><code>...
+# log a message
+logger.debug("something happened")</code></pre>
+<p>We can also await the log message.</p>
+<pre><code>...
+# log a message
+await logger.debug("something happened")</code></pre>
+<p>Note that this is unlike the built-in <a href="https://docs.python.org/3/library/logging.html"><strong>logging</strong> module</a> in Python, where logging can be performed using module functions instead of an object instance.</p>
+<p>This makes converting a large Python program that uses the built-in logging to use the aiologger library, possibly quite cumbersome.</p>
+<p>Once our application is finished, we can explicitly shut down the aiologger.</p>
+<p>I suspect that internally this purges any remaining log messages on internal queues and terminates any background threads.</p>
+<p>This can be achieved via the shutdown() method.</p>
+<p>for example:</p>
+<pre><code>...
+# shutdown the logger
+await logger.shutdown()</code></pre>
+<p>And that's it.</p>
+<p>Now that we know how to use the aiologger library, let's look at some worked examples.</p>
+<h2>Example of Non-Blocking Logging With aiologger</h2>
+<p>We can explore an example of logging without blocking in an asyncio program using the aiologger library.</p>
+<p>In this example, we will define a task that blocks for a fraction of 5 seconds and logs a message when it begins and ends. The main coroutine will log the beginning of the program, then start 10 copies of our task to run concurrently, before reporting a final message before shutdown.</p>
+<p>Firstly, we can define our task that will sleep for a random fraction of 5 seconds and log some messages.</p>
+<pre><code># task that does work and logs
+async def task(value):
+    # log a message
+    logger.info(f'Task {value} is starting')
+    # simulate doing work
+    await asyncio.sleep(random() * 5)
+    # log a message
+    logger.info(f'Task {value} is done')
+</code></pre>
+<p>Next, we can define our <strong>main()</strong> coroutine that logs start and done messages and uses an <strong>asyncio.TaskGroup</strong> to issue 10 copies of our <strong>task()</strong> coroutine and blocking until all tasks are down.</p>
+<p>Before the <strong>main()</strong> coroutine ends, it explicitly shuts down the logger.</p>
+<pre><code># main coroutine
+async def main():
+    # log a message
+    logger.info(f'Main is starting')
+    # issue many tasks
+    async with asyncio.TaskGroup() as group:
+        for i in range(10):
+            _ = group.create_task(task(i))
+    # log a message
+    logger.info(f'Main is done')
+    # shutdown the logger
+    await logger.shutdown()
+</code></pre>
+<p>If you are new to the <strong>asyncio.TaskGroup</strong>, you can learn how to use it in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-taskgroup/">How to use asyncio.TaskGroup</a></li>
+</ul>
+<p>Finally, we can initialize the log to report all messages with a <strong>DEBUG</strong> level and above.</p>
+<p>The <strong>aiologger.Logger</strong> instance is maintained as a global variable that can be accessed throughout our asyncio program.</p>
+<pre><code>...
+# get the root logger, define a global var
+logger = Logger.with_default_handlers(level=LogLevel.DEBUG)</code></pre>
+<p>We can then start the asyncio event loop and run our <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of non-blocking logging with aiologger
+from aiologger import Logger
+from aiologger.levels import LogLevel
+from random import random
+import asyncio
+
+# task that does work and logs
+async def task(value):
+    # log a message
+    logger.info(f'Task {value} is starting')
+    # simulate doing work
+    await asyncio.sleep(random() * 5)
+    # log a message
+    logger.info(f'Task {value} is done')
+
+# main coroutine
+async def main():
+    # log a message
+    logger.info(f'Main is starting')
+    # issue many tasks
+    async with asyncio.TaskGroup() as group:
+        for i in range(10):
+            _ = group.create_task(task(i))
+    # log a message
+    logger.info(f'Main is done')
+    # shutdown the logger
+    await logger.shutdown()
+
+# get the root logger, define a global var
+logger = Logger.with_default_handlers(level=LogLevel.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates an instance of the <strong>aiologger.Logger</strong> class configured to report all messages with a <strong>DEBUG</strong> level and above.</p>
+<p>The asyncio event loop is then started and the <strong>main()</strong> coroutine is executed.</p>
+<p>The <strong>main()</strong> coroutine runs and uses the "<strong>logger</strong>" global variable to log a start message. It then creates a <strong>TaskGroup</strong> and then issues 10 copies of the <strong>task()</strong> task and waits for them to complete.</p>
+<p>The <strong>task()</strong> tasks run and log a start message using the same <strong>logger</strong> global variable before sleeping for some fraction of 5 seconds. The tasks resume and log a final done message.</p>
+<p>Once all of the issued tasks are done the <strong>TaskGroup</strong> contact manager returns and the <strong>main()</strong> coroutine logs a final message before explicitly shutting down the aiologger.</p>
+<p>This highlights how we can use the aiologger in our asyncio program to log without blocking.</p>
+<pre><code>Main is starting
+Task 0 is starting
+Task 1 is starting
+Task 2 is starting
+Task 3 is starting
+Task 4 is starting
+Task 5 is starting
+Task 6 is starting
+Task 7 is starting
+Task 8 is starting
+Task 9 is starting
+Task 9 is done
+Task 4 is done
+Task 0 is done
+Task 6 is done
+Task 8 is done
+Task 5 is done
+Task 1 is done
+Task 3 is done
+Task 7 is done
+Task 2 is done</code></pre>
+<p>Next, let's explore how we might use the aiologger by awaiting calls that log messages.</p>
+<h2>Example of Non-Blocking Logging With aiologger and Awaits</h2>
+<p>We can explore logging with aiologger by awaiting log messages.</p>
+<p>Some asyncio programmers prefer that all calls made in their programs are awaited. This helps to avoid performing any calls that might block the event loop.</p>
+<p>It forces consideration of whether tasks should be performed in separate threads or child processes.</p>
+<p>The aiologger library supports this philosophy by allowing all methods used to report log messages to be awaitable.</p>
+<p>In this case, we will update the above example to explicitly await all log messages made using aiologger.</p>
+<p>For example, the updated <strong>task()</strong> coroutine with this change is listed below.</p>
+<pre><code># task that does work and logs
+async def task(value):
+    # log a message
+    await logger.info(f'Task {value} is starting')
+    # simulate doing work
+    await asyncio.sleep(random() * 5)
+    # log a message
+    await logger.info(f'Task {value} is done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of non-blocking logging with aiologger and awaits
+from aiologger import Logger
+from aiologger.levels import LogLevel
+from random import random
+import asyncio
+
+# task that does work and logs
+async def task(value):
+    # log a message
+    await logger.info(f'Task {value} is starting')
+    # simulate doing work
+    await asyncio.sleep(random() * 5)
+    # log a message
+    await logger.info(f'Task {value} is done')
+
+# main coroutine
+async def main():
+    # log a message
+    await logger.info(f'Main is starting')
+    # issue many tasks
+    async with asyncio.TaskGroup() as group:
+        for i in range(10):
+            _ = group.create_task(task(i))
+    # log a message
+    await logger.info(f'Main is done')
+    # shutdown the logger
+    await logger.shutdown()
+
+# get the root logger, define a global var
+logger = Logger.with_default_handlers(level=LogLevel.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates an instance of the <strong>aiologger.Logger</strong> class configured to report all messages with a <strong>DEBUG</strong> level and above.</p>
+<p>The asyncio event loop is then started and the <strong>main()</strong> coroutine is executed.</p>
+<p>The <strong>main()</strong> coroutine runs and uses the "<strong>logger</strong>" global variable to log and await a start message. It then creates a TaskGroup and then issues 10 copies of the <strong>task()</strong> task and waits for them to complete.</p>
+<p>The <strong>task()</strong> tasks run and log and await a start message using the same <strong>logger</strong> global variable before sleeping for some fraction of 5 seconds. The tasks resume and log and await a final done message.</p>
+<p>Once all of the issued tasks are done the <strong>TaskGroup</strong> contact manager returns and the <strong>main()</strong> coroutine logs a final message before explicitly shutting down the aiologger.</p>
+<p>This highlights how we can use the aiologger without blocking and explicitly await all logging methods.</p>
+<pre><code>Main is starting
+Task 0 is starting
+Task 1 is starting
+Task 2 is starting
+Task 3 is starting
+Task 4 is starting
+Task 5 is starting
+Task 6 is starting
+Task 7 is starting
+Task 8 is starting
+Task 9 is starting
+Task 2 is done
+Task 6 is done
+Task 4 is done
+Task 0 is done
+Task 3 is done
+Task 9 is done
+Task 7 is done
+Task 5 is done
+Task 1 is done
+Task 8 is done
+Main is done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to log in asyncio programs without blocking using the <strong>aiologger</strong> library.</p>
+</main>
+</body>
+</html>

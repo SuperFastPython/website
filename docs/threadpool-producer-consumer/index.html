@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPool Producer-Consumer Pattern in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPool Producer-Consumer Pattern in Python</h1>
+<div class="post-meta">February 21, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>You can create a producer thread pool and a consumer thread pool connected by a shared queue.</p>
+<p>This allows many producer tasks to run concurrently as well as many consumer tasks to run concurrently, allowing the producer-consumer pattern to scale with the amount of work or capabilities of the system.</p>
+<p>In this tutorial, you will discover how to <strong>create producer and consumer thread pools</strong> connected by a queue.</p>
+<p>This tutorial was inspired by questions and discussions with Bart B. Thank you deeply! If you have a question about Python concurrency, <a href="../contact/">message me anytime</a>.</p>
+<p>Let's get started.</p>
+<h2>Need to Share Tasks Between Thread Pools</h2>
+<p>The <a href="https://en.wikipedia.org/wiki/Producer%E2%80%93consumer_problem">Producer-Consumer pattern</a> is a common concurrency programming design pattern.</p>
+<p>It involves producer tasks, consumer tasks, and a shared buffer or queue that connects these two types of tasks.</p>
+<ul>
+<li><strong>Producer Tasks</strong>: Generate work that is added to the shared buffer.</li>
+<li><strong>Consumer Tasks</strong>: Remove work from the shared buffer and process it in some way.</li>
+<li><strong>Shared Buffer</strong>: Thread-safe data structure that connects producers and consumers that may be bounded.</li>
+</ul>
+<p>We may have a problem that requires many concurrent producers and many concurrent consumers connected using a queue.</p>
+<p>For example, producer tasks may be reading data from a file or downloading data from the internet. Producer tasks may be saving data into a database or presenting it to the user.</p>
+<p>The tasks themselves can be executed concurrently in thread pools, such as the <a href="../threadpool-python/"><strong>multiprocessing.pool.ThreadPool</strong> class</a> or the <a href="../threadpoolexecutor-in-python/"><strong>concurrent.futures.ThreadPoolExecutor</strong> class</a>.</p>
+<p>Note, a producer-consumer pattern with one producer and one consumer and a shared thread is a much simpler design. You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../thread-producer-consumer-pattern-in-python/">Thread Producer-Consumer Pattern in Python</a></li>
+</ul>
+<p>How can we develop a producer-consumer pattern using thread pools in Python?</p>
+<h2>How to Develop Producer and Consumer Thread Pools</h2>
+<p>We can develop a producer-consumer pattern with concurrent producers and concurrent consumers using thread pools and a queue.</p>
+<h3>ProducerThread Pool</h3>
+<p>A producer manager function can be created to manage the producer's tasks.</p>
+<p>This would involve creating and managing the thread pool and issuing all required producer tasks into the producer thread pool.</p>
+<p>The number of workers in the queue can limit the number of concurrent producer tasks permitted by the system.</p>
+<p>For example:</p>
+<pre><code># producer manager task
+def producer_manager(queue):
+    # create thread pool
+    with ThreadPool() as pool:
+        # issue producer tasks into the thread pool
+        # ...
+        # wait for all tasks to complete
+        pool.close()
+        pool.join()
+</code></pre>
+<p>The producer task would be defined as a separate function from the producer manager task.</p>
+<p>Each producer task will require access to the shared queue on which the outcome of the producer task will be placed.</p>
+<p>For example:</p>
+<pre><code># producer task
+def producer_task(queue):
+    # ...
+    # push data into queue
+    queue.put(value)
+</code></pre>
+<p>Once all producer tasks have been completed, the producer manager can post a message on the queue to indicate that no further tasks are to be expected.</p>
+<p>For example:</p>
+<pre><code>...
+# put a signal to expect no further tasks
+queue.put(None)
+</code></pre>
+<h3>Consumer Thread Pool</h3>
+<p>The consumer thread pool can be managed by a consumer manager task.</p>
+<p>This task is responsible for creating and managing the thread pool and issuing tasks into the thread pool that consume work from the shared queue.</p>
+<p>The number of workers in the queue can limit the number of concurrent consumer tasks permitted by the system.</p>
+<p>For example:</p>
+<pre><code># consumer manager
+def consumer_manager(queue):
+    # create thread pool
+    with ThreadPool() as pool:
+        # start consumer tasks
+        # ...
+        # wait for all tasks to complete
+        pool.close()
+        pool.join()
+</code></pre>
+<p>Each consumer task can be defined as a function that takes the shared queue as an argument.</p>
+<p>The consumer tasks may run once or may run in a loop, consuming items from the queue until no further items are available.</p>
+<p>If the latter and a loop is used, then when the message that further items are to be expected is received, it can be re-added to the queue for other tasks and the task can exit.</p>
+<p>For example:</p>
+<pre><code># consumer task
+def consumer_task(queue):
+    # run until there is no more work
+    while True:
+        # retrieve one item from the queue
+        value = queue.get()
+        # check for signal of no more work
+        if not value:
+            # put back on the queue for other consumers
+            queue.put(value)
+            # shutdown
+            return
+</code></pre>
+<h3>Coordination</h3>
+<p>Not a lot of coordination is then required.</p>
+<p>The main thread can create the shared queue.</p>
+<p>It can also start a separate thread for the producer manager and one for the consumer manager.</p>
+<p>The main thread can wait for the producer to finish first, then for the consumer, although the consumer manager will not finish until the producer is finished so this may be redundant.</p>
+<p>For example:</p>
+<pre><code>...
+# create the shared queue
+queue = Queue()
+# run the consumer
+consumer = Thread(target=consumer_manager, args=(queue,))
+consumer.start()
+# run the producer
+producer = Thread(target=producer_manager, args=(queue,))
+producer.start()
+# wait for the producer to finish
+producer.join()
+# wait for the consumer to finish
+consumer.join()
+</code></pre>
+<p>And that's it.</p>
+<p>Next, let's look at a worked example of developing a producer-consumer pattern using thread pools.</p>
+<h2>Example of Producer and Consumer Thread Pools</h2>
+<p>We can explore an example of developing producer and consumer thread pools connected by a shared pool.</p>
+<p>The producer tasks will put items on the shared queue and the consumer tasks will remove items from the shared queue.</p>
+<p>The number of producer and consumer workers can scale based on the amount of work required or the capacity of the system using thread pools.</p>
+<p>In this example, we will define a simple producer task that generates a random number between 0 and 10, blocks for that many seconds, then places the generated value on the shared queue.</p>
+<p>For example:</p>
+<pre><code># producer task
+def producer_task(queue):
+    # generate a random number between 0 and 10
+    value = random() * 10
+    # block for a moment to simulate work
+    sleep(value)
+    # push data into queue
+    queue.put(value)
+</code></pre>
+<p>We will then define a thread pool with 20 workers and issue 20 producers into the pool to complete as fast as they are able.</p>
+<p>For example:</p>
+</main>
+</body>
+</html>

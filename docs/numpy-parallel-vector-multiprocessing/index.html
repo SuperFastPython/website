@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parallel NumPy Vector Math with Multiprocessing – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Parallel NumPy Vector Math with Multiprocessing</h1>
+<div class="post-meta">May 16, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can use multiprocessing to apply a math function to each item in a numpy vector.</p>
+<p>Although this is straightforward to implement, it is likely to result in worse performance compared to the sequential version.</p>
+<p>As such, <strong>it is generally not recommended to use multiprocessing to parallelize math operations on vectors.</strong></p>
+<p>In this tutorial, you will discover how to use process-based concurrency with multiprocessing to apply math operations in parallel to numpy vectors.</p>
+<p>Let's get started.</p>
+<h2>Need to Apply Function to NumPy Vector in Parallel</h2>
+<p>Consider the situation where you have a vector of floating point values represented as a numpy array.</p>
+<p>We then need to apply a mathematical operation to each item in the vector to produce a new or transformed vector.</p>
+<p>The mathematical operation could be something complex, but it may also be something simple such as a <strong>numpy.log()</strong>, <strong>numpy.sin()</strong>, or a <strong>numpy.exp()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# apply math function to vector to create transformed vector
+result = numpy.exp(data)</code></pre>
+<p>If we have a very large vector, such as 10 million, 100 million or billions of items, can we apply the math function on the vector in parallel?</p>
+<h2>How to Apply Function to a NumPy Vector in Parallel with Multiprocessing</h2>
+<p>NumPy math functions like <strong>numpy.exp()</strong> are typically implemented in C code and called from Python.</p>
+<p>You can see a long list of them here:</p>
+<ul>
+<li><a href="https://numpy.org/doc/stable/reference/routines.math.html">Numpy Mathematical functions</a></li>
+</ul>
+<p>Similarly, we may call a few of these functions in a sequence in order to perform a custom transform.</p>
+<p>By default, these operations are not implemented to support parallelism, unlike other numpy functions that call down into the <a href="../what-is-blas-and-lapack-in-numpy/">BLAS or LAPACK library</a>, such as <strong>numpy.dot()</strong> and <strong>numpy.linalg.svd()</strong>.</p>
+<p>As such, if we want to perform math operations on a large vector in parallel, we must implement it ourselves.</p>
+<p>There are many ways we can implement this.</p>
+<p>In this tutorial, let's look at one common approach that many Python developers will reach for when parallelizing code: <strong><a href="../multiprocessing-in-python/">multiprocessing</a></strong>.</p>
+<p>The multiprocessing module is provided in the Python standard library and offers parallelism via process-based concurrency. This is unlike Python threads that are limited to run one at a time due to thread-safety issues with the Python interpreter.</p>
+<p>The <a href="../multiprocessing-pool-python/"><strong>multiprocessing.Pool</strong> class</a> provides a pool of worker processes that can be created once and reused to execute multiple tasks.</p>
+<p>If you are new to this class, you can learn more about it here:</p>
+<ul>
+<li><a href="../multiprocessing-pool-python/">Python Multiprocessing Pool: The Complete Guide</a></li>
+</ul>
+<p>We might issue a task to the pool via the <strong>Pool.map()</strong> method that takes the name of the function, such as <strong>numpy.exp</strong>, and the iterable on which to apply the function, such as our numpy array vector. It returns a list of results that we can convert back into a numpy array via the <strong>numpy.asarray()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# apply math function to each item in the vector in parallel
+result_list = pool.map(numpy.exp, data)
+# convert result list into array
+result = numpy.asarray(result_list)</code></pre>
+<p>You can learn more about the <strong>Pool.map()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-map/">Multiprocessing Pool.map() in Python</a></li>
+</ul>
+<p>By default, the <strong>map()</strong> function will split the iterable into chunks to be sent to each task using a sensible <strong>chunksize</strong> based on the size of the data. We can also specify our own partitioning of items into chunks to be sent to each worker via the "<strong>chunksize</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# apply math function to vector in parallel with a custom chunksize
+result_list = pool.map(numpy.exp, data, chunksize=1000)
+# convert result list into array
+result = numpy.asarray(result_list)</code></pre>
+<p>You can learn more about the "<strong>chunksize</strong>" argument for the <strong>map()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-map-chunksize/">How to Configure Multiprocessing Pool.map() Chunksize</a></li>
+</ul>
+<p>An alternative strategy is to split our vector up first, then issue each piece of the vector as a task on which a worker in the pool can apply the math function. This can be achieved via the <strong>numpy.split()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# split vector into parts
+parts = numpy.split(data, 10)
+# apply math function to each sub vector in parallel
+result_list = pool.map(numpy.exp, parts)</code></pre>
+<p>We can then stitch the list of result vectors back into one large vector using the <strong>numpy.concatenate()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# convert list back to one array
+result = concatenate(result_list)</code></pre>
+<p>Now that we know how to use multiprocessing to apply a math operation to a large numpy vector, let's look at some worked examples.</p>
+<h2>Example of Vector Operation (sequential)</h2>
+<p>Before we look at parallelizing math operations on a vector, let's look at the sequential version.</p>
+<p>In this example, we will first define a 10,000,000 item vector of random floats via the <strong>numpy.random.rand()</strong> function, then apply the <strong>numpy.exp()</strong> math operation to each item in the vector to produce a result vector.</p>
+<p>We will time the entire program and report the duration in seconds.</p>
+<p>The complete example is listed below.</p>
+<pre><code># example of vector operation
+from numpy.random import rand
+from numpy import exp
+from time import time
+# record start time
+start = time()
+# size of the vector
+n = 10000000
+# create vector of random floats
+data = rand(n)
+# apply math operation to each item
+result = exp(data)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example on my system takes about one-tenth of a second, that is 143 milliseconds.</p>
+<p>It may run faster or slower on your system, depending on the speed of your hardware and the version of Python and NumPy.</p>
+<pre><code>Took 0.143 seconds</code></pre>
+<p>Next, let's explore applying the math function in parallel.</p>
+<h2>Example of Parallel Vector Operations (Default Chunksize)</h2>
+<p>We can apply the <strong>exp()</strong> function on our array in parallel.</p>
+<p>This requires first creating the data as before, then creating a process pool.</p>
+<p>By default, the <strong>Pool</strong> class will create one worker per logical CPU in your system. We can often achieve better performance by configuring it to have one worker per physical CPU core.</p>
+<p>I have 4 physical cores, so the pool is configured with 4 workers. Update the example to match the number of cores in your system.</p>
+<pre><code>...
+# create the process pool
+with Pool(4) as pool:
+	# ...
+</code></pre>
+<p>You can learn more about configuring the process pool in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-num-workers/">Multiprocessing Pool Number of Workers in Python</a></li>
+</ul>
+<p>We can then issue the tasks, gather the results, and reconstitute the transformed vector.</p>
+<p>The example uses the default "<strong>chunksize</strong>" argument for <strong>map()</strong>. This is calculated automatically as:</p>
+<pre><code>chunksize, extra = divmod(len(iterable), len(self._pool) * 4)
+chunksize, extra = divmod(10,000,000, 4 * 4)
+chunksize, extra = divmod(10,000,000, 16)
+chunksize, extra = 625,000, 0
+</code></pre>
+<p>The complete example is listed below.</p>
+<pre><code># example of vector operation using a pool (default chunksize)
+from multiprocessing import Pool
+from numpy.random import rand
+from numpy import exp
+from numpy import asarray
+from time import time
+
+# protect the entry point
+if __name__ == '__main__':
+    # record start time
+    start = time()
+    # size of the vector
+    n = 10000000
+    # create vector of random floats
+    data = rand(n)
+    # create the process pool
+    with Pool(4) as pool:
+        # issue each func call on each item as a task
+        result_list = pool.map(exp, data)
+        # convert list back to array
+        result = asarray(result_list)
+    # calculate and report duration
+    duration = time() - start
+    print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example is very slow.</p>
+<p>Much slower than the non-parallel version of the program.</p>
+<p>On my system, it took about 23 seconds to complete.</p>
+<pre><code>Took 23.248 seconds</code></pre>
+<p>Next, let's see if we can improve performance by tuning the chunksize.</p>
+<h2>Example of Parallel Vector Operation (Tuned Chunksize)</h2>
+<p>The <strong>map()</strong> function is copying blocks of items from the vector to child processes, applies the math operation on each sequentially, then returns a list of results.</p>
+<p>The copying of data in memory between the processes is adding a lot of overhead. Each value must be pickled and unpickled.</p>
+<p>Tuning the chunksize allows us to group more or fewer items which may lessen the overhead, compared to the computation of the math function.</p>
+<p>We can try a suite of values and discover what works well.</p>
+<p>After a little trial and error, I found that a value of 1,000 gives better performance.</p>
+<pre><code>...
+# issue each func call on each item as a task
+result_list = pool.map(exp, data, chunksize=1000)</code></pre>
+<p>The complete example is listed below.</p>
+<pre><code># example of vector operation using a pool (tuned chunksize)
+from multiprocessing import Pool
+from numpy.random import rand
+from numpy import exp
+from numpy import asarray
+from time import time
+
+# protect the entry point
+if __name__ == '__main__':
+    # record start time
+    start = time()
+    # size of the vector
+    n = 10000000
+    # create vector of random floats
+    data = rand(n)
+    # create the process pool
+    with Pool(4) as pool:
+        # issue each func call on each item as a task
+        result_list = pool.map(exp, data, chunksize=1000)
+        # convert list back to array
+        result = asarray(result_list)
+    # calculate and report duration
+    duration = time() - start
+    print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example is faster than the default chunksize, but still terribly slow.</p>
+<p>It took about 16 seconds on my system, compared to about 23 seconds with the default chunksize and 143 milliseconds with the sequential version of the program.</p>
+<pre><code>Took 16.471 seconds</code></pre>
+<h2>Example of Parallel Partitioned Vector Operation</h2>
+<p>Another approach is to partition the vector into sub-vectors first, then issue each as a task.</p>
+<p>We can call the <strong>numpy.split()</strong> function to partition an array into subarrays, then the <strong>numpy.concatenate()</strong> function to stitch the results back together again.</p>
+<p>The challenge becomes how many parts to split the array into.</p>
+<p>After a little trial and error, I chose 64 parts, where each sub-vector has 156,250 items.</p>
+<pre><code>...
+# split the array into chunks
+chunks = split(data, 64)</code></pre>
+<p>I also chose a chunksize of 1 when issuing the tasks, as larger values did not help.</p>
+<pre><code>...
+# issue tasks with chunking
+result_list = pool.map(exp, chunks, chunksize=1)</code></pre>
+<p>The results can be combined directly as they are already in the order that the tasks were issued.</p>
+<pre><code>...
+# convert list back to one array
+result = concatenate(result_list)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example of partitioned vector operation using a pool
+from multiprocessing import Pool
+from numpy.random import rand
+from numpy import exp
+from numpy import concatenate
+from numpy import split
+from time import time
+
+# protect the entry point
+if __name__ == '__main__':
+    # record start time
+    start = time()
+    # size of the vector
+    n = 10000000
+    # create vector of random floats
+    data = rand(n)
+    # create the process pool
+    with Pool(4) as pool:
+        # split the array into chunks
+        chunks = split(data, 64)
+        # issue tasks with chunking
+        result_list = pool.map(exp, chunks, chunksize=1)
+        # convert list back to one array
+        result = concatenate(result_list)
+    # calculate and report duration
+    duration = time() - start
+    print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example is a lot faster.</p>
+<p>It took about 0.385 seconds or 385 milliseconds, compared to 143 milliseconds for the sequential version.</p>
+<p>I suspect it is faster than the previous parallel versions because pickling whole numpy arrays is faster than copied lists of numbers.</p>
+<p>We are also applying the operations "vectorized". That is, <strong>numpy.exp()</strong> is permitted to work on whole vectors at once, rather than one number at a time as in previous examples.</p>
+<p>It is still more than twice as slow as the non-parallel version, and not helpful if we have billions of items.</p>
+<pre><code>Took 0.385 seconds</code></pre>
+<p>I actually wrote a program to test a suite of different split sizes and chunk sizes.</p>
+<p>For reference, this program is listed below.</p>
+<pre><code># test different split sizes and chunk size when partitioning a vector for parallel math
+from multiprocessing import Pool
+from numpy.random import rand
+from numpy import exp
+from numpy import concatenate
+from numpy import split
+from time import time
+
+# run the experiment with a given split size and chunksize
+def experiment(s, c):
+    # record start time
+    start = time()
+    # size of the vector
+    n = 10000000
+    # create vector of random floats
+    data = rand(n)
+    # create the process pool
+    with Pool(4) as pool:
+        # split the array into chunks
+        chunks = split(data, s)
+        # issue tasks with chunking
+        result_list = pool.map(exp, chunks, chunksize=c)
+        # convert list back to one array
+        result = concatenate(result_list)
+    # calculate and report duration
+    duration = time() - start
+    print(f'splits={s}, chunks={c} took {duration:.3f} seconds')
+
+# protect the entry point
+if __name__ == '__main__':
+    splits = [1, 2, 4, 8, 16, 32, 64, 128]
+    chunks = [1, 2, 4, 8, 16, 32, 64, 128]
+    # test different split sizes and chunksizes
+    for i in splits:
+        for j in chunks:
+            experiment(i,j)
+</code></pre>
+<p>Running the program may produce slightly different results each run.</p>
+<p>The results from a run on my system are listed below.</p>
+<pre><code>splits=1, chunks=1 took 1.326 seconds
+splits=1, chunks=2 took 1.421 seconds
+splits=1, chunks=4 took 1.267 seconds
+splits=1, chunks=8 took 1.296 seconds
+splits=1, chunks=16 took 1.287 seconds
+splits=1, chunks=32 took 1.274 seconds
+splits=1, chunks=64 took 1.538 seconds
+splits=1, chunks=128 took 1.311 seconds
+splits=2, chunks=1 took 0.534 seconds
+splits=2, chunks=2 took 1.326 seconds
+splits=2, chunks=4 took 0.946 seconds
+splits=2, chunks=8 took 0.876 seconds
+splits=2, chunks=16 took 0.966 seconds
+splits=2, chunks=32 took 1.276 seconds
+splits=2, chunks=64 took 1.065 seconds
+splits=2, chunks=128 took 0.813 seconds
+splits=4, chunks=1 took 0.479 seconds
+splits=4, chunks=2 took 0.511 seconds
+splits=4, chunks=4 took 1.347 seconds
+splits=4, chunks=8 took 1.411 seconds
+splits=4, chunks=16 took 1.315 seconds
+splits=4, chunks=32 took 1.384 seconds
+splits=4, chunks=64 took 0.910 seconds
+splits=4, chunks=128 took 0.838 seconds
+splits=8, chunks=1 took 0.456 seconds
+splits=8, chunks=2 took 0.478 seconds
+splits=8, chunks=4 took 0.517 seconds
+splits=8, chunks=8 took 0.918 seconds
+splits=8, chunks=16 took 1.356 seconds
+splits=8, chunks=32 took 1.303 seconds
+splits=8, chunks=64 took 0.975 seconds
+splits=8, chunks=128 took 0.856 seconds
+splits=16, chunks=1 took 0.523 seconds
+splits=16, chunks=2 took 0.618 seconds
+splits=16, chunks=4 took 0.612 seconds
+splits=16, chunks=8 took 0.559 seconds
+splits=16, chunks=16 took 0.864 seconds
+splits=16, chunks=32 took 0.891 seconds
+splits=16, chunks=64 took 0.931 seconds
+splits=16, chunks=128 took 1.042 seconds
+splits=32, chunks=1 took 0.598 seconds
+splits=32, chunks=2 took 0.771 seconds
+splits=32, chunks=4 took 0.862 seconds
+splits=32, chunks=8 took 0.690 seconds
+splits=32, chunks=16 took 0.645 seconds
+splits=32, chunks=32 took 0.943 seconds
+splits=32, chunks=64 took 0.920 seconds
+splits=32, chunks=128 took 0.936 seconds
+splits=64, chunks=1 took 0.440 seconds
+splits=64, chunks=2 took 0.689 seconds
+splits=64, chunks=4 took 0.880 seconds
+splits=64, chunks=8 took 0.925 seconds
+splits=64, chunks=16 took 0.747 seconds
+splits=64, chunks=32 took 0.674 seconds
+splits=64, chunks=64 took 0.926 seconds
+splits=64, chunks=128 took 0.959 seconds
+splits=128, chunks=1 took 0.481 seconds
+splits=128, chunks=2 took 0.504 seconds
+splits=128, chunks=4 took 0.722 seconds
+splits=128, chunks=8 took 0.986 seconds
+splits=128, chunks=16 took 1.147 seconds
+splits=128, chunks=32 took 0.859 seconds
+splits=128, chunks=64 took 0.712 seconds
+splits=128, chunks=128 took 1.088 seconds
+</code></pre>
+<h2>Recommendations</h2>
+<p>The results suggest that parallelizing math operations on a numpy vector using multiprocessing is probably a bad idea.</p>
+<p>At least, for those methods tried here.</p>
+<p>The limitation of multiprocessing is that data must be transmitted from the main process to the worker processes using inter-process communication.</p>
+<p>This may be overcome by using a shared memory mechanism, such as:</p>
+<ul>
+<li><strong>multiprocessing.Manager</strong></li>
+<li><strong>multiprocessing.Array</strong></li>
+<li><strong>multiprocessing.shared_memory</strong></li>
+</ul>
+<p>Perhaps one of these mechanisms will lead to a path for faster-parallelized math operations on large numpy vectors.</p>
+<p>A better approach may be to explore threading and the ThreadPool class. This is because numpy functions release the GIL, allowing Python threads to achieve full parallelism.</p>
+<p>You can learn more about numpy releasing the GIL in the tutorial:</p>
+<ul>
+<li><a href="../numpy-vs-gil/">NumPy vs the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know how to use process-based concurrency multiprocessing to apply math operations in parallel to numpy vectors.</p>
+</main>
+</body>
+</html>

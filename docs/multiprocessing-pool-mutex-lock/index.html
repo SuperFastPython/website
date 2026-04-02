@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Use a Lock in the Multiprocessing Pool – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Use a Lock in the Multiprocessing Pool</h1>
+<div class="post-meta">July 26, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can share a <strong>multiprocessing.Lock</strong> in child worker processes in the <strong><a href="../multiprocessing-pool-python/">multiprocessing pool</a></strong> by using a <strong>multiprocessing.Manager</strong>.</p>
+<p>In this tutorial you will discover <strong>how to use a lock in the process pool in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need To Use a Lock In The Process Pool</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the process pool, we may need to use a lock shared among all worker processes.</p>
+<p><strong>How can we use a mutex lock in the process pool?</strong></p>
+<h2>What is a Mutex Lock</h2>
+<p>A mutual exclusion lock or mutex lock is a synchronization primitive intended to prevent a race condition.</p>
+<p>A race condition is a concurrency failure case when two threads run the same code and access or update the same resource (e.g. data variables, stream, etc.) leaving the resource in an unknown and inconsistent state.</p>
+<p>Race conditions often result in unexpected behavior of a program and/or corrupt data.</p>
+<p>These sensitive parts of code that can be executed by multiple threads concurrently and may result in race conditions are called critical sections. A critical section may refer to a single block of code, but it also refers to multiple accesses to the same data variable or resource from multiple functions.</p>
+<blockquote><p>The most commonly used mechanism for ensuring mutual exclusion is a mutual exclusion lock or mutex, or simply lock. A mutex is a special type of object that has support in the underlying hardware. The basic idea is that each critical section is protected by a lock.</p><cite>-- PAGE 53, <a href="https://amzn.to/3LRljie">AN INTRODUCTION TO PARALLEL PROGRAMMING</a>, 2020.</cite></blockquote>
+<p>A mutex lock can be used to ensure that only one thread at a time executes a critical section of code at a time, while all other threads trying to execute the same code must wait until the currently executing thread is finished with the critical section and releases the lock.</p>
+<p>Each thread must attempt to acquire the lock at the beginning of the critical section. If the lock has not been obtained, then a thread will acquire it and other threads must wait until the thread that acquired the lock releases it.</p>
+<p>If the lock has not been acquired, we might refer to it as being in the “unlocked” state. Whereas if the lock has been acquired, we might refer to it as being in the “locked” state.</p>
+<ul><li><strong>Unlocked</strong>: The lock has not been acquired and can be acquired by the next thread that makes an attempt.</li><li><strong>Locked</strong>: The lock has been acquired by one thread and any thread that makes an attempt to acquire it must wait until it is released.</li></ul>
+<p>Locks are created in the unlocked state.</p>
+<p>Now that we know what a mutex lock is, let’s take a look at how we can use it in Python.</p>
+<h2>How Can We Use a Multiprocessing Lock</h2>
+<p>Python provides a mutual exclusion lock via the <strong>threading.Lock</strong> class.</p>
+<p>An instance of the lock can be created and then acquired by threads before accessing a critical section, and released after the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = Lock()
+# acquire the lock
+lock.acquire()
+# ...
+# release the lock
+lock.release()</code></pre>
+<p>Only one thread can have the lock at any time. If a thread does not release an acquired lock, it cannot be acquired again.</p>
+<p>The thread attempting to acquire the lock will block until the lock is acquired, such as if another thread currently holds the lock then releases it.</p>
+<p>We can also use the lock via the context manager protocol via the with statement, allowing the critical section to be a block within the usage of the lock and for the lock to be released automatically once the block has completed.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = Lock()
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>This is the preferred usage as it makes it clear where the protected code begins and ends, and ensures that the lock is always released, even if there is an exception or error within the critical section.</p>
+<p>You can learn more about how to use process-based mutex locks in the tutorial:</p>
+<ul><li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li></ul>
+<p>Next, let's look at how we might use mutex locks in a process pool.</p>
+<h2>How to Use a Lock With the Process Pool</h2>
+<p>We can create a <strong>multiprocessing.Lock</strong> instance and share it with the child worker processes in the process pool.</p>
+<p>There are perhaps three ways we can share a <strong>multiprocessing.Lock</strong> instance with worker processes, they are:</p>
+<ul><li>By passing it as an argument when initializing the worker processes.</li><li>By passing it as an argument to tasks executed by the pool.</li><li>By using the '<strong>fork</strong>' start method, storing it in a global variable, then having child processes inherit the variable.</li></ul>
+<p>The third method, using the '<strong>fork</strong>' start method will work, and provides an easy way to share a lock with child worker processes.</p>
+<p>You can learn more about inheriting global variables by child processes in the tutorial:</p>
+<ul><li><a href="../multiprocessing-inherit-global-variables-in-python/">Multiprocessing Inherit Global Variables in Python</a></li></ul>
+<p>The problem is, the '<strong>fork</strong>' start method is not available on all platforms, e.g. it cannot be used on Windows.</p>
+<p>Alternately, if we naively pass a <strong>multiprocessing.Lock</strong> as an argument when initializing the process pool or in a task executed by the process pool, it will fail with an error, such as:</p>
+<pre><code>Lock objects should only be shared between processes through inheritance</code></pre>
+<p>Instead, we must use a <strong>multiprocessing.Manager</strong>.</p>
+<p>A <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Manager">multiprocessing.Manager</a></strong> creates a process and is responsible for managing a centralized version of an object. It then provides proxy objects that can be used in other processes that keep up-to-date with the single centralized object.</p>
+<blockquote><p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">MULTIPROCESSING — PROCESS-BASED PARALLELISM</a></cite></blockquote>
+<p>As such, using a <strong>multiprocessing.Manager</strong> is a useful way to centralize a synchronization primitive like a <strong>multiprocessing.Lock</strong> shared among multiple worker processes.</p>
+<p>We can first create a <strong>multiprocessing.Manager</strong> using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>We can then create a shared <strong>multiprocessing.Lock</strong> object using the manager.</p>
+<p>This will return a proxy object for the <strong>multiprocessing.Lock</strong> object in the manager process that we can share among child worker processes directly or indirectly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared object via the manager
+lock = manager.Lock()</code></pre>
+<p>The proxy for the <strong>multiprocessing.Lock</strong> can then be passed to a child worker initialization function or to a task function executed by worker processes.</p>
+<p>Now that we know how to share a <strong>multiprocessing.Lock</strong> with child worker processes in the process pool, let's look at some worked examples.</p>
+<h2>Errors When Sharing a Lock With Child Worker Processes</h2>
+<p>Before we look at an example of how to successfully share a <strong>multiprocessing.Lock</strong> with child worker processes, let's look at some common failure cases.</p>
+<p>Three common errors when attempting to share a <strong>multiprocessing.Lock</strong> with worker processes are:</p>
+<ol><li>Asynchronous tasks fail silently.</li><li>Asynchronous tasks fail by error callback.</li><li>Synchronous tasks fail with an error.</li></ol>
+<p>Let's take a closer look at each failure case in turn.</p>
+<h3>Using a Lock in the Process Pool Fails Silently</h3>
+<p>The first common failure case involves issuing tasks asynchronously to the process pool and having them fail silently.</p>
+<p>In this example, we define a task function that takes an integer identifier and a lock as an argument. It acquires the lock, generates a random number, blocks for a moment then reports the generated number. A lock is created that ensures that only one task can perform the chosen action at a time. A process pool is created and many tasks are issued asynchronously.</p>
+<p>The asynchronous tasks issued to the process pool fail silently.</p>
+<p>They fail because a <strong>multiprocessing.Lock</strong> is passed to the task, which raises an error. The error is silent because the example does not explicitly get the result from the tasks, as there is no result to get.</p>
+<p>Firstly, we can define the target task function executed in the process pool.</p>
+<p>The function takes an integer identifier as an argument as well as a shared lock. The task acquires the lock using the context manager interface. It generates a random number between 0 and 1, blocks for a fraction of a second to simulate computational effort, then reports both its identifier and generated value.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(identifier, lock):
+    # acquire the mutex lock
+    with lock:
+        # generate a value
+        value = random()
+        # block for a moment
+        sleep(value)
+        # report a message
+        print(f'Task {identifier} completed with {value}', flush=True)
+</code></pre>
+<p>Next, in the main process, we can define a mutex lock.</p>
+<pre><code>...
+# create the shared lock
+lock = Lock()</code></pre>
+<p>We then define a process pool with 4 worker processes. In this case we use the context manager interface to ensure the process pool closes automatically once we are finished with it.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool(4) as pool:
+	# ...
+</code></pre>
+<p>You can learn more about the context manager interface in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<p>We then define a list of task arguments, each item in the list representing a tuple of arguments for one call to the <strong>task()</strong> function, passing an integer and the shared lock.</p>
+<pre><code>...
+# prepare task arguments
+items = [(i, lock) for i in range(10)]</code></pre>
+<p>The items are then issued with calls to the <strong>task()</strong> function asynchronously via the <strong>starmap_async()</strong> function that returns an <strong>AsyncResult</strong> function immediately.</p>
+<p>You can learn more about issuing asynchronous tasks to the process pool with <strong>starmap_async()</strong> in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-starmap_async/">Multiprocessing Pool.starmap_async() in Python</a></li></ul>
+<pre><code>...
+# issue tasks into the process pool
+result = pool.starmap_async(task, items)</code></pre>
+<p>Finally, the main process blocks until all tasks are completed.</p>
+<pre><code>...
+# wait for all tasks to finish
+result.wait()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a lock in the process pool that fails silently
+from random import random
+from time import sleep
+from multiprocessing import Lock
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, lock):
+    # acquire the mutex lock
+    with lock:
+        # generate a value
+        value = random()
+        # block for a moment
+        sleep(value)
+        # report a message
+        print(f'Task {identifier} completed with {value}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared lock
+    lock = Lock()
+    # create and configure the process pool
+    with Pool(4) as pool:
+        # prepare task arguments
+        items = [(i, lock) for i in range(10)]
+        # issue tasks into the process pool
+        result = pool.starmap_async(task, items)
+        # wait for all tasks to finish
+        result.wait()
+</code></pre>
+<p>Running the example first creates the shared mutex lock.</p>
+<p>The process pool is then created with 4 worker processes.</p>
+<p>The task arguments are prepared and 10 tasks are issued to the process pool. The main process then blocks until the tasks are complete.</p>
+<p>The tasks fail to execute and no messages are reported.</p>
+<p>No error messages are reported and the tasks fail silently.</p>
+<p>The main process continues on almost immediately.</p>
+<p>The tasks failed because a <strong>multiprocessing.Lock</strong> was shared directly with the child worker processes. An error was raised by each call to the <strong>task()</strong> function. The error was stored in the returned <strong>AsyncResult</strong> object, but was not re-raised or checked for, making it appear that the tasks failed silently.</p>
+<p>Next, let's look at how we might expose the error that is raised by issuing asynchronous tasks.</p>
+<h3>RuntimeError in Error Callback Using Lock in the Process Pool</h3>
+<p>Sharing a <strong>multiprocessing.Lock</strong> with tasks in the process pool via an argument to the task function will fail with a <strong>RuntimeError</strong>.</p>
+<p>We can explore this error when issuing asynchronous tasks to the pool by using an error callback.</p>
+<p>In this example we will update the previous example that fails silently to report the error caused by sharing a mutex lock with child processes in the process pool.</p>
+<p>This can be achieved by defining a function that takes an error argument and reports the error message directly.</p>
+<pre><code># error callback function
+def custom_error_callback(error):
+    print(error, flush=True)
+</code></pre>
+<p>Next, we can configure the <strong>starmap_async()</strong> function to use the error callback function when an exception is raised executing a task in the process pool.</p>
+<pre><code>...
+# issue tasks into the process pool
+result = pool.starmap_async(task, items, error_callback=custom_error_callback)</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a lock in the process pool that fails with an error
+from random import random
+from time import sleep
+from multiprocessing import Lock
+from multiprocessing.pool import Pool
+
+# error callback function
+def custom_error_callback(error):
+    print(error, flush=True)
+
+# task executed in a worker process
+def task(identifier, lock):
+    # acquire the mutex lock
+    with lock:
+        # generate a value
+        value = random()
+        # block for a moment
+        sleep(value)
+        # report a message
+        print(f'Task {identifier} completed with {value}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared lock
+    lock = Lock()
+    # create and configure the process pool
+    with Pool(4) as pool:
+        # prepare task arguments
+        items = [(i, lock) for i in range(10)]
+        # issue tasks into the process pool
+        result = pool.starmap_async(task, items, error_callback=custom_error_callback)
+        # wait for all tasks to finish
+        result.wait()
+</code></pre>
+<p>Running the example first creates the shared mutex lock.</p>
+<p>The process pool is then created with 4 worker processes.</p>
+<p>The task arguments are prepared and 10 tasks are issued to the process pool. The main process blocks until the tasks are complete.</p>
+<p>Each issued task fails with a <strong>RuntimeError</strong>. The first task to raise the error calls the error callback, which reports the error directly.</p>
+<p>This highlights how the process pool is configured to not allow mutex locks to be passed directly as arguments.</p>
+<pre><code>Lock objects should only be shared between processes through inheritance</code></pre>
+<p>Next, let's look at how we might expose the error that is raised by issuing synchronous tasks instead of asynchronous tasks.</p>
+<h3>RuntimeError Using Lock in the Process Pool</h3>
+<p>We can update the previous example so that tasks are issued synchronously instead of asynchronously.</p>
+<p>Issuing tasks synchronously means that the main process will block until all tasks are complete and the return value results of the tasks will be returned directly. This is important because if at least one task raises an error while executing, it will be automatically re-raised in the caller main process.</p>
+<p>This can be achieved by changing the call to <strong>starmap_async()</strong> which is asynchronous to <strong>starmap()</strong> which is blocking and synchronous.</p>
+<pre><code>...
+# issue tasks into the process pool
+pool.starmap(task, items)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a lock in the process pool that fails with an exception
+from random import random
+from time import sleep
+from multiprocessing import Lock
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, lock):
+    # acquire the lock
+    with lock:
+        # generate a value
+        value = random()
+        # block for a moment
+        sleep(value)
+        # report a message
+        print(f'Task {identifier} completed with {value}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared lock
+    lock = Lock()
+    # create and configure the process pool
+    with Pool(4) as pool:
+        # prepare task arguments
+        items = [(i, lock) for i in range(10)]
+        # issue tasks into the process pool
+        pool.starmap(task, items)
+</code></pre>
+<p>Running the example first creates the shared mutex lock.</p>
+<p>The process pool is then created with 4 worker processes.</p>
+<p>The task arguments are prepared and 10 tasks are issued to the process pool. The main process blocks until the tasks are complete.</p>
+<p>Each issued task fails with a <strong>RuntimeError</strong>, the first of which is re-raised in the main process.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+RuntimeError: Lock objects should only be shared between processes through inheritance
+</code></pre>
+<p>Now that we have confirmed that we cannot pass a normal <strong>multiprocessing.Lock</strong> to a task executed in the process pool, let's look at how we might use a <strong>multiprocessing.Manager</strong> to fix the problem.</p>
+<h2>Example of Using a Manager to Share a Lock with the Process Pool</h2>
+<p>We can explore how to use a <strong>multiprocessing.Manager</strong> to share a <strong>multiprocessing.Lock</strong> among child worker processes in the process pool.</p>
+<p>This can be achieved by updating the first asynchronous example of issuing tasks that failed silently to create the <strong>multiprocessing.Lock</strong> using a <strong>multiprocessing.Manager</strong>.</p>
+<p>First, a manager can be created using the context manager interface. This ensures that the manager is closed automatically once we are finished with it.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+	# ...
+</code></pre>
+<p>Next, a <strong>multiprocessing.Lock</strong> can be created using the <strong>multiprocessing.Manager</strong> instance.</p>
+<p>This will create and host a lock in a new server process and returns a proxy object that can be shared among child worker processes and used to interface with the centralized lock instance.</p>
+<pre><code>...
+# create the shared lock
+lock = manager.Lock()</code></pre>
+<p>And that's it.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a lock in the process pool that use a manager
+from random import random
+from time import sleep
+from multiprocessing import Manager
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier, lock):
+    # acquire the lock
+    with lock:
+        # generate a value
+        value = random()
+        # block for a moment
+        sleep(value)
+        # report a message
+        print(f'Task {identifier} completed with {value}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared lock
+        lock = manager.Lock()
+        # create and configure the process pool
+        with Pool(4) as pool:
+            # prepare task arguments
+            items = [(i, lock) for i in range(10)]
+            # issue tasks into the process pool
+            result = pool.starmap_async(task, items)
+            # wait for all tasks to finish
+            result.wait()
+</code></pre>
+<p>Running the example first creates the shared mutex lock.</p>
+<p>The process pool is then created with 4 worker processes.</p>
+<p>The task arguments are prepared and 10 tasks are issued to the process pool. The main process then blocks until the tasks are complete.</p>
+<p>Each issued task then executes in the process pool. Each attempts to acquire the shared lock, but only one task is able to acquire the lock and execute at a time.</p>
+<p>The tasks generate random values between 0 and 1, block for a moment, then report a message with their integer identifier and their generated number.</p>
+<p>Note, the random numbers generated will differ each time the code is run.</p>
+<p>All tasks complete normally without error.</p>
+<p>This highlights how we can share and use a lock among child worker processes in the process pool.</p>
+<pre><code>Task 1 completed with 0.08364371395125247
+Task 0 completed with 0.9027476093622914
+Task 2 completed with 0.18705202828063638
+Task 3 completed with 0.10093696106119898
+Task 4 completed with 0.7105243179762597
+Task 5 completed with 0.32976092193735884
+Task 6 completed with 0.28260540683410096
+Task 7 completed with 0.5197292680407757
+Task 8 completed with 0.6001511476458928
+Task 9 completed with 0.9747283876015417</code></pre>
+<h2>Example of Using a Global Variable to Share a Lock with the Process Pool</h2>
+<p>An alternate approach to sharing a mutex lock with workers in the process pool is to share the lock as a global variable.</p>
+<p>This requires the use of the '<strong>fork</strong>' start method for creating new processes in Python.</p>
+<p>A limitation of this approach is that the '<strong>fork</strong>' start method is not supported on all platforms. For example, '<strong>fork</strong>' is not supported on Windows.</p>
+<p>In this example, we will update the previous example to use the '<strong>fork</strong>' start method and to share the <strong>multiprocessing.Lock</strong> with all workers in the process pool via a global variable.</p>
+<p>Firstly, we update the <strong>task()</strong> function so that it does not take the lock as an argument, and instead assumes it is available via an inherited global variable.</p>
+<p>The updated version of the <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    # acquire the mutex lock
+    with lock:
+        # generate a value
+        value = random()
+        # block for a moment
+        sleep(value)
+        # report a message
+        print(f'Task {identifier} completed with {value}', flush=True)
+</code></pre>
+<p>Next, in the main process, we can configure the program to use the '<strong>fork</strong>' start method when creating new child processes, such as those in the process pool.</p>
+<pre><code>...
+# set the fork start method
+set_start_method('fork')</code></pre>
+<p>You can learn more about setting the process start method in the tutorial:</p>
+<ul><li><a href="../multiprocessing-start-method/">Multiprocessing Start Methods</a></li></ul>
+<p>Next, we can create the shared <strong>multiprocessing.Lock</strong> instance as per normal.</p>
+<pre><code>...
+# create the shared lock instance
+lock = Lock()</code></pre>
+<p>This will implicitly be a global variable.</p>
+<p>A more explicit approach would be to declare a "<strong>lock</strong>" as a global variable, then assign it a new <strong>multiprocessing.Lock</strong> instance.</p>
+<p>For example:</p>
+<pre><code>...
+# declare the global variable
+global lock
+# assign the global variable
+lock = multiprocessing.Lock()</code></pre>
+<p>This might be easier to read to newer Python programmers.</p>
+<p>We can then create the process pool as per normal, then issue 10 tasks to the process pool asynchronously via the <strong>map_async()</strong> function and wait for the tasks to complete.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool(4) as pool:
+    # issue tasks into the process pool
+    result = pool.map_async(task, range(10))
+    # wait for all tasks to finish
+    result.wait()
+</code></pre>
+<p>We use the <strong>map_async()</strong> function instead of the <strong>starmap_async()</strong> function because our <strong>task() </strong>function only has one argument.</p>
+<p>You can learn more about the <strong>map_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a lock with worker processes using a global variable
+from random import random
+from time import sleep
+from multiprocessing import set_start_method
+from multiprocessing import Lock
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier):
+    # acquire the mutex lock
+    with lock:
+        # generate a value
+        value = random()
+        # block for a moment
+        sleep(value)
+        # report a message
+        print(f'Task {identifier} completed with {value}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # set the fork start method
+    set_start_method('fork')
+    # create the shared lock instance
+    lock = Lock()
+    # create and configure the process pool
+    with Pool(4) as pool:
+        # issue tasks into the process pool
+        result = pool.map_async(task, range(10))
+        # wait for all tasks to finish
+        result.wait()
+</code></pre>
+<p>Running the example first creates the shared mutex lock.</p>
+<p>The process pool is then created with 4 worker processes.</p>
+<p>The task arguments are prepared and 10 tasks are issued to the process pool asynchronously. The main process then blocks until the tasks are complete.</p>
+<p>Each issued task then executes in the process pool. Each attempts to acquire the shared lock, but only one task is able to acquire the lock and execute at a time.</p>
+<p>The tasks generate random values between 0 and 1, block for a moment, then report a message with their integer identifier and their generated number.</p>
+<p>The lock instance is accessed via the inherited global variable.</p>
+<p>Note, the random numbers generated will differ each time the code is run.</p>
+<p>All tasks complete normally without error.</p>
+<p>This highlights an alternate way of how we can share and use a lock among child worker processes in the process pool.</p>
+<pre><code>Task 0 completed with 0.48489757524446275
+Task 1 completed with 0.38729028104193575
+Task 2 completed with 0.517681970727736
+Task 3 completed with 0.9630723259905106
+Task 4 completed with 0.5165313442006523
+Task 5 completed with 0.7580011775594481
+Task 6 completed with 0.9646278592699737
+Task 7 completed with 0.8355688108531624
+Task 8 completed with 0.15694978830179873
+Task 9 completed with 0.8106436115472159</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a lock in the process pool in Python.</p>
+</main>
+</body>
+</html>

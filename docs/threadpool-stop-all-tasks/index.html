@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPool Stop All Tasks in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPool Stop All Tasks in Python</h1>
+<div class="post-meta">October 8, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>You can safely stop tasks in the <strong>ThreadPool</strong> using a shared <strong>Event</strong> object.</p>
+<p>In this tutorial, you will discover <strong>how to safely stop tasks in the <a href="../threadpool-python/">ThreadPool in Python</a></strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Safely Stop All Tasks</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.ThreadPool"><strong>multiprocessing.pool.ThreadPool</strong> in Python</a> provides a pool of reusable threads for executing ad hoc tasks.</p>
+<blockquote><p>A thread pool object which controls a pool of worker threads to which jobs can be submitted.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The <strong>ThreadPool</strong> class extends the <strong>Pool</strong> class. The <strong>Pool</strong> class provides a pool of worker processes for process-based concurrency.</p>
+<p>Although the <strong>ThreadPool</strong> class is in the <strong>multiprocessing</strong> module it offers thread-based concurrency and is best suited to IO-bound tasks, such as reading or writing from sockets or files.</p>
+<p>A <strong>ThreadPool</strong> can be configured when it is created, which will prepare the new threads.</p>
+<p>We can issue one-off tasks to the <strong>ThreadPool</strong> using methods such as <strong>apply()</strong> or we can apply the same function to an iterable of items using methods such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the methods such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the <strong>ThreadPool</strong>, we often need to safely stop all running tasks.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>A user requests to close the application.</li><li>An error or fault that negates the tasks.</li><li>A problem accessing a required resource.</li></ul>
+<p><strong>How can we safely do all tasks in the ThreadPool?</strong></p>
+<h2>How To Safely Stop All Tasks in the ThreadPool</h2>
+<p>The <strong>ThreadPool</strong> does not provide a mechanism to safely stop all currently running tasks.</p>
+<p>Instead, we can develop a mechanism to safely stop all running tasks in a <strong>ThreadPool</strong> using an Event object.</p>
+<p>Firstly, an <strong>Event</strong> object must be created and shared among all running tasks.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared event
+event = Event()</code></pre>
+<p>Recall that an event provides a thread-safe boolean variable.</p>
+<p>It is created in the False state and can be checked via the <strong>is_set()</strong> function and made <strong>True</strong> via the <strong>set()</strong> function.</p>
+<p>You can learn more about how to use an <strong>Event</strong> object in the tutorial:</p>
+<ul><li><a href="../thread-event-object-in-python/">Threading Event Object In Python</a></li></ul>
+<p>We can create a shared Event object in the main thread, then pass it as an argument to any task that needs to be stopped.</p>
+<p>For example:</p>
+<pre><code># function executed in worker threads
+def task(event, ...):
+	# ...
+</code></pre>
+<p>The custom function executing the task can check the status of the <strong>Event</strong> object periodically, such as each iteration of a loop.</p>
+<p>If the <strong>Event</strong> set, the target task function can then choose to stop, closing any resources if necessary.</p>
+<pre><code># function executed in worker threads
+def task(event, ...):
+	# ...
+	while True:
+		# ...
+		if event.is_set():
+			return
+</code></pre>
+<p>There are some limitations to this approach.</p>
+<p>It requires that you have complete control over the target task function or functions executed in the <strong>ThreadPool</strong>.</p>
+<p>This control is required so that the functions can be changed to take the event as an argument and then check the status of the event periodically.</p>
+<ul><li>The target task function must take the <strong>Event</strong> as an argument.</li><li>The target task function must check the status of the <strong>Event</strong> periodically.</li></ul>
+<p>The first limitation can be removed by inheriting the shared <strong>Event</strong> from the main thread as a global variable. Nevertheless, all tasks that you want to stop will need to check the status of the event all the time.</p>
+<p>This can be a problem if tasks are performing blocking operations such as reading and/or writing from/to files or sockets.</p>
+<p>Now that we know how to safely stop tasks in the <strong>ThreadPool</strong>, let's look at a worked example.</p>
+<h2>Example Safely Stop All Tasks in the ThreadPool</h2>
+<p>We can explore how to stop tasks in the <strong>ThreadPool</strong> safely.</p>
+<p>In this example, we will define a task function that takes a shared event as an argument that loops a number of times and sleeps each iteration. It will check the status of the shared event each iteration and stop the task if the event is set. The main thread will issue a number of tasks to the <strong>ThreadPool</strong>, wait a moment then request that all issued tasks safely stop, then wait for the tasks to stop.</p>
+<p>Importantly, the <strong>ThreadPool</strong> is left in a condition where it can be used again to issue more tasks.</p>
+<p>Firstly, we can define a custom function to execute tasks in the <strong>ThreadPool</strong>.</p>
+<p>The task function will take a unique integer identifier and a shared event object as arguments. It will report a message that it is starting, then loop 10 times. Each loop it will sleep for one second to simulate computational effort. It will then check the status of the event, and if set it will report a message and break the loop. Finally, a message is reported right before the task is stopped.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker thread
+def task(identifier, event):
+    print(f'Task {identifier} running')
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+        # check if the task should stop
+        if event.is_set():
+            print(f'Task {identifier} stopping...')
+            # stop the task
+            break
+    # report all done
+    print(f'Task {identifier} Done')
+</code></pre>
+<p>Next, in the main thread we can create the shared event.</p>
+<pre><code>...
+# create the shared event
+event = Event()</code></pre>
+<p>Next, we will create a <strong>ThreadPool</strong> with a default configuration.</p>
+<p>We will use the context manager interface to ensure that the pool is closed automatically once we are finished using it.</p>
+<pre><code>...
+# create and configure the thread pool
+with ThreadPool() as pool:
+	# ...
+</code></pre>
+<p>We will then issue 4 tasks to the <strong>ThreadPool</strong>.</p>
+<p>In this case, we will use the <strong>starmap_async()</strong> function that supports multiple arguments and allows tasks to be issued asynchronously, allowing the main thread to continue on.</p>
+<p>Firstly, we will create a list of arguments, with one tuple per task containing a unique integer and the shared event object. We then issue the tasks and receive an <strong>AsyncResult</strong> as a handle on the issued tasks.</p>
+<pre><code>...
+# prepare arguments
+items = [(i,event) for i in range(4)]
+# issue tasks asynchronously
+result = pool.starmap_async(task, items)</code></pre>
+<p>You can learn more about issuing tasks using the <strong>starmap_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-starmap_async/">How to Use ThreadPool starmap_async() in Python</a></li></ul>
+<p>Next, the main thread will block for a moment to allow the tasks to get started and run for a while.</p>
+<pre><code>...
+# wait a moment
+sleep(2)</code></pre>
+<p>The main thread will then request that all issued tasks safely stop by setting the shared event.</p>
+<pre><code>...
+# safely stop the issued tasks
+print('Safely stopping all tasks')
+event.set()</code></pre>
+<p>The main thread will then wait for all tasks to stop.</p>
+<p>There are many ways to do this, although in this case will simply wait on the single AsyncResult object returned as a handle on the single batch of tasks issued to the pool.</p>
+<pre><code>...
+# wait for all tasks to stop
+result.wait()
+print('All stopped')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of safely stopping all tasks in the thread pool
+from time import sleep
+from threading import Event
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(identifier, event):
+    print(f'Task {identifier} running')
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+        # check if the task should stop
+        if event.is_set():
+            print(f'Task {identifier} stopping...')
+            # stop the task
+            break
+    # report all done
+    print(f'Task {identifier} Done')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared event
+    event = Event()
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # prepare arguments
+        items = [(i,event) for i in range(4)]
+        # issue tasks asynchronously
+        result = pool.starmap_async(task, items)
+        # wait a moment
+        sleep(2)
+        # safely stop the issued tasks
+        print('Safely stopping all tasks')
+        event.set()
+        # wait for all tasks to stop
+        result.wait()
+        print('All stopped')
+</code></pre>
+<p>Running the example first creates the shared <strong>Event</strong> object.</p>
+<p>The <strong>ThreadPool</strong> is then created using the default configuration.</p>
+<p>The arguments for the tasks are prepared, then the four tasks are issued asynchronously to the ThreadPool.</p>
+<p>The main thread then blocks for a moment.</p>
+<p>Each task starts, reporting a message and then starting its main loop.</p>
+<p>The main thread wakes up and sets the event, requesting all issued tasks to stop. It then waits on the <strong>AsyncResult</strong> for the issued tasks to stop.</p>
+<p>Each task checks the status of the event in each iteration of its main loop. They notice that the event is set, break their main loop, report a final message then return, stopping the task safely.</p>
+<p>All tasks stop, allowing the main thread to continue on, ending the application.</p>
+<p>This highlights how we can safely stop all tasks in the <strong>ThreadPool</strong> in a controlled manner.</p>
+<pre><code>Task 0 running
+Task 1 running
+Task 2 running
+Task 3 running
+Safely stopping all tasks
+Task 0 stopping...
+Task 2 stopping...
+Task 2 DoneTask 0 Done
+Task 1 stopping...
+Task 1 Done
+Task 3 stopping...
+Task 3 Done
+All stopped
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to safely stop tasks in the <strong>ThreadPool</strong> in Python.</p>
+</main>
+</body>
+</html>

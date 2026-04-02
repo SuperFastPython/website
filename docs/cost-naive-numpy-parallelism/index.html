@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Performance Cost of Naive Parallelism in NumPy – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Performance Cost of Naive Parallelism in NumPy</h1>
+<div class="post-meta">June 20, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>add parallelism to a numpy program</strong> to improve its performance.</p>
+<p>Nevertheless, there is a danger in naively adding parallelism to a program that uses numpy. This is for many reasons, such as some numpy math functions that are already multithreaded, not knowing how to configure multithreaded numpy functions, using the wrong type of parallelism, and <strong>missing opportunities to improve the performance</strong> of numpy math functions.</p>
+<p>In this tutorial, you will discover the cost of naively adding parallelism to numpy programs in Python.</p>
+<p>Let's get started.</p>
+<h2>Cost of Implementing Parallelism Naively with Numpy</h2>
+<p>Numpy is a popular library for efficiently working with arrays of data.</p>
+<p>In addition to working with arrays of data directly, it is a fundamental building block for many other scientific computing libraries.</p>
+<p>As such, many modern Python programs make use of numpy directly or indirectly.</p>
+<p>It is important that we make good or best use of our available CPU cores when using numpy so that our numpy programs run as fast as possible.</p>
+<p>Parallelism allows us to make effective use of available hardware by executing two or more tasks simultaneously.</p>
+<p>Numpy supports parallelisms automatically behind the scenes. This is achieved using efficient third-party libraries to implement common mathematical operations.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multithreaded-parallelism/">NumPy Supports Multithreaded Parallelism</a></li>
+</ul>
+<p>The built-in parallelisms in numpy can conflict with parallelisms in a Python application that may use threads or processes. Nevertheless, a careful combination of built-in parallelism and the addition of threads or processes can often result in better overall performance.</p>
+<p>As such, neglecting parallelism when using numpy can result in worse-than-expected performance. Similarly, naively implementing parallelism can result in dramatically worse performance.</p>
+<p>There are five problems that you may suffer if you do not carefully consider parallelism when using numpy.</p>
+<p>They are:</p>
+<ol>
+<li>Cripple math operations that are already multithreaded.</li>
+<li>Miss opportunities to tune inherently multithreaded math operations.</li>
+<li>Choose the wrong type of parallelism when developing your numpy programs.</li>
+<li>Miss opportunities to improve the performance of a math operation.</li>
+<li>Achieve much worse performance when sharing numpy array data within your application.</li>
+</ol>
+<p>Let's take a look at each concern in turn.</p>
+<h2>Cost #1: Cripple Already Parallel Operations</h2>
+<p>Many math operations in numpy are already multithreaded.</p>
+<p>Adding concurrency with Python threads or processes to math operations that are already multithreaded can result in significantly worse performance.</p>
+<p>NumPy supports many linear algebra functions with vectors and arrays by calling into efficient third-party libraries such as BLAS and LAPACK.</p>
+<p>BLAS and LAPACK are specifications for efficient vector, matrix, and linear algebra operations that are implemented using third-party libraries, such as MKL and OpenBLAS. Many of the operations in these libraries are multithreaded.</p>
+<p>You can learn more about NumPy and BLAS in the tutorial:</p>
+<ul>
+<li><a href="../what-is-blas-and-lapack-in-numpy/">What is BLAS and LAPACK in NumPy</a></li>
+</ul>
+<p>Examples of multithreaded numpy functions include matrix multiplication via <strong>numpy.dot()</strong> and matrix decomposition like SVD via <strong>numpy.linalg.svd()</strong>. These functions call the BLAS library API, the implementation of which (such as OpenBLAS) is likely implemented in C or FORTRAN and uses threads.</p>
+<p>As such, some NumPy functions support parallelism automatically.</p>
+<p>You can learn more about which numpy functions are multithreaded in the tutorial:</p>
+<ul>
+<li><a href="../multithreaded-numpy-functions/">Which NumPy Functions Are Multithreaded</a></li>
+</ul>
+<p>We may naively use thread-based concurrency via the <a href="../threading-in-python/"><strong>threading</strong> module</a> or process-based concurrency via the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a> to speed up our numpy programs. If the operation we are attempting to parallelize is already multithreaded, such as dot(), then we will likely achieve worse performance by our efforts rather than better performance.</p>
+<p>For example, consider the case where we have many pairs of matrices and we want to perform a math operation on each pair, such as multiplying one matrix by another.</p>
+<pre><code>...
+# iterate over pairs of matrices
+for matrix_a, matrix_b in matrices:
+	# matrix multiplication
+	result = matrix.dot(matrix_b)
+</code></pre>
+<p>We might want to speed up this overall task by executing each matrix multiplication in a separate thread.</p>
+<p>This means we will be performing task-level parallelism where multiple matrix multiplications will be occurring in parallel, and we will be performing operation-level parallelism, where each matrix multiplication is implemented using a multithreaded algorithm.</p>
+<p>This would likely result in worse performance than allowing parallelism only in the task or only in the operation.</p>
+<p>This is because the threads at each level will step on each other.</p>
+<p>If we attempt to multithread multiple instances of a multithreaded operation, then the added threads will compete for resources and cause the overall task to take longer.</p>
+<p>The operating system, which manages the underlying threads, will context switch between each thread, which adds overhead, which could otherwise be avoided.</p>
+<h2>Cost #2: Miss Opportunity to Tune Performance</h2>
+<p>As we have seen, many numpy math operations are inherently parallel.</p>
+<p>This is because they are implemented by a third-party library using a multithreaded algorithm.</p>
+<p>The third-party library will use a default number of threads to perform the multithreaded math operation.</p>
+<p>This is good in most cases, but not always.</p>
+<p>In some cases, we can achieve better performance for a multithreaded math operation by configuring the number of threads used by the third-party library.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>The default number of threads is greater than the number of physical CPU cores available in the system.</li>
+<li>Our program is already multi-threaded.</li>
+<li>The specific operation performs better when the number of threads is set to be one less than the number of physical CPU cores.</li>
+</ul>
+<p>For example, we can see better performance in some cases when the number of threads used in multithreaded matrix multiplication is configured to use one minus the number of physical CPU cores.</p>
+<p>You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multithreading-matrix-multiplication/">Numpy Multithreaded Matrix Multiplication (up to 5x faster)</a></li>
+</ul>
+<p>This requires firstly that the specific numpy mathematical operation we are using is multithreaded.</p>
+<p>You can learn more about which numpy functions are multithreaded in the tutorial:</p>
+<ul>
+<li><a href="../multithreaded-numpy-functions/">Which NumPy Functions Are Multithreaded</a></li>
+</ul>
+<p>It then requires testing different numbers of threads used by the numpy multithreaded math operation.</p>
+<p>You can learn more about how to configure the number of numpy BLAS/LAPACK threads in the tutorial:</p>
+<ul>
+<li><a href="../numpy-number-blas-threads/">Configure the Number of BLAS/LAPACK Threads for NumPy</a></li>
+</ul>
+<p>Not knowing about the multithreaded math operations or how to tune may mean that you miss the opportunity for better performance in your application.</p>
+<h2>Cost #3: Choose the Wrong Type of Parallelism</h2>
+<p>When using numpy in our program, we may decide to speed up tasks by executing them concurrently.</p>
+<p>We may seek to do this using threads via the <a href="../threading-in-python/"><strong>threading</strong> module</a>, processes via the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a>, or coroutines via the <a href="../python-asyncio/"><strong>asyncio</strong> module</a>.</p>
+<p>In fact, because we know the tasks we want to execute in parallel are CPU-intensive, we may choose process-based concurrency. This is because Python processes achieve full parallelism, whereas Python threads are limited by the global interpreter lock (GIL) and are better suited to IO-bound tasks.</p>
+<p>You can learn more about this general recommendation in the guide:</p>
+<ul>
+<li><a href="../python-concurrency-choose-api/">How to Choose the Right Python Concurrency API</a></li>
+</ul>
+<p>However, this general recommendation is not appropriate when using numpy.</p>
+<p>Numpy performs most math operations like matrix arithmetic and more advanced operations using its own C functions. These functions release the global interpreter lock (GIL) in Python, allowing other Python threads to run.</p>
+<p>The implication is that math operations on arrays in numpy can be executed in parallel using Python threads.</p>
+<p>You can learn more about numpy releasing the GIL in the tutorial:</p>
+<ul>
+<li><a href="../numpy-vs-gil/">NumPy vs the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<p>The benefit of using threads for parallelisms is that threads have shared memory. We are able to share numpy arrays directly between threads easily and at no cost.</p>
+<p>This is unlike process-based concurrency where sharing numpy arrays is computationally expensive or requires complex workarounds.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>As such, naively choosing processes and multiprocessing to execute numpy tasks will add unnecessary complexity and computational cost.</p>
+<p>You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-blas-multiprocessing/">Combine NumPy BLAS Threads and Multiprocessing</a></li>
+</ul>
+<p>Instead, with knowledge of how numpy and the GIL interact, we can choose threads upfront and save a lot of time.</p>
+<p>A great example of the speed-up we can achieve with threads is in calculating element-wise math operations in parallel.</p>
+<p>You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multithreaded-element-wise-math/">NumPy Multithreaded Element-Wise Matrix Arithmetic</a></li>
+</ul>
+<h2>Cost #4: Miss Opportunity to Improve Performance</h2>
+<p>As we have seen, many numpy math functions are implemented using multithreaded algorithms.</p>
+<p>We may naively think that this is enough.</p>
+<p>Nevertheless, in some cases, we might achieve better performance by disabling the multithreaded algorithm math operation and parallelizing an application at the task level.</p>
+<p>For example, we may need to perform a matrix multiplication between many pairs of matrices.</p>
+<p>Because the matrix multiplication math operation is implemented using a multithreaded algorithm, we don't need to consider any further parallelism.</p>
+<p>Instead, with testing, we may discover that executing multiple matrix multiplication tasks in parallel results in better overall performance.</p>
+<p>We can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-blas-threading/">Speed-Up NumPy With Threads in Python (up to 3.41x faster)</a></li>
+</ul>
+<p>Naively assuming that multithreaded numpy math operations are sufficient may mean that you miss opportunities for further improving performance.</p>
+<h2>Cost #5: Worse Performance When Sharing Data</h2>
+<p>As we have seen, if we didn't know that numpy releases the global interpreter lock, we may choose to use process-based concurrency via the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a> to speed up numpy programs.</p>
+<p>A problem with this choice is that sharing numpy data between processes is slow because of inter-process communication.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>For example, we might choose to share a numpy array between processes by passing it as an argument, via a <strong>Queue</strong> or <strong>Pipe</strong>.</p>
+<p>In these cases, a copy of the numpy array will be created which will be pickled by the sending process and unpickled by the receiving process.</p>
+<p>You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-multiprocessing-share-array-function/">Share Numpy Array Between Processes Using Function Arguments and Return Values</a></li>
+</ul>
+<p>Knowing that sharing numpy arrays via inter-process communication requires some prior knowledge of how processes work in Python.</p>
+<p>Nevertheless, sometimes we may want or need to use multiprocessing in our numpy programs.</p>
+<p>As such, we may require more efficient ways of sharing numpy arrays between processes. Methods that avoid copying and serializing numpy arrays.</p>
+<p>Examples include:</p>
+<ol>
+<li>Inheriting numpy arrays.</li>
+<li>Sharing numpy arrays backed by a RawArray or SharedMemory buffer.</li>
+<li>Hosting an array in a server process and sharing proxy objects.</li>
+</ol>
+<p>You can learn more about these alternate and more efficient ways of sharing numpy arrays between processes in the tutorial:</p>
+<ul>
+<li><a href="../numpy-share-array-processes/">7 Ways to Share a Numpy Array Between Processes</a></li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know about the cost of naively adding parallelism to numpy programs.</p>
+</main>
+</body>
+</html>

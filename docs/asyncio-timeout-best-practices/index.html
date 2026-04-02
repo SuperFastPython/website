@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Timeout Best Practices – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Timeout Best Practices</h1>
+<div class="post-meta">December 14, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can and <strong>should add timeouts to long-running tasks in asyncio</strong> programs.</p>
+<p>In this tutorial, you will discover the importance of timeouts in asyncio and how to add timeouts to your programs.</p>
+<p>Let's get started.</p>
+<h2>What is a Timeout?</h2>
+<p>In asyncio, a timeout refers to a mechanism for setting a maximum allowable duration for an asynchronous operation to complete.</p>
+<p>If the operation does not complete within the specified time frame, asyncio raises a timeout exception.</p>
+<blockquote>
+<p> A specified period of time that will be allowed to elapse in a system before a specified event is to take place, unless another specified event occurs first; in either case, the period is terminated when either event takes place.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Timeout_(computing)">Timeout (computing), Wikipedia</a>.</cite></blockquote>
+<p>Timeouts are used to ensure that asynchronous tasks or coroutines do not block indefinitely and to provide a way to handle situations where an operation takes longer than expected.</p>
+<p>There are 3 key components of a timeout in asyncio:</p>
+<ol>
+<li><strong>Duration</strong>: A timeout is defined by a duration, which is the maximum amount of time, usually specified in seconds, that the asynchronous operation is allowed to take.</li>
+<li><strong>Timeout Exception</strong>: If the operation does not complete within the specified duration, asyncio typically raises a asyncio.exceptions.TimeoutError exception. This exception can be caught and handled by the application to implement appropriate error handling or recovery logic.</li>
+<li><strong>Timeout Handling</strong>: asyncio provides various mechanisms for setting and handling timeouts, such as a function argument, a context manager, and potentially cancellation of the target task.</li>
+</ol>
+<p>Timeouts are essential in asyncio programming to ensure that the program remains responsive, avoids resource exhaustion, and provides graceful error handling for scenarios where asynchronous operations take longer than expected to complete.</p>
+<h2>Why Use Timeouts</h2>
+<p>Using timeouts in asyncio is important for several reasons, such as:</p>
+<ol>
+<li><strong>Preventing Resource Exhaustion</strong>: Without timeouts, a misbehaving or slow coroutine could potentially occupy a significant amount of resources (e.g., CPU time, memory, network connections). Timeouts ensure that if a coroutine takes too long to complete, it can be interrupted, preventing resource exhaustion.</li>
+<li><strong>Responsiveness</strong>: Timeouts help maintain the responsiveness of your asynchronous application. For example, if you're waiting for a network request to complete, you don't want to wait indefinitely; you want to set a timeout so that if the request takes too long, your program can react accordingly.</li>
+<li><strong>Graceful Handling of Failures</strong>: Timeouts provide a way to gracefully handle situations where an operation is expected to complete within a certain time frame but fails to do so. Instead of waiting indefinitely, you can catch a timeout exception and handle it appropriately.</li>
+<li><strong>Avoiding Deadlocks</strong>: In scenarios where multiple coroutines are involved in synchronization or communication, timeouts can help prevent deadlocks. If a coroutine is waiting for a signal or response and it doesn't arrive within a reasonable time, a timeout can break the deadlock.</li>
+<li><strong>Fault Tolerance</strong>: When dealing with external services or resources, it's important to have fault-tolerant behavior. Timeouts allow you to handle cases where an external resource becomes unavailable or responds slowly.</li>
+</ol>
+<p>I might go further and say making use of timeouts for long-running tasks in asyncio is a best practice.</p>
+<h2>When To Use Timeouts</h2>
+<p>In asyncio programs, you should use timeouts in the following scenarios:</p>
+<ol>
+<li><strong>Blocking or Slow Operations</strong>: When an asynchronous operation has the potential to block for an extended period or is known to be slow, you should consider setting a timeout. This prevents the operation from causing the entire program to hang indefinitely.</li>
+<li><strong>External Resource Access</strong>: When interacting with external resources like databases, web services, or APIs, consider setting timeouts to ensure that your program doesn't wait indefinitely for a response that may never arrive.</li>
+<li><strong>Concurrency Control</strong>: In scenarios involving multiple concurrent tasks or coroutines, you can use timeouts to prevent deadlocks or to ensure that certain tasks do not monopolize resources for too long.</li>
+<li><strong>Resource Management</strong>: Timeouts can be used for resource management, such as releasing resources (e.g., file handles, network connections) if they are not used within a certain time frame.</li>
+<li><strong>Task Coordination</strong>: In cases where you need to coordinate tasks or coroutines, timeouts can be used to ensure that tasks do not wait indefinitely for synchronization points or responses from other tasks.</li>
+</ol>
+<p>Generally, I would recommend using timeouts any time your system touches an external system or resource over which you don't have full control.</p>
+<h2>How to Use Timeout</h2>
+<p>There are perhaps 5 ways to use a timeout in asyncio programs, they are:</p>
+<ol>
+<li>Add a timeout with <strong>asyncio.wait()</strong></li>
+<li>Add a timeout with <strong>asyncio.wait_for()</strong></li>
+<li>Add a timeout with <strong>asyncio.as_completed()</strong></li>
+<li>Add a timeout with <strong>asyncio.timeout()</strong></li>
+<li>Add a timeout with <strong>asyncio.timeout_at()</strong></li>
+</ol>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Add a Timeout with asyncio.wait()</h3>
+<p>The <strong>asyncio.wait()</strong> call is a coroutine.</p>
+<p>It takes a collection of asyncio tasks as an argument and returns when a condition on the provided tasks is met, such as all tasks are done, one task is done, or one task has failed.</p>
+<p>On completion, <strong>asyncio.wait()</strong> will return two sets, the first containing those provided tasks that match the condition (e.g. are done) and those remaining tasks that do not.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to complete
+done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)</code></pre>
+<p>A timeout can be specified to the <strong>asyncio.wait()</strong> coroutine via a "<strong>timeout</strong>" argument in seconds.</p>
+<blockquote>
+<p> timeout (a float or int), if specified, can be used to control the maximum number of seconds to wait before returning.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to complete
+done,pending = await asyncio.wait(tasks, timeout=5)</code></pre>
+<p>The timeout number of seconds may also be a float, providing fractions of a second.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for all tasks to complete
+done,pending = await asyncio.wait(tasks, timeout=0.01)</code></pre>
+<p>If the call does not return within the timeout number of elapsed seconds, then the call will return.</p>
+<p>If the call times out, a <strong>TimeoutError</strong> exception will not be raised and the target tasks will not be cancelled.</p>
+<blockquote>
+<p> Note that this function does not raise TimeoutError. Futures or Tasks that aren't done when the timeout occurs are simply returned in the second set. [...] Unlike wait_for(), wait() does not cancel the futures when a timeout occurs.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<ul>
+<li>Does not raise a <strong>TimeoutError</strong> exception on timeout.</li>
+<li>Does not cancel target tasks.</li>
+</ul>
+<p>By default, no timeout is used, allowing the call to <strong>asyncio.wait()</strong> to wait for as long as is needed.</p>
+<p>You can learn more about how to use <strong>asyncio.wait()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait/">How to Use Asyncio wait() in Python</a></li>
+</ul>
+<h3>Add a Timeout with asyncio.wait_for() (With Cancellation)</h3>
+<p>The <strong>asyncio.wait_for()</strong> call is a coroutine.</p>
+<p>This coroutine is intended to execute a single task with a limited timeout.</p>
+<p>It takes an awaitable, such as a coroutine or task and a timeout in seconds. It will return when the provided task is complete or the timeout has elapsed.</p>
+<p>A timeout can be specified to the <strong>asyncio.wait_for()</strong> as either <strong>None</strong> (no timeout), an integer, or a floating point number of seconds.</p>
+<blockquote>
+<p>timeout can either be None or a float or int number of seconds to wait for. If timeout is None, block until the future completes.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>The timeout number of seconds can be an integer.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the task with an integer timeout
+await asyncio.wait_for(task(), timeout=5)</code></pre>
+<p>The timeout number of seconds may also be a float, providing fractions of a second.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the task with an integer timeout
+await asyncio.wait_for(task(), timeout=2.01)</code></pre>
+<p>If the call does not return within the timeout number of elapsed seconds, then the target task is cancelled and a <strong>TimeoutError</strong> exception is raised.</p>
+<blockquote>
+<p> If a timeout occurs, it cancels the task and raises TimeoutError.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>Therefore, it is good practice to wrap the call to <strong>asyncio.wait_for()</strong> with a try-except for the <strong>TimeoutError</strong> exception.</p>
+<p>If some other task cancels the target task while it is running, a <strong>asyncio.CancelledError</strong> exception may be raised. Therefore, we may want to handle the <strong>asyncio.CancelledError</strong> exception.</p>
+<p>Finally, if a the task itself fails and raises an exception, this will be propagated back to the caller if the result of the task is retrieved. Therefore, any expected exceptions should be handled.</p>
+<p>For example, a robust call to <strong>asyncio.wait_for()</strong> with a timeout may look as follows:</p>
+<pre><code># handle timeout
+try:
+    # wait for the task for a fixed interval
+    result = await asyncio.wait_for(long_running_task, timeout=5)
+    # handle result
+    # ...
+except asyncio.TimeoutError:
+    # log timeout
+except asyncio.CancelledError:
+    # log some other task canceled it
+except Exception as ex:
+    # log failure</code></pre>
+<p>Note, replace the "<strong>except Exception</strong>" with specific exceptions raised in the task. It's not a great idea to catch the base class <strong>Exception</strong>.</p>
+<p>You can learn more about <strong>asyncio.wait_for()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait_for/">Asyncio wait_for() to Wait With a Timeout</a></li>
+</ul>
+<h3>Add a Timeout with asyncio.as_completed()</h3>
+<p>The <strong>asyncio.as_completed()</strong> call is a coroutine.</p>
+<p>It takes a collection of coroutines or tasks and yields those tasks one at a time in the order that they are done.</p>
+<p>For example:</p>
+<pre><code>...
+# get tasks in the order they are done
+for task in asyncio.as_completed(tasks):
+    # get the result from the next task that is done
+    result = await task
+    # handle the result
+    # ...</code></pre>
+<p>The <strong>asyncio.as_completed()</strong> takes a "<strong>timeout</strong>" argument in seconds. It specifies how long the caller is willing to wait for all provided tasks to be done, that is for the iteration of all tasks.</p>
+<p>The timeout can be specified as an integer number of seconds.</p>
+<p>For example:</p>
+<pre><code>...
+# get tasks in the order they are done
+for task in asyncio.as_completed(tasks, timeout=10):
+    # get the result from the next task that is done
+    result = await task
+    # handle the result
+    # ...</code></pre>
+<p>The timeout can also be specified as a floating point value with fractions of seconds.</p>
+<p>For example:</p>
+<pre><code>...
+# get tasks in the order they are done
+for task in asyncio.as_completed(tasks, timeout=5.5):
+    # get the result from the next task that is done
+    result = await task
+    # handle the result
+    # ...</code></pre>
+<p>By default, no timeout is used.</p>
+<p>If all tasks are not done within the given timeout, then a <strong>asyncio.TimeoutError</strong> exception is raised.</p>
+<blockquote>
+<p> Raises TimeoutError if the timeout occurs before all Futures are done.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>As such, this exception should be handled when using a timeout.</p>
+<p>If some other task cancels one of the tasks in the provided collection, an <strong>asyncio.CancelledError</strong> exception may be raised. Therefore, we may want to handle the <strong>asyncio.CancelledError</strong> exception.</p>
+<p>Finally, if tasks themselves fail and raises an exception, this will be propagated back to the caller if the result of a task is retrieved. Therefore, any expected exceptions should be handled.</p>
+<p>For example, a robust call to <strong>asyncio.as_completed()</strong> with a timeout may look as follows:</p>
+<pre><code>...
+# handle a timeout
+try:
+# get tasks in the order they are done
+for task in asyncio.as_completed(tasks, timeout=10):
+    # get the result from the next task that is done
+    result = await task
+    # handle the result
+    # ...
+except asyncio.TimeoutError:
+    # log timeout
+except asyncio.CancelledError:
+    # log some other task canceled a task
+except Exception as ex:
+    # log failure</code></pre>
+<p>Note, replace the "<strong>except Exception</strong>" with specific exceptions raised in the task. It's not a great idea to catch the base class <strong>Exception</strong>.</p>
+<p>You can learn more about how to use <strong>asyncio.as_completed()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-as_completed/">How to Use Asyncio as_completed() in Python</a></li>
+</ul>
+<h3>Add a Timeout with asyncio.timeout() (With Cancellation)</h3>
+<p>The <strong>asyncio.timeout()</strong> call is an asynchronous context manager.</p>
+<p>As such, it must be used with the <a href="../asyncio-async-with/">"<strong>async with</strong>" expression</a>.</p>
+<p>The <strong>asyncio.timeout()</strong> context manager allows one or more tasks to run within the body with a fixed timeout.</p>
+<p>It takes a "<strong>delay</strong>" argument in seconds.</p>
+<blockquote>
+<p>delay can either be None, or a float/int number of seconds to wait. If delay is None, no time limit will be applied; this can be useful if the delay is unknown when the context manager is created.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>This may be an integer value.</p>
+<p>For example:</p>
+<pre><code>...
+# run tasks with a timeout
+async with asyncio.timeout(5):
+    # execute long running task
+    result = await long_running_task()
+    # process result
+    # ...</code></pre>
+<p>The delay may also be a floating point value allowing fractions of second.</p>
+<p>For example:</p>
+<pre><code>...
+# run tasks with a timeout
+async with asyncio.timeout(0.1):
+    # execute long running task
+    result = await long_running_task()
+    # process result
+    # ...</code></pre>
+<p>If the body of the context manager takes longer than the provided delay, the current task that is running is canceled and a <strong>asyncio.TimeoutError</strong> exception is raised.</p>
+<blockquote>
+<p>... the context manager will cancel the current task and handle the resulting asyncio.CancelledError internally, transforming it into a TimeoutError which can be caught and handled.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>As such, this exception should be handled.</p>
+<p>If some other task cancels the running task, an <strong>asyncio.CancelledError</strong> exception may be raised. Therefore, we may want to handle the <strong>asyncio.CancelledError</strong> exception.</p>
+<p>Finally, if a task itself fails and raises an exception, this will be propagated back to the caller if the result of a task is retrieved. Therefore, any expected exceptions should be handled.</p>
+<p>For example, a robust call to <strong>asyncio.timeout()</strong> may look as follows:</p>
+<pre><code>...
+# handle exceptions
+try:
+    # run tasks with a timeout
+    async with asyncio.timeout(5):
+        # execute long running task
+        result = await long_running_task()
+        # process result
+        # ...
+except asyncio.TimeoutError:
+    # log timeout, task was canceled by timeout
+except asyncio.CancelledError:
+    # log some other task canceled it
+except Exception as ex:
+    # log failure</code></pre>
+<p>Note, replace the "<strong>except Exception</strong>" with specific exceptions raised in the task. It's not a great idea to catch the base class <strong>Exception</strong>.</p>
+<p>You can learn more about how to use the <strong>asyncio.timeout()</strong> context manager in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-timeout/">Wait and Cancel Tasks With asyncio.timeout()</a></li>
+</ul>
+<h3>Add a Timeout with asyncio.timeout_at()</h3>
+<p>The <strong>asyncio.timeout_at()</strong> call is an asynchronous context manager.</p>
+<p>As such, it must be used with the "<strong>async with</strong>" expression.</p>
+<p>The <strong>asyncio.timeout_at()</strong> context manager allows one or more tasks to run within the body with a fixed timeout.</p>
+<p>Unlike <strong>asyncio.timeout()</strong> that takes a delay in seconds into the future from the time of the call, the <strong>asyncio.timeout_at()</strong> context manager takes a time in the future, relative to the event loop time.</p>
+<p>The argument to <strong>asyncio.timeout_at()</strong> is "<strong>when</strong>", an absolute time in the future.</p>
+<blockquote>
+<p> when is the absolute time to stop waiting, or None.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>A "<strong>when</strong>" time can be calculated by retrieving the current event loop time and adding a number of seconds to it, as either an integer or floating point value.</p>
+<p>The current event loop can be retrieved via the <strong>asyncio.get_running_loop()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# get the event loop object
+loop = asyncio.get_running_loop()</code></pre>
+<p>The current event loop time can be retrieved by calling the <strong>time()</strong> method on the event loop object.</p>
+<p>For example:</p>
+<pre><code>...
+# get the current event loop time
+current_time = loop.time()</code></pre>
+<p>A future time for the "<strong>when</strong>" argument can be calculated by adding a fixed number of seconds to the current event loop time.</p>
+<p>For example:</p>
+<pre><code>...
+# calculate a deadline
+deadline = current_time + 5</code></pre>
+<p>This can then be used in the <strong>asyncio.timeout_at()</strong> context manager to execute one or more asyncio tasks with the deadline.</p>
+<p>For example:</p>
+<pre><code>...
+# set a deadline
+async with asyncio.timeout_at(deadline):
+    # execute long running task
+    result = await long_running_task()
+    # process result
+    # ...</code></pre>
+<p>If the current time exceeds the provided deadline, the current task that is running is cancelled and a <strong>asyncio.TimeoutError</strong> exception is raised.</p>
+<p>As such, this exception should be handled.</p>
+<p>If some other task cancels the running task, an <strong>asyncio.CancelledError</strong> exception may be raised. Therefore, we may want to handle the <strong>asyncio.CancelledError</strong> exception.</p>
+<p>Finally, if a task itself fails and raises an exception, this will be propagated back to the caller if the result of a task is retrieved. Therefore, any expected exceptions should be handled.</p>
+<p>For example, a robust call to <strong>asyncio.timeout_at()</strong> may look as follows:</p>
+<pre><code>...
+# get the event loop object
+loop = asyncio.get_running_loop()
+# get the current event loop time
+current_time = loop.time()
+# calculate a deadline
+deadline = current_time + 5
+# handle exceptions
+try:
+    # run tasks with a deadline timeout
+    async with asyncio.timeout_at(deadline):
+        # execute long running task
+        result = await long_running_task()
+        # process result
+        # ...
+except asyncio.TimeoutError:
+    # log timeout, task was canceled by timeout
+except asyncio.CancelledError:
+    # log some other task canceled it
+except Exception as ex:
+    # log failure</code></pre>
+<p>Note, replace the "<strong>except Exception</strong>" with specific exceptions raised in the task. It's not a great idea to catch the base class <strong>Exception</strong>.</p>
+<p>You can learn more about the <strong>asyncio.timeout_at()</strong> context manager in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-timeout_at/">Use asyncio.timeout_at() to Run Tasks With Deadlines</a></li>
+</ul>
+<h2>How to Set Timeout Delay?</h2>
+<p>Setting an appropriate timeout delay in asyncio depends on the specific requirements and characteristics of your application.</p>
+<p>Below are some heuristics and considerations to help you determine a good timeout value:</p>
+<ol>
+<li><strong>Service Level Agreements (SLAs)</strong>: Consider any service-level agreements or performance requirements your application needs to meet. Timeout values can be based on these SLAs. For example, if an external API guarantees a response within 2 seconds, you might set a timeout of 2 seconds for requests to that API.</li>
+<li><strong>Observational Testing</strong>: Perform observational testing to determine the typical response times of external services or operations. Collect data on how long these operations usually take and use that data to set timeout values.</li>
+<li><strong>Safety Margin</strong>: Add a safety margin to observed response times. Setting a timeout slightly higher than the typical response time can help account for occasional delays or variations.</li>
+<li> <strong>Task Complexity</strong>: Consider the complexity of the task or operation you're timing out. Complex tasks might require longer timeouts. Conversely, simple operations might need shorter timeouts.</li>
+<li><strong>Network Latency</strong>: Take into account network latency. Network operations may require longer timeouts to accommodate variations in network conditions.</li>
+</ol>
+<p>If tasks that timeout are retrieved, we might want to consider a new or different timeout, such as a Progressive Backoff.</p>
+<ul>
+<li><strong>Progressive Backoff</strong>: In scenarios where you need to retry an operation upon timeout, consider using progressive backoff. Start with a shorter timeout, and if a timeout occurs, progressively increase the timeout for subsequent retries.</li>
+</ul>
+<h2>What to Do On Timeout <br/>(How to Handle TimeoutError)?</h2>
+<p>When a timeout occurs in an asyncio application, it's essential to consider appropriate actions to handle the situation gracefully.</p>
+<p>The specific actions to take on a timeout depend on your application's requirements and the context in which the timeout occurred. Here are some common actions to consider:</p>
+<ol>
+<li><strong>Logging: Log</strong> the timeout event to record the occurrence and gather diagnostic information. Include details such as the timestamp, the operation that timed out, and any relevant context.</li>
+<li><strong>Error Handling</strong>: Raise an appropriate exception to signal that a timeout occurred. This exception can be caught and handled in your code, allowing you to implement custom error recovery logic.</li>
+<li><strong>Retry</strong>: Depending on the nature of the operation and your application's requirements, you might choose to retry the operation upon timeout. Implement a retry strategy with progressively longer timeouts or a maximum number of retries.</li>
+<li><strong>Fallback or Default Value</strong>: If the operation had an expected result and a timeout occurred, consider returning a fallback value or a default result. This can provide a reasonable response to the caller instead of failing the operation entirely.</li>
+<li><strong>Cancellation</strong>: If the timed-out operation involves other coroutines or tasks that are no longer needed, you can use asyncio.Task.cancel() to cancel them. This can help free up resources and prevent unnecessary work.</li>
+<li><strong>Resource Cleanup</strong>: If the timed-out operation allocated resources that need to be cleaned up, perform the necessary resource cleanup actions to release those resources gracefully.</li>
+<li><strong>Graceful Termination</strong>: In some cases, a timeout might signal that the entire application or a specific task needs to terminate gracefully. Implement termination logic to ensure that resources are released and ongoing operations are stopped cleanly.</li>
+</ol>
+<p>The specific actions you choose to take on a timeout should align with your application's design, resilience, and user experience goals.</p>
+<p>It's important to handle timeouts gracefully to ensure that your application remains robust and responsive, even when facing delays or failures in external services or operations.</p>
+<h2>Takeaways</h2>
+<p>You now know about the importance of timeouts in asyncio and how to add timeouts to your programs.</p>
+</main>
+</body>
+</html>

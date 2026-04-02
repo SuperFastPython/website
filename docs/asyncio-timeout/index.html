@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>asyncio.timeout() To Wait and Cancel Tasks – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>asyncio.timeout() To Wait and Cancel Tasks</h1>
+<div class="post-meta">November 26, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>We often need to execute long-running tasks in asyncio.</p>
+<p>For example, we may need to wait for a response from a remote server, for something to change, or for input from another system.</p>
+<p>It is a best practice to <strong>use a timeout</strong> when waiting for a long-running task. If the task does not complete within a given time limit, can then be canceled and perhaps tried again, or an error raised.</p>
+<p>The asyncio module provides the <strong>timeout()</strong> <strong>asynchronous context manager</strong> to address exactly this problem.</p>
+<p>In this tutorial, you will discover how to wait for coroutines and tasks using the <strong>timeout()</strong> asynchronous context manager.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>What is <strong>timeout()</strong> and how can we use it to wait for tasks to complete with a timeout.</li>
+<li>How to manage the case when the timeout is exceeded before the required tasks are complete.</li>
+<li>How to configure the timeout and how to extend the timeout if more time is needed.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>Need to Wait For Long-Running Task With a Timeout</h2>
+<p>We often need to execute long-running tasks in asyncio.</p>
+<p>For example:</p>
+<ul>
+<li>We may need to wait for a response from a remote server.</li>
+<li>We may need to wait for something to change.</li>
+<li>We may need to wait for input from a user or system.</li>
+</ul>
+<p>It is a best practice to use a timeout when waiting for a long-running task.</p>
+<p>If the task does not complete within a given time limit, can then be canceled and perhaps tried again, or an error raised.</p>
+<p>The asyncio module provides the <strong>asyncio.timeout()</strong> asynchronous context manager to address exactly this problem.</p>
+<p><strong>How can we use asyncio.timeout() to add timeouts to long-running tasks?</strong></p>
+<h2>How to Use asyncio.timeout()</h2>
+<p>The <strong>asyncio.timeout()</strong> is an asynchronous context manager.</p>
+<p>As such, the entry and exit methods are coroutines that can be awaited and it must be used via the "<strong><a href="../asyncio-async-with/">async with</a></strong>" expression.</p>
+<p>You can learn more about asynchronous context managers in the tutorial:</p>
+<ul>
+<li><a href="../asynchronous-context-manager/">Asynchronous Context Managers in Python</a></li>
+</ul>
+<p>The <strong>asyncio.timeout()</strong> context manager and associated <strong>asyncio.Timeout</strong> class were added to Python in version 3.11.</p>
+<blockquote>
+<p>Added timeout(), an asynchronous context manager for setting a timeout on asynchronous operations. For new code this is recommended over using wait_for() directly. (Contributed by Andrew Svetlov in gh-90927.)</p>
+<cite>-- <a href="https://docs.python.org/3/whatsnew/3.11.html">What’s New In Python 3.11</a></cite></blockquote>
+<p>Entering the <strong>asyncio.timeout()</strong> context manager will set a time in the future when the context manager will give up waiting.</p>
+<p>The timeout is provided in seconds, e.g. 5 seconds in the future, as recorded by the clock within the asyncio event loop.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for 5 seconds
+async with asyncio.timeout(5):
+	# ...
+</code></pre>
+<p>We can then explicitly await long-running coroutines within the block of the <strong>asyncio.timeout()</strong> context manager.</p>
+<p>For example:</p>
+<pre><code>...
+# set a timeout
+async with asyncio.timeout(5):
+    # execute long running task
+    result = await task()
+</code></pre>
+<p>The benefit of <strong>asyncio.timeout()</strong> being a context manager, means that we can await many coroutines, e.g. many sub-tasks, within the body and only cancel the one task that takes too long.</p>
+<p>For example:</p>
+<pre><code>...
+# set a timeout
+async with asyncio.timeout(5):
+    # execute many tasks
+    await task1()
+    await task2()
+    await task3()
+    await task4()
+    await task5()
+</code></pre>
+<p>If the wait time elapsed before the context manager is exited, any awaitables (e.g. coroutines and tasks) awaited within the block will be canceled and an <strong>asyncio.TimeoutError</strong> will be raised.</p>
+<p>We can handle the <strong>asyncio.TimeoutError</strong> and report and perform an action, like report a message of the timeout and cancellation of the task.</p>
+<p>For example:</p>
+<pre><code>...
+# handle timeout
+try:
+    # set a timeout
+    async with asyncio.timeout(5):
+        # execute long running task
+        result = await task(1)
+        # report the result
+        print(result)
+except asyncio.TimeoutError:
+    print(f'Timeout waiting')
+</code></pre>
+<p><strong>The asyncio.timeout() function creates an instance of the asyncio</strong>.Timeout class has three methods:</p>
+<ul>
+<li><strong>asyncio.Timeout.when()</strong>: Return the current deadline</li>
+<li><strong>asyncio.Timeout.reschedule()</strong>: Change the current deadline to a new time.</li>
+<li><strong>asyncio.Timeout.expired()</strong>: Return <strong>True</strong> if the timeout has expired, <strong>False</strong> otherwise.</li>
+</ul>
+<p>It is possible to extend the timeout further into the future.</p>
+<p>This can be used to either set no timeout initially, and then set a timeout later while running, or to extend a predefined timeout further into the future.</p>
+<p>For example, we can set a timeout by passing None for the delay, then calling the <strong>reschedule()</strong> method on the asynchronous context manager with a time in the future.</p>
+<pre><code>...
+# set no timeout
+async with asyncio.timeout(None) as timeout:
+	# do something else
+	# ...
+	# calculate a deadline 5 seconds in the future
+	deadline = asyncio.get_running_loop().time() + 5
+	# set the new deadline
+	timeout.reschedule(deadline)
+    # execute long running task
+    result = await task()
+</code></pre>
+<p>We can also set an initial timeout delay, then extend it into the future using the same approach.</p>
+<p>For example:</p>
+<pre><code>...
+# set a 5 second timeout
+async with asyncio.timeout(5) as timeout:
+	# do something else
+	# ...
+	# calculate a deadline 10 seconds in the future
+	deadline = asyncio.get_running_loop().time() + 10
+	# set the new deadline
+	timeout.reschedule(deadline)
+    # execute long running task
+    result = await task()
+</code></pre>
+<p>Now that we know how to use <strong>asyncio.timeout()</strong>, let's look at some worked examples.</p>
+<h2>Example of Timeout with Long Running Coroutine</h2>
+<p>We can explore an example of waiting for a long-running coroutine with a timeout.</p>
+<p>In this example, we will define a long-running coroutine that takes an argument and returns a result. We will then execute this coroutine within an <strong>asyncio.timeout()</strong> context manager and handle any <strong>asyncio.TimeoutError</strong> raised.</p>
+<p>Firstly, we can define the long-running coroutine. In this case, it sleeps for 10 seconds.</p>
+<pre><code># long running task
+async def task(value):
+    # sleep to simulate waiting
+    await asyncio.sleep(10)
+    # return value
+    return value * 100
+</code></pre>
+<p>Next, we can define the main coroutine.</p>
+<p>It first handles the <strong>asyncio.TimeoutError</strong>, then opens the <strong>asyncio.timeout()</strong> context manager with a timeout of 5 seconds in the future.</p>
+<p>Within the context manager, the <strong>task()</strong> coroutine is called, passing an argument and retrieving the return value which is then printed.</p>
+<pre><code># asyncio entry point
+async def main():
+    # handle timeout
+    try:
+        # set a timeout
+        async with asyncio.timeout(5):
+            # execute long running task
+            result = await task(1)
+            # report the result
+            print(result)
+    except asyncio.TimeoutError:
+        print(f'Timeout waiting')
+</code></pre>
+<p>We can then start the asyncio event loop and execute the <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for a coroutine with asyncio.timeout()
+import asyncio
+
+# long running task
+async def task(value):
+    # sleep to simulate waiting
+    await asyncio.sleep(10)
+    # return value
+    return value * 100
+
+# asyncio entry point
+async def main():
+    # handle timeout
+    try:
+        # set a timeout
+        async with asyncio.timeout(5):
+            # execute long running task
+            result = await task(1)
+            # report the result
+            print(result)
+    except asyncio.TimeoutError:
+        print(f'Timeout waiting')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example opens the <strong>asyncio.timeout()</strong> with a timeout 5 seconds in the future.</p>
+<p>The <strong>task()</strong> coroutine is started and runs, sleeping for 5 seconds.</p>
+<p>After 5 seconds, the <strong>asyncio.timeout()</strong> context manager resumes and cancels the <strong>task()</strong> coroutine and raises an <strong>asyncio.TimeoutError</strong>.</p>
+<p>This exception is handled and a failure message is reported.</p>
+<p>This example highlights how we can execute a long-running coroutine with a timeout, then cancel the coroutine after the timeout expires and handle the termination exception.</p>
+<pre><code>Timeout waiting</code></pre>
+<p>Next, let's explore how we might perform the same operation using a task.</p>
+<h2>Example of Timeout with Long Running asyncio.Task</h2>
+<p>We can explore an example of waiting for a long-running <strong>asyncio.Task</strong> with a timeout.</p>
+<p>In this example, we will update the above example to instead use an <strong>asyncio.Task</strong>.</p>
+<p>We can create and schedule the <strong>task()</strong> coroutine as an <strong>asyncio.Task</strong> before the <strong>asyncio.timeout()</strong> block.</p>
+<p>For example:</p>
+<pre><code>...
+# schedule the task
+running_task = asyncio.create_task(task(1))</code></pre>
+<p>We can also allow the task to start running.</p>
+<pre><code>...
+# allow the task to run
+await asyncio.sleep(0)</code></pre>
+<p>We can then open the context manager and await this already scheduled task, with a timeout.</p>
+<pre><code>...
+# handle timeout
+try:
+    # set a timeout
+    async with asyncio.timeout(5):
+        # wait for the task to complete
+        result = await running_task
+        # report the result
+        print(result)
+except asyncio.TimeoutError:
+    print(f'Timeout waiting')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for a task with asyncio.timeout()
+import asyncio
+
+# long running task
+async def task(value):
+    # sleep to simulate waiting
+    await asyncio.sleep(10)
+    # return value
+    return value * 100
+
+# asyncio entry point
+async def main():
+    # schedule the task
+    running_task = asyncio.create_task(task(1))
+    # allow the task to run
+    await asyncio.sleep(0)
+    # handle timeout
+    try:
+        # set a timeout
+        async with asyncio.timeout(5):
+            # wait for the task to complete
+            result = await running_task
+            # report the result
+            print(result)
+    except asyncio.TimeoutError:
+        print(f'Timeout waiting')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>task()</strong> coroutine and schedules it as a task.</p>
+<p>It then suspends the <strong>main()</strong> coroutine and allows the task to start running, beginning its sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and opens the timeout context manager and awaits the task.</p>
+<p>After 5 seconds, the <strong>asyncio.timeout()</strong> context manager resumes and cancels the <strong>asyncio.Task</strong> and raises an <strong>asyncio.TimeoutError</strong>.</p>
+<p>This exception is handled and a failure message is reported.</p>
+<p>This example highlights how we can wait for an already executing long-running <strong>asyncio.Task</strong> with a timeout, then cancel it after the timeout expires and handle the termination exception.</p>
+<pre><code>Timeout waiting</code></pre>
+<h2>Example of Timeout without Handling asyncio.TimeouError</h2>
+<p>We can explore an example of waiting for a long-running coroutine with a timeout without handling the <strong>asyncio.TimeoutError</strong>.</p>
+<p>In this case, we will update the above example to wait for a coroutine with a timeout, except we will not handle the exception.</p>
+<p>The coroutine will be canceled raising an <strong>asyncio.exceptions.CancelledError</strong>, which will be caught and re-raised as an <strong>asyncio.TimeoutError</strong>.</p>
+<p>This can be achieved by simply removing the try-except.</p>
+<p>The complete example of this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for a coroutine with asyncio.timeout()
+import asyncio
+
+# long running task
+async def task(value):
+    # sleep to simulate waiting
+    await asyncio.sleep(10)
+    # return value
+    return value * 100
+
+# asyncio entry point
+async def main():
+    # set a timeout
+    async with asyncio.timeout(5):
+        # execute long running task
+        result = await task(1)
+        # report the result
+        print(result)
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example opens the <strong>asyncio.timeout()</strong> with a timeout of 5 seconds in the future.</p>
+<p>The <strong>task()</strong> coroutine is started and runs, sleeping for 5 seconds.</p>
+<p>After 5 seconds, the <strong>asyncio.timeout()</strong> context manager resumes and cancels the <strong>task()</strong> coroutine and raises an <strong>asyncio.TimeoutError</strong>.</p>
+<p>In this case, the exception is not handled and bubbles up, causing the program to terminate.</p>
+<p>We can see both the source <strong>asyncio.exceptions.CancelledError</strong> exception and the wrapping <strong>TimeoutError</strong> exception.</p>
+<p>This example highlights how we can execute a long-running coroutine with a timeout, then cancel the coroutine after the timeout expires and not handle the termination exception.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  ...
+TimeoutError
+</code></pre>
+<h2>Example of Timeout With A Delay Time Set Later</h2>
+<p>We can explore an example of waiting for a long-running coroutine without an initial timeout, then adding a timeout later.</p>
+<p>In this case, we can set no initial timeout.</p>
+<pre><code>...
+# set a timeout
+async with asyncio.timeout(None) as timeout:
+	# ...
+</code></pre>
+<p>We can then perform some work and determine a timeout in the future and set this into the <strong>asyncio.timeout()</strong> context manager.</p>
+<pre><code>...
+# set a timeout
+async with asyncio.timeout(None) as timeout:
+    # wait a moment
+    await asyncio.sleep(1)
+    # calculate a deadline 5 seconds in the future
+    deadline = asyncio.get_running_loop().time() + 5
+    # set the new deadline
+    timeout.reschedule(deadline)
+</code></pre>
+<p>This allows the timeout to be set later, on demand.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of setting a delay later with asyncio.timeout()
+import asyncio
+
+# long running task
+async def task(value):
+    # sleep to simulate waiting
+    await asyncio.sleep(10)
+    # return value
+    return value * 100
+
+# asyncio entry point
+async def main():
+    # handle timeout
+    try:
+        # set a timeout
+        async with asyncio.timeout(None) as timeout:
+            # wait a moment
+            await asyncio.sleep(1)
+            # calculate a deadline 5 seconds in the future
+            deadline = asyncio.get_running_loop().time() + 5
+            # set the new deadline
+            timeout.reschedule(deadline)
+            # execute long running task
+            result = await task(1)
+            # report the result
+            print(result)
+    except asyncio.TimeoutError:
+        print(f'Timeout waiting')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example opens the <strong>asyncio.timeout()</strong> without a timeout.</p>
+<p>The <strong>main()</strong> coroutine sleeps to simulate other work.</p>
+<p>A timeout of 5 seconds in the future is then determined and the timeout is set into the <strong>asyncio.timeout()</strong> context manager.</p>
+<p>The <strong>task()</strong> coroutine is then issued and awaited.</p>
+<p>After 5 seconds, the <strong>asyncio.timeout()</strong> context manager resumes and cancels the <strong>task()</strong> coroutine and raises an <strong>asyncio.TimeoutError</strong>.</p>
+<p>The exception is handled and a message is reported.</p>
+<p>This example highlights how we can set a timeout after we have entered the block and that this timeout has the normal effect of canceling the blocked task and raising an <strong>asyncio.TimeoutError</strong> exception.</p>
+<pre><code>Timeout waiting</code></pre>
+<h2>Example of Extending a Timeout Further Into The Future</h2>
+<p>We can explore an example of waiting for a long-running coroutine with a timeout and then extending the timeout further into the future later.</p>
+<p>In this case, we will update the example with the long-running coroutine. A first timeout will be set to 5 seconds on the context manager, not enough time for the task to complete.</p>
+<p>The program will perform other tasks, and then increase the timeout by another 11 seconds into the future.</p>
+<p>It will then execute the long-running task, which will have enough time to complete.</p>
+<pre><code>...
+# set a timeout
+async with asyncio.timeout(5) as timeout:
+    # wait a moment
+    await asyncio.sleep(4)
+    # calculate a deadline 5 seconds in the future
+    deadline = asyncio.get_running_loop().time() + 11
+    # set the new deadline
+    timeout.reschedule(deadline)
+    # execute long running task
+    result = await task(1)
+    # report the result
+    print(result)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of extending a timeout delay with asyncio.timeout()
+import asyncio
+
+# long running task
+async def task(value):
+    # sleep to simulate waiting
+    await asyncio.sleep(10)
+    # return value
+    return value * 100
+
+# asyncio entry point
+async def main():
+    # handle timeout
+    try:
+        # set a timeout
+        async with asyncio.timeout(5) as timeout:
+            # wait a moment
+            await asyncio.sleep(4)
+            # calculate a deadline 5 seconds in the future
+            deadline = asyncio.get_running_loop().time() + 11
+            # set the new deadline
+            timeout.reschedule(deadline)
+            # execute long running task
+            result = await task(1)
+            # report the result
+            print(result)
+    except asyncio.TimeoutError:
+        print(f'Timeout waiting')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example opens the <strong>asyncio.timeout()</strong> with a timeout of 5 seconds, not long enough for our task.</p>
+<p>The <strong>main()</strong> coroutine sleeps for 4 seconds to simulate other work.</p>
+<p>The <strong>main()</strong> coroutine resumes and updates the timeout to 11 seconds into the future. This is enough time to complete the task.</p>
+<p>The <strong>task()</strong> coroutine is then issued and awaited.</p>
+<p>The task completes normally and the return value is reported.</p>
+<p>This example highlights how we can set a timeout on the context manager, then update that time out later as more information becomes available.</p>
+<pre><code>100</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to wait for coroutines and tasks using the <strong>asyncio.timeout()</strong> asynchronous context manager.</p>
+</main>
+</body>
+</html>

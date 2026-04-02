@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How To Stop Running Tasks in the ThreadPoolExecutor in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How To Stop Running Tasks in the ThreadPoolExecutor in Python</h1>
+<div class="post-meta">November 12, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You can stop running tasks in a <strong><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor</a></strong> using a <strong>threading.Event</strong>.</p>
+<p>In this tutorial you will discover how you can update your tasks running in a ThreadPoolExecutor so that they stop running whenever you want.</p>
+<p>Let's get started.</p>
+<h2 id="cancel-won-t-stop-running-tasks">cancel() Won't Stop Running Tasks</h2>
+<p>The <code>ThreadPoolExecutor</code> in Python provides a thread pool that lets you run tasks concurrently.</p>
+<p>You can add tasks to the pool by calling <code>submit()</code> with your function name, which will return a <meta/><code>Future</code> object.</p>
+<p>You can call the <code>cancel()</code> function on the <code>Future</code> object to cancel the task before it has started running.</p>
+<pre><code>...
+# execute one task
+future = executor.submit(work)
+# cancel the task
+print('Cancel the task...')
+future.cancel()
+</code></pre>
+<p>If your task has already started running, then calling <meta/><code>cancel()</code> will have no effect and you must wait for the task to complete.</p>
+<p>The example below demonstrates this by starting a task that takes ten seconds, then attempting to stop the task by calling cancel.</p>
+<pre><code># SuperFastPython.com
+# example of calling cancel not stopping the task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock target task function
+def work():
+    # pretend read data for a long time
+    for _ in range(10):
+        # pretend to read some data
+        sleep(1)
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute one task
+    future = executor.submit(work)
+    # wait a moment
+    print('The task is running...')
+    sleep(2)
+    # try to stop by calling the cancel function
+    print('Cancel the task...')
+    future.cancel()
+    # waiting for all tasks to complete
+    print('Waiting...')
+print('All done.')
+</code></pre>
+<p>Running the example starts the task as per normal.</p>
+<p>After two seconds, we attempt to stop the task by calling the <meta/><code>cancel()</code> function on the <meta/><code>Future</code> object. This does not stop the task because it is already running.</p>
+<p>We must wait for the task to complete before we can close the thread pool and continue on.</p>
+<pre><code>The task is running...
+Cancel the task...
+Waiting...
+All done.
+</code></pre>
+<p>Next, let's look at how we might update a target task function to check a thread-safe flag to indicate whether it should stop running.</p>
+<h2 id="stop-running-tasks-using-threading-event">Stop Running Tasks Using threading.Event</h2>
+<p>Although the <code>ThreadPoolExecutor</code> does not provide a facility to stop running tasks, we can update our target task functions to stop running when a thread-safe flag is set.</p>
+<p>This can be implemented using <code>threading.Event</code>.</p>
+<p>You can learn more about the <meta/><code>threading.Event</code> here:</p>
+<ul><li><a href="https://docs.python.org/3/library/threading.html">threading — Thread-based parallelism</a></li></ul>
+<p>First, it requires that you first create a <meta/><code>threading.Event</code> to control when running tasks should stop.</p>
+<pre><code>...
+# create an event to shut down all running tasks
+event = Event()
+</code></pre>
+<p>This event can then be passed to each target task function as an argument.</p>
+<pre><code>...
+# execute the task, passing the event
+future = executor.submit(work, event)
+</code></pre>
+<p>Once the task is running, it can be stopped from the main thread by setting the flag on the <code>Event</code>.</p>
+<pre><code>...
+# stop running tasks via the event
+event.set()
+</code></pre>
+<p>Each target task function must check the status of the event frequently, such as within each iteration of a loop within the task.</p>
+<p>If the event is set, the task can then stop running, perhaps by returning immediately.</p>
+<pre><code>...
+# check the status of the flag
+if event.is_set():
+    return
+</code></pre>
+<p>If your target task function has some resources open, it may need to clean up before returning.</p>
+<p>This approach to stop running tasks may require that you change the structure of your task so that you have a loop structure allowing you to check the value of the flag.</p>
+<p>For example, if your task reads data from a file or a socket, you may need to change the read operation to be performed in blocks of data in a loop so that each iteration of the loop you can check the status of the flag.</p>
+<p>Now that we know how to stop a task running, let's look at a worked example.</p>
+<h2 id="how-to-stop-running-tasks-in-the-threadpoolexecutor">How to Stop Running Tasks in the ThreadPoolExecutor</h2>
+<p>We can update our previous example to check the status of the thread-safe flag and stop when the flag is set.</p>
+<p>First, we must create the event that will be passed to all tasks executed in the thread pool.</p>
+<pre><code>...
+# create an event used to stop running tasks
+event = Event()
+</code></pre>
+<p>We can then pass this event to our target function when we submit the task to the pool for execution.</p>
+<pre><code>...
+# execute one task
+future = executor.submit(work, event)
+</code></pre>
+<p>Next, we can update our target task function to take the event as an argument and to check the status of the event each iteration via the <code>is_set()</code> function on the event.</p>
+<p>If the event is set, the target task function can return immediately.</p>
+<pre><code># mock target task function
+def work(event):
+    # pretend read data for a long time
+    for _ in range(10):
+        # pretend to read some data
+        sleep(1)
+        # check if the task should stop
+        if event.is_set():
+            return
+</code></pre>
+<p>It is a good practice to cancel the task in the thread pool, just in case it has not yet started executing.</p>
+<pre><code>...
+# cancel the task, just in case it is not yet running
+future.cancel()
+</code></pre>
+<p>Finally, we can stop the running task by calling the <code>set()</code> function on the event any time.</p>
+<pre><code>...
+# stop the running task using the flag
+print('Stopping the task...')
+event.set()
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the example below provides a template you can use for adding an event flag to your target task function to check for a stop condition to shutdown all currently running tasks.</p>
+<pre><code># SuperFastPython.com
+# example of stopping a running task in a thread pool
+from time import sleep
+from threading import Event
+from concurrent.futures import ThreadPoolExecutor
+
+# mock target task function
+def work(event):
+    # pretend read data for a long time
+    for _ in range(10):
+        # pretend to read some data
+        sleep(1)
+        # check if the task should stop
+        if event.is_set():
+            return
+
+# create an event used to stop running tasks
+event = Event()
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute one task
+    future = executor.submit(work, event)
+    # wait a moment
+    print('The task is running...')
+    sleep(2)
+    # cancel the task, just in case it is not yet running
+    future.cancel()
+    # stop the running task using the flag
+    print('Stopping the task...')
+    event.set()
+    # waiting for all tasks to complete
+    print('Waiting...')
+print('All done.')
+</code></pre>
+<p>Running the example first creates a thread pool and schedules a task.</p>
+<p>An event object is created and passed to the task where it is checked each iteration to see if it has been set and if so to bail out of the task.</p>
+<p>The task starts executing as per normal for two seconds. First, we cancel all tasks in the pool, just in case it has not yet started executing.</p>
+<p>We then set the event to trigger the running task to stop. The task checks the status of the event each second, and stops executing on the next iteration after the event has been set.</p>
+<pre><code>The task is running...
+Stopping the task...
+Waiting...
+All done.
+</code></pre>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to use a <code>threading.Event</code> to stop tasks executed by a <code>ThreadPoolExecutor</code>.</p>
+</main>
+</body>
+</html>

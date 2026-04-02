@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Does the Multiprocessing Pool Stop Main From Exiting – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Does the Multiprocessing Pool Stop Main From Exiting</h1>
+<div class="post-meta">August 21, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>The <strong><a href="../multiprocessing-pool-python/">multiprocessing pool</a></strong> will be <strong>closed automatically</strong> by the Python garbage collector, if required.</p>
+<p>It will <strong>not prevent the main process from exiting</strong> and the child worker processes will not keep running if the main process exits without closing the pool.</p>
+<p>In this tutorial, we will explore what happens if you forget or are unable to close the multiprocessing pool in Python.</p>
+<p>Let's get started.</p>
+<h2>Will The Pool Stop The Main Process From Exiting?</h2>
+<p>The multiprocessing pool provides a pool of reusable workers for executing ad hoc tasks with process-based concurrency.</p>
+<p>An instance of the <strong>multiprocessing.Pool</strong> class can be created, specifying the number of workers to create, otherwise a default number of workers will be created to match the number of logical CPUs in the system.</p>
+<p>Once created, ad hoc tasks can be issued to the pool for execution via the <strong>Pool.apply() </strong>function. Multiple tasks may be executed in the book by calling the same function with different arguments via the <strong>Pool.map()</strong> function.</p>
+<p>Tasks may be executed asynchronously in the pool via <strong>Pool.apply_async()</strong> and <strong>Pool.map_async()</strong>, allowing the caller to carry on with other tasks.</p>
+<p>Once concern with the multiprocessing pool is whether it will prevent the main process from exiting if it is not explicitly closed.</p>
+<p>For example, we may not close the multiprocessing pool correctly for many reasons, such as:</p>
+<ul><li>We forget to call the <strong>close()</strong> or <strong>terminate()</strong> function.</li><li>An error is raised that prevents a normal exit.</li></ul>
+<p>Sometimes in Python concurrency, a running thread or running child process can prevent the main process, and therefore the program from exiting normally.</p>
+<p>Additionally, we may be concerned that if the pool is not closed properly, that the child worker processes will keep running if the parent process exits.</p>
+<p><strong>Will a running multiprocessing pool prevent the main process from exiting normally (or will the program hang)?</strong></p>
+<h2>Pools Do Not Stop The Main Process From Exiting</h2>
+<p>A running multiprocessing pool does not stop the main process from exiting.</p>
+<p>This means that we can forget to close a multiprocessing pool and the main process will exit normally.</p>
+<p>For example:</p>
+<pre><code># protect the entry point
+if __name__ == '__main__':
+    # create a pool
+    pool = Pool(4)
+    # ...
+</code></pre>
+<p>It also means that if an exception or error is raised and we are unable to close the pool normally, that it will not prevent the program from exiting.</p>
+<p>For example:</p>
+<pre><code># protect the entry point
+if __name__ == '__main__':
+    # create a pool
+    pool = Pool(4)
+    # ...
+    # something bad happens
+    raise Exception('Something bad happened')
+    # close the pool
+    pool.close()
+</code></pre>
+<p>In both cases, the pool will be closed automatically by the garbage collector in the Python interpreter (parent process) and the child worker processes will be closed and released.</p>
+<p>Although this occurs, it should not be relied upon.</p>
+<blockquote><p>Note that it is not correct to rely on the garbage collector to destroy the pool as CPython does not assure that the finalizer of the pool will be called</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Additionally, the child worker processes are created as daemon processes.</p>
+<p>This means that they are intended to run in the background and to not prevent the main process from exiting.</p>
+<p>You can learn more about daemon processes in the tutorial:</p>
+<ul><li><a href="../daemon-process-in-python/">Daemon Process in Python</a></li></ul>
+<p>Now that we know that the multiprocessing pool will not stop the main process from exiting and that the python garbage collector will close the pool for us if needed, let's look at a worked example.</p>
+<h2>Example of Not Closing a Multiprocessing Pool</h2>
+<p>We can explore the effect of not closing the multiprocessing pool.</p>
+<p>In this example we will create a multiprocessing pool with a fixed number of workers. We will then confirm that all child worker processes are running then attempt to exit the main process.</p>
+<p>Firstly, we can create a multiprocessing pool with four workers.</p>
+<p>Don't worry if you have more or fewer CPU cores, as we will not be running any tasks.</p>
+<pre><code>...
+# create a pool
+pool = Pool(4)</code></pre>
+<p>Next, we can wait a moment for the pool to initialize completely. This is probably not required, but will likely avoid any possible race conditions in checking if the workers are running.</p>
+<pre><code>...
+# wait a moment
+sleep(0.5)</code></pre>
+<p>We can then get a list of all child processes for the current process. This will include all workers in the process pool.</p>
+<p>This can be achieved via the <strong>multiprocessing.active_children()</strong> function.</p>
+<pre><code>...
+# report all active child processes
+for child in active_children():
+    print(child)
+</code></pre>
+<p>We will then attempt to exit the main process normally, with the multiprocessing pool still running.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# does the multiprocessing pool stop main from exiting
+from time import sleep
+from multiprocessing import Pool
+from multiprocessing import active_children
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a pool
+    pool = Pool(4)
+    # wait a moment
+    sleep(0.5)
+    # report all active child processes
+    for child in active_children():
+        print(child)
+    # attempt to exit the main program without closing the pool
+    # ...
+</code></pre>
+<p>Running the example first creates a multiprocessing pool with four child worker processes.</p>
+<p>The main process then blocks a moment to wait for the pool to initialize completely.</p>
+<p>Next, a list of all child processes is retrieved and their details are reported.</p>
+<p>We can notice that the child worker processes are daemon processes, meaning that they are intended to run in the background.</p>
+<p>We can see all four child worker processes in the pool.</p>
+<p>The main process then ends normally, and the program exits.</p>
+<p>The Python interpreter garbage collector in the parent process terminates the multiprocessing pool automatically.</p>
+<pre><code>&lt;SpawnProcess name='SpawnPoolWorker-3' pid=10172 parent=10168 started daemon&gt;
+&lt;SpawnProcess name='SpawnPoolWorker-1' pid=10170 parent=10168 started daemon&gt;
+&lt;SpawnProcess name='SpawnPoolWorker-2' pid=10171 parent=10168 started daemon&gt;
+&lt;SpawnProcess name='SpawnPoolWorker-4' pid=10173 parent=10168 started daemon&gt;
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know what happens if you forget or are unable to close the multiprocessing pool.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>7 ProcessPoolExecutor Common Errors in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>7 ProcessPoolExecutor Common Errors in Python</h1>
+<div class="post-meta">January 28, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>You may encounter one among a number of <strong>common errors</strong> when using the <a href="../processpoolexecutor-in-python/"><strong>ProcessPoolExecutor</strong> in Python</a>.</p>
+<p>These errors are often easy to identify and often involve a quick fix.</p>
+<p>In this tutorial you will discover the common errors when using process pools in Python and how to fix each in turn.</p>
+<p>Let's get started.</p>
+<h2 id="common-errors-when-using-processpoolexecutor">Common Errors When Using ProcessPoolExecutor</h2>
+<p>There are a number of common errors when using the <strong>ProcessPoolExecutor</strong>.</p>
+<p>These errors are typically made because of bugs introduced by copy-and-pasting code, or from a slight misunderstanding in how the <strong>ProcessPoolExecutor</strong> works.</p>
+<p>We will take a closer look at some of the more common errors made when using the <strong>ProcessPoolExecutor</strong>, such as:</p>
+<ol><li>Forgetting __main__</li><li>Using a Function Call in <strong>submit()</strong></li><li>Using a Function Call in <strong>map()</strong></li><li>Incorrect Function Signature for <strong>map()</strong></li><li>Incorrect Function Signature for <strong>Future</strong> Callbacks</li><li>Arguments or Shared Data that Does Not Pickle</li><li>Not Flushing <strong>print()</strong> Statements</li></ol>
+<p><strong>Do you have an error using the ProcessPoolExecutor?</strong><br/>Let me know in the comments so I can recommend a fix and add the case to this tutorial.</p>
+<h2 id="error-1-forgetting-main">Error 1: Forgetting __main__</h2>
+<p>By far the biggest error when using the <strong>ProcessPoolExecutor</strong> is forgetting to check for the <strong>__main__</strong> module.</p>
+<p>Recall that when using processes in Python such as the <strong>Process</strong> class or the <strong>ProcessPoolExecutor</strong> we must include a check for the top-level environment.</p>
+<p>This is achieved by checking if the module name <strong>__name__</strong> is equal to the string '<strong>__main__</strong>'.</p>
+<p>This indicates that the code is running at the top-level code environment, rather than being imported by a program or script.</p>
+<p>For example:</p>
+<pre><code># entry point
+if __name__ == '__main__':
+    # ...
+</code></pre>
+<p>You can learn more about <strong>__main__</strong> more generally here:</p>
+<ul><li><a href="https://docs.python.org/3/library/__main__.html">__main__ — Top-level code environment</a></li></ul>
+<p>Forgetting the main function will result in an error that can be quite confusing.</p>
+<p>A complete example of using the <strong>ProcessPoolExecutor</strong> without a check for the <strong>__main__</strong> module is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of not having a check for the main top-level environment
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    return value
+
+# start the process pool
+with ProcessPoolExecutor() as executor:
+    # submit all tasks
+    for result in executor.map(task, range(5)):
+        print(result)
+</code></pre>
+<p>Running this example will fail with a <strong>RuntimeError</strong>.</p>
+<pre><code>Traceback (most recent call last):
+...
+RuntimeError:
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+Traceback (most recent call last):
+ ...
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
+...
+UserWarning: resource_tracker: There appear to be 5 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+</code></pre>
+<p>The error message does include information about the need to import an entry point to the program, but also comments on freeze_support which can be confusing for beginners as well as a <strong>BrokenProcessPool</strong>.</p>
+<p>This error can be fixed by protecting the entry point of the program with an if-statement:</p>
+<pre><code>if __name__ == '__main__':
+    # ...
+</code></pre>
+<p>You can learn more about this in the tutorial:</p>
+<ul><li><a href="../multiprocessing-spawn-runtimeerror/">Add if <strong>name</strong> == ‘<strong>main</strong>’ When Spawning a Child Process</a></li></ul>
+<h2 id="error-2-using-a-function-call-in-submit">Error 2: Using a Function Call in submit()</h2>
+<p>A common error is to call your function when using the <strong>submit()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# submit the task
+future = executor.submit(task())</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling submit with a function call
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task():
+    # sleep for less than a second
+    sleep(random())
+    return 'all done'
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit the task
+        future = executor.submit(task())
+        # get the result
+        result = future.result()
+        print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running this example will fail with an error.</p>
+<pre><code>concurrent.futures.process._RemoteTraceback:
+"""
+Traceback (most recent call last):
+...
+TypeError: 'str' object is not callable
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+...
+TypeError: 'str' object is not callable
+</code></pre>
+<p>You can fix the error by updating the call to <strong>submit()</strong> to take the name of your function and any arguments, instead of calling the function in the call to submit.</p>
+<p>For example:</p>
+<pre><code>...
+# submit the task
+future = executor.submit(task)
+</code></pre>
+<h2 id="error-3-using-a-function-call-in-map">Error 3: Using a Function Call in map()</h2>
+<p>A common error is to call your function when using the <strong>map() </strong>function.</p>
+<p>For example:</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task(), range(5)):
+    print(result)
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map with a function call
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    return value
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit all tasks
+        for result in executor.map(task(), range(5)):
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example results in a <strong>TypeError</strong></p>
+<pre><code>Traceback (most recent call last):
+  ...
+TypeError: task() missing 1 required positional argument: 'value'
+</code></pre>
+<p>This error can be fixed by changing the call to <strong>map() </strong>to pass the name of the target task function instead of a call to the function.</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task, range(5)):
+    print(result)
+</code></pre>
+<h2 id="error-4-incorrect-function-signature-for-map">Error 4: Incorrect Function Signature for map()</h2>
+<p>Another common error when using <strong>map()</strong> is to provide no second argument to the function, e.g. the iterable.</p>
+<p>For example:</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task):
+    print(result)
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map without an iterable
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    return value
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit all tasks
+        for result in executor.map(task):
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example does not issue any tasks to the process pool as there was no iterable for the <strong>map()</strong> function to iterate over.</p>
+<p>In this case, no output is displayed.</p>
+<p>The fix involves providing an iterable in the call to <strong>map()</strong> along with your function name.</p>
+<pre><code>...
+# submit all tasks
+for result in executor.map(task, range(5)):
+    print(result)
+</code></pre>
+<h2 id="error-5-incorrect-function-signature-for-future-callbacks">Error 5: Incorrect Function Signature for Future Callbacks</h2>
+<p>Another common error is to forget to include the <strong>Future</strong> in the signature for the callback function registered with a <strong>Future</strong> object.</p>
+<p>For example:</p>
+<pre><code>...
+# callback function to call when a task is completed
+def custom_callback():
+    print('Custom callback was called')
+</code></pre>
+<p>A complete example with this error is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of the wrong signature on the callback function
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# callback function to call when a task is completed
+def custom_callback():
+    print('Custom callback was called', flush=True)
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    return 'Task is done'
+
+# entry point
+def main():
+    # create a process pool
+    with ProcessPoolExecutor() as executor:
+        # execute the task
+        future = executor.submit(work)
+        # add the custom callback
+        future.add_done_callback(custom_callback)
+        # get the result
+        result = future.result()
+        print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running this example will result in an error when the callback is called by the process pool.</p>
+<pre><code>Task is done
+exception calling callback for &lt;Future at 0x10a05f190 state=finished returned str&gt;
+Traceback (most recent call last):
+...
+TypeError: custom_callback() takes 0 positional arguments but 1 was given
+</code></pre>
+<p>Fixing this error involves updating the signature of your callback function to include the <strong>Future</strong> object.</p>
+<pre><code>...
+# callback function to call when a task is completed
+def custom_callback(future):
+    print('Custom callback was called')
+</code></pre>
+<h2 id="error-6-arguments-or-shared-data-that-does-not-pickle">Error 6: Arguments or Shared Data that Does Not Pickle</h2>
+<p>A common error is sharing data between processes that cannot be serialized.</p>
+<p>Python has a built-in object serialization process called <a href="https://docs.python.org/3/library/pickle.html">pickle</a>, where objects are pickled or unpickled when serialized and unserialized.</p>
+<p>When sharing data between processes, the data will be pickled automatically.</p>
+<p>This includes arguments passed to target task functions, data returned from target task functions, and data accessed directly, such as global variables.</p>
+<p>If data that is shared between processes cannot be automatically pickled, a <strong>PicklingError</strong> will be raised.</p>
+<p>Most normal Python objects <a href="https://docs.python.org/3/library/pickle.html#what-can-be-pickled-and-unpickled">can be pickled</a>.</p>
+<p>Examples of objects that cannot pickle are those that might have an open connection, such as to a file, database, server or similar.</p>
+<p>We can demonstrate this with an example below that attempts to pass a file handle as an argument to a target task function.</p>
+<pre><code># SuperFastPython.com
+# example of an argument that does not pickle
+from concurrent.futures import ProcessPoolExecutor
+
+# write to a file
+def work(file):
+    file.write('hi there')
+    return "All done!"
+
+# entry point
+def main():
+    # submit the task
+    with open('tmp.txt', 'w') as file:
+        # start the process pool
+        with ProcessPoolExecutor() as executor:
+            # submit the task
+            future = executor.submit(work, file)
+            # get the result
+            result = future.result()
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that it falls with an error indicating that the argument cannot be pickled for transmission to the worker process.</p>
+<pre><code>concurrent.futures.process._RemoteTraceback:
+...
+TypeError: cannot pickle '_io.TextIOWrapper' object
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  ...
+TypeError: cannot pickle '_io.TextIOWrapper' object
+</code></pre>
+<p>This was a contrived example, where the file could be opened within the target task function or the ProcessPoolExecutor could be changed to a <strong>ThreadPoolExecutor</strong>.</p>
+<p>In general, if you experience this error and you are attempting to pass around a connection or open file, perhaps try to open the connection within the task or use threads instead of processes.</p>
+<p>If you experience this type of error with custom data types that are being passed around, you may need to implement code to manually serialize and deserialize your types. I recommend reading the <a href="https://docs.python.org/3/library/pickle.html">documentation for the pickle module</a>.</p>
+<h2 id="error-7-not-flushing-print-statements">Error 7: Not Flushing print() Statements</h2>
+<p>A common error is to not flush standard out (stdout) when calling the built-in <strong>print()</strong> statement from target task functions.</p>
+<p>By default, the built-in <strong>print()</strong> statement in Python does not flush output.</p>
+<p>You can learn more about the built-in functions here:</p>
+<ul><li><a href="https://docs.python.org/3/library/functions.html">Python Built-in Functions</a></li></ul>
+<p>The standard output stream (stout) will flush automatically in the main process, often when the internal buffer is full or a new line is detected. This means you see your print statements reported almost immediately after the print function is called in code.</p>
+<p>There is a problem when calling the <strong>print()</strong> function from spawned or forked processes because standard out will buffer output by default.</p>
+<p>This means if you call <strong>print() </strong>from target task functions in the <strong>ProcessPoolExecutor</strong>, you probably will not see the print statements on standard out until the worker processes are closed.</p>
+<p>This will be confusing because it will look like your program is not working correctly, e.g. buggy.</p>
+<p>The example below demonstrates this with a target task function that will call <strong>print()</strong> to report some status.</p>
+<pre><code># SuperFastPython.com
+# example of not flushing output when call print() from tasks in new processes
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a moment
+def task(value):
+    sleep(value)
+    print(f'Done: {value}')
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        executor.map(task, range(5))
+    print('All done!')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example will wait until all tasks in the process pool have completed before printing all messages on standard out.</p>
+<pre><code>Done: 0
+Done: 1
+Done: 2
+Done: 3
+Done: 4
+All done!
+</code></pre>
+<p>This can be fixed by updating all calls to the <strong>print()</strong> statement called from target task functions to flush output after each call.</p>
+<p>This can be achieved by setting the "<strong>flush</strong>" argument to <strong>True</strong>, for example:</p>
+<pre><code>...
+# report progress and flush the stream
+print(f'Done: {value}', flush=True)
+</code></pre>
+<p>You can learn more about this in the tutorial:</p>
+<ul><li><a href="../multiprocessing-print/">How to print() from a Child Process in Python</a></li></ul>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know about the common errors when using the <strong>ProcessPoolExecutor</strong> in Python.</p>
+</main>
+</body>
+</html>

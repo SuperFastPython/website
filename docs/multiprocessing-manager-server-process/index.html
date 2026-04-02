@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Manager Server Process and Threads – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Manager Server Process and Threads</h1>
+<div class="post-meta">September 4, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>Methods of objects hosted in a manager are executed by threads in the manager's server process.</p>
+<p>In this tutorial you will discover the <strong>multiprocessing manager server process and threads</strong> used to <strong>execute code of hosted objects</strong>.</p>
+<p>Let's get started.</p>
+<h2>What is a Multiprocessing Manager</h2>
+<p>A manager in the <a href="../ &lt;_MainThread(MainThread, started 4584087040)&gt; &lt;_MainProcess name='MainProcess' parent=None started&gt;Constructor: &lt;Thread(Thread-2, started daemon 123145459212288)&gt; &lt;SpawnProcess name='CustomManager-1' parent=34011 started&gt;Task: &lt;Thread(MainProcess, started daemon 123145459212288)&gt; &lt;SpawnProcess name='CustomManager-1' parent=34011 started&gt;/">multiprocessing</a> module provides a way to create Python objects that can be shared easily between processes.</p>
+<blockquote>
+<p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>A manager creates a server process that hosts a centralized version of objects that can be shared among multiple processes.</p>
+<p>The objects are not shared directly. Instead, the manager creates a proxy object for each object that it manages and the proxy objects are shared among processes.</p>
+<p>The proxy objects are used and operate just like the original objects, except that they serialize data, synchronize and coordinate with the centralized version of the object hosted in the manager server process.</p>
+<blockquote>
+<p>A proxy is an object which refers to a shared object which lives (presumably) in a different process. [...] A proxy object has methods which invoke corresponding methods of its referent (although not every method of the referent will necessarily be available through the proxy).</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This makes managers a process-safe and preferred way to share Python objects among processes.</p>
+<p>You can learn more about multiprocessing managers in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li>
+</ul>
+<p>Next, let's consider the server process of the manager itself.</p>
+<h2>What Process and Thread Execute the Object in the Manager?</h2>
+<p>When we start a manager, it starts a server process where centralized objects are created.</p>
+<p>We provide access to the hosted objects via proxy objects.</p>
+<p>Nevertheless, we may have some basic questions about the manager's process.</p>
+<p>For example:</p>
+<ul>
+<li>Is the manager's process a child of the main process?</li>
+<li>Which process and thread executes the constructor of the hosted object?</li>
+<li>What process and thread executes a method on a shared object?</li>
+</ul>
+<p>We can explore these questions.</p>
+<p>For example, we can call the <strong>multiprocessing.active_children()</strong> function to get a list of all active child processes after a manager has been started, to see if the manager's server process is a child of the main process.</p>
+<p>The <strong>multiprocessing.current_process()</strong> function can be used to get a multiprocessing.Process instance for the process that is executing the current code.</p>
+<p>Similarly, we can use the <strong>threading.current_thread()</strong> function to get the <strong>threading.Thread</strong> instance for the thread that is executing the current code.</p>
+<p>We can then define a custom object that may be created and hosted in a manager. The object can check the current process and thread when it is constructed and when custom methods are called, answering our questions.</p>
+<p>Let's explore these questions.</p>
+<h2>Is Manager's Process a Child of the Main Process?</h2>
+<p>We can explore whether the process created by the manager is a child of the main process.</p>
+<p>In this example we will create a manager in the main process, then get a list and report the details of all active child processes of the main process. If the manager process is a child of the main process, then its details will be reported.</p>
+<p>We can get a list of all child processes for the current process via the <strong>multiprocessing.active_children() </strong>function.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example determining if the main process can see the manager's process
+from multiprocessing import active_children
+from multiprocessing import Manager
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and start the manager
+    with Manager() as manager:
+        # report all active child processes
+        for child in active_children():
+            print(child)
+</code></pre>
+<p>Running the example first creates a manager and starts it using the context manager interface.</p>
+<p>Next, the main process gets a list of all active child processes and reports the details of each.</p>
+<p>In this case, we can see that the main process has a single child process and its name is "<em>SyncManager-1</em>".</p>
+<p>This confirms that the manager's server process is a child of the main process (or the process that created it).</p>
+<p>It also highlights that the manager names the process after the class used to create it. In this case, the name of the manager's process is named after the <strong>multiprocessing.managers.SyncManager</strong> class. This is because when we call <strong>multiprocessing.Manager()</strong> to create a manager, it creates an instance of the SyncManager class.</p>
+<p>Note, the process identifiers will be different each time the program is run because they are assigned by the operating system.</p>
+<p>Next, let's explore what thread and process execute code on an object hosted in a manager.</p>
+<h2>What Thread and Process Execute a Centralized Object?</h2>
+<p>We can explore what thread and process execute code on an object hosted in a multiprocessing manager.</p>
+<p>This is a little more elaborate than the previous example. It requires that we first define a custom class with a constructor and a method that reports the current thread and process executing them. It then requires that we define a custom manager class so that we can register a custom class that may be created and managed by a manager process. We can then create the custom manager, use the manager to create the custom class, then call methods on the custom class to see what thread and process execute them.</p>
+<p>For more on how to host custom objects in a multiprocessing manager, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager-custom-class/">Multiprocessing Manager With a Custom Class</a></li>
+</ul>
+<p>First, we can define a custom class.</p>
+<p>The class will define a constructor that will call the <strong>threading.current_thread() </strong>function to get the current thread instance and <strong>multiprocessing.current_process()</strong> to get the current process instance and then report the details of each.</p>
+<p>The class will also define a method that will report the same details, when called.</p>
+<p>The <strong>CustomClass</strong> below implements this.</p>
+<pre><code># custom class
+class CustomClass():
+    # constructor
+    def __init__(self):
+        # get the current process and thread
+        process = current_process()
+        thread = current_thread()
+        # report details
+        print(f'Constructor:\n {thread}\n {process}')
+
+    # do something with the data
+    def task(self):
+        # get the current process and thread
+        process = current_process()
+        thread = current_thread()
+        # report details
+        print(f'Task:\n {thread}\n {process}')
+</code></pre>
+<p>Next, we can define a custom manager class.</p>
+<p>This is required so that we can register a custom class with the manager and have the manager create and host it, allowing processes to interact with it via proxy objects.</p>
+<p>The custom manager must extend the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.BaseManager"><strong>BaseManager</strong> class</a>.</p>
+<p>It then does not need to implement or override any methods.</p>
+<p>The <strong>CustomManager</strong> class below implements this.</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>In the main process, we will first report the name of the current thread and the current process.</p>
+<p>We expect this to be the <strong>MainThread</strong> of the <strong>MainProcess</strong>.</p>
+<pre><code>...
+# get the current process and thread
+process = current_process()
+thread = current_thread()
+# report details
+print(f'Main:\n {thread}\n {process}')</code></pre>
+<p>You can learn more about the main process in the tutorial:</p>
+<ul>
+<li><a href="../main-process-in-python/">Main Process in Python</a></li>
+</ul>
+<p>Next, we will register our <strong>CustomClass</strong> with our <strong>CustomManager</strong> class.</p>
+<p>This is so that the manager knows about the <strong>CustomClass</strong> and how to create a new instance.</p>
+<p>This can be achieved via the <strong>register()</strong> class function that takes a mapping of string name to register to class name to instantiate.</p>
+<pre><code>...
+# register the custom class on the custom manager
+CustomManager.register('CustomClass', CustomClass)</code></pre>
+<p>We will then create an instance of the <strong>CustomManager</strong> and start it via the context manager interface.</p>
+<pre><code>...
+# create a new manager instance
+with CustomManager() as manager:
+	# ...
+</code></pre>
+<p>We can then use the manager to create an instance of our <strong>CustomClass</strong>.</p>
+<pre><code>...
+# create a shared custom class instance
+custom = manager.CustomClass()</code></pre>
+<p>This will create an instance of the class hosted on the server and execute the constructor of our class, reporting the details of the specific thread and process that created the class.</p>
+<p>We expect that it will be a thread within the <strong>Manager</strong>'s server process.</p>
+<p>Finally, we will call a method on our hosted object.</p>
+<pre><code>...
+# call a method on the custom class
+custom.task()</code></pre>
+<p>Again, the method will report the thread and process that executed the code on the object. We expect this will be a thread on the <strong>Manager</strong>'s server process.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of reporting details of process executing a hosted object
+from threading import current_thread
+from multiprocessing import current_process
+from multiprocessing import Process
+from multiprocessing.managers import BaseManager
+
+# custom class
+class CustomClass():
+    # constructor
+    def __init__(self):
+        # get the current process and thread
+        process = current_process()
+        thread = current_thread()
+        # report details
+        print(f'Constructor:\n {thread}\n {process}')
+
+    # do something with the data
+    def task(self):
+        # get the current process and thread
+        process = current_process()
+        thread = current_thread()
+        # report details
+        print(f'Task:\n {thread}\n {process}')
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# protect the entry point
+if __name__ == '__main__':
+    # get the current process and thread
+    process = current_process()
+    thread = current_thread()
+    # report details
+    print(f'Main:\n {thread}\n {process}')
+    # register the custom class on the custom manager
+    CustomManager.register('CustomClass', CustomClass)
+    # create a new manager instance
+    with CustomManager() as manager:
+        # create a shared custom class instance
+        custom = manager.CustomClass()
+        # call a method on the custom class
+        custom.task()
+</code></pre>
+<p>Running the example first gets the current thread and process and reports their details.</p>
+<p>As expected, we can see that the <strong>MainThread</strong> of the <strong>MainProcess</strong> is executing our program.</p>
+<p>Next, our <strong>CustomClass</strong> is registered with our <strong>CustomManager</strong>.</p>
+<p>We then create and start an instance of our <strong>CustomManager</strong> which starts a server process.</p>
+<p>The manager is then used to create an instance of our <strong>CustomClass</strong>.</p>
+<p>This calls the constructor of the class and reports the details of the current thread and process.</p>
+<p>In this case, we can see that "<strong>Thread-2</strong>" of the "<strong>CustomManager-1</strong>" class executed the constructor of our <strong>CustomClass</strong>. <strong>CustomManager-1 </strong>is the server process itself, and <strong>Thread-2</strong> must be a helper thread used for maintenance tasks, like creating objects in this case.</p>
+<p>We then call the <strong>task(</strong>) method on our hosted object, which reports the thread and process details that perform the call.</p>
+<p>In this case, we can see that a thread called "<strong>MainProcess</strong>" of the "<strong>CustomManager-1</strong>" executed the method.</p>
+<p>This highlights that the proxy object for a hosted object dispatch calls to the manager to execute constructors and methods on the hosted object in the <strong>Manager</strong>'s server process. It also highlights that the manager uses helper threads to handle such requests, which is not surprising.</p>
+<p>Note, the process identifiers will be different each time the program is run because they are assigned by the operating system.</p>
+<pre><code>Main:
+ &lt;_MainThread(MainThread, started 4584087040)&gt;
+ &lt;_MainProcess name='MainProcess' parent=None started&gt;
+Constructor:
+ &lt;Thread(Thread-2, started daemon 123145459212288)&gt;
+ &lt;SpawnProcess name='CustomManager-1' parent=34011 started&gt;
+Task:
+ &lt;Thread(MainProcess, started daemon 123145459212288)&gt;
+ &lt;SpawnProcess name='CustomManager-1' parent=34011 started&gt;
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know that the manager process is a child of the main process and which thread and process execute code on an object hosted in a manager.</p>
+</main>
+</body>
+</html>

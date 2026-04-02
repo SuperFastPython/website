@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lock Retry with Back-Off in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Lock Retry with Back-Off in Python</h1>
+<div class="post-meta">April 23, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can <strong>retry a lock </strong>in loop and <strong>back-off the retries</strong> as a linear or exponential function of the number of failed retry attempts.</p>
+<p>In this tutorial you will discover how to develop mutex <strong>lock retries with a back-off</strong> function.</p>
+<p>Let's get started.</p>
+<h2>Problem of Lock Contention</h2>
+<p>Lock contention is a problem that may occur when using mutual exclusion (mutex) locks.</p>
+<p>Lock contention is typically described in the context of the internals of operating systems, but may also be a problem at a high-level such as application programming with concurrency primitives.</p>
+<p>It describes a situation where a lock protects a critical section and <a href="../threading-in-python/">multiple threads</a> attempt to acquire the lock at the same time.</p>
+<p>This is a problem because only one thread can acquire a lock, and all other threads must block, and wait for the lock to become available. This is an inefficient use of resources, as those threads could be executing and completing tasks in the application.</p>
+<p>You can learn more about lock contention in this tutorial:</p>
+<ul><li><a href="../lock-contention-in-python/">Lock Contention in Python</a></li></ul>
+<p>One approach to reducing contention for a lock is to retry getting the lock after a back-off interval and to increase this interval with the number of retries.</p>
+<p>What is a retry with a back-off and how can we implement this in Python?</p>
+<h2>What is Lock Retry With Back-Off?</h2>
+<p>One approach to reducing lock contention is to retry the lock with a back-off.</p>
+<p>If a thread attempts to acquire a lock, rather than block until the lock becomes available, the thread may try to acquire the lock again after some interval of time, called a back-off interval.</p>
+<blockquote><p>Whenever a thread sees the lock has become free but fails to acquire it, it backs off before retrying.</p><cite>-- Page 154, <a href="https://amzn.to/3z1XhOz">The Art of Multiprocessor Programming</a>, 2020.</cite></blockquote>
+<p>As the number of attempts to acquire the lock are tried and fail, the back-off interval can be increased as a function of the number of attempts.</p>
+<p>For example:</p>
+<ul><li><strong>Linear Back-Off</strong>: Back-off interval increases as a linear function of the number of attempts to acquire the lock.</li><li><strong>Exponential Back-Off</strong>: Back-off interval increases as an exponential function (e.g. doubles) of the number of attempts to acquire the lock.</li></ul>
+<p>An <a href="https://en.wikipedia.org/wiki/Exponential_backoff">exponential back-off function</a> that doubles for each failed attempt to acquire a lock is a popular approach used in concurrency programming, and in other domains for the broader problem of resource contention.</p>
+<blockquote><p>A good rule of thumb is that the larger the number of unsuccessful tries, the higher the likely contention, so the longer the thread should back off. To incorporate this rule, each time a thread tries and fails to get the lock, it doubles the expected back-off time, up to a fixed maximum.</p><cite>-- Page 154, <a href="https://amzn.to/3z1XhOz">The Art of Multiprocessor Programming</a>, 2020.</cite></blockquote>
+<p>The back-off interval may be seeded with a random initial interval to avoid multiple threads attempting to acquire the lock at the same time, in lock-step.</p>
+<blockquote><p>To ensure that competing threads do not fall into lockstep, each backing off and then trying again to acquire the lock at the same time, the thread backs off for a random duration.</p><cite>-- Page 154, <a href="https://amzn.to/3z1XhOz">The Art of Multiprocessor Programming</a>, 2020.</cite></blockquote>
+<p>Using a back-off allows a thread waiting on a contended lock to perform other tasks while waiting and is a type of busy waiting related to a spinlock.</p>
+<p>Next, let's take a closer look at busy waiting and spinlocks as they are related to retrying a lock with a back-off.</p>
+<h2>Lock Retry With Back-Off is a Spinlock</h2>
+<p>Retrying a lock with a back-off is a type of busy waiting called a spinlock.</p>
+<p>Busy waiting, also called spinning, refers to a thread that repeatedly checks a condition.</p>
+<p>It is referred to as “<em>busy</em>” or “<em>spinning</em>” because the thread continues to execute the same code, such as an if-statement within a while-loop, achieving a wait by executing code (e.g. keeping busy).</p>
+<ul><li><strong>Busy Wait</strong>: When a thread “<em>waits</em>” for a condition by repeatedly checking for the condition in a loop.</li></ul>
+<p>Busy waiting is typically undesirable in concurrent programming as the tight loop of checking a condition consumes CPU cycles unnecessarily, occupying a CPU core. As such, it is sometimes referred to as an anti-pattern of concurrent programming, a pattern to be avoided.</p>
+<p>If you are new to busy waiting, you can learn more here:</p>
+<ul><li><a href="../thread-busy-waiting-in-python/">How to Use Busy Waiting in Python</a></li></ul>
+<p>A spinlock is a type of lock where a thread must perform a busy wait if it is already locked.</p>
+<ul><li><strong>Spinlock</strong>: Using a busy wait loop to acquire a lock.</li></ul>
+<p>Spinlocks are typically implemented at a low-level, such as in the underlying operating system. Nevertheless, we can implement a spinlock at a high-level in our program as a concurrency primitive.</p>
+<p>A spinlock may be a desirable concurrency primitive that gives fine grained control over both how long a thread may wait for a lock (e.g. loop iterations or wait time) and what the thread is able to do while waiting for the lock.</p>
+<p>If you are new to spinlocks, you can learn more here:</p>
+<ul><li><a href="../thread-spinlock-in-python/">How to Use a Spinlock in Python</a></li></ul>
+<p>Retrying a lock with a back-off is a type of spinlock where the thread attempts to acquire the lock each iteration of the busy wait loop.</p>
+<p>Each time the thread fails to acquire the lock, it will wait for a back-off interval that will increase as a function of the number of retries.</p>
+<p>Now that we know how lock retrying with a back-off is related to busy-waiting and spinlocks, let's look at how we might implement it in Python.</p>
+<h2>How to Implement a Lock Retry With Back-Off</h2>
+<p>In this section, we will develop a retry for mutex locks with a back-off interval that is a function of the number of retries.</p>
+<h3>Mutex Locks</h3>
+<p>Python provides a mutual exclusion (mutex) lock via the threading.Lock class.</p>
+<p>A mutex lock can be used to ensure that only one thread at a time executes a critical section of code at a time, while all other threads trying to execute the same code must wait until the currently executing thread is finished with the critical section and releases the lock.</p>
+<p>Python provides a mutual exclusion lock via the <strong>threading.Lock</strong> class.</p>
+<p>An instance of the lock can be created and then acquired by threads before accessing a critical section, and released after the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = Lock()
+# acquire the lock
+lock.acquire()
+# critical section
+# ...
+# release the lock
+lock.release()</code></pre>
+<p>You can learn more about mutex locks in the tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<h3>Lock Retry (Spinlocks)</h3>
+<p>Only one thread can have the lock at any time.</p>
+<p>If locked, a thread attempting to acquire the lock will block until the lock is released by the thread currently holding the lock.</p>
+<p>Instead of blocking until the lock is available, we can create a spinlock that will check the status of the lock each iteration, and if available, will acquire the lock and execute the critical section.</p>
+<p>We can attempt to acquire the lock without blocking by setting the "<strong>blocking</strong>" argument to <strong>False</strong>. The function will return <strong>True</strong> if the lock was acquired or False otherwise. Therefore, we can attempt to acquire the lock in an if-statement.</p>
+<p>For example:</p>
+<pre><code>...
+# attempt to acquire the lock
+if lock.acquire(blocking=False):
+	# ...
+</code></pre>
+<p>We can use this in a busy loop that will execute the critical section and break the loop.</p>
+<p>For example:</p>
+<pre><code>...
+# busy wait loop for a spinlock
+while True:
+    # attempt to acquire the lock
+    if lock.acquire(blocking=False):
+    	# execute the critical section
+    	# ...
+    	# release the lock
+    	lock.release()
+        # exit the spinlock
+        break
+</code></pre>
+<p>Each iteration of the loop, we attempt to acquire the lock without blocking. If acquired, the loop will execute the critical section, release the lock then break the loop.</p>
+<h3>Lock Retry With Fixed Timeout (Blocking Spinlocks)</h3>
+<p>A limitation of the spinlock is the increased computational burden of executing a tight loop repeatedly.</p>
+<p>The computational burden of the busy wait loop can be lessened by allowing the thread to block.</p>
+<p>This can be achieved by having the thread call the <strong>time.sleep()</strong> function to block for a fixed interval if the lock cannot be acquired.</p>
+<p>For example:</p>
+<pre><code>...
+# attempt to acquire the lock with a timeout
+if lock.acquire(blocking=False):
+	# ...
+else:
+	# block for a fixed interval
+	time.sleep(1.0)
+</code></pre>
+<p>A problem with this approach is that each thread will attempt to retry the lock after the same time interval. This is a problem if many threads are started at the same time and attempt to execute this same code block.</p>
+<p>Another problem is that the longer that the lock is unavailable, the higher the contention is for the lock. Therefore, it would be wise for the thread to try less often as more time passes.</p>
+<p>Next, we can look at how to transform the fixed waiting interval between retries to a random back-off interval that increases as a function of the number of retries.</p>
+<h3>Lock Retry with Linear Back-Off</h3>
+<p>We can back-off a linear function of the number of retries.</p>
+<p>This can be achieved by seeding the back-off interval with a random fraction of a second between 0 and 1.</p>
+<p>This can be achieved with the random.random() function. We can also keep track of the number of retries, starting with zero.</p>
+<pre><code>...
+# initialize the number of attempts
+attempts = 0
+# initialize the back-off interval
+initial_wait = random()</code></pre>
+<p>The initial back-off may be any interval we like, such as between 0 and 10 milliseconds, 0 and 100 milliseconds or 0 and 1,000 milliseconds (1 second).</p>
+<p>We use a random value to avoid all threads attempting to retry a lock at the same time in lock-step.</p>
+<p>The back-off interval can be calculated simply as the number of retries multiplied by the randomly seeded back-off interval.</p>
+<ul><li>Back-Off = Initial Interval * Number of Retries</li></ul>
+<p>For example, if the random back-off interval was 0.3 seconds, then the linear back-off interval between retries would be calculated as follows for the first ten retries:</p>
+<pre><code>Time	Linear Back-Off
+0	0
+1	0.3
+2	0.6
+3	0.9
+4	1.2
+5	1.5
+6	1.8
+7	2.1
+8	2.4
+9	2.7
+10	3</code></pre>
+<p>We can make this clear with a plot of the number of retries (time) vs the back-off interval.</p>
+<figure><img alt="" loading="lazy" src="../pics/Linear-Back-Off-vs.-Time.png"/><figcaption>Linear Back-Off vs. Time</figcaption></figure>
+<p>This back-off interval can be calculated each iteration of the busy wait loop and used in the call to <strong>time.sleep()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# busy wait loop for a spinlock
+while True:
+    # attempt to acquire the lock
+    if lock.acquire(blocking=False):
+    	# execute the critical section
+    	# ...
+    	# release the lock
+    	lock.release()
+        # exit the spinlock
+        break
+    else:
+        # calculate back-off interval
+        wait = attempts * initial_wait
+        # block before next lock retry
+        time.sleep(wait)
+</code></pre>
+<h3>Lock Retry with Exponential Back-Off</h3>
+<p>A popular retry approach is to calculate the back-off time as an exponential function of the number of retries.</p>
+<p>A common exponential function is that we can double the length of the back-off each retry.</p>
+<p>This can be achieved by calculating the square of the number of retries and then multiplying this value by the randomly seeded wait interval.</p>
+<p>For example:</p>
+<ul><li>Back-Off = Initial Interval * (Number of Retries)^2</li></ul>
+<p>For example, if the random back-off interval was 0.3 seconds, then the exponentially doubling back-off interval between retries would be calculated as follows for the first ten retries:</p>
+<pre><code>Time	Exponential Back-Off
+0	0
+1	0.3
+2	1.2
+3	2.7
+4	4.8
+5	7.5
+6	10.8
+7	14.7
+8	19.2
+9	24.3
+10	30
+</code></pre>
+<p>We can make this clear with a plot of the number of retries (time) vs the back-off interval.</p>
+<figure><img alt="" loading="lazy" src="../pics/Exponential-Back-Off-vs.-Time.png"/><figcaption>Exponential Back-Off vs. Time</figcaption></figure>
+<p>This back-off interval can be calculated each iteration of the busy wait loop and used in the call to <strong>time.sleep()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# busy wait loop for a spinlock
+while True:
+    # attempt to acquire the lock
+    if lock.acquire(blocking=False):
+    	# execute the critical section
+    	# ...
+    	# release the lock
+    	lock.release()
+        # exit the spinlock
+        break
+    else:
+        # calculate back-off interval
+        wait = attempts**2.0 * initial_wait
+        # block before next lock retry
+        time.sleep(wait)
+</code></pre>
+<p>Now that we know how to retry a lock with a random and increasing back-off interval, let's look at some worked examples.</p>
+<h2>Example of Lock Contention</h2>
+<p>Before we explore retrying a lock with a back-off, let's first develop a simple example with lock contention.</p>
+<p>In this example, we will have a task that contains a critical section protected by a mutex lock. The critical section blocks for some random fraction of five seconds then reports the thread identifier. We will start three threads that all attempt to execute the task, contend for the same lock and wait their turn.</p>
+<p>First, we can define a task function that takes the shared lock and a unique integer to identify the thread, it acquires the lock, blocks for a fraction of five seconds then reports a message.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a new thread
+def task(lock, identifier):
+    # acquire the lock
+    lock.acquire()
+    # critical section
+    sleep(random() * 5)
+    print(f'Thread {identifier} done')
+    lock.release()
+</code></pre>
+<p>The main thread can then create the shared lock.</p>
+<pre><code>...
+# create the shared lock
+lock = Lock()</code></pre>
+<p>We can then create three <strong>threading.Thread</strong> instances to execute our <strong>task()</strong> function and provide a unique integer for each thread.</p>
+<p>This can be achieved in a list comprehension.</p>
+<pre><code>...
+# create threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(3)]</code></pre>
+<p>The main thread can then start all three threads, then block until all threads terminate.</p>
+<pre><code>...
+# start the threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of lock contention
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task executed in a new thread
+def task(lock, identifier):
+    # acquire the lock
+    lock.acquire()
+    # critical section
+    sleep(random() * 5)
+    print(f'Thread {identifier} done')
+    lock.release()
+
+# create the shared lock
+lock = Lock()
+# create threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(3)]
+# start the threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared lock then creates and starts all three threads.</p>
+<p>Each thread contends for the lock and blocks waiting for its turn to acquire the lock, block and report a successful message.</p>
+<pre><code>Thread 0 done
+Thread 1 done
+Thread 2 done</code></pre>
+<p>Next, let's look at how we might update the example to retry the lock in a loop.</p>
+<h2>Lock Retry With a Spinlock</h2>
+<p>We can attempt to acquire the lock in a loop without blocking.</p>
+<p>This is called a spinlock and allows the thread to perform other activities while waiting for the lock to become available.</p>
+<p>You can learn more about spinlocks in the tutorial:</p>
+<ul><li><a href="../thread-spinlock-in-python/">How to Use a Spinlock in Python</a></li></ul>
+<p>We can update the previous example so that threads use a spinlock while waiting for a thread.</p>
+<p>This requires first that we loop forever.</p>
+<pre><code>...
+# loop until lock acquired and task complete
+while True:
+	# ...
+</code></pre>
+<p>Next, we can call the <strong>acquire()</strong> function with the "<strong>blocking</strong>" argument set to <strong>False</strong> so that the call does not block. We can then check the status of the return to see if the lock was acquired.</p>
+<pre><code>...
+# attempt to acquire the lock
+if lock.acquire(blocking=False):
+	# ...
+</code></pre>
+<p>If the lock was acquired, we can execute the critical section, release the lock and break out of the busy wait loop of the spinlock.</p>
+<pre><code>...
+# critical section
+sleep(random() * 5)
+print(f'Thread {identifier} done')
+# release lock
+lock.release()
+break
+</code></pre>
+<p>Otherwise, the loop repeats and the thread attempts to acquire the lock again.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of lock contention with spin lock
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task executed in a new thread
+def task(lock, identifier):
+    # loop until lock acquired and task complete
+    while True:
+        # attempt to acquire the lock
+        if lock.acquire(blocking=False):
+            # critical section
+            sleep(random() * 5)
+            print(f'Thread {identifier} done')
+            # release lock
+            lock.release()
+            break
+
+# create the shared lock
+lock = Lock()
+# create threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(3)]
+# start the threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared lock then creates and starts all three threads.</p>
+<p>Each thread contends for the lock. One thread at a time will acquire it and execute the critical section.</p>
+<p>Waiting threads will no longer block. Instead they execute their busy wait loop as fast as possible, re-trying the loop each iteration.</p>
+<pre><code>Thread 0 done
+Thread 2 done
+Thread 1 done</code></pre>
+<p>Using a spinlock gives the benefit of allowing threads to perform other tasks while waiting, but is computationally wasteful. It also does not reduce the lock contention, as all threads are retrying the lock all the time simultaneously.</p>
+<p>Next, let's look at how we can add some waiting to the spin-lock.</p>
+<h2>Lock Retry With A Random Wait</h2>
+<p>The spinlock can be updated to block for a limited amount of time for the lock to become available.</p>
+<p>This can be achieved by having the thread not attempt to acquire the lock for some interval. A fixed timeout could be used, such as 100 milliseconds.</p>
+<p>The lock could spin until the time limit is met, then attempt to acquire the lock again. Alternatively, the spinlock could block until the interval has elapsed. This could be used with a call to <strong>time.sleep()</strong> if the lock is not acquired.</p>
+<p>A problem with this approach is that it would mean that all threads that execute the function at the same time will retry the lock at the same time, in lock-step.</p>
+<p>An alternative approach could be for each thread to choose a random wait interval before the spinlock and use this interval for each retry.</p>
+<p>For example:</p>
+<pre><code>...
+# choose a random wait interval
+wait_interval = random()</code></pre>
+<p>This could be used each time the lock is retried.</p>
+<p>For example:</p>
+<pre><code>...
+# attempt to acquire the lock
+if lock.acquire(blocking=False):
+	# ...
+else:
+    # block for an interval
+    sleep(wait_interval)
+</code></pre>
+<p>The example of using a spinlock in the previous section can be updated to use this approach.</p>
+<p>The update <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task executed in a new thread
+def task(lock, identifier):
+    # choose a random wait interval
+    wait_interval = random()
+    # loop until lock acquired and task complete
+    while True:
+        # attempt to acquire the lock
+        if lock.acquire(blocking=False):
+            # critical section
+            sleep(random() * 5)
+            print(f'Thread {identifier} done')
+            # release lock
+            lock.release()
+            break
+        else:
+            # block for an interval
+            sleep(wait_interval)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of lock contention with spinlock that blocks
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task executed in a new thread
+def task(lock, identifier):
+    # choose a random wait interval
+    wait_interval = random()
+    # loop until lock acquired and task complete
+    while True:
+        # attempt to acquire the lock
+        if lock.acquire(blocking=False):
+            # critical section
+            sleep(random() * 5)
+            print(f'Thread {identifier} done')
+            # release lock
+            lock.release()
+            break
+        else:
+            # block for an interval
+            sleep(wait_interval)
+
+# create the shared lock
+lock = Lock()
+# create threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(3)]
+# start the threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared lock then creates and starts all three threads.</p>
+<p>Each thread contends for the lock. One thread at a time will acquire it and execute the critical section.</p>
+<p>Waiting threads will block for a fraction of a second while waiting for the lock to become available. Each thread will use its own unique wait interval.</p>
+<p>This will reduce the simultaneous contention on the lock. The use of a random wait interval makes it unlikely for the threads to fall into lock-step when trying the lock.</p>
+<pre><code>Thread 0 done
+Thread 1 done
+Thread 2 done</code></pre>
+<p>The longer the lock remains unavailable, the more likely that the contention for the lock is high.</p>
+<p>As such, it can be a good idea to retry the lock less often in proportion to the number of retries that have been made.</p>
+<p>Next, we will look at how to use a linear back-off before retrying the lock.</p>
+<h2>Lock Retry With Linear Back-Off</h2>
+<p>We can use a wait period that increases as a linear function of the number of failed retries of the lock.</p>
+<p>For example, we can calculate the wait interval each iteration of the spinlock busy wait loop as the number of retries multiplied by the initial random wait interval.</p>
+<p>This requires first that the number of lock retry attempts be recorded, initialized to zero alongside the initial randomly chosen wait interval before the start of the spinlock.</p>
+<pre><code>...
+# initialize the number of retries of the lock
+attempts = 0
+# initialize the initial wait interval
+wait_interval = random()</code></pre>
+<p>Next, the wait interval can be calculated as a linear function of the number of failed lock retries.</p>
+<pre><code>...
+# calculate wait interval as a linear function of the number of retries
+wait = attempts * wait_interval</code></pre>
+<p>This interval can then be used to prevent the thread from attempting to acquire the lock again.</p>
+<p>The thread could spin for this interval, or could block with a call to <strong>time.sleep()</strong>.</p>
+<p>For example</p>
+<pre><code>...
+# block the thread before retrying
+sleep(wait)</code></pre>
+<p>Finally, the number of failed attempts needs to be incremented.</p>
+<pre><code>...
+# increase the number of attempts
+attempts += 1</code></pre>
+<p>We can update the spinlock with the blocking wait from the previous section to use this linear back-off.</p>
+<p>The updated <strong>task()</strong> function with these changes is listed below.</p>
+<p>In addition, we also report the status of each thread while waiting to get an idea of the number of lock retries attempted by each thread.</p>
+<pre><code># task executed in a new thread
+def task(lock, identifier):
+    # initialize the number of retries of the lock
+    attempts = 0
+    # initialize the initial wait interval
+    wait_interval = random()
+    # loop until lock acquired and task complete
+    while True:
+        # attempt to acquire the lock
+        if lock.acquire(blocking=False):
+            # critical section
+            sleep(random() * 5)
+            print(f'Thread {identifier} done')
+            # release lock
+            lock.release()
+            break
+        else:
+            # calculate wait interval as a linear function of the number of retries
+            wait = attempts * wait_interval
+            # report status
+            print(f'.thread {identifier} waiting {wait:.2f} sec after {attempts} attempts')
+            # block the thread before retrying
+            sleep(wait)
+            # increase the number of attempts
+            attempts += 1
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of lock contention with linear back-off
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task executed in a new thread
+def task(lock, identifier):
+    # initialize the number of retries of the lock
+    attempts = 0
+    # initialize the initial wait interval
+    wait_interval = random()
+    # loop until lock acquired and task complete
+    while True:
+        # attempt to acquire the lock
+        if lock.acquire(blocking=False):
+            # critical section
+            sleep(random() * 5)
+            print(f'Thread {identifier} done')
+            # release lock
+            lock.release()
+            break
+        else:
+            # calculate wait interval as a linear function of the number of retries
+            wait = attempts * wait_interval
+            # report status
+            print(f'.thread {identifier} waiting {wait:.2f} sec after {attempts} attempts')
+            # block the thread before retrying
+            sleep(wait)
+            # increase the number of attempts
+            attempts += 1
+
+# create the shared lock
+lock = Lock()
+# create threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(3)]
+# start the threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared lock then creates and starts all three threads.</p>
+<p>Each thread contends for the lock. One thread at a time will acquire it and execute the critical section.</p>
+<p>Waiting threads execute the spinlock. Each iteration they calculate a wait period as a linear function of the number of failed attempts acquiring the lock and the randomly chosen initial wait interval.</p>
+<p>The longer each thread waits for the lock, the longer it will wait in the future.</p>
+<p>The first attempt, each waiting thread will not block. The second attempt, each thread will block for the randomly chosen wait interval number of seconds. The third attempt, each thread will block for 2 times the initial wait interval, then 3 times, then four times, and so on.</p>
+<p>A sample output from the program is listed below. Your results will differ given the use of random numbers.</p>
+<pre><code>.thread 1 waiting 0.00 sec after 0 attempts
+.thread 1 waiting 0.56 sec after 1 attempts
+.thread 2 waiting 0.00 sec after 0 attempts
+.thread 2 waiting 0.61 sec after 1 attempts
+.thread 1 waiting 1.13 sec after 2 attempts
+.thread 2 waiting 1.22 sec after 2 attempts
+Thread 0 done
+.thread 2 waiting 1.84 sec after 3 attempts
+Thread 1 done
+Thread 2 done</code></pre>
+<p>The more attempts a thread makes at acquiring the lock, the higher the contention is for that lock. Therefore, back-off functions that grow faster than a linear amount of the number of retries may be preferred.</p>
+<p>Next, let's look at how we might use an exponential back-off that doubles with each failed retry.</p>
+<h2>Lock Retry With Exponential Back-Off</h2>
+<p>An <a href="https://en.wikipedia.org/wiki/Exponential_function">exponential function</a> is a function that grows as a function of the input and the amount it grows also grows.</p>
+<p>We can use an exponential function of the number of failed retries to calculate the wait time for the lock. This means that block for longer and longer intervals while waiting for the lock.</p>
+<p>The exponential back-off can be calculated as the square of the number of failed retry attempts multiplied by the initial random wait interval.</p>
+<p>For example:</p>
+<pre><code>...
+# calculate wait interval as a exponential function of the number of retries
+wait = attempts**2.0 * wait_interval</code></pre>
+<p>We can update the retry with linear back-off from the previous section to use the exponential back-off function.</p>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task executed in a new thread
+def task(lock, identifier):
+    # initialize the number of retries of the lock
+    attempts = 0
+    # initialize the initial wait interval
+    wait_interval = random()
+    # loop until lock acquired and task complete
+    while True:
+        # attempt to acquire the lock
+        if lock.acquire(blocking=False):
+            # critical section
+            sleep(random() * 5)
+            print(f'Thread {identifier} done')
+            # release lock
+            lock.release()
+            break
+        else:
+            # calculate wait interval as a exponential function of the number of retries
+            wait = attempts**2.0 * wait_interval
+            # report status
+            print(f'.thread {identifier} waiting {wait:.2f} sec after {attempts} attempts')
+            # block the thread before retrying
+            sleep(wait)
+            # increase the number of attempts
+            attempts += 1
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of lock contention with exponential back-off
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task executed in a new thread
+def task(lock, identifier):
+    # initialize the number of retries of the lock
+    attempts = 0
+    # initialize the initial wait interval
+    wait_interval = random()
+    # loop until lock acquired and task complete
+    while True:
+        # attempt to acquire the lock
+        if lock.acquire(blocking=False):
+            # critical section
+            sleep(random() * 5)
+            print(f'Thread {identifier} done')
+            # release lock
+            lock.release()
+            break
+        else:
+            # calculate wait interval as a exponential function of the number of retries
+            wait = attempts**2.0 * wait_interval
+            # report status
+            print(f'.thread {identifier} waiting {wait:.2f} sec after {attempts} attempts')
+            # block the thread before retrying
+            sleep(wait)
+            # increase the number of attempts
+            attempts += 1
+
+# create the shared lock
+lock = Lock()
+# create threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(3)]
+# start the threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared lock then creates and starts all three threads.</p>
+<p>Each thread contends for the lock. One thread at a time will acquire it and execute the critical section.</p>
+<p>Waiting threads execute the spinlock. They attempt to acquire the lock without blocking.</p>
+<p>If the attempt fails, a wait interval is calculated as an exponential of the number of failed retries and each thread's randomly chosen initial wait interval.</p>
+<p>The longer each thread waits for the lock, the longer it will wait in the future, and the longer this goes on, the more the function will grow.</p>
+<p>The first attempt, each waiting thread will not block. The second attempt, each thread will block for the randomly chosen wait interval number of seconds. The third attempt, each thread will block for 2-times the initial wait, then 4-times, then 8-times and so on.</p>
+<p>A sample output from the program is listed below. Your results will differ given the use of random numbers.</p>
+<pre><code>.thread 1 waiting 0.00 sec after 0 attempts
+.thread 1 waiting 0.52 sec after 1 attempts
+.thread 2 waiting 0.00 sec after 0 attempts
+.thread 2 waiting 0.45 sec after 1 attempts
+.thread 2 waiting 1.80 sec after 2 attempts
+.thread 1 waiting 2.07 sec after 2 attempts
+Thread 0 done
+.thread 1 waiting 4.66 sec after 3 attempts
+Thread 2 done
+Thread 1 done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to retry a lock with an exponential back-off.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread-Safe Dictionary in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread-Safe Dictionary in Python</h1>
+<div class="post-meta">April 2, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can make a <strong>Python dictionary thread-safe</strong> by using a mutual exclusion (mutex) lock via the <strong>threading.Lock</strong> class.</p>
+<p>In this tutorial you will discover how to develop a <strong>thread-safe dictionary in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need a Thread-Safe Dictionary</h2>
+<p>A thread is a <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread of execution</a> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming we may need to share a dict data structure between threads.</p>
+<p>Multiple threads may need to add data to the same dict, other threads may wish to remove items or check the length of the dict.</p>
+<p><strong>Is the dict thread-safe in Python and if not, how can we make it thread-safe?</strong></p>
+<h2>Most Dictionary Operations Are Atomic</h2>
+<p>Many common operations on a dict are atomic, meaning that they are thread-safe.</p>
+<p>Recall, a <a href="https://docs.python.org/3/library/stdtypes.html#typesmapping"><strong>dict</strong> is a mapping of keys to values</a>. A dict can be created via the <strong>dict()</strong> statement, for example:</p>
+<pre><code>...
+# create a new dict
+d = dict()</code></pre>
+<p>We can also create a new dictionary by specifying a mapping of keys to values in-line, for example:</p>
+<pre><code>...
+# create a new dict
+d = {a:1, b:2, c:3}</code></pre>
+<p>Atomic means that the operation either occurs or does not occur with no in between inconsistent state.</p>
+<p>Operations such as adding, removing, and reading a value on a dict are atomic.</p>
+<blockquote><p>In practice, it means that operations on shared variables of built-in data types (ints, lists, dicts, etc) that “look atomic” really are.</p><cite>-- <a href="https://docs.python.org/3/faq/library.html#what-kinds-of-global-value-mutation-are-thread-safe">What kinds of global value mutation are thread-safe?</a></cite></blockquote>
+<p>Specifically:</p>
+<ul><li>Adding a key and value mapping.</li><li>Replacing a value for a key.</li><li>Adding a dict to a dict via <strong>update()</strong>.</li><li>Getting a list of keys via <strong>keys()</strong>.</li></ul>
+<p>That is, operations on the dictionary that involve a single operation are atomic, for the most part.</p>
+<blockquote><p>The mechanism used by the CPython interpreter to assure that only one thread executes Python bytecode at a time. This simplifies the CPython implementation by making the object model (including critical built-in types such as dict) implicitly safe against concurrent access.</p><cite>-- <a href="https://docs.python.org/3/glossary.html#term-global-interpreter-lock">global interpreter lock, Python Glossary</a>.</cite></blockquote>
+<p>You can learn about atomic operations in Python here:</p>
+<ul><li><a href="../thread-atomic-operations/">Thread Atomic Operation in Python</a></li></ul>
+<p>Because atomic operations either occur or do not occur, it means that they are thread-safe.</p>
+<p>Specifically, using any of the above operations on a dict shared between multiple threads will not result in a race condition, corruption of the dict or corruption of the data within the dict.</p>
+<p>Next, let's consider why relying on atomic dict operations might be fragile.</p>
+<h2>Atomic Dictionary Operations Are Fragile</h2>
+<p>Common operations on a dict are atomic and therefore thread safe as we saw in the previous section.</p>
+<p>This is only true at the time of writing because of a few specific considerations, such as:</p>
+<ul><li>The precise details on how these dict operations are converted to python virtual machine bytecode.</li><li>The use of the reference python interpreter.</li><li>The use of a Global Interpreter Lock (GIL) within the reference python interpreter.</li></ul>
+<p>This means that depending on the thread-safety of these operations could be fragile in future versions of Python or when executing your Python program with alternate Python interpreters.</p>
+<p>This is not a minor concern.</p>
+<p>There are frequent development efforts to improve the Python interpreter and even attempts to remove the GIL. These will likely change the specifics of the Python VM, bytecode compiling and thread-safety of built-in data structures.</p>
+<p>It is also becoming more common to run Python code using third-party interpreters, mostly to achieve better performance. Alternate interpreters may or may not implement the same rules for atomic operations on dictionaries.</p>
+<p>Therefore, we may desire a thread-safe Python dict that is future-proof to changes to Python interpreters and the GIL.</p>
+<blockquote><p>When in doubt, use a mutex!</p><cite>-- <a href="https://docs.python.org/3/faq/library.html#what-kinds-of-global-value-mutation-are-thread-safe">What kinds of global value mutation are thread-safe?</a></cite></blockquote>
+<p>Next, let's look at some operations on the dict that are not thread-safe.</p>
+<h2>Dictionary Race Conditions Are Possible</h2>
+<p>Operations performed on a dict are atomic, as we have seen above.</p>
+<p>These include adding and removing items, and getting views on the dict for iterating, like lists of keys and lists of values.</p>
+<p>Nevertheless, you may still get race conditions when using a dict.</p>
+<p>This is true, even though:</p>
+<ul><li>Operations on the dict are thread-safe.</li><li>The GIL prevents more than one thread updating state in the Python interpreter.</li></ul>
+<p>A main source of race conditions when working with a dict is in performing operations that involve two or more steps.</p>
+<p>A classical example is a task you may perform on your dict where you first get a key from the dict, then use the key in some operation on the dict, like getting or removing the entry.</p>
+<ol><li><strong>Thread A</strong>: Get a key from dict.</li><li><strong>Thread A</strong>: Use key on dict.</li></ol>
+<p>A context switch is possible between these two operations, allowing another thread to remove the entry from the dict in between. Once your thread is resumed, the key no longer exists on the dict and you get a KeyError or similar failure case.</p>
+<p>For example:</p>
+<ol><li><strong>Thread A</strong>: Get a key from dict.</li><li>&lt;context switch&gt;</li><li><strong>Thread B</strong>: Get same key from dict.</li><li><strong>Thread B</strong>: Remove key from dict.</li><li>&lt;context switch&gt;</li><li><strong>Thread A</strong>: Use key on dict.</li></ol>
+<p>But, what if you add a check if the key exists before getting the value?</p>
+<p>For example:</p>
+<ul><li><strong>Thread A</strong>: Get a key from dict.</li><li><strong>Thread A</strong>: Check that the key exists in dict.</li><li><strong>Thread A</strong>: Use key on dict.</li></ul>
+<p>Nope, you still have a race condition. This time between checking that the key exists and using the key.</p>
+<p>For example:</p>
+<ul><li><strong>Thread A</strong>: Get a key from dict.</li><li><strong>Thread A</strong>: Check that the key exists in dict.</li><li>&lt;context switch&gt;</li><li><strong>Thread B</strong>: Get same key from dict.</li><li><strong>Thread B</strong>: Remove key from dict.</li><li>&lt;context switch&gt;</li><li><strong>Thread A</strong>: Use key on dict.</li></ul>
+<p>Similar race conditions can happen if you have two-step operations that get and use values from the dict instead of keys.</p>
+<p>Any operations on the dict that involve two steps probably should be treated as critical sections and be protected from race conditions.</p>
+<p>Next, let's look at some examples.</p>
+<h2>Example Adding to a Dict is Thread-Safe</h2>
+<p>Adding items to a dict from multiple threads is thread-safe.</p>
+<p>We can explore this with a worked example.</p>
+<p>In this example we will create 1,000 threads, each of which will concurrently add 1,000 unique items to a shared dictionary. The result will be a dictionary with one million items as all discrete add operations are performed without a race condition.</p>
+<p>If adding items to the dict was not thread-safe, then the internal array for holding keys and values may become inconsistent and we would expect fewer than the intended number of items added.</p>
+<p>First, we can define a function to be executed by worker threads to add items to the shared dictionary.</p>
+<p>The function will take the shared dictionary as well as a start integer value and the number of values to add as arguments. It will then iterate from the start value for the specified number of values and add these integers as keys and values to the shared dictionary.</p>
+<p>The <strong>add_items()</strong> function below implements this.</p>
+</main>
+</body>
+</html>

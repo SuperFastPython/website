@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Log Task Exceptions With Done Callback Function – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Log Task Exceptions With Done Callback Function</h1>
+<div class="post-meta">February 11, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can <strong>log task exceptions automatically</strong> in asyncio by defining a general <strong>done callback</strong> that checks the task for an exception, and if present, logs it.</p>
+<p>This general <strong>done callback function</strong> can then be added routinely to all tasks created in the program to ensure that task exceptions are always logged as soon as each task is done.</p>
+<p>In this tutorial, you will discover how to <strong>automatically log task exceptions</strong> using a done callback function.</p>
+<p>Let's get started.</p>
+<h2>Need To Log Task Exceptions Automatically</h2>
+<p>Asyncio tasks can fail with exceptions.</p>
+<p>If an exception is raised within a coroutine or task, it will cause the task to terminate.</p>
+<p>If the exception is not explicitly retrieved, it will be reported or logged automatically when the asyncio event loop is terminated.</p>
+<p>For example, you can learn more about the logging of never-retrieved exceptions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-exception-was-never-retrieved/">Asyncio Task Exception Was Never Retrieved</a></li>
+</ul>
+<p>If the program runs for a long time, such as hours or days, these faults may not be seen for a long time and therefore not acted upon.</p>
+<p>As such, we need a way to automatically log task exceptions as soon as they cause a task to terminate.</p>
+<p><strong>How can we automatically log task exceptions in asyncio?</strong></p>
+<h2>How to Log Task Exceptions With a Done Callback</h2>
+<p>We can automatically log task exceptions as soon as they terminate a task using a done callback function.</p>
+<p>This can be achieved by defining a general done callback function that can be added to all tasks created in an asyncio program.</p>
+<p>This general done callback function can check the task to see if an exception was raised, and if so retrieve it and log it.</p>
+<p>The Python standard library logging module will automatically log the stack traces of raised exceptions when logging them as an exception-level message within a try-except block.</p>
+<p>Therefore, our general done callback function can cause the exception that terminated the task to be re-raised and logged within a try-exception block, ensuring the trace of the exception is also logged.</p>
+<p>The <strong>helper_done_callback()</strong> done callback function below implements this.</p>
+<pre><code># callback func called for all tasks
+def helper_done_callback(task):
+    # check if the task had an exception
+    if task.exception():
+        try:
+            # re-raise exception
+            task.result()
+        except Exception as e:
+            logging.exception(f'Task {task} failed with exception {e}')
+</code></pre>
+<p>This done callback can then be added to all asyncio tasks created in a program.</p>
+<p>For example:</p>
+<pre><code>...
+# add custom callback to task
+task.add_done_callback(helper_done_callback)</code></pre>
+<p>This will run the done callback for all tasks and only log exceptions from those tasks that failed with an unhandled exception.</p>
+<p>Importantly, the exception is logged as soon as the task is done.</p>
+<p>We can make this easier by creating a helper function that creates tasks for us and always adds the done callback function.</p>
+<p>The <strong>create_task_helper()</strong> below implements this.</p>
+<pre><code># helper for creating all tasks
+def create_task_helper(coroutine):
+    # wrap and schedule the task
+    task = asyncio.create_task(coroutine)
+    # add custom callback to task
+    task.add_done_callback(helper_done_callback)
+    # return the task that was created
+    return task
+</code></pre>
+<p>We can then create tasks in our program by calling this helper function and passing in a created coroutine object.</p>
+<p>For example:</p>
+<pre><code>...
+# schedule a task
+task = create_task_helper(work())</code></pre>
+<p>The <strong>create_task_helper()</strong> function could be updated to support an <strong>asyncio.TaskGroup</strong>, if needed.</p>
+<p>Now that we know how we can automatically log task exceptions using a done callback, let's look at some worked examples.</p>
+<h2>Example of Never-Retrieved Task Exception</h2>
+<p>We will look at exploring the automatic logging of an exception with a done callback function, let's start with a coroutine that fails with an exception that is not retrieved.</p>
+<p>We can define a task that reports a message, sleeps a moment, then fails with an exception. The coroutine can be run as a background task and the exception never-retrieved, causing it to be reported by the event loop when the program is exited.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a never-retrieved exception
+import logging
+import asyncio
+
+# task that does work and logs
+async def work():
+    # log a message
+    logging.info(f'Task is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise RuntimeError('Something bad happened')
+    # log a message
+    logging.info(f'Task is done')
+
+# main coroutine
+async def main():
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule a task
+    task = asyncio.create_task(work())
+    # wait around
+    await asyncio.sleep(2)
+    # log a message
+    logging.info(f'Main is done')
+
+# prepare the logger
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first configures the logging infrastructure then starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a log message, then creates and starts an <strong>asyncio.Task</strong> for the <strong>work()</strong> coroutine to run in the background, then suspends and sleeps for two seconds.</p>
+<p>The <strong>work()</strong> coroutine runs and logs a message. It then sleeps for one second. Once it resumes it fails with an exception.</p>
+<p>The <strong>main()</strong> coroutine resumes and logs a final message and the program exits.</p>
+<p>We can see that when the event loop is closed, an <strong>ERROR</strong> message is logged indicating that a task exception was never logged, followed by the details of the task and a trace of the exception.</p>
+<p>This highlights that never-retrieved task exceptions are logged automatically by the event loop after the event loop is closed.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+INFO:root:Main is starting
+INFO:root:Task is starting
+INFO:root:Main is done
+ERROR:asyncio:Task exception was never retrieved
+future: &lt;Task finished name='Task-2' coro=&lt;work() done, defined at ...:7&gt; exception=RuntimeError('Something bad happened')&gt;
+Traceback (most recent call last):
+  File "...", line 13, in work
+    raise RuntimeError('Something bad happened')
+RuntimeError: Something bad happened
+</code></pre>
+<p>Next, let's look at how we can log task errors automatically using a done callback function.</p>
+<h2>Example of Logging Task Exception With Done Callback</h2>
+<p>We can explore an example of automatically logging task exceptions using a done callback function.</p>
+<p>In this case, can update the above example to systematically create tasks using our <strong>create_task_helper()</strong> function and add our <strong>helper_done_callback()</strong> done callback function to each task that is created.</p>
+<pre><code># callback func called for all tasks
+def helper_done_callback(task):
+    # check if the task had an exception
+    if task.exception():
+        try:
+            # re-raise exception
+            task.result()
+        except Exception as e:
+            logging.exception(f'Task {task} failed with exception {e}')
+
+# helper for creating all tasks
+def create_task_helper(coroutine):
+    # wrap and schedule the task
+    task = asyncio.create_task(coroutine)
+    # add custom callback to task
+    task.add_done_callback(helper_done_callback)
+    # return the task that was created
+    return task
+</code></pre>
+<p>This will ensure that any tasks created will automatically log their exceptions via the general done callback function.</p>
+<p>To achieve this, all we need to do is update the <strong>main()</strong> coroutine to create the <strong>work()</strong> background task using our <strong>create_task_helper()</strong> helper function.</p>
+<pre><code>...
+# schedule a task
+task = create_task_helper(work())</code></pre>
+<p>The updated <strong>main()</strong> coroutine with these changes is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule a task
+    task = create_task_helper(work())
+    # wait around
+    await asyncio.sleep(2)
+    # log a message
+    logging.info(f'Main is done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging exception with done callback function
+import logging
+import asyncio
+
+# callback func called for all tasks
+def helper_done_callback(task):
+    # check if the task had an exception
+    if task.exception():
+        try:
+            # re-raise exception
+            task.result()
+        except Exception as e:
+            logging.exception(f'Task {task} failed with exception {e}')
+
+# helper for creating all tasks
+def create_task_helper(coroutine):
+    # wrap and schedule the task
+    task = asyncio.create_task(coroutine)
+    # add custom callback to task
+    task.add_done_callback(helper_done_callback)
+    # return the task that was created
+    return task
+
+# task that does work and logs
+async def work():
+    # log a message
+    logging.info(f'Task is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise RuntimeError('Something bad happened')
+    # log a message
+    logging.info(f'Task is done')
+
+# main coroutine
+async def main():
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule a task
+    task = create_task_helper(work())
+    # wait around
+    await asyncio.sleep(2)
+    # log a message
+    logging.info(f'Main is done')
+
+# prepare the logger
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first configures the logging infrastructure then starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a log message, then creates and starts an <strong>asyncio.Task</strong> for the <strong>work()</strong> coroutine to run in the background using our helper function.</p>
+<p>This creates the task as per normal, then adds our custom done callback function to log task exceptions.</p>
+<p>The <strong>main()</strong> coroutine then suspends and sleeps for two seconds.</p>
+<p>The <strong>work()</strong> coroutine runs and logs a message. It then sleeps for one second. Once it resumes it fails with an exception.</p>
+<p>The <strong>work()</strong> task is done, and then the done callback function runs. It checks if the task has an exception, which it does. It then attempts to retrieve the result of the task, which re-raises the exception. The exception is handled and logged using <strong>logging.exception()</strong>, ensuring the trace of the exception is also logged.</p>
+<p>The <strong>main()</strong> coroutine resumes and logs a final message and the program exits.</p>
+<p>This highlights how we can use a done callback function to automatically log task exceptions as soon as the task is done using a done callback function.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+INFO:root:Main is starting
+INFO:root:Task is starting
+ERROR:root:Task &lt;Task finished name='Task-2' coro=&lt;work() done, defined at ...:26&gt; exception=RuntimeError('Something bad happened')&gt; failed with exception Something bad happened
+Traceback (most recent call last):
+  File "...", line 12, in helper_done_callback
+    task.result()
+  File "...", line 32, in work
+    raise RuntimeError('Something bad happened')
+RuntimeError: Something bad happened
+INFO:root:Main is done
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to automatically log task exceptions using a done callback function.</p>
+</main>
+</body>
+</html>

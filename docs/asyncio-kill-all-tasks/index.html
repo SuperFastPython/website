@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Kill All Asyncio Tasks – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Kill All Asyncio Tasks</h1>
+<div class="post-meta">January 30, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You cannot immediately terminate the asyncio event loop, or kill all running tasks.</p>
+<p>Instead, we must enumerate all running tasks and request that each be canceled. This will cause all tasks to raise a <strong>CancelledError</strong> exception and unwind and match the way the asyncio event loop will automatically cancel all tasks when it is exited normally.</p>
+<p>In this tutorial, you will discover how to <strong>shut down the asyncio event loop</strong> immediately by <strong>canceling all tasks</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Shutdown Asyncio Immediately</h2>
+<p>Sometimes we need to shut down our asyncio program immediately.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>A signal has been raised, like a SIGTERM, SIGKILL, or a keyboard interrupt.</li>
+<li>A fatal error has occurred in the program.</li>
+<li>A user or monitoring program has requested the program terminate.</li>
+</ul>
+<p>The asyncio event loop does provide methods like <strong>stop()</strong> and <strong>close()</strong> but they cannot be used to immediately shut down the event loop.</p>
+<p>Instead, they will cause an error. You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-event-loop-exit/">How to Exit the Asyncio Event Loop</a></li>
+</ul>
+<p>Therefore, to terminate the event loop we must exit the main coroutine, e.g. the entry point of the program.</p>
+<p>This may require killing all tasks in the event loop.</p>
+<p>How can we kill all asyncio tasks?</p>
+<h2>How to Kill All Asyncio Tasks</h2>
+<p>We cannot kill all pending and running asyncio tasks.</p>
+<p>Nevertheless, we can cancel them by calling the <strong>cancel()</strong> method.</p>
+<p>This will cause each task to raise a <strong>CancelledError</strong> exception the next time they resume.</p>
+<p>You can learn more about canceling asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<p>Note, that a task that is requested to cancel may not be canceled. It can choose to consume or swallow the request to cancel.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancellederror-consumed/">Asyncio CancelledError Can Be Consumed</a></li>
+</ul>
+<p>As such, we may want to forcefully cancel each task.</p>
+<p>You can learn how in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-force-task-cancel/">How to Force an Asyncio Task to Cancel</a></li>
+</ul>
+<p>Given that we must cancel all tasks instead of killing them, let's look at how.</p>
+<h2>How to Cancel All Asyncio Tasks</h2>
+<p>We can cancel all tasks in the asyncio event loop by first getting a list of all tasks and then calling the <strong>cancel()</strong> method on each.</p>
+<p>This can be achieved by first calling the <strong>asyncio.all_tasks()</strong> function to get a list of all tasks.</p>
+<pre><code>...
+# get all tasks
+tasks = asyncio.all_tasks()</code></pre>
+<p>You can learn more about getting all tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-all-tasks/">How to Get All Asyncio Tasks in Python</a></li>
+</ul>
+<p>We can then enumerate through the list and call the <strong>cancel()</strong> method on each.</p>
+<pre><code>...
+# cancel all tasks
+for task in tasks:
+    # request the task cancel
+    task.cancel()
+</code></pre>
+<p>Tying this together, we can define a function called <strong>cancel_all_tasks()</strong> that will cancel all tasks in the event loop.</p>
+<p>It can be a function rather than a coroutine as it does not perform any awaiting of other coroutines or tasks.</p>
+<pre><code># cancel all tasks in the event loop
+def cancel_all_tasks():
+    # get all tasks
+    tasks = asyncio.all_tasks()
+	# cancel all tasks
+	for task in tasks:
+	    # request the task cancel
+	    task.cancel()
+</code></pre>
+<p>We can then call this function from anywhere in our program at any time and all pending and running tasks will at least be requested to cancel.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel all tasks
+cancel_all_tasks()</code></pre>
+<h2>How to Cancel All Asyncio Tasks And Exclude The Current Task</h2>
+<p>A limitation of blindly canceling all tasks is that the caller task is also canceled.</p>
+<p>This is a problem if the caller tasks need to perform some logging or resource cleanup after all tasks have been canceled.</p>
+<p>We may also trust the caller's task to be done soon without complication, therefore it does not need to be canceled.</p>
+<p>Therefore, we may want to cancel all tasks, except the current task.</p>
+<p>This can be achieved by updating our <strong>cancel_all_tasks()</strong> coroutine to retrieve the current task and not cancel.</p>
+<p>We can implement this with a boolean argument to "<strong>exclude_current</strong>".</p>
+<p>If this argument is set, the current task can be retrieved via the <strong>asyncio.current_task()</strong> function and removed from the list of tasks that are canceled.</p>
+<p>For example:</p>
+<pre><code>...
+# check if we should not cancel the current task
+if exclude_current:
+    # exclude the current task if needed
+    all_tasks.remove(asyncio.current_task())
+</code></pre>
+<p>You can learn more about how to get the current task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-current-task/">How to Get the Current Asyncio Task in Python</a></li>
+</ul>
+<p>Note that this change will only work if the current task is not <strong>cancel_all_tasks()</strong>, but the calling asyncio task. If the <strong>cancel_all_tasks()</strong> function is changed into a coroutine, this approach will no longer work.</p>
+<p>The updated <strong>cancel_all_tasks()</strong> function with this change is listed below.</p>
+<pre><code># cancel all running tasks
+def cancel_all_tasks(exclude_current=False):
+    # get all tasks
+    all_tasks = asyncio.all_tasks()
+    # check if we should not cancel the current task
+    if exclude_current:
+        # exclude the current task if needed
+        all_tasks.remove(asyncio.current_task())
+    # enumerate all tasks
+    for task in all_tasks:
+        # request the task cancel
+        task.cancel()
+</code></pre>
+<p>It can then be called as a normal Python function and not cancel the calling asyncio <strong>Task</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel all tasks except the current task
+cancel_all_tasks(exclude_current=True)</code></pre>
+<h2>How to Cancel All Asyncio Tasks With Exclusion List</h2>
+<p>A limitation of the previous approach is that only the current task is excluded.</p>
+<p>We may have one or more background tasks running that we do not want to cancel.</p>
+<p>This might include tasks for monitoring, logging, and more.</p>
+<p>Therefore, we want a version of canceling all tasks that excludes a list of one or more tasks.</p>
+<p>This can be achieved by updating the <strong>cancel_all_tasks()</strong> function to take a list of asyncio Tasks to exclude from the tasks that are canceled.</p>
+<pre><code># cancel all running tasks
+def cancel_all_tasks(exclude_list=[]):
+	# ...
+</code></pre>
+<p>Then, while enumerating all tasks, we can skip any tasks in the provided exclusion list.</p>
+<pre><code>...
+# enumerate all tasks
+for task in all_tasks:
+    # skip excluded tasks
+    if task in exclude_list:
+        continue
+    # request the task cancel
+    task.cancel()
+</code></pre>
+<p>Tying this together, the updated <strong>cancel_all_tasks()</strong> function that supports a list of excluded tasks is listed below.</p>
+<pre><code># cancel all running tasks
+def cancel_all_tasks(exclude_list=[]):
+    # get all tasks
+    all_tasks = asyncio.all_tasks()
+    # enumerate all tasks
+    for task in all_tasks:
+        # skip excluded tasks
+        if task in exclude_list:
+            continue
+        # request the task cancel
+        task.cancel()
+</code></pre>
+<p>We can then call this function to cancel all tasks including itself by providing no arguments, e.g. a default empty exclusion list.</p>
+<pre><code>...
+# cancel all tasks
+cancel_all_tasks()</code></pre>
+<p>If we wanted to exclude the calling tasks, we could provide a list with one argument, the current task.</p>
+<p>For example:</p>
+</main>
+</body>
+</html>

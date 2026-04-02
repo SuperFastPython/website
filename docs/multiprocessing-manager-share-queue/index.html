@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Manager Share Queue in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Manager Share Queue in Python</h1>
+<div class="post-meta">September 3, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can use a Manager to create a hosted Queue object and share it via proxy objects with multiple child processes.</p>
+<p>In this tutorial you will discover <strong>how to share a queue using a manager in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need Manager to Share a Queue</h2>
+<p>A manager in the <strong>multiprocessing</strong> module provides a way to create Python objects that can be shared easily between processes.</p>
+<blockquote><p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>A manager creates a server process that hosts a centralized version of objects that can be shared among multiple processes.</p>
+<p>The objects are not shared directly. Instead, the manager creates a proxy object for each object that it manages and the proxy objects are shared among processes.</p>
+<p>The proxy objects are used and operate just like the original objects, except that they serialize data, synchronize and coordinate with the centralized version of the object hosted in the manager server process.</p>
+<blockquote><p>A proxy is an object which refers to a shared object which lives (presumably) in a different process. [...] A proxy object has methods which invoke corresponding methods of its referent (although not every method of the referent will necessarily be available through the proxy).</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This makes managers a process-safe and preferred way to share Python objects among processes.</p>
+<p>You can learn more about multiprocessing managers in the tutorial:</p>
+<ul><li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li></ul>
+<p>When using <strong>multiprocessing</strong>, we may need to share a <strong>Queue</strong> with child processes.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>Child processes need to put results to the queue.</li><li>Child processes need to get results from the queue.</li></ul>
+<p>We may not be able to share the <strong>Queue</strong> directly with the child processes.</p>
+<p>This may be because a queue object cannot be pickled, and we may have to pickle objects when sending them to a child process such as via a <strong>Pipe</strong>, via another <strong>Queue</strong> or as an argument to a task to the <strong>Pool</strong> class.</p>
+<p><strong>How can we use a multiprocessing Manager to share a Queue with child processes?</strong></p>
+<h2>Manager for Sharing a Sharing Queue</h2>
+<p>Python provides a process-safe queue in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue"><strong>multiprocessing.Queue</strong> class</a>.</p>
+<p>A queue is a data structure on which items can be added by a call to <strong>put()</strong> and from which items can be retrieved by a call to <strong>get()</strong>.</p>
+<p>The <strong>multiprocessing.Queue</strong> provides a first-in, first-out FIFO queue, which means that the items are retrieved from the queue in the order they were added. The first items added to the queue will be the first items retrieved. This is opposed to other queue types such as last-in, first-out and priority queues.</p>
+<p>You can learn more about how to use the process-safe <strong>Queue</strong> in the tutorial:</p>
+<ul><li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li></ul>
+<p>Managers are provided via the <strong>multiprocessing.Manager</strong> class, which creates and returns a <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.SyncManager"><strong>multiprocessing.managers.SyncManager</strong> instance</a>.</p>
+<p>The <strong>SyncManager</strong> allows a suite of Python objects to be created and managed by default, including a Queue.</p>
+<p>Specifically the <strong>SyncManager</strong> provides two registered <strong>Queue</strong> objects, they are:</p>
+<ul><li>Queue</li><li>JoinableQueue</li></ul>
+<p>As such, we can create a <strong>Manager</strong> instance and use it directly to create a <strong>Queue</strong> object.</p>
+<p>This will create a hosted version of the <strong>Queue</strong> in the <strong>Manager</strong>'s server process and return proxy objects for the <strong>Queue</strong> that can be pickled and shared with child processes.</p>
+<p>For example:</p>
+<pre><code># create the manager
+with Manager() as manager:
+    # create a shared queue
+    queue = manager.Queue()
+    # ...
+</code></pre>
+<p>From reviewing the <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/managers.py#L1207">source code for the <strong>SyncManager</strong> class</a>, we can see in fact that a <strong>queue.Queue</strong> is created and hosted in the Manager's server process. This means that all process safety is handled via the proxy objects that are returned.</p>
+<p>Now that we know how to use a manager to create a shared <strong>Queue</strong>, let's look at a worked example.</p>
+<h2>Example of Using a Manager for Sharing a Queue</h2>
+<p>We can use a manager to share a <strong>Queue</strong> safely with multiple processes.</p>
+<p>In this example we will define a task that generates some data and puts it on the shared queue. We will then execute the target from many child processes in parallel. The main process will get data from the queue until the expected number of results have been received.</p>
+<p>Firstly, we can define a function to execute in child processes.</p>
+<p>The function will take an integer number argument and the shared queue. It will then generate a random number between 0 and 1, block for a fraction of a second, then put the integer argument and generated number on the shared queue as a tuple.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a new process
+def task(number, shared_queue):
+    # generate a number between 0 and 1
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # add the value to the queue
+    shared_queue.put((number, value))
+</code></pre>
+<p>Next, in the main process, we will create and start a <strong>Manager</strong> instance using the context manager interface.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>We can then use the manager to create a shared queue.</p>
+<p>The <strong>Queue</strong> object will be hosted in the manager server process and returns proxy objects that can be shared among child processes, can be pickled if needed, and used to interact with the <strong>Queue</strong> in a process-safe manner.</p>
+<pre><code>...
+# create the shared queue
+shared_queue = manager.Queue()</code></pre>
+<p>Next, we can create many <strong>multiprocessing.Process</strong> instances configured to run our <strong>task()</strong> function and pass an integer and the shared <strong>Queue</strong> object as arguments.</p>
+<p>This can be achieved in a list comprehension that will create a list of configured <strong>Process</strong> instances.</p>
+<pre><code>...
+# create many child processes
+n_tasks = 50
+processes = [Process(target=task, args=(i, shared_queue)) for i in range(n_tasks)]</code></pre>
+<p>The main process can then iterate through the processes and start each in turn.</p>
+<pre><code>...
+# start all processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>The main process will then loop a fixed number of times to retrieve the expected number of task results. Each iteration, a result will be retrieved from the shared queue and reported.</p>
+<p>If no result is ready, the main process will block, waiting for a task result to be made available by a child process.</p>
+<pre><code>...
+# read data from the queue
+for _ in range(n_tasks):
+    # get an item from the queue
+    item = shared_queue.get()
+    # report the item
+    print(f'&gt; got {item}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using the manager to create a shared queue
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import Manager
+
+# task executed in a new process
+def task(number, shared_queue):
+    # generate a number between 0 and 1
+    value = random()
+    # block for a fraction of a second
+    sleep(value)
+    # add the value to the queue
+    shared_queue.put((number, value))
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared queue
+        shared_queue = manager.Queue()
+        # create many child processes
+        n_tasks = 50
+        processes = [Process(target=task, args=(i, shared_queue)) for i in range(n_tasks)]
+        # start all processes
+        for process in processes:
+            process.start()
+        # read data from the queue
+        for _ in range(n_tasks):
+            # get an item from the queue
+            item = shared_queue.get()
+            # report the item
+            print(f'&gt; got {item}')
+</code></pre>
+<p>Running the example first creates the manager using the context manager interface.</p>
+<p>Next, the manager is used to create the shared <strong>Queue</strong> object.</p>
+<p>This creates a centralized version of the <strong>Queue</strong> on the Manager's server process and returns proxy objects for interacting with the <strong>Queue</strong>.</p>
+<p>Next, 50 child processes are created and configured to call our custom <strong>task()</strong> function with the shared <strong>Queue</strong>, then the processes are started. The main process then blocks waiting to retrieve results from the queue.</p>
+<p>Each process generates a random number, blocks for a fraction of a second then puts its result on the shared queue.</p>
+<p>As results are put on the queue, the main process gets the results one at a time and reports them. This continues until the expected number of results is retrieved.</p>
+<p>Note: The output will vary each time the program is run given the use of random numbers.</p>
+<pre><code>&gt; got (5, 0.0552169162342705)
+&gt; got (9, 0.07825637315262579)
+&gt; got (6, 0.10157886972748231)
+&gt; got (29, 0.04139268238075278)
+&gt; got (15, 0.07605744573406148)
+&gt; got (32, 0.01199711633027356)
+&gt; got (22, 0.3369483192790511)
+&gt; got (16, 0.18600321245074625)
+&gt; got (34, 0.09202394836028704)
+&gt; got (46, 0.147466011593676)
+&gt; got (36, 0.1530744506112982)
+&gt; got (2, 0.5681469000437313)
+&gt; got (33, 0.19404736754609286)
+&gt; got (38, 0.19805999708181476)
+&gt; got (41, 0.196408968294976)
+&gt; got (37, 0.34048036860699915)
+&gt; got (17, 0.5126272212510875)
+&gt; got (1, 0.6880499703640428)
+&gt; got (8, 0.643672408020424)
+&gt; got (14, 0.33535288895002646)
+&gt; got (42, 0.34655067813560403)
+&gt; got (7, 0.44115086547035043)
+&gt; got (10, 0.4631407835930157)
+&gt; got (25, 0.46771235872701966)
+&gt; got (0, 0.7437980873768921)
+&gt; got (26, 0.4759230001253324)
+&gt; got (11, 0.5665834898045142)
+&gt; got (45, 0.46254549270060463)
+&gt; got (28, 0.7379418161205183)
+&gt; got (13, 0.5514031371486676)
+&gt; got (21, 0.6988164598056216)
+&gt; got (31, 0.5547229541997934)
+&gt; got (30, 0.6104076189216526)
+&gt; got (49, 0.5769510396121789)
+&gt; got (35, 0.5840033206921457)
+&gt; got (40, 0.6007083881076727)
+&gt; got (3, 0.9221122110996065)
+&gt; got (48, 0.6091882244335914)
+&gt; got (23, 0.9072243486332091)
+&gt; got (44, 0.6766206739116987)
+&gt; got (20, 0.8721542709017209)
+&gt; got (24, 0.7844127332179919)
+&gt; got (19, 0.8072288535642465)
+&gt; got (4, 0.9667084556246381)
+&gt; got (43, 0.7920153782223315)
+&gt; got (27, 0.8396040191905791)
+&gt; got (12, 0.8785249373545645)
+&gt; got (18, 0.8797470817908314)
+&gt; got (39, 0.8449071205855895)
+&gt; got (47, 0.9074657897891643)
+</code></pre>
+<p>This example highlights how we might use a <strong>Manager</strong> to create a hosted <strong>Queue</strong> object that can be shared with many child processes.</p>
+<h2>Takeaways</h2>
+<p>You now know how to share a queue using a manager in Python.</p>
+</main>
+</body>
+</html>

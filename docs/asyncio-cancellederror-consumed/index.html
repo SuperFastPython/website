@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio CancelledError Can Be Consumed – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio CancelledError Can Be Consumed</h1>
+<div class="post-meta">January 23, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>Asyncio tasks can suppress requests to be canceled and actively consume <strong>CancelledError</strong> exceptions.</p>
+<p>Although consuming <strong>CancelledError</strong> exceptions is discouraged, it is possible to develop tasks that do this.</p>
+<p>Nevertheless, there are cases where we may think that a <strong>CancelledError</strong> exception will be consumed, when in fact it is not and is allowed to propagate normally. Examples include awaiting subtasks in a canceled task using an <strong>asyncio.gather()</strong> configured to return exceptions, canceling a shielded task, and canceling a task that suppresses <strong>CancelledError</strong> exceptions before it has had a chance to run.</p>
+<p>In this tutorial, you will discover how asyncio tasks can consume <strong>CancelledError</strong> exceptions, and cases where we expect them to consume exceptions and they do not.</p>
+<p>Let's get started.</p>
+<h2>What is Asyncio Task Cancellation?</h2>
+<p>Asyncio tasks can be canceled.</p>
+<p>This can be achieved by calling the <strong>cancel()</strong> method on the <strong>asyncio.Task</strong>. This will request that the task be canceled as soon as possible and return <strong>True</strong> if the request was successful or <strong>False</strong> if it was not, e.g. the task is already done.</p>
+<blockquote>
+<p>Request the Task to be cancelled. This arranges for a CancelledError exception to be thrown into the wrapped coroutine on the next cycle of the event loop.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+if task.cancel():
+	# request successful
+</code></pre>
+<p>The next time that the target task that was canceled resumes, a <strong>CancelledError</strong> exception will be raised.</p>
+<p>This exception will bubble up to the top level of the task and cause it to stop running.</p>
+<p>You can learn more about the mechanics of cancellation a task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<p>You can also learn more about task cancellation best practices in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-cancellation-best-practices/">Asyncio Task Cancellation Best Practices</a></li>
+</ul>
+<h2>Tasks Can Consume The CancelledError Exception</h2>
+<p>It is possible for tasks to not be canceled when required.</p>
+<p>This can happen if the <strong>CancelledError</strong> exception raised within the target task is consumed.</p>
+<p>Sometimes this is referred to as the asyncio task swallowing the <strong>CancelledError</strong> exception.</p>
+<p>When this happens, the expectation or contract with the <strong>cancel()</strong> method on the task is broken and the asyncio program may not behave as expected.</p>
+<p>Consuming <strong>CancelledError</strong> exceptions is discouraged in the asyncio API.</p>
+<blockquote>
+<p>... suppressing cancellation completely is not common and is actively discouraged.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p><strong>How can CancelledError exceptions be consumed?</strong></p>
+<p>What are situations when we think that <strong>CancelledError exceptions will be consumed and are in fact not?</strong></p>
+<h2>How Can Tasks Consume CancelledError Exception</h2>
+<p>A <strong>CancelledError</strong> exception can be consumed by a task when it is canceled.</p>
+<p>There are perhaps two ways that a task may consume a <strong>CancelledError</strong> exception, they are:</p>
+<ol>
+<li>Await all child tasks within a try-except.</li>
+<li>Await all child tasks using <strong>contextlib.suppress().</strong></li>
+</ol>
+<p>These are some of the same methods that can be used generally to suppress the <strong>CancelledError</strong> in a normal asyncio program.</p>
+<p>You can learn more about suppressing <strong>CancelledError</strong> exceptions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-suppress-cancellederror/">4 Ways to Suppress Asyncio CancelledError</a></li>
+</ul>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Consume CancelledError Exception With try-except</h3>
+<p>A task may consume a <strong>CancelledError</strong> exception using a try-except block and handling the <strong>CancelledError</strong>.</p>
+<p>This could be used by wrapping each awaited subtask in the task body.</p>
+<p>Alternatively, this can be achieved by wrapping the body of the task in a try-except block and handling the raised <strong>CancelledError</strong>.</p>
+<p>For example:</p>
+<pre><code>async def task():
+	try:
+		# body of the task
+		...
+	except asyncio.CancelledError:
+		pass</code></pre>
+<h3>Consume CancelledError Exception With contextlib.suppress()</h3>
+<p>A task may consume the <strong>CancelledError</strong> exception if it awaits subtasks using the <strong><a href="https://docs.python.org/3/library/contextlib.html#contextlib.suppress">contextlib.suppress()</a></strong> context manager.</p>
+<p>This can be used to wrap each subtask one by one. It may also be used to wrap the entire body of the task.</p>
+<p>For example:</p>
+<pre><code>async def task():
+	# await the cancelled task
+	with contextlib.suppress(asyncio.CancelledError):
+		# body of the task
+		...</code></pre>
+<h2>Cases Where Tasks Fail to Consume CancelledError Exception</h2>
+<p>There are also a number of approaches where we might expect an asyncio Task to consume the <strong>CancelledError</strong> exception but does not. They are:</p>
+<ol>
+<li>Await all child tasks within an <strong>asyncio.gather()</strong>.</li>
+<li>Await all child tasks within an <strong>asyncio.shield()</strong>.</li>
+<li>Cancel target task while pending</li>
+</ol>
+<p>Let's take a closer look at these situations.</p>
+<h3>Fail to Consume With asyncio.gather()</h3>
+<p>We may expect a task may consume the <strong>CancelledError</strong> exception if it awaits subtasks using the <strong>asyncio.gather()</strong> function with the "<strong>return_exceptions</strong>" argument set to <strong>True</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# suppress CancelledError exception
+_ = await asyncio.gather(task, return_exceptions=True)</code></pre>
+<p>The expectation here is that the <strong>CancelledError</strong> exception will be handled by the <strong>asyncio.gather()</strong> function and returned, preventing the outer task from being canceled.</p>
+<p>This is not the case.</p>
+<p>A task that uses <strong>asyncio.gather(..., return_exceptions=True)</strong> to consume <strong>CancelledError</strong> exceptions for subtasks will still raise a <strong>CancelledError</strong>.</p>
+<p>This is because of the <strong>asyncio.gather()</strong> task itself. It will then cancel any tasks on which it is waiting, and then propagate the <strong>CancelledError</strong> up the parent task causing it to cancel.</p>
+<p>You can learn more about how to use the <strong>asyncio.gather()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-gather/">How to Use asyncio.gather() in Python</a></li>
+</ul>
+<h3>Fail to Consume With asyncio.shield()</h3>
+<p>We may expect a task may consume the <strong>CancelledError</strong> exception if it awaits subtasks using the asyncio.shield() function</p>
+<p>For example:</p>
+<pre><code>...
+# suppress CancelledError exception
+await asyncio.shield(task)</code></pre>
+<p>The expectation here is that the <strong>CancelledError</strong> exception will be consumed by the <strong>asyncio.shield()</strong> function.</p>
+<p>This is not the case.</p>
+<p>The <strong>asyncio.shield()</strong> will protect the inner task from the <strong>CancelledError</strong>, allowing it to potentially continue to run.</p>
+<p>The <strong>asyncio.shield()</strong> will act as though it was canceled and raise a <strong>CancelledError</strong>.</p>
+<p>This will propagate back up to the surrounding task and cause it to be canceled.</p>
+<p>You can learn more about <strong>asyncio.shield()</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-shield/">Asyncio Shield From Cancellation</a></li>
+</ul>
+<h3>Fail to Consume While Task is Pending</h3>
+<p>We might expect a coroutine that wraps the task body with a try-except or the <strong>contextlib.suppress()</strong> context manager to always consume the <strong>CancelledError</strong>.</p>
+<p>For example:</p>
+<pre><code>async def task():
+	try:
+		# body of the task
+		...
+	except asyncio.CancelledError:
+		pass</code></pre>
+<p>Or:</p>
+<pre><code>async def task():
+	# await the cancelled task
+	with contextlib.suppress(asyncio.CancelledError):
+		# body of the task
+		...</code></pre>
+<p>The expectation is that this task will always consume the <strong>CancelledError</strong> exception, no matter what.</p>
+<p>This is not the case.</p>
+<p>If the task is scheduled and not yet running, e.g. pending, then it can be canceled.</p>
+<p>In this case, the asyncio event loop managing the task will respond to the request to cancel and raise a <strong>CancelledError</strong>, regardless of what is in the body of the task.</p>
+<p>Now that we know that tasks can consume <strong>CancelledError</strong> exceptions, and cases where they will not, let's look at some worked examples.</p>
+<h2>Example of Task Consuming a CancelledError With try-except</h2>
+<p>We can explore an example of a task consuming a <strong>CancelledError</strong> exception using a try-except block.</p>
+<p>In this example, we will define a coroutine that will sleep for a long time and then report a message. It will protect itself from cancellation by adding a try-except block to the body of the task and not propagating the <strong>CancelledError</strong>.</p>
+<p>The <strong>work()</strong> coroutine below implements this.</p>
+<pre><code># task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        # report a final message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        # suppress CancelledError
+        pass
+</code></pre>
+<p>The <strong>main()</strong> coroutine will create and schedule the <strong>work()</strong> task and then wait a moment to allow it to run. It will then resume and cancel the task and await it before reporting a final message.</p>
+<pre><code># main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to start
+    await asyncio.sleep(2)
+    # cancel the task
+    task.cancel()
+    # await the task
+    await task
+    # report a final message
+    print('Main is done')
+</code></pre>
+<p>The expectation is that the <strong>work()</strong> task will consume the <strong>CancelledError</strong> exception, which will not propagate and the task will not cancel in the expected manner.</p>
+<p>Finally, we can start the event loop and run the main() coroutine.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of consuming CancelledError within the task
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        # report a final message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        # suppress CancelledError
+        pass
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to start
+    await asyncio.sleep(2)
+    # cancel the task
+    task.cancel()
+    # await the task
+    await task
+    # report a final message
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first runs the event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> coroutine as a background task. It then suspends for two seconds with a sleep.</p>
+<p>The <strong>work()</strong> task runs and suspends for 10 seconds with a sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and requests the <strong>work()</strong> task to cancel, then suspends and awaits the work() task to be done.</p>
+<p>The <strong>work()</strong> task resumes and a <strong>CancelledError</strong> is raised in the <strong>sleep()</strong> coroutine. It is handled by the task and consumed. The <strong>CancelledError</strong> exception is not propagated. The <strong>work()</strong> task then terminates.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final message.</p>
+<p>This example highlights how a task can be developed to consume the <strong>CancelledError</strong> exception.</p>
+<pre><code>Main is done</code></pre>
+<p>Next, let's look at an example of a task consuming a <strong>CancelledError</strong> exception using the <strong>contextlib.suppress()</strong> context manager.</p>
+<h2>Example of Task Consuming a CancelledError With contextlib.suppress()</h2>
+<p>We can explore an example of a task consuming a <strong>CancelledError</strong> exception using a contextlib.suppress() context manager.</p>
+<p>In this case, we can update the above example so that the <strong>work()</strong> coroutine suppresses the <strong>CancelledError</strong> exception with the <strong>contextlib.suppress()</strong> context manager instead of a try-except block.</p>
+<p>The body of the <strong>contextlib.suppress()</strong> context manager will contain the single subtask which is an await on the <strong>asyncio.sleep()</strong>.</p>
+<p>The updated <strong>work()</strong> coroutine with this change is listed below.</p>
+<pre><code># task that take a long time
+async def work():
+    # sleep a long time
+    with contextlib.suppress(asyncio.CancelledError):
+        _ = await asyncio.sleep(10)
+    # report a final message
+    print('Task sleep completed normally')
+</code></pre>
+<p>Again, the expectation is that the <strong>work()</strong> coroutine will consume the <strong>CancelledError</strong> exception, causing the cancellation request made by <strong>main()</strong> to be effectively ignored and not propagated.</p>
+<p>Tying this together, the complete example is listed below</p>
+<pre><code># SuperFastPython.com
+# example of consuming CancelledError with contextlib.suppress()
+import contextlib
+import asyncio
+
+# task that take a long time
+async def work():
+    # sleep a long time
+    with contextlib.suppress(asyncio.CancelledError):
+        _ = await asyncio.sleep(10)
+    # report a final message
+    print('Task sleep completed normally')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to start
+    await asyncio.sleep(2)
+    # cancel the task
+    task.cancel()
+    # await the task
+    await task
+    # report a final message
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first runs the event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> coroutine as a background task. It then suspends for two seconds with a sleep.</p>
+<p>The <strong>work()</strong> task runs and suspends for 10 seconds with a sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and requests the <strong>work()</strong> task to cancel, then suspends and awaits the <strong>work()</strong> task to be done.</p>
+<p>The <strong>work()</strong> task resumes and a <strong>CancelledError</strong> is raised in the sleep() coroutine. It is handled by the <strong>contextlib.suppress()</strong> context manager and consumed. The <strong>CancelledError</strong> exception is not propagated. The <strong>work()</strong> task resumes, reports a final message, and then terminates.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final message.</p>
+<p>This example highlights how a task can be developed to consume the <strong>CancelledError</strong> exception using the <strong>contextlib.suppress()</strong> context manager.</p>
+<pre><code>Task sleep completed normally
+Main is done</code></pre>
+<p>Next, let's look at an example of how to use <strong>asyncio.gather()</strong> within a task that does not consume the <strong>CancelledError</strong> exception.</p>
+<h2>Example of Failing to Consume CancelledError With asyncio.gather()</h2>
+<p>We can explore an example of a task failing to consume a <strong>CancelledError</strong> exception using <strong>asyncio.gather()</strong>.</p>
+<p>In this case, we can update the <strong>work()</strong> coroutine so that the call to <strong>asyncio.sleep()</strong> is awaited within a call to <strong>asyncio.gather()</strong>, configured to return exceptions.</p>
+<pre><code>...
+# create sleep task
+coro = asyncio.sleep(10)
+# sleep a long time
+_ = await asyncio.gather(coro, return_exceptions=True)
+</code></pre>
+<p>The naive expectation is that because <strong>asyncio.gather()</strong> is configured to return exceptions, a <strong>CancelledError</strong> propagated down to the <strong>asyncio.sleep()</strong> coroutine via the <strong>asyncio.gather()</strong> coroutine will be handled and returned.</p>
+<p>The updated <strong>work()</strong> coroutine with this change is listed below.</p>
+<pre><code># task that take a long time
+async def work():
+    # create sleep task
+    coro = asyncio.sleep(10)
+    # sleep a long time
+    _ = await asyncio.gather(coro, return_exceptions=True)
+    # report a final message
+    print('Task sleep completed normally')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of consuming CancelledError with asyncio.gather()
+import asyncio
+
+# task that take a long time
+async def work():
+    # create sleep task
+    coro = asyncio.sleep(10)
+    # sleep a long time
+    _ = await asyncio.gather(coro, return_exceptions=True)
+    # report a final message
+    print('Task sleep completed normally')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to start
+    await asyncio.sleep(2)
+    # cancel the task
+    task.cancel()
+    # await the task
+    await task
+    # report a final message
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first runs the event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> coroutine as a background task. It then suspends for two seconds with a sleep.</p>
+<p>The <strong>work()</strong> task runs and suspends for 10 seconds with a sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and requests the <strong>work()</strong> task to cancel, then suspends and awaits the <strong>work()</strong> task to be done.</p>
+<p>The <strong>work()</strong> task resumes and a <strong>CancelledError</strong> is raised. The <strong>CancelledError</strong> is propagated down to the <strong>asyncio.gather()</strong> and from there down to the <strong>asyncio.sleep()</strong>. The <strong>asyncio.sleep()</strong> coroutine is canceled and the <strong>asyncio.gather()</strong> is canceled, then the <strong>CancelledError</strong> continues to propagate and terminates the <strong>work()</strong> task.</p>
+<p>The <strong>main()</strong> coroutine resumes and the <strong>CancelledError</strong> exception is propagated and terminates the program.</p>
+<p>This example highlights the expectation that the <strong>asyncio.gather()</strong> will consume the <strong>CancelledError</strong> exception when used within a task that is canceled was incorrect.</p>
+<pre><code>Traceback (most recent call last):
+  File "...", line 28, in &lt;module&gt;
+    asyncio.run(main())
+  File ".../asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File ".../asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "...", line 23, in main
+    await task
+  File "...", line 10, in work
+    _ = await asyncio.gather(coro, return_exceptions=True)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "...", line 639, in sleep
+    return await future
+           ^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+</code></pre>
+<p>Next, let's look at an example of how using <strong>asyncio.shield()</strong> on a task does not consume the <strong>CancelledError</strong> exception.</p>
+<h2>Example of Failing to Consume CancelledError With asyncio.shield()</h2>
+<p>We can explore an example of a task failing to consume a <strong>CancelledError</strong> exception using <strong>asyncio.shield()</strong>.</p>
+<p>In this case, we can update the main() coroutine so that the <strong>work()</strong> task is created and scheduled as normal, then wrapped in an <strong>asyncio.shield()</strong>.</p>
+<pre><code>...
+# create and schedule the task
+task = asyncio.create_task((work()))
+# shield the task
+task = asyncio.shield(task)</code></pre>
+<p>The naive expectation is that the <strong>asyncio.shield()</strong> will consume the <strong>CancelledError</strong> exception and allow the <strong>work()</strong> coroutine to continue to run.</p>
+<p>The updated <strong>main()</strong> coroutine with this change is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task((work()))
+    # shield the task
+    task = asyncio.shield(task)
+    # allow the task to start
+    await asyncio.sleep(2)
+    # cancel the task
+    task.cancel()
+    # await the task
+    await task
+    # report a final message
+    print('Main is done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of failing to consume CancelledError with asyncio.shield()
+import asyncio
+
+# task that take a long time
+async def work():
+    # sleep a long time
+    await asyncio.sleep(10)
+    # report a final message
+    print('Task sleep completed normally')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task((work()))
+    # shield the task
+    task = asyncio.shield(task)
+    # allow the task to start
+    await asyncio.sleep(2)
+    # cancel the task
+    task.cancel()
+    # await the task
+    await task
+    # report a final message
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first runs the event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> coroutine as a background task. It then wraps the <strong>work()</strong> task in an <strong>asyncio.shield()</strong>. Next, the <strong>main()</strong> coroutine suspends for two seconds with a sleep.</p>
+<p>The <strong>work()</strong> task runs and suspends for 10 seconds with a sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and requests the <strong>work()</strong> task to cancel, then suspends and awaits the work() task to be done.</p>
+<p>The <strong>asyncio.shield()</strong> consumes the <strong>CancelledError</strong> exception and the <strong>work()</strong> task is protected from the request to cancel.</p>
+<p>Nevertheless, the <strong>asyncio.shield()</strong> responds to the cancellation request normally, raising the <strong>CancelledError</strong>.</p>
+<p>The <strong>main()</strong> coroutine resumes and the <strong>CancelledError</strong> exception is propagated and terminates the program.</p>
+<p>This example highlights the expectation that the <strong>asyncio.shield()</strong> will consume the <strong>CancelledError</strong> exception when used around a task that is canceled was incorrect. Instead, a shielded coroutine will continue to run, but the shield itself will raise and propagate the <strong>CancelledError</strong> normally.</p>
+<pre><code>Traceback (most recent call last):
+  File "...", line 28, in &lt;module&gt;
+    asyncio.run(main())
+  File ".../asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File ".../asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "...", line 23, in main
+    await task
+asyncio.exceptions.CancelledError
+</code></pre>
+<p>Next, let's look at an example of how a task that actively suppresses <strong>CancelledError</strong> exceptions can still be canceled when in a pending state.</p>
+<h2>Example of Failing to Consume CancelledError When Pending</h2>
+<p>We can explore an example of a task failing to consume a <strong>CancelledError</strong> exception when it is scheduled and not yet running, e.g. pending.</p>
+<p>In this case, we can update the above example so that the <strong>work()</strong> coroutine suppresses the <strong>CancelledError</strong> exception using a try-except block, as we did in the first example.</p>
+<pre><code># task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        # report a final message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        # suppress CancelledError
+        pass
+</code></pre>
+<p>We will then update the <strong>main()</strong> coroutine to schedule the task and then immediately cancel it.</p>
+<p>The <strong>work()</strong> task will have no time to run before it is canceled.</p>
+<p>The updated <strong>main()</strong> coroutine with this change is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # cancel the task immediate
+    task.cancel()
+    # await the task
+    await task
+    # report a final message
+    print('Main is done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of failing to consume CancelledError when pending
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        # report a final message
+        print('Task sleep completed normally')
+    except asyncio.CancelledError:
+        # suppress CancelledError
+        pass
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # cancel the task immediate
+    task.cancel()
+    # await the task
+    await task
+    # report a final message
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first runs the event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> coroutine as a background task.</p>
+<p>The <strong>main()</strong> coroutine then immediately cancels the <strong>work()</strong> task and awaits it to be done.</p>
+<p>The <strong>work()</strong> task has no opportunity to run.</p>
+<p>The asyncio event loop cancels the <strong>work()</strong> task, raising a <strong>CancelledError</strong>, which terminates the <strong>work()</strong> task before it can run and propagates into the <strong>main()</strong> coroutine terminating the program.</p>
+<p>This highlights how even though the body of a task may be developed to suppress a <strong>CancelledError</strong> exception, the task may still be canceled if the request to cancel is made before the body of the task is executed, e.g. the task is pending.</p>
+<pre><code>Traceback (most recent call last):
+  File "...", line 28, in &lt;module&gt;
+    asyncio.run(main())
+  File "...", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File ".../asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "...", line 23, in main
+    await task
+  File "...", line 6, in work
+    async def work():
+asyncio.exceptions.CancelledError
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how asyncio tasks can consume CancelledError exceptions, and cases where we expect them to consume exceptions and they do not.</p>
+</main>
+</body>
+</html>

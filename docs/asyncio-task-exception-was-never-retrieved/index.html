@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Task Exception Was Never Retrieved – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Task Exception Was Never Retrieved</h1>
+<div class="post-meta">February 8, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>Your asyncio program may report a warning: <strong>Task exception was never retrieved</strong>.</p>
+<p>Asyncio will report this message when the program is terminated and there were tasks that failed with an exception and the exception was never retrieved.</p>
+<p>It is a good practice to retrieve task exceptions if possible, otherwise to log all never retrieved exceptions automatically.</p>
+<p>In this tutorial, you will discover how to automatically log <strong>never-retrieved exceptions</strong> in asyncio programs.</p>
+<p>Let's get started.</p>
+<h2>What Are Never-Retrieved Exceptions</h2>
+<p>A <strong>never-retrieved exception</strong> is an exception raised in a coroutine or task that is not explicitly retrieved.</p>
+<blockquote>
+<p>If a Future.set_exception() is called but the Future object is never awaited on, the exception would never be propagated to the user code. In this case, asyncio would emit a log message when the Future object is garbage collected.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-dev.html">Developing with asyncio</a></cite></blockquote>
+<p>If an exception is not retrieved, then a warning message is reported automatically by the asyncio event loop with the message:</p>
+<ul>
+<li><strong>Task exception was never retrieved</strong></li>
+</ul>
+<p>This message is reported along with the details of the task for each never-retrieved exception.</p>
+<p>The message is not reported until the event loop is terminated, e.g. the program has ended.</p>
+<p>We can avoid this message in our programs by retrieving the exception.</p>
+<p>An exception can be retrieved from an asyncio task in one of three ways:</p>
+<ol>
+<li>Awaiting the coroutine or task object, the exception is re-raised.</li>
+<li>Calling the <strong>result()</strong> method to get the return value, the exception is re-raised</li>
+<li>Calling the <strong>exception()</strong> method to get the exception.</li>
+</ol>
+<p>You can learn more about never-retrieved exceptions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-log-all-exceptions/">Log All Silent Exceptions in Asyncio</a></li>
+</ul>
+<p>How can we automatically log never-retrieved exceptions raised by the asyncio event loop?</p>
+<h2>How to Log Never-Retrieved Exceptions Automatically</h2>
+<p>We can log never-retrieved exceptions automatically in our asyncio programs.</p>
+<p>There are two approaches we can use:</p>
+<ol>
+<li>Configure the logging infrastructure.</li>
+<li>Add a custom handler for never-retrieved exceptions.</li>
+</ol>
+<h3>Configure Logging to Log Never-Retrieved Exceptions</h3>
+<p>This can be achieved by simply configuring the logging infrastructure.</p>
+<p>Once configured, the asyncio event loop will use it to log never-awaited exceptions and their stack trace as an error message.</p>
+<p>For example, we can configure an asyncio program to log all messages with a DEBUG level and above by adding the following line before starting the event loop:</p>
+<pre><code>...
+# prepare the logger
+logging.basicConfig(level=logging.DEBUG)</code></pre>
+<h3>Add Custom Handler To Log Never-Retrieved Exceptions</h3>
+<p>We can develop a custom handler function that is called by the asyncio event loop for each never-retrieved exception.</p>
+<p>This can be achieved by first defining the handler function.</p>
+<p>The function must take an event loop and context as arguments. The context is a dict that has details about the exception that was never retrieved.</p>
+<p>We can then retrieve the exception and log it as an error message.</p>
+<pre><code># define an exception handler
+def exception_handler(loop, context):
+    # get details of the exception
+    exception = context['exception']
+    message = context['message']
+    # log exception
+    logging.error(f'Task failed, msg={message}, exception={exception}')
+</code></pre>
+<p>We can then configure the asyncio event loop to call our custom handler function for each never-retrieved exception when shutting down the event loop.</p>
+<p>This can be achieved by first getting the event loop, then calling the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.set_exception_handler"><strong>set_exception_handler()</strong> method</a> and passing the name of our handler function as an argument.</p>
+<p>For example:</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# set the exception handler
+loop.set_exception_handler(exception_handler)</code></pre>
+<p>Now that we know how to log never-retrieved exceptions, let's look at some worked examples.</p>
+<h2>Example of Never-Retrieved Exception</h2>
+<p>We can explore an example with a never-retrieved exception.</p>
+<p>In this example, we will define a task that does some work and then raise an exception. The task is run in the background and the exception is never-retrieved. The expectation is that the event loop will report the never-retrieved exception when the program is terminated.</p>
+<p>Firstly, we can define a task that raises an exception that is never retrieved.</p>
+<p>The task reports a message, sleeps for one second, then raises an exception.</p>
+<p>The <strong>work()</strong> coroutine below implements this.</p>
+<pre><code># task that does work and logs
+async def work():
+    # log a message
+    print(f'Task is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise RuntimeError('Something bad happened')
+    # log a message
+    print(f'Task is done')
+</code></pre>
+<p>Next, we can define the <strong>main()</strong> coroutine.</p>
+<p>This involves first reporting a message to indicate the program has started then creating and scheduling the <strong>work()</strong> coroutine as a background task. The <strong>main()</strong> coroutine then sleeps for two seconds and reports a final message.</p>
+<p>The <strong>main()</strong> coroutine below implements this.</p>
+<pre><code># main coroutine
+async def main():
+    # log a message
+    print(f'Main is starting')
+    # schedule a task
+    task = asyncio.create_task(work())
+    # wait around
+    await asyncio.sleep(2)
+    # log a message
+    print(f'Main is done')
+</code></pre>
+<p>Finally, we can start the event loop and run the main() coroutine.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a never-retrieved exception
+import asyncio
+
+# task that does work and logs
+async def work():
+    # log a message
+    print(f'Task is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise RuntimeError('Something bad happened')
+    # log a message
+    print(f'Task is done')
+
+# main coroutine
+async def main():
+    # log a message
+    print(f'Main is starting')
+    # schedule a task
+    task = asyncio.create_task(work())
+    # wait around
+    await asyncio.sleep(2)
+    # log a message
+    print(f'Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a message.</p>
+<p>It then creates and schedules the <strong>work()</strong> coroutine as a background task, then suspends with a two-second sleep.</p>
+<p>The <strong>work()</strong> task runs and reports a message and then suspends with a one-second sleep. It resumes and fails with an exception.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final done message.</p>
+<p>The event loop terminates and reports the never-retrieved exception, including:</p>
+<ol>
+<li>The message "<strong>Task exception was never retrieved</strong>"</li>
+<li>The details of the task that failed with a never-retrieved exception.</li>
+<li>A trace of the exception that was not retrieved.</li>
+</ol>
+<p>This highlights the default behavior of the asyncio event loop when the program is terminated that had tasks with never retrieved exceptions.</p>
+<pre><code>Main is starting
+Task is starting
+Main is done
+Task exception was never retrieved
+future: &lt;Task finished name='Task-2' coro=&lt;work() done, defined at ...:6&gt; exception=RuntimeError('Something bad happened')&gt;
+Traceback (most recent call last):
+  File "...", line 12, in work
+    raise RuntimeError('Something bad happened')
+RuntimeError: Something bad happened
+</code></pre>
+<p>Next, let's explore logging of never-retrieved exceptions.</p>
+<h2>Example of Never-Retrieved Exception With Logging</h2>
+<p>We can explore an example that logs a never-retrieved exception.</p>
+<p>This involves updating the above example and configuring the logging infrastructure in the standard library.</p>
+<p>We will set the log level to DEBUG so that all messages with a DEBUG level or above are reported. Log messages will be reported on standard output.</p>
+<pre><code>...
+# prepare the logger
+logging.basicConfig(level=logging.DEBUG)</code></pre>
+<p>We can also update all messages reported via <strong>print()</strong> in the <strong>work()</strong> and <strong>main()</strong> coroutines to be INFO-level log messages.</p>
+<p>For example:</p>
+<pre><code># task that does work and logs
+async def work():
+    # log a message
+    logging.info(f'Task is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise RuntimeError('Something bad happened')
+    # log a message
+    logging.info(f'Task is done')
+</code></pre>
+<p>And that's it.</p>
+<p>The expectation is that the asyncio event loop will use the configured logging infrastructure to report the details of the never-retrieved exception.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a never-retrieved exception
+import logging
+import asyncio
+
+# task that does work and logs
+async def work():
+    # log a message
+    logging.info(f'Task is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise RuntimeError('Something bad happened')
+    # log a message
+    logging.info(f'Task is done')
+
+# main coroutine
+async def main():
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule a task
+    task = asyncio.create_task(work())
+    # wait around
+    await asyncio.sleep(2)
+    # log a message
+    logging.info(f'Main is done')
+
+# prepare the logger
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first configures the logger, then starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The event loop is started and logs a debug message indicating the selector that is being used.</p>
+<p>The <strong>main()</strong> coroutine runs and logs a start message.</p>
+<p>It then creates and schedules the <strong>work()</strong> coroutine as a background task, then suspends with a two-second sleep.</p>
+<p>The <strong>work()</strong> task runs and logs a message and then suspends with a one-second sleep. It resumes and fails with an exception.</p>
+<p>The <strong>main()</strong> coroutine resumes and logs a final done message.</p>
+<p>The event loop terminates and reports the never-retrieved exception, including:</p>
+<ol>
+<li>An ERROR-level log message with the details "<strong>Task exception was never retrieved</strong>".</li>
+<li>The details of the task that failed with a never-retrieved exception.</li>
+<li>A trace of the exception that was not retrieved.</li>
+</ol>
+<p>The details of the task and trace were not logged, instead, they were reported to standard output directly.</p>
+<p>This highlights that the asyncio event loop will log an ERROR-level message if it is terminated with tasks that had never-retrieved exceptions.</p>
+<pre><code>DEBUG:asyncio:Using selector: KqueueSelector
+INFO:root:Main is starting
+INFO:root:Task is starting
+INFO:root:Main is done
+ERROR:asyncio:Task exception was never retrieved
+future: &lt;Task finished name='Task-2' coro=&lt;work() done, defined at ...:7&gt; exception=RuntimeError('Something bad happened')&gt;
+Traceback (most recent call last):
+  File "...", line 13, in work
+    raise RuntimeError('Something bad happened')
+RuntimeError: Something bad happened
+</code></pre>
+<p>Next, let's look at an example of custom logging of never-retrieved exceptions.</p>
+<h2>Example of Custom Logging a Never-Retrieved Exception</h2>
+<p>We can explore an example with the custom logging of a never-retrieved exception.</p>
+<p>We can update the above example to define a custom exception handler and configure the asyncio event loop to call our handler when shutting down with tasks that have never-retrieved exceptions.</p>
+<p>Firstly, we can define a custom exception handler. It will retrieve the details of the exception and message from the context argument and log an error message.</p>
+<p>The <strong>exception_handler()</strong> function below implements this.</p>
+<pre><code># define an exception handler
+def exception_handler(loop, context):
+    # get details of the exception
+    exception = context['exception']
+    message = context['message']
+    # log exception
+    logging.error(f'Task failed, msg={message}, exception={exception}')
+</code></pre>
+<p>Note that this is a Python function, not a coroutine.</p>
+<p>It will be called automatically by the event loop during shutdown for each task that was left with a never-retrieved exception.</p>
+<p>Next, in the <strong>main()</strong> coroutine we can configure the event loop to call our custom handler function during shutdown for each task that has a never-retrieved exception.</p>
+<p>This can be achieved via the <strong>set_exception_handler()</strong> method on the event loop.</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# set the exception handler
+loop.set_exception_handler(exception_handler)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a never-retrieved exception
+import logging
+import asyncio
+
+# define an exception handler
+def exception_handler(loop, context):
+    # get details of the exception
+    exception = context['exception']
+    message = context['message']
+    # log exception
+    logging.error(f'Task failed, msg={message}, exception={exception}')
+
+# task that does work and logs
+async def work():
+    # log a message
+    logging.info(f'Task is starting')
+    # simulate doing work
+    await asyncio.sleep(1)
+    # fail with an exception
+    raise RuntimeError('Something bad happened')
+    # log a message
+    logging.info(f'Task is done')
+
+# main coroutine
+async def main():
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # set the exception handler
+    loop.set_exception_handler(exception_handler)
+    # log a message
+    logging.info(f'Main is starting')
+    # schedule a task
+    task = asyncio.create_task(work())
+    # wait around
+    await asyncio.sleep(2)
+    # log a message
+    logging.info(f'Main is done')
+
+# prepare the logger
+logging.basicConfig(level=logging.DEBUG)
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first configures the logger, then starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The event loop is started and logs a debug message indicating the selector that is being used.</p>
+<p>The <strong>main()</strong> coroutine runs and configures the event loop to use our custom exception handler. It then logs a start message.</p>
+<p>The <strong>main()</strong> coroutine then creates and schedules the <strong>work()</strong> coroutine as a background task, and then suspends with a two-second sleep.</p>
+<p>The <strong>work()</strong> task runs and logs a message and then suspends with a one-second sleep. It resumes and fails with an exception.</p>
+<p>The <strong>main()</strong> coroutine resumes and logs a final done message.</p>
+<p>The event loop shuts down and notices a task with a never-retrieved exception. It calls our <strong>exception_handler()</strong> with the details of the exception.</p>
+<p>The <strong>exception_handler()</strong> function runs and gathers details of the exception from the context and logs an error message.</p>
+<p>Unlike the previous cases, the trace of the task details and trace of the exception are not logged to standard output.</p>
+<p>This highlights how we can use custom logging to log the details of a never-retrieved task exception.</p>
+<pre><code>INFO:root:Main is starting
+INFO:root:Task is starting
+INFO:root:Main is done
+ERROR:root:Task failed, msg=Task exception was never retrieved, exception=Something bad happened
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to automatically log never-retrieved exceptions in asyncio programs.</p>
+</main>
+</body>
+</html>

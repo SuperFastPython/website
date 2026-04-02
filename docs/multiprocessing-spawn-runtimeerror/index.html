@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add if __name__ == &#8216;__main__&#8217; When Spawning Processes – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Add if __name__ == &#8216;__main__&#8217; When Spawning Processes</h1>
+<div class="post-meta">May 31, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can fix a <strong>RuntimeError</strong> when <strong>starting child processes</strong> by adding <strong>if name == 'main'</strong> to checking for the top-level environment in your code.</p>
+<p>In this tutorial you will discover the <strong>RuntimeError</strong> common on Windows and MacOS when <strong>creating child processes</strong> and how to fix it.</p>
+<p>Let's get started.</p>
+<h2>RuntimeError When Starting a Child Process</h2>
+<p>It is common to get a <strong>RuntimeError</strong> when starting a new Process in Python.</p>
+<p>The content of the error often looks as follows:</p>
+<pre><code>    An attempt has been made to start a new process before the
+    current process has finished its bootstrapping phase.
+
+    This probably means that you are not using fork to start your
+    child processes and you have forgotten to use the proper idiom
+    in the main module:
+
+        if __name__ == '__main__':
+            freeze_support()
+            ...
+
+    The "freeze_support()" line can be omitted if the program
+    is not going to be frozen to produce an executable.
+</code></pre>
+<p>This will happen on Windows and MacOS where the default start method is '<strong>spawn</strong>'. It may also happen when you configure your program to use the '<strong>spawn</strong>' start method on other platforms.</p>
+<p>We can demonstrate this error with a worked example.</p>
+<p>In this example we will configure a new child process to execute our custom <strong>task()</strong> function. We will then start the child process by calling the <strong>start()</strong> function.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of missing __name__ == '__main__'
+from multiprocessing import Process
+
+# function executed in a new process
+def task():
+    print('Hello from a child process', flush=True)
+
+# create and configure a new process
+process = Process(target=task)
+# start the new process
+process.start()
+# wait for the new process to finish
+process.join()
+</code></pre>
+<p>Running the example raises a <strong>RuntimeError</strong> on Windows and MacOS.</p>
+<p>The <strong>RuntimeError</strong> is raised when we try to start the child process.</p>
+<p>Specifically on the line:</p>
+<pre><code>...
+process.start()</code></pre>
+<p>A sample of the message reported by the <strong>RuntimeError</strong> is listed below.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+RuntimeError:
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+</code></pre>
+<p>This is a common error and is easy to fix.</p>
+<h2>Fix RuntimeError When Starting New Process</h2>
+<p>The fix involves checking if the code is running in the top-level environment and only then, attempt to start a new process.</p>
+<p>This is a best practice.</p>
+<p>The idiom for this fix, as stated in the message of the <strong>RuntimeError</strong>, is to use an if-statement and check if the name of the module is equal to the string '<strong>__main__</strong>'.</p>
+<p>For example:</p>
+<pre><code>...
+# check for top-level environment
+if __name__ == '__main__':
+	# ...
+</code></pre>
+<p>This is called "protecting the entry point" of the program.</p>
+<p>Recall, that <strong>__name__</strong> is a variable that refers to the name of the module executing the current code.</p>
+<blockquote><p>When a Python module or package is imported, __name__ is set to the module’s name. Usually, this is the name of the Python file itself without the .py extension:</p><cite>-- <a href="https://docs.python.org/3/library/__main__.html">__main__ — Top-level code environment</a></cite></blockquote>
+<p>Also, recall that '<strong>__main__</strong>' is the name of the top-level environment used to execute a Python program.</p>
+<blockquote><p>__main__ is the name of the environment where top-level code is run. “Top-level code” is the first user-specified Python module that starts running. It’s “top-level” because it imports all other modules that the program needs.</p><cite>-- <a href="https://docs.python.org/3/library/__main__.html">__main__ — Top-level code environment</a></cite></blockquote>
+<p>Using an if-statement to check if the module is the top-level environment and only starting child processes within that block will resolve the <strong>RuntimeError</strong>.</p>
+<p>It means that if the Python file is imported, then the code protected by the if-statement will not run. It will only run when the Python file is run directly, e.g. is the top-level environment.</p>
+<blockquote><p>Some modules contain code that is intended for script use only, like parsing command-line arguments or fetching data from standard input. If a module like this was imported from a different module, for example to unit test it, the script code would unintentionally execute as well. This is where using the if __name__ == '__main__' code block comes in handy. Code within this block won’t run unless the module is executed in the top-level environment.</p><cite>-- <a href="https://docs.python.org/3/library/__main__.html">__main__ — Top-level code environment</a></cite></blockquote>
+<p>The if-statement idiom is required, even if the entry point of the program calls a function that itself starts a child process.</p>
+<p>This is only used for child processes created by the main process. Child processes themselves can create child processes without this check.</p>
+<h2>Why Do We Need to Protect Entry Point?</h2>
+<p>We must protect the entry point when starting new processes from the main process using the '<strong>spawn</strong>' method.</p>
+<p>The reason is because our Python script will be loaded and imported automatically for us by child processes.</p>
+<p>This is required to execute our custom code and functions in new child processes.</p>
+<p>If the entry point was not protected with an if-statement idiom checking for the top-level environment, then the script would execute again directly, rather than run a new child process as expected.</p>
+<p>Protecting the entry point ensures that the program is only started once, that the tasks of the main process are only executed by the main process and not the child processes.</p>
+<h2>Example of Fix By Protecting Entry Point</h2>
+<p>We can demonstrate how to check for the top-level environment when starting a new process.</p>
+<p>This can be achieved by updating the example above that resulted in a <strong>RuntimeError</strong> and adding a check <strong>if __name__ is equal to '__main__'</strong>.</p>
+<p>For example:</p>
+<pre><code># check for top-level environment
+if __name__ == '__main__':
+    # create and configure a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # wait for the new process to finish
+    process.join()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of starting a child process only in __main__
+from multiprocessing import Process
+
+# function executed in a new process
+def task():
+    print('Hello from a child process', flush=True)
+
+# check for top-level environment
+if __name__ == '__main__':
+    # create and configure a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # wait for the new process to finish
+    process.join()
+</code></pre>
+<p>Running the example successfully starts a new child process.</p>
+<p>The message is reported from the child process as expected.</p>
+<pre><code>Hello from a child process</code></pre>
+<h2>Example of Fix by Changing Start Method</h2>
+<p>We can also fix the issue by changing the start method from '<strong>spawn</strong>' to '<strong>fork</strong>'.</p>
+<p>This fix only works on those platforms where the 'fork' method is supported, e.g. Unix and MacOS.</p>
+<p>This can be achieved via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.set_start_method"><strong>multiprocessing.set_start_method()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of missing __name__ == '__main__'
+from multiprocessing import set_start_method
+from multiprocessing import Process
+
+# function executed in a new process
+def task():
+    print('Hello from a child process', flush=True)
+
+# set the start method
+set_start_method('fork')
+# create and configure a new process
+process = Process(target=task)
+# start the new process
+process.start()
+# wait for the new process to finish
+process.join()
+</code></pre>
+<p>Running the example successfully starts a new child process.</p>
+<p>The message is reported from the child process as expected.</p>
+<pre><code>Hello from a child process</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to fix the <strong>RuntimeError</strong> caused by starting child processes with the '<strong>spawn</strong>' start method.</p>
+</main>
+</body>
+</html>

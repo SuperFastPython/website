@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>When Does Asyncio Switch Between Tasks – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>When Does Asyncio Switch Between Tasks</h1>
+<div class="post-meta">December 31, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You may be wondering <strong>how asyncio chooses which task to run</strong> and how it switches between tasks.</p>
+<p>This is an important question and highlights how asyncio tasks are different from typical Python functions and thread-based concurrency.</p>
+<p>In this tutorial, you will discover <strong>how asyncio switches between tasks</strong> and coroutines and how this is different from the way we switch between threads.</p>
+<p>Let's get started.</p>
+<h2>How Does Asyncio Switch Tasks?</h2>
+<p>A common question about asyncio that I'm asked is:</p>
+<ul>
+<li><strong>How does Python switch between tasks in asyncio?</strong></li>
+</ul>
+<p>Given that many developers have some knowledge of threading, they might ask:</p>
+<ul>
+<li><strong>Do asyncio tasks switch like Python threads.</strong></li>
+</ul>
+<p>This is a great question as it highlights the central difference between coroutines and threads.</p>
+<p>To dig into this question we need to first review top-down forced context switching of threads in preemptive multitasking, and then contrast this to bottom-up volunteering in cooperating multitasking.</p>
+<h2>Python Threads Context Switch</h2>
+<p>Python supports native threads that are managed by the underlying operating system.</p>
+<p>The underlying operating system (e.g. Linux, MacOS, or Windows) manages which threads run at what time on the underlying CPU core hardware.</p>
+<p>Typically, an operating system will be running many processes, each with one or more threads. There may be hundreds or thousands of threads running at a time as part of normal operation.</p>
+<p>Not all threads are able to run at the same time. Instead, the operating system simulates multitasking by allowing each thread to run for a short amount of time before pausing the execution of the thread, storing its state, and switching to another thread.</p>
+<p>The process of suspending one thread and reanimating a suspended thread is called a <a href="https://en.wikipedia.org/wiki/Context_switch">context switch</a>.</p>
+<blockquote>
+<p>In computing, a context switch is the process of storing the state of a process or thread, so that it can be restored and resume execution at a later point, and then restoring a different, previously saved, state.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Context_switch">Context switch, Wikipedia</a>.</cite></blockquote>
+<p>Python threads will be context-switched by the operating system at any time, although typically when blocked, such as reading or writing from a file or socket.</p>
+<p>The Python interpreter also offers a <a href="../context-switch-interval-in-python/">context switch interval configuration</a> which is a fixed number of Python bytecode instructions (e.g. 100) or time interval (e,g. 100 milliseconds) that may be executed before the interpreter will explicitly offer a thread up for a context switch.</p>
+<p>This is called <a href="https://en.wikipedia.org/wiki/Preemption_(computing)">preemptive multitasking</a> and is the way that the operating system is able to manage and execute a large number of threads concurrently.</p>
+<blockquote>
+<p>Preemptive multitasking involves the use of an interrupt mechanism which suspends the currently executing process and invokes a scheduler to determine which process should execute next. Therefore, all processes will get some amount of CPU time at any given time.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Preemption_(computing)">Preemption (computing), Wikipedia</a>.</cite></blockquote>
+<p>You can learn more about context-switching threads and the context-switch interval in Python in the tutorial:</p>
+<ul>
+<li><a href="../context-switch-interval-in-python/">Context Switch Interval In Python</a></li>
+</ul>
+<h2>Asyncio Does Not Use Context Switching</h2>
+<p>Tasks and coroutines in asyncio are not context-switched by the operating system.</p>
+<p>The asyncio event loop executes one task at a time.</p>
+<p>A task will run for as long as it wants and then must explicitly yield control.</p>
+<p>This will suspend the current task and allow the event loop to resume the execution of the next scheduled task.</p>
+<p>This is called cooperative multitasking.</p>
+<p>You can learn more about the explicit differences between asyncio and threading in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-vs-threading/">Asyncio vs Threading in Python</a></li>
+</ul>
+<h2>What is Cooperative Multitasking</h2>
+<p><a href="https://en.wikipedia.org/wiki/Cooperative_multitasking">Cooperative multitasking</a> is a concurrency model where multiple tasks or processes work together by voluntarily yielding control of the CPU to allow other tasks to execute.</p>
+<p>Unlike preemptive multitasking, where an external scheduler forcibly switches between tasks based on a fixed time slice, cooperative multitasking relies on the cooperation of tasks to relinquish control.</p>
+<blockquote>
+<p>Cooperative multitasking, also known as non-preemptive multitasking, is a style of computer multitasking in which the operating system never initiates a context switch from a running process to another process. Instead, in order to run multiple applications concurrently, processes voluntarily yield control periodically or when idle or logically blocked.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Cooperative_multitasking">Cooperative multitasking, Wikipedia</a>.</cite></blockquote>
+<p>In cooperative multitasking, each task must explicitly yield control to the scheduler or other tasks when it reaches a certain point or completes its current work. This requires tasks to be well-behaved and cooperative, as a task that does not yield control can monopolize the CPU and hinder the execution of other tasks.</p>
+<p>One of the key advantages of cooperative multitasking is its simplicity and low overhead.</p>
+<p>Context switching between tasks is more lightweight compared to preemptive multitasking, as it doesn't involve saving and restoring the complete CPU state. However, the main drawback is that a misbehaving or poorly designed task can potentially disrupt the entire system by not yielding control, leading to unresponsiveness.</p>
+<p>Cooperative multitasking is commonly used with non-blocking socket I/O, where it's used to manage asynchronous operations without the need for explicit multi-threading.</p>
+<p>Developers need to ensure that their tasks cooperate and yield control appropriately to maintain smooth execution in cooperative multitasking systems.</p>
+<h2>How Can An Asyncio Task Yield Control</h2>
+<p>An asyncio task will yield control, or suspend when it awaits something.</p>
+<p>Anytime a coroutine uses the <a href="../asyncio-await/">"<strong>await</strong>" expression</a>, such as on a task, it is signaling to the event loop that it is yielding control.</p>
+<p>This might be for many reasons, such as:</p>
+<ul>
+<li>Waiting for a result from a task or coroutine.</li>
+<li>Waiting for a read or write operation on a socket or subprocess.</li>
+<li>Waiting for an asynchronous generator.</li>
+<li>Entering or exiting an asynchronous context manager.</li>
+</ul>
+<p>A good place to start might be:</p>
+<ul>
+<li><a href="../async-await-python/">What is Async/Await in Python</a></li>
+</ul>
+<p>And:</p>
+<ul>
+<li><a href="../asyncio-await/">What is Asyncio Await in Python</a></li>
+</ul>
+<p>In fact, looking closely at any asyncio program, you will see a given coroutine is littered with explicit and implicit await expressions, points where the current task may suspend and the coroutine will resume the next scheduled task.</p>
+<p>An asyncio task may also explicitly yield control in the middle of a task that does not have any reasonable await points.</p>
+<p>This can be achieved by awaiting a call to <strong>asyncio.sleep()</strong> for zero seconds.</p>
+<p>This is a no-operation (nop) that signals the event loop that the current task is happy to yield control if any other scheduled tasks need an opportunity to run.</p>
+<p>You can learn more about <strong>asyncio.sleep(0)</strong> in the tutorial:</p>
+<ul>
+<li><a href="../what-is-asyncio-sleep-zero/">What is asyncio.sleep(0)</a></li>
+</ul>
+<h2>What If Asyncio Tasks Don't Yield Control</h2>
+<p>What if asyncio coroutines are selfish?</p>
+<p><strong>What if asyncio tasks never await anything?</strong></p>
+<p>This is a common concern by developers looking at asyncio through the lens of classical imperative or object-oriented programming. Asyncio is different, it uses an asynchronous programming model.</p>
+<p>It is this difference in the framing of asyncio that causes the biggest misunderstandings of the module and in turn frustration when using it.</p>
+<p>For example, see the tutorial:</p>
+<ul>
+<li><a href="../why-hate-asyncio-python/">Why Python Developers Hate Asyncio</a></li>
+</ul>
+<p>Asyncio can fail to give up control. Coroutines can be selfish and uncooperative.</p>
+<p>This can happen and it signals that an asyncio program has been written in a non-async manner. It does not use the tools of cooperating multitasking and may not be developed using the <a href="https://en.wikipedia.org/wiki/Asynchrony_(computer_programming)">asynchronous programming model</a>.</p>
+<blockquote>
+<p>Asynchronous, in computer programming, refers to the occurrence of events independent of the main program flow and ways to deal with such events. These may be "outside" events such as the arrival of signals, or actions instigated by a program that take place concurrently with program execution, without the program blocking to wait for results.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Asynchrony_(computer_programming)">Asynchrony (computer programming), Wikipedia</a>.</cite></blockquote>
+<p>In this case, the program may need to be updated to be more cooperative.</p>
+<p>You can learn more about Python asynchronous programming in the tutorial:</p>
+<ul>
+<li><a href="../python-asynchronous-programming/">Asynchronous Programming in Python</a></li>
+</ul>
+<p>Perhaps the addition of <strong>asyncio.sleep(0)</strong> calls can be added.</p>
+<p>Perhaps synchronous blocks of code can be executed in a thread that is external to the event loop and awaited on like an async task, using mechanisms like <strong>asyncio.to_thread()</strong>.</p>
+<p>You can learn more about executing blocking tasks in external threads in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-to_thread/">How to Use Asyncio to_thread()</a></li>
+</ul>
+<p>And:</p>
+<ul>
+<li><a href="../asyncio-blocking-tasks/">How to Run Blocking Tasks in Asyncio</a></li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know how asyncio switches between tasks and coroutines.</p>
+</main>
+</body>
+</html>

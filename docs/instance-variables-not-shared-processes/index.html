@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instance Variables Are Not Shared Between Processes in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Instance Variables Are Not Shared Between Processes in Python</h1>
+<div class="post-meta">March 9, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can share changes to Python object instance variables among processes by changing instance variables to be shared ctypes.</p>
+<p>In this tutorial, you will discover <strong>how to share changes to Python object instance variables between processes</strong>.</p>
+<p>Let's get started.</p>
+<h2>Object Instance Variables Not Shared With Processes</h2>
+<p>Python objects can be shared among processes.</p>
+<p>For example, we can start a child process to execute a target function and pass an object as an argument.</p>
+<p>We might also send an argument to another process via a shared queue.</p>
+<p>A problem with sharing Python objects among processes is that changes to those objects do not propagate.</p>
+<p>That is, if the object has instance variables (attributes) and those instance variables are changed in a child process, then the changes to those instances will not be reflected in any other processes that share the object.</p>
+<p><strong>Why aren't changes to instance variables propagated among processes?</strong></p>
+<p>Moreover, how can we update custom Python objects so that changes in one process propagate to all other processes?</p>
+<h2>How to Share Instance Variables</h2>
+<p>Changes to Python objects are not shared among processes because each process gets a copy of the object.</p>
+<p>This explains why changes to a Python object in one process are not reflected in another process. Each process has a separate and local copy of the object.</p>
+<p>There are a few ways to overcome this problem when using process-based concurrency.</p>
+<p>One approach is to host one central copy of the object in a server process and share proxy objects that know how to interact with the hosted object.</p>
+<p>This can be achieved using a manager.</p>
+<p>You can learn more about how to host a centralized version of a Python object in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager-custom-class/">Multiprocessing Manager With a Custom Class</a></li>
+</ul>
+<p>Another approach is to change the custom Python object so that the instance variables themselves are sharable.</p>
+<p>This can be achieved by using shared ctypes for instance variables in custom objects.</p>
+<p>This means that each process will get a copy of the Python object, but there will only be one copy of each instance variable and changes to the variables will be propagated among processes.</p>
+<p>For example, a shared ctype can be defined using a common data type, like an integer or a floating point value.</p>
+<pre><code>...
+# define shared ctype
+data = Value('i', 0)</code></pre>
+<p>The value of the shared ctype can be accessed, and modified via the "<strong>value</strong>" attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# update the value
+data.value = 100
+# report value
+print(data.value)</code></pre>
+<p>You can learn more about shared ctypes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>Now that we know why changes to Python objects don't propagate to processes and how to update custom Python objects so that changes propagate, let's look at some worked examples.</p>
+<h2>Example of Instance Variables of Shared Object Not Updated</h2>
+<p>Before we look at an example where changes to instance variables are propagated, let's look at a failure case.</p>
+<p>In this example, we will define a custom class that has a single instance variable. The class has a method to change the variable and another to retrieve it.</p>
+<pre><code># custom class
+class CustomClass():
+    # constructor
+    def __init__(self):
+        # define instance variable
+        self._var = 0
+
+    # increment the variable
+    def update(self, value):
+        self._var = value
+
+    # get the value
+    def get(self):
+        return self._var
+</code></pre>
+<p>We can then define a <strong>task()</strong> function that takes an instance of our custom class as an argument and updates the instance variable.</p>
+<pre><code># function executed in child process
+def task(custom):
+    # report the value
+    print(f'Before update: {custom.get()}')
+    # update the value
+    custom.update(100)
+    # report the value
+    print(f'After update: {custom.get()}')
+</code></pre>
+<p>The parent process creates an instance of the custom class, then creates a child process to run the <strong>task()</strong> function and passes it the instance of the custom class.</p>
+<pre><code>...
+# create the custom object
+custom = CustomClass()
+# configure a child process to run the task
+process = Process(target=task, args=(custom,))
+# start the process
+process.start()</code></pre>
+<p>The parent process waits for the child process to complete and then reports the value of the instance variable in the instance of the custom class.</p>
+<pre><code>...
+# wait for the process to terminate
+process.join()
+# report the value
+print(f'Main: {custom.get()}')</code></pre>
+<p>Naively, we would expect the object to be updated in the child process and for the updated value to be reported in the parent process.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of instance variables not being shared between processes
+from multiprocessing import Process
+
+# custom class
+class CustomClass():
+    # constructor
+    def __init__(self):
+        # define instance variable
+        self._var = 0
+
+    # increment the variable
+    def update(self, value):
+        self._var = value
+
+    # get the value
+    def get(self):
+        return self._var
+
+# function executed in child process
+def task(custom):
+    # report the value
+    print(f'Before update: {custom.get()}')
+    # update the value
+    custom.update(100)
+    # report the value
+    print(f'After update: {custom.get()}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the custom object
+    custom = CustomClass()
+    # configure a child process to run the task
+    process = Process(target=task, args=(custom,))
+    # start the process
+    process.start()
+    # wait for the process to terminate
+    process.join()
+    # report the value
+    print(f'Main: {custom.get()}')
+</code></pre>
+<p>Running the example first creates an instance of the custom class.</p>
+<p>A child process instance is created and configured to execute the <strong>task()</strong> function and is passed the instance of our custom class.</p>
+<p>The child process is started and the main process blocks and waits for the child process to terminate.</p>
+<p>The <strong>task()</strong> function is executed, reports a message, updates the instance variable in the custom object, then reports a second message showing that the instance variable was changed.</p>
+<p>The child process terminates and the main process resumes and reports the value of the instance variable in the custom object.</p>
+<p>In this case, it shows that the instance variable is still zero and that the change made by the child process had no effect or was lost.</p>
+<pre><code>Before update: 0
+After update: 100
+Main: 0</code></pre>
+<p>The reason for this is that the child process received and operated upon a copy of the instance of the custom class. The object was not shared as expected.</p>
+<p>Next, let's look at how we can update the shared object so that changes to instance variables are propagated as we expect.</p>
+<h2>Example of Instance Variables of Shared Object Updated</h2>
+<p>We can update a custom class so that instance variables are defined using shared ctypes.</p>
+<p>Any shared ctypes shared among processes will have their changes propagated to all other processes. This happens automatically behind the scenes using inter-process communication.</p>
+<p>Our <strong>CustomClass</strong> definition has a single integer instance variable that can be changed to a shared ctype with an integer type and initialized to zero. Access and change to the instance variable can occur via the "value" attribute on the shared ctype</p>
+<p>The updated <strong>CustomClass</strong> class with this change is listed below.</p>
+<pre><code># custom class
+class CustomClass():
+    # constructor
+    def __init__(self):
+        # define instance variable
+        self._var = Value('i', 0)
+
+    # increment the variable
+    def update(self, value):
+        self._var.value = value
+
+    # get the value
+    def get(self):
+        return self._var.value
+</code></pre>
+<p>And that's it.</p>
+<p>All changes are encapsulated within the <strong>CustomClass</strong> class.</p>
+<p>The complete example with this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of shared instance variables between processes using shared ctypes
+from multiprocessing import Process
+from multiprocessing import Value
+
+# custom class
+class CustomClass():
+    # constructor
+    def __init__(self):
+        # define instance variable
+        self._var = Value('i', 0)
+
+    # increment the variable
+    def update(self, value):
+        self._var.value = value
+
+    # get the value
+    def get(self):
+        return self._var.value
+
+# function executed in child process
+def task(custom):
+    # report the value
+    print(f'Before update: {custom.get()}')
+    # update the value
+    custom.update(100)
+    # report the value
+    print(f'After update: {custom.get()}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the custom object
+    custom = CustomClass()
+    # configure a child process to run the task
+    process = Process(target=task, args=(custom,))
+    # start the process
+    process.start()
+    # wait for the process to terminate
+    process.join()
+    # report the value
+    print(f'Main: {custom.get()}')
+</code></pre>
+<p>Running the example first creates an instance of the custom class.</p>
+<p>A child process instance is created and configured to execute the <strong>task()</strong> function and is passed the instance of our custom class.</p>
+<p>The child process is started and the main process blocks and waits for the child process to terminate.</p>
+<p>The <strong>task()</strong> function is executed, reports a message, updates the instance variable in the custom object, then reports a second message showing that the instance variable was changed.</p>
+<p>The child process terminates and the main process resumes and reports the value of the instance variable in the custom object.</p>
+<p>In this case, it shows that the changes made to the instance variable in the "shared" object were propagated as we hoped.</p>
+<pre><code>Before update: 0
+After update: 100
+Main: 100</code></pre>
+<p>Although the object was shared with the child process, it was still copied as before. In this case, the instance variable was not copied, and instead access to the same variable was shared among both child and parent processes.</p>
+<p>Changes made to the instance variable in the child process were propagated to the instance variable in the parent process and we can see this when the main process reported the value at the end of the program.</p>
+<p>This highlights how we can update instance variables in a custom object so that changes are propagated among processes.</p>
+<h2>Takeaways</h2>
+<p>You now know how to share changes to Python object instance variables between processes.</p>
+</main>
+</body>
+</html>

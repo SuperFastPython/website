@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Exit the Asyncio Event Loop – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Exit the Asyncio Event Loop</h1>
+<div class="post-meta">January 10, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can exit the asyncio event loop by returning from the main coroutine used as the entry point for the asyncio program.</p>
+<p>In this tutorial, you will discover <strong>how to exit the asyncio event loop in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Exit the Event Loop</h2>
+<p>Asyncio programs are executed by an event loop.</p>
+<p>The event loop is responsible for running tasks, executing callbacks and managing non-blocking I/O.</p>
+<blockquote><p>The event loop is the core of every asyncio application. Event loops run asynchronous tasks and callbacks, perform network IO operations, and run subprocesses.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-eventloop.html">Asyncio Event Loop</a></cite></blockquote>
+<p>You can learn more about the asyncio event loop in the tutorial:</p>
+<ul><li><a href="../asyncio-event-loop/">What is the Asyncio Event Loop</a></li></ul>
+<p>We execute asyncio programs using the high-level API via the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.run"><strong>asyncio.run()</strong> function</a>.</p>
+<p>This function takes a coroutine as an argument which is used as the entry point to the asyncio program.</p>
+<p>For example:</p>
+<pre><code>...
+# run an asyncio program
+asyncio.run(main())</code></pre>
+<p>You can learn more about how to run asyncio programs in the tutorial:</p>
+<ul><li><a href="../asyncio-run-program/">How to Run an Asyncio Program in Python</a></li></ul>
+<p>Running the event loop is blocking, this means it will block the calling thread until the event loop is terminated.</p>
+<p><strong>This raises the question, how do we exit the asyncio event loop?</strong></p>
+<p>We may need to exit the asyncio event loop from within the asyncio program for many reasons, such as:</p>
+<ul><li>User request.</li><li>Failure of a required resource.</li><li>Early completion of tasks.</li></ul>
+<p><strong>How can an asyncio program exit the event loop?</strong></p>
+<p>It also raises related questions, such as:</p>
+<ul><li>Does a running task prevent the asyncio event loop from exiting normally?</li><li>Does a running subprocess prevent the asyncio event loop from exiting normally?</li></ul>
+<p>We can explore these questions with worked examples.</p>
+<h2>How to Exit the Asyncio Event Loop</h2>
+<p>An asyncio event loop can be exited by returning from the main coroutine.</p>
+<p>We may refer to the coroutine that is passed to <strong>asyncio.run()</strong> to run the asyncio event loop as the main coroutine, for lack of a better name.</p>
+<p>When this coroutine exits, the event loop will terminate.</p>
+<p>This is the normal way for an asyncio program to end.</p>
+<p>There are three ways this may occur, they are:</p>
+<ul><li>The main coroutine completes, e.g. reaches the end and returns,</li><li>The main coroutine returns early, e.g. the return expression.</li><li>The main coroutine raises an unhandled exception, e.g. directly or indirectly.</li></ul>
+<p>The asyncio event loop does provide methods for stopping the event loop. These are the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.close"><strong>close()</strong> method</a> and the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.stop"><strong>stop()</strong> method</a>.</p>
+<p>The <strong>close()</strong> method can only be called once all tasks have stopped running otherwise a <strong>RuntimeError</strong> will be raised. It cannot be called safely from a running coroutine directly. The <strong>stop()</strong> method will schedule an attempt to close the event loop if <strong>run_forever()</strong> was called, but it too requires that all tasks have been completed otherwise it will raise a <strong>RuntimeError</strong>.</p>
+<p>These are in a low-level API and are generally not intended for application developers, instead, they are reserved for framework developers. You may be able to trigger a close using these methods, e.g. via another thread, but they are not recommended.</p>
+<p>Generally, these methods are intended to be called from outside the event loop, e.g. by a managing thread or process.</p>
+<p>Now that we know how to exit the asyncio event loop, let's look at some worked examples.</p>
+<h2>Example of Exiting the Event Loop</h2>
+<p>The recommended way to exit the asyncio event loop is to exit the main coroutine.</p>
+<p>In this section, we will explore the different common ways of exiting the main coroutine.</p>
+<h3>Exit the Event Loop After the Main Coroutine Finishes</h3>
+<p>We can explore the normal case of closing the asyncio event loop by letting the main coroutine run to completion.</p>
+<p>In this example, the main coroutine will schedule a task coroutine and wait for it to complete. The task will report a message, sleep for two seconds, then report a final message. Once the task is complete, the main coroutine will resume and report a final message for exiting.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of exiting the event loop normally
+import asyncio
+
+# task coroutine
+async def work():
+    # report a message
+    print('Task starting')
+    # simulate work
+    await asyncio.sleep(2)
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # schedule the task
+    task = asyncio.create_task(work())
+    # suspend a moment
+    await task
+    # report a message
+    print('Main done')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and runs it as the entry point for the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> coroutine and schedules it as a task. It then awaits the task and suspends it until the task is completed.</p>
+<p>The task runs, reports a message, sleeps for 2 seconds, then reports a final message.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a final message before ending normally.</p>
+<p>The asyncio event loop is then terminated and the main thread is closed.</p>
+<p>This highlights how we can exit the asyncio event loop normally by completing the main coroutine.</p>
+<pre><code>Task starting
+Task done
+Main done</code></pre>
+<h3>Exit the Event Loop With an Early Return</h3>
+<p>We can explore how to exit the asyncio event loop with an early return statement in the main coroutine.</p>
+<p>In this example, the main coroutine will schedule an independent task, suspend a moment to allow the task to begin executing, then issue an early return before the independent task has had a chance to complete.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# forcing the exit of the event loop
+import asyncio
+
+# task coroutine
+async def work():
+    # report a message
+    print('Task starting')
+    # simulate work
+    await asyncio.sleep(2)
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # schedule the task
+    task = asyncio.create_task(work())
+    # suspend a moment
+    await asyncio.sleep(1)
+    # exit the event loop
+    return
+    # report a message
+    print('Main done')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and runs it as the entry point for the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> coroutine and schedules it as a task.</p>
+<p>It then sleeps for one second, suspending and allowing the task to run.</p>
+<p>The task begins running, reporting a message, and sleeping.</p>
+<p>The <strong>main()</strong> coroutine resumes and returns.</p>
+<p>This terminates the asyncio event loop and the main thread. The running task is terminated along with the event loop and is not given an opportunity to complete.</p>
+<p>This highlights how returning from the main coroutine at any point will terminate the asyncio event loop.</p>
+<pre><code>Task starting</code></pre>
+<h3>Exit the Event Loop With an Exception</h3>
+<p>We can explore how to exit the asyncio event loop by raising an unhandled exception.</p>
+<p>This will terminate the main coroutine and cause it to return, terminating the asyncio event loop.</p>
+<p>In this example, the main coroutine will schedule an independent task and suspend a moment to allow the task to begin executing. It will then raise an exception that is not handled, causing the main coroutine to terminate and in turn close the event loop.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# forcing the exit of the event loop
+import asyncio
+
+# task coroutine
+async def work():
+    # report a message
+    print('Task starting')
+    # simulate work
+    await asyncio.sleep(2)
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # schedule the task
+    task = asyncio.create_task(work())
+    # suspend a moment
+    await asyncio.sleep(1)
+    # exit the event loop
+    raise Exception('Stop this thing')
+    # report a message
+    print('Main done')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and runs it as the entry point for the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> coroutine and schedules it as a task.</p>
+<p>It then sleeps for one second, suspending and allowing the task to run.</p>
+<p>The task begins running, reporting a message, and sleeping.</p>
+<p>The <strong>main()</strong> coroutine resumes and raises an unhandled exception.</p>
+<p>This exits the <strong>main()</strong> coroutine and terminates the asyncio event loop. The running task is not given an opportunity to complete.</p>
+<p>This highlights how we may exit the asyncio event loop by raising an unhandled exception.</p>
+<pre><code>Task starting
+Traceback (most recent call last):
+  ...
+Exception: Stop this thing
+</code></pre>
+<p>The main coroutine does not have to raise an exception directly in order to terminate.</p>
+<p>An exception can be raised in a called function or awaited coroutine.</p>
+<p>If unheralded, the exception can propagate back to the main coroutine and in turn terminate the event loop.</p>
+<p>The example below demonstrates this.</p>
+<pre><code># SuperFastPython.com
+# forcing the exit of the event loop
+import asyncio
+
+# task coroutine
+async def work():
+    # report a message
+    print('Task starting')
+    # simulate work
+    await asyncio.sleep(2)
+    # exit the event loop
+    raise Exception('Stop this thing')
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # schedule the task
+    task = asyncio.create_task(work())
+    # suspend a moment
+    await task
+    # report a message
+    print('Main done')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and runs it as the entry point for the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> coroutine and schedules it as a task. It then awaits the task and suspends it until the task is completed.</p>
+<p>The task runs, reports a message, sleeps for 2 seconds, then raises an exception.</p>
+<p>The exception propagates from the <strong>work()</strong> coroutine to the <strong>main()</strong> coroutine and then exits the <strong>main()</strong> coroutine, terminating the asyncio event loop.</p>
+<p>This highlights that we may exit the asyncio event loop by allowing exceptions to bubble up from coroutines to the main coroutine.</p>
+<pre><code>Task starting
+Traceback (most recent call last):
+  ...
+Exception: Stop this thing
+</code></pre>
+<h2>Cannot Directly Stop the Event Loop While a Task is Running</h2>
+<p>We cannot directly close or stop the event loop from within the event loop.</p>
+<p>The low-level event loop provides <strong>close()</strong> and <strong>stop()</strong> methods intended for stopping an asyncio event loop from the outside, such as by the owning thread or process.</p>
+<p>These methods generally cannot be called directly from coroutines and tasks running in the event loop.</p>
+<p>We can explore this with some worked examples.</p>
+<h3>Cannot Call close() From Within a Coroutine</h3>
+<p>We can explore calling the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.close"><strong>close()</strong> method</a> from the main coroutine.</p>
+<p>In this example, we will schedule a task in the background, suspend it for a moment to allow the task to start, then call the <strong>close()</strong> method on the currently running event loop.</p>
+<p>We expect this to fail with a RuntimeError exception as we cannot close the event loop while tasks are executing.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# forcing the exit of the event loop
+import asyncio
+
+# task coroutine
+async def work():
+    # report a message
+    print('Task starting')
+    # simulate work
+    await asyncio.sleep(2)
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # schedule the task
+    task = asyncio.create_task(work())
+    # suspend a moment
+    await asyncio.sleep(1)
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # schedule a stop to the event loop
+    loop.close()
+    # report a message
+    print('Main done')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and runs it as the entry point for the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> coroutine and schedules it as a task.</p>
+<p>It then sleeps for one second, suspending and allowing the task to run.</p>
+<p>The <strong>main()</strong> coroutine then gets access to the running event loop and calls the <strong>close()</strong> method.</p>
+<p>This fails with a <strong>RuntimeError</strong> exception, as we expected, indicating that we cannot close a running event loop.</p>
+<pre><code>Task starting
+Traceback (most recent call last):
+  ...
+RuntimeError: Cannot close a running event loop
+</code></pre>
+<h3>Cannot Call stop() From Within a Coroutine</h3>
+<p>We can explore calling the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.stop"><strong>stop()</strong> method</a> from the main coroutine.</p>
+<p>This method is intended to be called on an event loop that is running forever, via the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_forever"><strong>run_forever()</strong> method</a>.</p>
+<p>In this example, we will schedule a task in the background, suspend it for a moment to allow the task to start, then call the <strong>stop()</strong> method on the currently running event loop.</p>
+<p>We expect this to fail with a <strong>RuntimeError</strong> exception as we cannot stop the event loop while tasks are executing.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# forcing the exit of the event loop
+import asyncio
+
+# task coroutine
+async def work():
+    # report a message
+    print('Task starting')
+    # simulate work
+    await asyncio.sleep(2)
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # schedule the task
+    task = asyncio.create_task(work())
+    # suspend a moment
+    await asyncio.sleep(1)
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # schedule a stop to the event loop
+    loop.stop()
+    # report a message
+    print('Main done')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and runs it as the entry point for the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> coroutine and schedules it as a task.</p>
+<p>It then sleeps for one second, suspending and allowing the task to run.</p>
+<p>The <strong>main()</strong> coroutine then gets access to the running event loop and calls the <strong>stop()</strong> method.</p>
+<p>This fails with a <strong>RuntimeError</strong> exception, as we expected, indicating the event loop was stopped while tasks were still incomplete.</p>
+<pre><code>Task starting
+Main done
+Traceback (most recent call last):
+...
+RuntimeError: Event loop stopped before Future completed.</code></pre>
+<h2>Does a Task Stop the Event Loop Exiting</h2>
+<p>We can explore if the event loop will stop if an independent task is still executing.</p>
+<p>This can be achieved by scheduling the task, allowing it to start running, then having the main coroutine return.</p>
+<p>This will either block, allowing the independent task to complete, or return immediately, terminating the event loop and the running task.</p>
+<p>The example below explores this scenario.</p>
+<pre><code># SuperFastPython.com
+# test if a task stops the event loop from exiting
+import asyncio
+
+# task coroutine
+async def work():
+    # report a message
+    print('Task starting')
+    # simulate work
+    await asyncio.sleep(2)
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # schedule the task
+    task = asyncio.create_task(work())
+    # suspend a moment
+    await asyncio.sleep(0)
+    # report a message
+    print('Main done')
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and runs it as the entry point for the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> coroutine and schedules it as a task.</p>
+<p>It then sleeps for zero seconds, suspending and allowing the task to run.</p>
+<p>The task runs, reports a message, and starts to sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes, reports a message, and exits normally.</p>
+<p>It closes the event loop and then the main thread of the program. The running independent task is terminated along with the event loop.</p>
+<p>This highlights that a running task will not prevent the event loop from exiting.</p>
+<pre><code>Task starting
+Main done</code></pre>
+<h2>Does a Subprocess Stop the Event Loop Exiting</h2>
+<p>We can explore if the event loop will stop if a command is being executed in a subprocess.</p>
+<p>A command is a program on the operating system that may be executed directly or via the shell. If executed by the shell, we can use shell scripting language elements and variables.</p>
+<p>We can run a command from an asyncio program using the <a href="https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.create_subprocess_shell"><strong>asyncio.create_subprocess_shell()</strong> function</a>.</p>
+<p>You can learn more about running commands from asyncio via the shell in the tutorial:</p>
+<ul><li><a href="../asyncio-create_subprocess_shell/">Asyncio Subprocess With create_subprocess_shell()</a></li></ul>
+<p>This will run the command and return a subprocess.</p>
+<p>We can execute a command from the main coroutine, suspend to allow the command to execute, then return from the main coroutine. The command may continue to run and may or may not block the event loop, preventing it from terminating.</p>
+<p>The example below explores this scenario.</p>
+<pre><code># SuperFastPython.com
+# test if a subprocess stops the event loop from exiting
+import asyncio
+
+# task coroutine
+async def work():
+    # report a message
+    print('Task starting')
+    # run a subprocess
+    process = await asyncio.create_subprocess_shell('sleep 2;echo hi')
+    # wait for the subprocess to finish
+    await process.wait()
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # schedule the task
+    task = asyncio.create_task(work())
+    # suspend a moment, allow the subprocess to start
+    await asyncio.sleep(1)
+    # report a message
+    print('Main done')
+
+# run the asyncio program
+asyncio.run(main())
+# report a message
+print('Event loop is closed')
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and runs it as the entry point for the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> coroutine and schedules it as a task.</p>
+<p>It then sleeps for one second, suspending and allowing the task to run.</p>
+<p>The task runs, reports a message, then executes the command and waits for the command to complete.</p>
+<p>The command begins executing, running the "<strong>sleep</strong>" command for two seconds.</p>
+<p>The <strong>main()</strong> coroutine resumes and exits.</p>
+<p>This terminates the event loop and the asyncio task.</p>
+<p>The subprocess running the command continues to run. It finishes the sleep command and runs the echo command reporting a message on standard out.</p>
+<p>This example highlights that exiting the asyncio event loop does not terminate running subprocesses.</p>
+<pre><code>Task starting
+Main done
+Event loop is closed
+hi</code></pre>
+<h2>Does a Thread Stop the Event Loop From Exiting</h2>
+<p>We can explore whether running a function in a new thread will stop the event loop from executing.</p>
+<p>A blocking function can be run in a new thread from asyncio via the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.to_thread"><strong>asyncio.to_thread()</strong> function</a>. This returns a coroutine that can be awaited or scheduled as a task.</p>
+<p>You can learn more about running blocking functions in a new thread in the tutorial:</p>
+<ul><li><a href="../asyncio-to_thread/">How to Use Asyncio to_thread()</a></li></ul>
+<p>We can execute a blocking function in a new thread and schedule it as a task, suspend to allow it to begin executing, then return from the main coroutine.</p>
+<p>The blocking function may continue to run or not, and it may or may not prevent the asyncio event loop from terminating immediately.</p>
+<p>The example below explores this scenario.</p>
+<pre><code># SuperFastPython.com
+# test if a task stops the event loop from exiting
+import time
+import asyncio
+
+# task coroutine
+def work():
+    # report a message
+    print('Task starting')
+    # simulate work
+    time.sleep(2)
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # run function in a separate thread
+    coro = asyncio.to_thread(work)
+    # schedule the task
+    task = asyncio.create_task(coro)
+    # suspend a moment, allow the new thread to start
+    await asyncio.sleep(1)
+    # report a message
+    print('Main done')
+
+# run the asyncio program
+asyncio.run(main())
+# report a message
+print('Event loop is closed')
+</code></pre>
+<p>Running the example creates the <strong>main()</strong> coroutine and runs it as the entry point for the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates a coroutine to run the blocking function in a new thread.</p>
+<p>It then schedules the coroutine as an independent task and sleeps for one second, suspending and allowing the task to execute.</p>
+<p>The task begins running in a new thread, reporting a message, and sleeping.</p>
+<p>The <strong>main()</strong> coroutine resumes, reports a message, and exits.</p>
+<p>This does not terminate the event loop. The event loop blocks, waiting for the new thread to complete.</p>
+<p>The blocking function in the new thread resumes and reports a final message before exiting.</p>
+<p>The event loop terminates and a final message is reported that the event loop has been closed and the main thread is back in control.</p>
+<p>This highlights that a blocking thread running in the asyncio event loop can prevent the event loop from exiting.</p>
+<pre><code>Task starting
+Main done
+Task done
+Event loop is closed</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to exit the asyncio event loop in Python.</p>
+</main>
+</body>
+</html>

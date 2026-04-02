@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forking Processes is 20x Faster Than Spawning  in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Forking Processes is 20x Faster Than Spawning  in Python</h1>
+<div class="post-meta">February 23, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>Forking a process is faster than spawning a process in Python.</p>
+<p>This is generally known, but how much faster is forking and when should we consider adopting the fork start method for child processes over spawning?</p>
+<p>In this tutorial, you will discover the <strong>speed differences between fork and spawn start methods</strong>.</p>
+<p>Let's get started.</p>
+<h2>Fork vs Spawn Start Methods</h2>
+<p>Python offers two main methods for starting a new child process.</p>
+<p>They are:</p>
+<ol>
+<li>Fork start method</li>
+<li>Spawn start method.</li>
+</ol>
+<p>The fork start method uses a <a href="https://en.wikipedia.org/wiki/Fork_(system_call)">system function call</a> to copy an existing process to create a new process.</p>
+<p>This means that the child process has a copy of all memory used by the original process, including all global variables.</p>
+<blockquote>
+<p>The parent process uses os.fork() to fork the Python interpreter. The child process, when it begins, is effectively identical to the parent process. All resources of the parent are inherited by the child process. Note that safely forking a multithreaded process is problematic. Available on Unix only. The default on Unix.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The spawn start method is an entirely new instance of the Python interpreter started from scratch. It is not a copy of another process.</p>
+<blockquote>
+<p>The parent process starts a fresh Python interpreter process. The child process will only inherit those resources necessary to run the process object's run() method. In particular, unnecessary file descriptors and handles from the parent process will not be inherited. Starting a process using this method is rather slow compared to using fork or forkserver. Available on Unix and Windows. The default on Windows and macOS.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>A Python process can configure the start method used to create new child processes via the multiprocessing.set_start_method() function.</p>
+<p>For more on setting the start method, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-start-method/">Multiprocessing Start Methods</a></li>
+</ul>
+<p>The fork method is only supported on POSIX-based systems like Linux and macOS (not Windows), whereas the spawn start method is supported on all platforms.</p>
+<p>A major difference between the two start methods is speed.</p>
+<p>It is generally considered that forking a process is faster than spawning a process.</p>
+<p><strong>But how much faster is it?</strong></p>
+<p>We can explore the speed differences between the two start methods with controlled experiments.</p>
+<h2>Benchmark Spawn Start Method</h2>
+<p>We can explore the benchmark speed of starting processes using the spawn start method.</p>
+<p>In this example, we will create a new process many times and time how long it takes.</p>
+<p>Each process started will execute a target function that does nothing other than return immediately.</p>
+<p>For example:</p>
+<pre><code># task to run in a new process
+def task():
+    # do nothing interesting
+    pass
+</code></pre>
+<p>We can define a process that creates a process to execute our target function, start the process then wait for it to complete in a loop that repeats a specified number of times.</p>
+<pre><code># run a test and time how long it takes
+def test(n_repeats):
+    # repeat many times
+    for i in range(n_repeats):
+        # create the process
+        process = Process(target=task)
+        # start the process
+        process.start()
+        # wait for the process to complete
+        process.join()
+</code></pre>
+<p>We can then call our target function with a given number of loop iterations, in this case, 1,000 and time how long it takes to complete in seconds.</p>
+<pre><code># entry point
+if __name__ == '__main__':
+    # set the start method
+    set_start_method('spawn')
+    # record the start time
+    time_start = time()
+    # perform the test
+    n_repeats = 1000
+    test(n_repeats)
+    # record the end time
+    time_end = time()
+    # report the total time
+    duration = time_end - time_start
+    print(f'Total Time {duration:.3} seconds')
+    # report estimated time per process
+    per_process = duration / n_repeats
+    print(f'About {per_process:.3} seconds per process')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# create many processes using the spawn start method
+from time import time
+from multiprocessing import Process
+from multiprocessing import set_start_method
+
+# task to run in a new process
+def task():
+    # do nothing interesting
+    pass
+
+# run a test and time how long it takes
+def test(n_repeats):
+    # repeat many times
+    for i in range(n_repeats):
+        # create the process
+        process = Process(target=task)
+        # start the process
+        process.start()
+        # wait for the process to complete
+        process.join()
+
+# entry point
+if __name__ == '__main__':
+    # set the start method
+    set_start_method('spawn')
+    # record the start time
+    time_start = time()
+    # perform the test
+    n_repeats = 1000
+    test(n_repeats)
+    # record the end time
+    time_end = time()
+    # report the total time
+    duration = time_end - time_start
+    print(f'Total Time {duration:.3} seconds')
+    # report estimated time per process
+    per_process = duration / n_repeats
+    print(f'About {per_process:.3} seconds per process')
+</code></pre>
+<p>Running the example first sets the start method to 'spawn'.</p>
+<p>It then records the start time and executes the test() function that spawns a new process 1,000 times.</p>
+<p>The end time is recorded and the total time in seconds is reported. Because we know the number of processes created, we can also estimate how long each process takes to create.</p>
+<p>In this case, the experiment took about 42.3 seconds to spawn 1,000 processes, which was about 42.3 milliseconds per process.</p>
+<pre><code>Total Time 42.3 seconds
+About 0.0423 seconds per process</code></pre>
+<p>Next, let's perform the same experiment by forking child processes from the main process.</p>
+<h2>Benchmark Fork Start Method</h2>
+<p>We can explore the benchmark speed of starting processes using the fork start method.</p>
+<p>In this example, we will update the previous example in one small way. We will change the start method from "<strong>spawn</strong>" to "<strong>fork</strong>".</p>
+<pre><code>...
+# set the start method
+set_start_method('fork')</code></pre>
+<p>Note, the fork start method is not supported on windows.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# create many processes using the fork start method
+from time import time
+from multiprocessing import Process
+from multiprocessing import set_start_method
+
+# task to run in a new process
+def task():
+    # do nothing interesting
+    pass
+
+# run a test and time how long it takes
+def test(n_repeats):
+    # repeat many times
+    for i in range(n_repeats):
+        # create the process
+        process = Process(target=task)
+        # start the process
+        process.start()
+        # wait for the process to complete
+        process.join()
+
+# entry point
+if __name__ == '__main__':
+    # set the start method
+    set_start_method('fork')
+    # record the start time
+    time_start = time()
+    # perform the test
+    n_repeats = 1000
+    test(n_repeats)
+    # record the end time
+    time_end = time()
+    # report the total time
+    duration = time_end - time_start
+    print(f'Total Time {duration:.3} seconds')
+    # report estimated time per process
+    per_process = duration / n_repeats
+    print(f'About {per_process:.3} seconds per process')
+</code></pre>
+<p>Running the example first sets the start method to 'fork'.</p>
+<p>It then records the start time and executes the test() function that spawns a new process 1,000 times.</p>
+<p>The end time is recorded and the total time in seconds is reported. Because we know the number of processes created, we can also estimate how long each process takes to create.</p>
+<p>In this case, the experiment took about 2.07 seconds to fork 1,000 processes from the main process, which was about 2.07 milliseconds per process.</p>
+<pre><code>Total Time 2.07 seconds
+About 0.00207 seconds per process</code></pre>
+<p>Next, let's compare the speed of the two start methods.</p>
+<h2>Comparison of Fork vs Spawn Start Methods</h2>
+<p>Forking a process is faster than spawning a process.</p>
+<p>It is not just a little bit faster, but orders of magnitude faster.</p>
+<p>Specifically, spawning 1,000 processes took about 42.3 seconds, whereas forking the same number of processes took about 2.07 seconds.</p>
+<p><strong>That is a difference of about 40.230 seconds or 20.43x faster.</strong></p>
+<p>On the individual process level (on my system), spawning took about 0.0423 seconds per process whereas forking took about 0.00207 seconds per process.</p>
+<p>That is a difference of about 0.040 seconds or 40 milliseconds per process started, again a difference of about 20.43x.</p>
+<p>This highlights that if you are starting many processes in your application and you are on a POSIX-based operating system, you should strongly consider configuring your program to use the 'fork' start method.</p>
+<p>Fork is no longer the default start method on macOS because of some edge-case problems. If those problems are not expected, e.g. most applications, consider or at least unit test using the fork start method.</p>
+<blockquote>
+<p>Changed in version 3.8: On macOS, the spawn start method is now the default. The fork start method should be considered unsafe as it can lead to crashes of the subprocess.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For more on these edge cases, see:</p>
+<ul>
+<li><a href="https://github.com/python/cpython/issues/77906">Python crashes on macOS after fork with no exec</a></li>
+</ul>
+<p>In practice, if many processes are required in your application, you should probably consider re-using processes, such as via a process pool.</p>
+<p>Two process pools built-in to the Python standard library include:</p>
+<ul>
+<li><strong><a href="../multiprocessing-pool-python/">multiprocessing.Pool</a></strong>.</li>
+<li><strong><a href="../processpoolexecutor-in-python/">concurrent.futures.ProcessPoolExecutor</a></strong>.</li>
+</ul>
+<p>To learn more about the differences between these two process pools, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-vs-processpoolexecutor/">Multiprocessing Pool vs ProcessPoolExecutor in Python</a></li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know the speed differences between fork and spawn start methods.</p>
+</main>
+</body>
+</html>

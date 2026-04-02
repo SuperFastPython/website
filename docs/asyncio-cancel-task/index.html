@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Cancel an Asyncio Task – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Cancel an Asyncio Task</h1>
+<div class="post-meta">November 11, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>Asynchronous tasks run independently in the asyncio event loop.</p>
+<p>We may <strong>need to stop or cancel a task</strong> from executing after it has started. This may be for many reasons, such as we no longer require the result, to the running task may negatively impact the program.</p>
+<p>In this tutorial, you will discover <strong>how to cancel asyncio tasks</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>How to request that a task cancel.</li>
+<li>What happens when a task is cancelled and the conditions under which a cancelled task may not stop.</li>
+<li>How a message can be provided to a cancelled task.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is an Asyncio Task</h2>
+<p>An asyncio <strong>Task</strong> is an object that schedules and independently runs an asyncio coroutine.</p>
+<p>It provides a handle on a scheduled coroutine that an asyncio program can query and use to interact with the coroutine.</p>
+<blockquote>
+<p>A Task is an object that manages an independently running coroutine.</p>
+<cite>-- <a href="https://peps.python.org/pep-3156/">PEP 3156 – Asynchronous IO Support Rebooted: the "asyncio" Module</a></cite></blockquote>
+<p>An asyncio task is represented via an instance of the <a href="https://docs.python.org/3/library/asyncio-task.html#task-object"><strong>asyncio.Task</strong> class</a>.</p>
+<p>A task is created from a coroutine. It requires a coroutine object, wraps the coroutine, schedules it for execution, and provides ways to interact with it.</p>
+<p>A task is executed independently. This means it is scheduled in the asyncio event loop and will execute regardless of what else happens in the coroutine that created it. This is different from executing a coroutine directly, where the caller must wait for it to complete.</p>
+<blockquote>
+<p>Tasks are used to schedule coroutines concurrently. When a coroutine is wrapped into a Task with functions like asyncio.create_task() the coroutine is automatically scheduled to run soon</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>We can create a task using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task"><strong>asyncio.create_task()</strong> function</a>.</p>
+<p>This function takes a coroutine instance and an optional name for the task and returns an asyncio.Task instance.</p>
+<blockquote>
+<p>Wrap the coro coroutine into a Task and schedule its execution. Return the Task object.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# create and schedule a task
+task = asyncio.create_task(coro)</code></pre>
+<p>You can learn more about asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task/">What is an Asyncio Task</a></li>
+</ul>
+<p>Now that we know about asyncio tasks, let's look at how we might cancel a task.</p>
+<h2>How to Cancel a Task</h2>
+<p>We can cancel a scheduled task via the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.Task.cancel"><strong>cancel()</strong> method</a>.</p>
+<p>The cancel method returns True if the task was canceled, or False otherwise.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel the task
+was_cancelled = task.cancel()</code></pre>
+<p>If the task is already done, it cannot be canceled and the <strong>cancel()</strong> method will return <strong>False</strong> and the task will not have the status of canceled.</p>
+<p>The next time the task is given an opportunity to run, it will raise a <strong>CancelledError</strong> exception.</p>
+<p>If the <strong>CancelledError</strong> exception is not handled within the wrapped coroutine, the task will be canceled.</p>
+<p>Otherwise, if the <strong>CancelledError</strong> exception is handled within the wrapped coroutine, the task will not be canceled.</p>
+<p>The <strong>cancel()</strong> method can also take a message argument which will be used in the content of the <strong>CancelledError</strong>.</p>
+<p>Now that we know how to cancel a task, let's look at some worked examples.</p>
+<h2>Example of Canceling a Running Task</h2>
+<p>We can explore how to cancel a running task.</p>
+<p>In this example, we define a task coroutine that reports a message and then blocks for a moment.</p>
+<p>We then define the main coroutine that is used as the entry point into the asyncio program. It reports a message, creates and schedules the task, then waits a moment.</p>
+<p>The main coroutine then resumes and cancels the task while it is running. It waits a moment more to allow the task to respond to the request to cancel. The main coroutine then reports whether the request to cancel the task was successful.</p>
+<p>The task is canceled and is then done.</p>
+<p>The main coroutine then reports whether the status of the task is canceled before closing the program.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a running task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # cancel the task
+    was_cancelled = task.cancel()
+    # report whether the cancel request was successful
+    print(f'was canceled: {was_cancelled}')
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # check the status of the task
+    print(f'canceled: {task.cancelled()}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and awaits a moment to allow the task coroutine to begin running.</p>
+<p>The task runs, reports a message and sleeps for a while.</p>
+<p>The <strong>main()</strong> coroutine resumes and cancels the task. It reports that the request to cancel the task was successful.</p>
+<p>It then sleeps for a moment to allow the task to respond to the request to be canceled.</p>
+<p>The <strong>task_coroutine()</strong> resumes and a <strong>CancelledError</strong> exception is raised that causes the task to fail and be done.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports whether the task has the status of canceled. In this case, it does.</p>
+<p>This example highlights the normal case of canceling a running task.</p>
+<pre><code>main coroutine started
+executing the task
+was canceled: True
+canceled: True
+main coroutine done</code></pre>
+<p>Next, let's take a look at how we might cancel a scheduled task.</p>
+<h2>Example of Canceling a Scheduled Task</h2>
+<p>A scheduled task is a task that has been created and scheduled in the event loop but has not yet had an opportunity to run.</p>
+<p>That is, the task is not yet "<em>running</em>".</p>
+<p>A scheduled task can be canceled in the same manner as a running task.</p>
+<p>If a scheduled task is canceled, it will raise a <strong>CancelledError</strong> exception when it is given an opportunity to run.</p>
+<p>The example below updates the previous example so that the scheduled task is canceled before it has an opportunity to run.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a scheduled task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # cancel the task before it has had a chance to run
+    was_cancelled = task.cancel()
+    # report whether the cancel request was successful
+    print(f'was canceled: {was_cancelled}')
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # check the status of the task
+    print(f'canceled: {task.cancelled()}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>The <strong>main()</strong> coroutine then cancels the task before it has had an opportunity to execute. It reports that the request to cancel the task was successful.</p>
+<p>The <strong>main()</strong> coroutine then sleeps for a moment to allow the task to respond to the request to be canceled.</p>
+<p>The <strong>task_coroutine()</strong> runs and a <strong>CancelledError</strong> exception is raised, which causes the task to fail and be done.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports whether the task has the status of canceled. In this case it does.</p>
+<p>This example highlights the normal case of canceling a running task.</p>
+<p>This highlights that both a scheduled task can be canceled in the same manner as a running task.</p>
+<pre><code>main coroutine started
+was canceled: True
+canceled: True
+main coroutine done</code></pre>
+<p>Next, let's take a look at canceling a done task.</p>
+<h2>Example of Canceling a Done Task</h2>
+<p>We cannot cancel a done task.</p>
+<p>If a task is not scheduled or running, it cannot be canceled.</p>
+<p>If we attempt to cancel a done task, the request will fail, meaning that the <strong>cancel()</strong> method will return False. If we check the status of the task, it will not be marked as canceled.</p>
+<p>We can explore this with a worked example.</p>
+<p>In the example below, a task is created and scheduled, then awaited until it is done. It is then canceled.</p>
+<p>The expectation is that a request to cancel the done task will fail and that the status of the task will not be set to canceled.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a done task
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    # report a message
+    print('executing the task')
+    # block for a moment
+    await asyncio.sleep(1)
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait for the task to be done
+    await task
+    # cancel the task
+    was_cancelled = task.cancel()
+    # report whether the cancel request was successful
+    print(f'was canceled: {was_cancelled}')
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # check the status of the task
+    print(f'canceled: {task.cancelled()}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine. It then awaits the task until it is done.</p>
+<p>The <strong>main()</strong> coroutine then attempts to cancel the task.</p>
+<p>The request fails. The <strong>cancel()</strong> method returns False, indicating the request failed and the value is reported.</p>
+<p>The <strong>main()</strong> coroutine then checks if the status of the task is canceled, which it is not.</p>
+<p>This highlights that we cannot cancel a done task nor change a successful task to done by calling the <strong>cancel()</strong> method.</p>
+<pre><code>main coroutine started
+executing the task
+was canceled: False
+canceled: False
+main coroutine done
+</code></pre>
+<p>Next, we will look at how to handle a request to be canceled within a task.</p>
+<h2>Example of a Task Handling the Request to Cancel</h2>
+<p>A task can handle a response to being canceled.</p>
+<p>This can be achieved by expecting and handling an <strong>asyncio.CancelledError</strong> exception.</p>
+<p>If a coroutine wrapped in a task handles the <strong>CancelledError</strong> then the task will not be canceled, may continue to run, and will not be marked with the canceled status meaning the <strong>cancelled()</strong> method will return <strong>False</strong>.</p>
+<p>This means that although the <strong>cancel()</strong> method may return <strong>True</strong> indicating that the task will be canceled, it does not mean that that will be canceled, only that the task has the potential to be canceled.</p>
+<p>The example below gives an example of canceling a task while it is running and the task handling the request for canceling by reporting a message.</p>
+<pre><code># SuperFastPython.com
+# example of a task handling the request to be canceled
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    try:
+        # report a message
+        print('executing the task')
+        # block for a moment
+        await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        print('Received a request to cancel')
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # cancel the task
+    was_cancelled = task.cancel()
+    # report whether the cancel request was successful
+    print(f'was canceled: {was_cancelled}')
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # check the status of the task
+    print(f'canceled: {task.cancelled()}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and waits a moment to allow the task coroutine to begin running.</p>
+<p>The task runs, reports a message, and sleeps for a while.</p>
+<p>The <strong>main()</strong> coroutine resumes and cancels the task. It reports that the request to cancel the task was successful.</p>
+<p>It then sleeps for a moment to allow the task to respond to the request to be canceled.</p>
+<p>The <strong>task_coroutine()</strong> resumes and a <strong>CancelledError</strong> exception is raised. The task catches the exception and reports a message. It could then continue running. In this case, there are no further operations to perform</p>
+<p>The <strong>main()</strong> coroutine resumes and reports whether the task has the status of canceled.</p>
+<p>In this case, the task is not marked as canceled. This is because the <strong>CancelledError</strong> exception did not unravel the coroutine, instead, it was caught and handled.</p>
+<p>This example highlights that the <strong>cancel()</strong> method only requests a task cancel, it does not ensure that it will be canceled.</p>
+<pre><code>main coroutine started
+executing the task
+was canceled: True
+Received a request to cancel
+canceled: False
+main coroutine done</code></pre>
+<p>Next, we will look at how to pass a message to a task when requesting it to cancel.</p>
+<h2>Example of a Canceling a Task With a Message</h2>
+<p>The <strong>cancel()</strong> method allows a message to be passed to the task that is being canceled.</p>
+<p>This allows the caller to interact with the callee. For example, the string message could provide some indication of why the task must be canceled. The callee could catch the <strong>CancelledError</strong> exception and decide whether to cancel or not based on that information.</p>
+<p>We can explore how to send a cancel message to a task via the <strong>cancel()</strong> method.</p>
+<p>The example below updates the above example where the task handles the request to cancel and does not cancel. In this case, it reports the message that was passed by the caller.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a running task with a message
+import asyncio
+
+# define a coroutine for a task
+async def task_coroutine():
+    try:
+        # report a message
+        print('executing the task')
+        # block for a moment
+        await asyncio.sleep(1)
+    except asyncio.CancelledError as e:
+        print(f'received request to cancel with: {e}')
+
+# custom coroutine
+async def main():
+    # report a message
+    print('main coroutine started')
+    # create and schedule the task
+    task = asyncio.create_task(task_coroutine())
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # cancel the task
+    was_cancelled = task.cancel('Stop Right Now')
+    # report whether the cancel request was successful
+    print(f'was canceled: {was_cancelled}')
+    # wait a moment
+    await asyncio.sleep(0.1)
+    # check the status of the task
+    print(f'canceled: {task.cancelled()}')
+    # report a final message
+    print('main coroutine done')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example starts the asyncio event loop and executes the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine reports a message, then creates and schedules the task coroutine.</p>
+<p>It then suspends and waits a moment to allow the task coroutine to begin running.</p>
+<p>The task runs, reports a message, and sleeps for a while.</p>
+<p>The <strong>main()</strong> coroutine resumes and cancels the task and passes it a unique message. It reports that the request to cancel the task was successful.</p>
+<p>It then sleeps for a moment to allow the task to respond to the request to be canceled.</p>
+<p>The <strong>task_coroutine()</strong> resumes and a <strong>CancelledError</strong> exception is raised. The task catches the exception and reports the exception. This includes the specific message provided by the caller in the request to cancel.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports whether the task has the status of canceled.</p>
+<p>In this case, the task is not marked as canceled. This is because the <strong>CancelledError</strong> exception did not unravel the coroutine, instead, it was caught and handled.</p>
+<p>This example highlights that the <strong>cancel()</strong> method only requests a task cancel, it does not ensure that it will be canceled.</p>
+<pre><code>main coroutine started
+executing the task
+was canceled: True
+received request to cancel with: Stop Right Now
+canceled: False
+main coroutine done
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to cancel asyncio tasks in Python.</p>
+</main>
+</body>
+</html>

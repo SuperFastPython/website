@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interrupt the Main Thread in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Interrupt the Main Thread in Python</h1>
+<div class="post-meta">May 3, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can <strong>interrupt the main thread</strong> via the <strong>_thread.interrupt_main()</strong> function.</p>
+<p>In this tutorial you will discover how to <strong>interrupt the main thread</strong> from another thread in Python.</p>
+<p>Let's get started.</p>
+<h2>Need to Interrupt Main Thread</h2>
+<p>A thread is a <strong>thread of execution</strong> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming, we may need to interrupt the main thread from another thread.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>A major change to the program or external system.</li><li>A request from a user or another system.</li><li>A resource is no longer valid or available.</li></ul>
+<p>How can we interrupt the main thread from another thread?</p>
+<h2>How to Interrupt the Main Thread</h2>
+<p>The main thread can be interrupted via the <a href="https://docs.python.org/3/library/_thread.html#thread.interrupt_main"><strong>_thread.interrupt_main()</strong> function</a>.</p>
+<blockquote><p>Simulate the effect of a signal arriving in the main thread.</p><cite>-- <a href="https://docs.python.org/3/library/_thread.html">_thread — Low-level threading API</a></cite></blockquote>
+<p>This function can be called from another thread which will by default raise a <strong><a href="https://docs.python.org/3/library/signal.html#signal.SIGINT">signal.SIGINT</a></strong> (interruption signal) that will be sent to the main thread. This is the signal sent when the user presses Ctrl-C on the command prompt.</p>
+<p>For example:</p>
+<pre><code>...
+# interrupt the main thread
+_thread.interrupt_main()</code></pre>
+<p>On Python v3.10 and above, the signal number can be specified as an argument to the <strong>_thread.interrupt_main()</strong> function.</p>
+<blockquote><p>If given, signum is the number of the signal to simulate. If signum is not given, signal.SIGINT is simulated.</p><cite>-- <a href="https://docs.python.org/3/library/_thread.html">_thread — Low-level threading API</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# interrupt the main thread
+_thread.interrupt_main(signum=signal.SIGKILL)</code></pre>
+<p>If the SIGINT is not handled in the main thread, it will unravel and terminate the main thread. If there are no other threads running, the process will terminate.</p>
+<p>The SIGINT can be handled by the main thread.</p>
+<p>One approach is to use a try-except block and catch a <a href="https://docs.python.org/3/library/exceptions.html#KeyboardInterrupt"><strong>KeyboardInterrupt</strong> exception</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# except a sigint
+try:
+	...
+except KeyboardInterrupt:
+	# handle sigint
+	...
+</code></pre>
+<p>An alternate approach is for the main thread to register a handler function for the <strong>signal.SIGINT</strong>.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/signal.html#signal.signal"><strong>signal.signal()</strong> function</a> and specifying the signal number to handle and the function to handle it.</p>
+<p>For example:</p>
+<pre><code># handle single
+def handle_sigint(signalnum, handler):
+	# ...
+
+...
+# handle sigint
+signal(SIGINT, handle_sigint)
+</code></pre>
+<p>The interruption from the other thread may not have an immediate effect.</p>
+<p>This is because the interruption is handled by the Python interpreter itself.</p>
+<blockquote><p>A thread can use this function to interrupt the main thread, though there is no guarantee that the interruption will happen immediately.</p><cite>-- <a href="https://docs.python.org/3/library/_thread.html">_thread — Low-level threading API</a></cite></blockquote>
+<p>As such, if the main thread is blocked, the signal will not be received and processed by the main thread until after it stops blocking.</p>
+<p>Some examples of blocking calls the main thread may be performing that will delay the processing of the interrupt include:</p>
+<ul><li>Sleeping, e.g. a call to time.sleep()</li><li>IO, e.g. reading or writing to file or socket.</li><li>Waiting, e.g. attempting to acquire a lock, semaphore or similar concurrency primitive.</li></ul>
+<p>You can learn more about blocking calls in this tutorial:</p>
+<ul><li><a href="../thread-blocking-call-in-python/">Thread Blocking Call in Python</a></li></ul>
+<p>Now that we know how to interrupt the main thread, let's look at some worked examples.</p>
+<h2>Interrupt Main Thread and Handle With Exception</h2>
+<p>We can explore how to interrupt the main thread and handle the interrupt with a try-except pattern.</p>
+<p>In this example we will create a new thread that will block for a while to simulate doing work, then interrupt the main thread. The main thread will start the new thread, then sleep in a loop to simulate work. When interrupted, the main thread will handle the interrupt with a try-except block and will then terminate.</p>
+<p>First, we can define a function to execute in a new thread.</p>
+<p>The function will block for a moment by calling the <a href="https://docs.python.org/3/library/time.html#time.sleep"><strong>time.sleep()</strong> function</a> for three seconds. It will then report a message that it is interrupting the main thread, then calls the <strong>_thread.interrupt_main()</strong> function.</p>
+<p>The task() function below implements this.</p>
+<pre><code># task executed in a new thread
+def task():
+    # block for a moment
+    sleep(3)
+    # interrupt the main thread
+    print('Interrupting main thread now')
+    interrupt_main()
+</code></pre>
+<p>Next, in the main thread we will create a new <strong>threading.Thread</strong> instance and configure it to execute the <strong>task()</strong> function. The thread can then be started by calling the <strong>start()</strong> function.</p>
+<pre><code>...
+# start the new thread
+thread = Thread(target=task)
+thread.start()</code></pre>
+<p>We can then accept the SIGINT signal for being interrupted and use a try-except pattern to catch a raised <strong><a href="https://docs.python.org/3/library/exceptions.html#KeyboardInterrupt">KeyboardInterrupt</a></strong>.</p>
+<p>In the body of the try-except will block forever to simulate work, printing a message and sleeping for half a second each iteration.</p>
+<p>The <strong>KeyboardInterrupt</strong> is handled by printing a message and terminating the thread with a call to the <a href="https://docs.python.org/3/library/sys.html#sys.exit"><strong>sys.exit()</strong> function</a>.</p>
+<pre><code>...
+# handle being interrupted
+try:
+    # wait around
+    while True:
+        print('Main thread waiting...')
+        sleep(0.5)
+except KeyboardInterrupt:
+    # terminate main thread
+    print('Main interrupted! Exiting.')
+    sys.exit()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of interrupting the main thread and handle with try-except
+from time import sleep
+from threading import Thread
+from _thread import interrupt_main
+import sys
+
+# task executed in a new thread
+def task():
+    # block for a moment
+    sleep(3)
+    # interrupt the main thread
+    print('Interrupting main thread now')
+    interrupt_main()
+
+# start the new thread
+thread = Thread(target=task)
+thread.start()
+# handle being interrupted
+try:
+    # wait around
+    while True:
+        print('Main thread waiting...')
+        sleep(0.5)
+except KeyboardInterrupt:
+    # terminate main thread
+    print('Main interrupted! Exiting.')
+    sys.exit()
+</code></pre>
+<p>Running the example first creates and starts the new thread.</p>
+<p>The main thread then loops, blocking for half a second at a time and reporting a message each iteration.</p>
+<p>The new thread starts, blocking for three seconds. It then sends a SIGINT to the main thread and terminates.</p>
+<p>The main thread receives the SIGINT signal which raises a <strong>KeyboardInterrupt</strong></p>
+<p>The KeyboardInterrupt is handled by reporting a message and exiting the main thread, which in turn terminates the program.</p>
+<p>This demonstrates how a new thread can interrupt the main thread and how the main thread might expect and handle the interruption with a try-except pattern.</p>
+<pre><code>Main thread waiting...
+Main thread waiting...
+Main thread waiting...
+Main thread waiting...
+Main thread waiting...
+Main thread waiting...
+Interrupting main thread now
+Main interrupted! Exiting.</code></pre>
+<p>Next, let's look at how the main thread might handle an interruption using a signal handler.</p>
+<h2>Interrupt Main Thread and Handle With Signal Handler</h2>
+<p>We can explore how the main thread can handle an expected interruption using a signal handler.</p>
+<p>This can be achieved by defining a new function to handle the interruption and registering this function to be called to handle the SIGINT when it occurs.</p>
+<p>The example in the previous section can be updated to demonstrate this approach.</p>
+<p>First, we must define a new function to handle the SIGINT. This function must take the signal number and the current stack frame as arguments.</p>
+<p>In this case we can handle the signal by reporting a message and terminating the thread.</p>
+<p>The <strong>handle_sigint()</strong> function below implements this.</p>
+<pre><code># handle single
+def handle_sigint(signalnum, frame):
+    # terminate
+    print('Main interrupted! Exiting.')
+    sys.exit()
+</code></pre>
+<p>Next, in the main thread, we can register our function to handle the SIGINT via the <a href="https://docs.python.org/3/library/signal.html#signal.signal"><strong>signal.signal()</strong> function</a>.</p>
+<pre><code>...
+# register the signal handler for this process
+signal(SIGINT, handle_sigint)</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of interrupting the main thread and handle with signal handler
+from time import sleep
+from threading import Thread
+from _thread import interrupt_main
+from signal import signal
+from signal import SIGINT
+import sys
+
+# handle single
+def handle_sigint(signalnum, frame):
+    # terminate
+    print('Main interrupted! Exiting.')
+    sys.exit()
+
+# task executed in a new thread
+def task():
+    # block for a moment
+    sleep(3)
+    # interrupt the main thread
+    print('Interrupting main thread now')
+    interrupt_main()
+
+# register the signal handler for this process
+signal(SIGINT, handle_sigint)
+# start the new thread
+thread = Thread(target=task)
+thread.start()
+# wait around
+while True:
+    print('Main thread waiting...')
+    sleep(0.5)
+</code></pre>
+<p>Running the example first creates and starts the new thread.</p>
+<p>The main thread then loops, blocking for half a second at a time and reporting a message each iteration.</p>
+<p>The new thread starts, blocking for three seconds. It then sends a SIGINT to the main thread and terminates.</p>
+<p>The main thread receives the SIGINT signal which is handled by our custom signal handler function. The function responds by reporting a message and exiting the main thread, which in turn terminates the program.</p>
+<p>This demonstrates how a new thread can interrupt the main thread and how the main thread might expect and handle the interruption with a registered signal handler.</p>
+<pre><code>Main thread waiting...
+Main thread waiting...
+Main thread waiting...
+Main thread waiting...
+Main thread waiting...
+Main thread waiting...
+Interrupting main thread now
+Main interrupted! Exiting.</code></pre>
+<p>Next, let's look at an example where the interruption to the main thread is delayed.</p>
+<h2>Example of Delayed Interruption of Main Thread</h2>
+<p>We can explore how an interruption of the main thread may be delayed.</p>
+<p>This can occur if the main thread is blocked, such as in a call to sleep, by performing a blocking IO call, or by waiting on a concurrency primitive.</p>
+<p>In this example we will have the main thread block for an extended period by calling the sleep function. The main thread will be interrupted in the middle of this sleep, but will not respond until after the blocking call has finished.</p>
+<p>This can be achieved by updating the first example above that handles the interruption using the try-except block.</p>
+<p>We can update the main thread so that instead of looping forever and sleeping for a fraction of a second, that instead, there is no loop and a single call to the <strong>time.sleep()</strong> function for seven seconds.</p>
+<pre><code>...
+# handle being interrupted
+try:
+    # block for a long time
+    print('Main thread waiting...')
+    sleep(7)
+except KeyboardInterrupt:
+    # terminate main thread
+    print('Main interrupted! Exiting.')
+    sys.exit()
+</code></pre>
+<p>That's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of main thread cannot be interrupting while sleeping
+from time import sleep
+from threading import Thread
+from _thread import interrupt_main
+import sys
+
+# task executed in a new thread
+def task():
+    # block for a moment
+    sleep(3)
+    # interrupt the main thread
+    print('Interrupting main thread now')
+    interrupt_main()
+
+# start the new thread
+thread = Thread(target=task)
+thread.start()
+# handle being interrupted
+try:
+    # block for a long time
+    print('Main thread waiting...')
+    sleep(7)
+except KeyboardInterrupt:
+    # terminate main thread
+    print('Main interrupted! Exiting.')
+    sys.exit()
+</code></pre>
+<p>Running the example first creates and starts the new thread.</p>
+<p>The main thread then reports a message and blocks for an extended period.</p>
+<p>The new thread starts, blocking for three seconds. It then sends a SIGINT to the main thread and terminates.</p>
+<p>The main thread is still blocking and continues to block until the <strong>sleep() </strong>function returns.</p>
+<p>The SIGINT signal is then received which raises a <strong>KeyboardInterrupt</strong> The <strong>KeyboardInterrupt</strong> is handled by reporting a message and exiting the main thread, which in turn terminates the program.</p>
+<p>This demonstrates how a new thread can interrupt the main thread and how the main thread will not respond immediately if it is occupied with a blocking function call.</p>
+<pre><code>Main thread waiting...
+Interrupting main thread now
+Main interrupted! Exiting.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to interrupt the main thread in Python.</p>
+</main>
+</body>
+</html>

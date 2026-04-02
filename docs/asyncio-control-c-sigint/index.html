@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Handle Control-C (SIGINT) – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Handle Control-C (SIGINT)</h1>
+<div class="post-meta">April 16, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>The "<strong>Signal Interrupt</strong>" or <strong>SIGINT</strong> signal is raised in a program when the user presses Ctrl-C.</p>
+<p>This has the effect of interrupting and often terminating a Python program.</p>
+<p>The SIGINT signal can be used to terminate asyncio programs as well, and we can use a custom signal handler function to perform cleanup activities before the asyncio program is closed.</p>
+<p>In this tutorial, you will discover how <strong>asyncio programs can handle Control-C</strong> or SIGINT signals.</p>
+<p>Let's get started.</p>
+<h2>What is Control-C (SIGINT)</h2>
+<p>Control-C, or "Signal Interrupt" (<strong>SIGINT</strong> for short) in Unix-based systems, is a commonly used method to interrupt or terminate the execution of a program.</p>
+<p>When we press Control-C in a terminal or send a SIGINT signal to a running process, it triggers an interrupt request, signaling to the program that it should stop its current execution.</p>
+<blockquote>
+<p>The SIGINT signal is sent to a process by its controlling terminal when a user wishes to interrupt the process. This is typically initiated by pressing Ctrl+C ...</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Signal_(IPC)">Signal (IPC)</a></cite></blockquote>
+<p>In Python, when a program is running, it generally executes in a single thread. If a user sends a Control-C signal, the Python interpreter catches this signal and raises a KeyboardInterrupt exception.</p>
+<p>This exception is designed to gracefully handle the interruption and allows the program to perform necessary cleanup actions before exiting.</p>
+<p>In regular Python, we can handle this exception by using try and except blocks to catch the KeyboardInterrupt exception, enabling us to execute specific code when the program receives a SIGINT signal.</p>
+<p>This approach allows the program to handle the interruption gracefully, such as closing open files, releasing resources, or performing any cleanup required before terminating the program.</p>
+<p><strong>How can we handle a Control-C or SIGINT in asyncio programs?</strong></p>
+<h2>What Happens in Asyncio When Control-C (SIGINT) is Received</h2>
+<p>Pressing Control-C while an asyncio program will send the SIGINT signal to the process.</p>
+<p>By default, the SIGINT process will terminate the asyncio program, and this capability was introduced in Python version 3.11.</p>
+<p>It does this by calling the <strong>cancel()</strong> method on the main task.</p>
+<p>This raises a <strong>CancelledError</strong> in the main task if it is suspended.</p>
+<p>When the main task exits, all other running tasks are canceled. This is a normal behavior of the main task.</p>
+<blockquote>
+<p>When signal.SIGINT is raised by Ctrl-C, the custom signal handler cancels the main task by calling asyncio.Task.cancel() which raises asyncio.CancelledError inside the main task. This causes the Python stack to unwind, try/except and try/finally blocks can be used for resource cleanup.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-runner.html">Asyncio Runners, Asyncio API Documentation</a></cite></blockquote>
+<p>You can learn more about the special properties of the main task or "<strong>main coroutine</strong>" in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-main-coroutine/">What is the Main Coroutine</a></li>
+</ul>
+<p>If the main task is not suspended and does not suspend after the SIGINT was sent to the process, then the main task will not be canceled and instead will run until completion, after which a <strong>KeyboardInterrupt</strong> will be raised.</p>
+<blockquote>
+<p>After the main task is cancelled, asyncio.Runner.run() raises KeyboardInterrupt.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-runner.html">Asyncio Runners, Asyncio API Documentation</a></cite></blockquote>
+<p>Raising a KeyboardInterrupt exception in the main thread is the default behavior for a regular Python program, and provides a fallback if the asyncio program does not respond to the SIGINT.</p>
+<blockquote>
+<p>When signal.SIGINT is raised by Ctrl-C, KeyboardInterrupt exception is raised in the main thread by default.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-runner.html">Asyncio Runners, Asyncio API Documentation</a></cite></blockquote>
+<p>Now that we know the default behavior of SIGINT in asyncio programs, let's look at adding a custom handler.</p>
+<h2>How to Handle Control-C (SIGINT)</h2>
+<p>We can add a custom handler for SIGINT in our asyncio programs.</p>
+<p>This capability was introduced in Python 3.11 and is only supported on Unix-based platforms (e.g. Linux and macOS, not Windows).</p>
+<p>This can be achieved by defining a regular Python function to call when a SIGINT is received by the asyncio program, registering our function as a handler at the beginning of our asyncio program.</p>
+<p>The handler function does not take any arguments by default.</p>
+<p>For example:</p>
+<pre><code># custom signal handler
+def signal_handler():
+	# ...
+</code></pre>
+<p>We can then register it to handle SIGINT signals by first getting access to the asyncio event loop and then calling the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.add_signal_handler"><strong>add_signal_handler()</strong> method</a> and specifying the signal type to handle and the function to call.</p>
+<p>For example:</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# add a custom signal handler
+loop.add_signal_handler(signal.SIGINT, signal_handler)</code></pre>
+<p>We could then perform some custom actions in our handler, such as logging or reporting the request to shut down, close resources, like socket servers, and cancel running tasks.</p>
+<p>For example, we might cancel all running tasks as follows:</p>
+<pre><code># custom signal handler
+def signal_handler():
+    # cancel all tasks
+    for task in asyncio.all_tasks():
+        task.cancel()
+</code></pre>
+<p>Because the handler is a regular Python function, we cannot directly await coroutines or tasks.</p>
+<p>Now that we know how to handle SIGINT in our asyncio programs, let's look at some worked examples.</p>
+<h2>Example of Control-C (SIGINT) in Asyncio</h2>
+<p>We can explore the default behavior of raising a SIGINT signal in an asyncio program.</p>
+<p>In this case, we will define a task that reports a message and sleeps for a long duration. The main coroutine will run this task in the background, then raise a SIGINT signal and wait for it to take effect. We will use try-except blocks to handle exceptions in order to see what exceptions are raised in each task, if at all.</p>
+<p>Firstly, we can define the background task that sleeps for an extended duration.</p>
+<pre><code># coroutine to perform some work
+async def work():
+    try:
+        # report a message
+        print('Work is starting...')
+        # suspend a while
+        await asyncio.sleep(10)
+        # report a message
+        print('Work is done')
+    except asyncio.CancelledError as e:
+        print('work() cancelled')
+    except Exception as e:
+        print(f'work() got: {e}')
+</code></pre>
+<p>Next, we can define the <strong>main()</strong> coroutine.</p>
+<p>Firstly we can create and schedule our <strong>work()</strong> coroutine as a background task, then suspend a moment to allow it to run.</p>
+<pre><code>...
+# create and schedule the event
+task = asyncio.create_task(work())
+# wait a moment
+await asyncio.sleep(2)</code></pre>
+<p>Next, we can raise a signal in the process, then sleep a moment to allow the main coroutine/task to respond to it.</p>
+<p>We can raise a signal within our program via the <strong><a href="https://docs.python.org/3/library/signal.html#signal.raise_signal">signal.raise_signal()</a></strong> and pass it the details of the signal to raise, such as <strong><a href="https://docs.python.org/3/library/signal.html#signal.signal">signal.SIGINT</a></strong>.</p>
+<pre><code>...
+# report progress
+print('Sending SIGINT')
+# raise a sigint in the current process
+signal.raise_signal(signal.SIGINT)
+# wait a moment
+await asyncio.sleep(2)</code></pre>
+<p>Tying this together, the complete <strong>main()</strong> coroutine is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    try:
+        # create and schedule the event
+        task = asyncio.create_task(work())
+        # wait a moment
+        await asyncio.sleep(2)
+        # report progress
+        print('Sending SIGINT')
+        # raise a sigint in the current process
+        signal.raise_signal(signal.SIGINT)
+        # wait a moment
+        await asyncio.sleep(2)
+        # report a final message
+        print('Main is done')
+    except asyncio.CancelledError as e:
+        print('main() cancelled')
+    except Exception as e:
+        print(f'main() got: {e}')
+</code></pre>
+<p>We can then start the event loop and run the <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of default SIGINT handling
+import signal
+import asyncio
+
+# coroutine to perform some work
+async def work():
+    try:
+        # report a message
+        print('Work is starting...')
+        # suspend a while
+        await asyncio.sleep(10)
+        # report a message
+        print('Work is done')
+    except asyncio.CancelledError as e:
+        print('work() cancelled')
+    except Exception as e:
+        print(f'work() got: {e}')
+
+# main coroutine
+async def main():
+    try:
+        # create and schedule the event
+        task = asyncio.create_task(work())
+        # wait a moment
+        await asyncio.sleep(2)
+        # report progress
+        print('Sending SIGINT')
+        # raise a sigint in the current process
+        signal.raise_signal(signal.SIGINT)
+        # wait a moment
+        await asyncio.sleep(2)
+        # report a final message
+        print('Main is done')
+    except asyncio.CancelledError as e:
+        print('main() cancelled')
+    except Exception as e:
+        print(f'main() got: {e}')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and starts the asyncio event loop to run it.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> coroutine and runs it as a background task. It then suspends a moment to allow the task to begin.</p>
+<p>The <strong>work()</strong> coroutine runs and reports a message, it then sleeps for an extended period.</p>
+<p>The <strong>main()</strong> coroutine results and raises a SIGINT in the current process that is running the asyncio event loop. It then suspends for a moment to allow the SIGINT to take effect.</p>
+<p>The SIGNAL is handled by the asyncio event loop and the <strong>main()</strong> coroutine is canceled. A message is reported confirming that the <strong>main()</strong> coroutine was canceled.</p>
+<p>Once the <strong>main()</strong> coroutine is canceled, the asyncio event loop then cancels all other running tasks, such as our <strong>work()</strong> task. This is the default behavior of the asyncio event loop when the main task exits. The <strong>work()</strong> task reports a message confirming it was canceled.</p>
+<p>A <strong>KeyboardInterrupt</strong> exception is not raised because the asyncio program handled the SIGINT and the main thread did not need to handle it.</p>
+<p>This highlights the default behavior when a SIGINT is raised in an asyncio program.</p>
+<pre><code>Work is starting...
+Sending SIGINT
+main() cancelled
+work() cancelled</code></pre>
+<p>Next, let's explore an example of a custom SIGINT handler in an asyncio program.</p>
+<h2>Example of Control-C (SIGINT) Customer Handler in Asyncio</h2>
+<p>We can explore an example of a custom SIGINT handler in our asyncio program.</p>
+<p>In this case, we can update the above example to define a custom SIGINT handler function, and to register it at the beginning of our program.</p>
+<p>In this case, we will handle the SIGINT by doing nothing, allowing the asyncio program to run until completion.</p>
+<p>Our custom signal handler function is listed below.</p>
+<pre><code># custom signal handler
+def signal_handler():
+    # report progress
+    print('Custom SIGINT handler running...')
+</code></pre>
+<p>We can then register this function to be called and handle the SIGINT at the beginning of our program,</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# add a custom signal handler
+loop.add_signal_handler(signal.SIGINT, signal_handler)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of custom SIGINT handling
+import signal
+import asyncio
+
+# custom signal handler
+def signal_handler():
+    # report progress
+    print('Custom SIGINT handler running...')
+
+# coroutine to perform some work
+async def work():
+    try:
+        # report a message
+        print('Work is starting...')
+        # suspend a while
+        await asyncio.sleep(10)
+        # report a message
+        print('Work is done')
+    except asyncio.CancelledError as e:
+        print('work() cancelled')
+    except Exception as e:
+        print(f'work() got: {e}')
+
+# main coroutine
+async def main():
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # add a custom signal handler
+    loop.add_signal_handler(signal.SIGINT, signal_handler)
+    try:
+        # create and schedule the event
+        task = asyncio.create_task(work())
+        # wait a moment
+        await asyncio.sleep(2)
+        # report progress
+        print('Sending SIGINT')
+        # raise a sigint in the current process
+        signal.raise_signal(signal.SIGINT)
+        # wait a moment
+        await asyncio.sleep(2)
+        # report a final message
+        print('Main is done')
+    except asyncio.CancelledError as e:
+        print('main() cancelled')
+    except Exception as e:
+        print(f'main() got: {e}')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and starts the asyncio event loop to run it.</p>
+<p>The <strong>main()</strong> coroutine runs and registers our <strong>signal_handler()</strong> function to handle any SIGINT signals that are raised.</p>
+<p>The <strong>main()</strong> coroutine then creates the <strong>work()</strong> coroutine and runs it as a background task. It then suspends for a moment to allow the task to begin.</p>
+<p>The <strong>work()</strong> coroutine runs and reports a message, it then sleeps for an extended period.</p>
+<p>The <strong>main()</strong> coroutine results and raises a SIGINT in the current process that is running the asyncio event loop. It then suspends for a moment to allow the SIGINT to take effect.</p>
+<p>The SIGNAL is handled by our custom <strong>signal_handler()</strong> function and reports a message.</p>
+<p>The asyncio program is not terminated.</p>
+<p>The <strong>main()</strong> coroutine resumes after its sleep, reports a final message, then terminates.</p>
+<p>When the <strong>main()</strong> coroutine terminates, the <strong>work()</strong> coroutine is canceled, the normal behavior when the main task exits.</p>
+<p>This highlights how we can use a custom handler function to handle SIGINT signals in our asyncio programs.</p>
+<pre><code>Work is starting...
+Sending SIGINT
+Custom SIGINT handler running...
+Main is done
+work() cancelled</code></pre>
+<p>Next, let's look at an example of the <strong>main()</strong> coroutine being too busy to handle a SIGINT signal.</p>
+<h2>Example of Control-C (SIGINT) Never Handled</h2>
+<p>We can explore an example where the <strong>main()</strong> coroutine is busy and never responds to a raised SIGINT.</p>
+<p>This will prevent the asyncio program from handling the signal, which will then be handled by the main thread and raise a KeyboardInterrupt.</p>
+<p>In this case, we can update the first example above so that the <strong>main()</strong> coroutine runs a loop that blocks the asyncio event loop.</p>
+<p>For example, we can achieve this with calls to the <strong>time.sleep()</strong> function, not the <strong>asyncio.sleep()</strong> function.</p>
+<pre><code>...
+# perform blocking task
+for i in range(5):
+    time.sleep(1)
+</code></pre>
+<p>The updated <strong>main()</strong> coroutine with this change is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    try:
+        # create and schedule the event
+        task = asyncio.create_task(work())
+        # wait a moment
+        await asyncio.sleep(2)
+        # report progress
+        print('Sending SIGINT')
+        # raise a sigint in the current process
+        signal.raise_signal(signal.SIGINT)
+        # perform blocking task
+        for i in range(5):
+            time.sleep(1)
+        # report a final message
+        print('Main is done')
+    except asyncio.CancelledError as e:
+        print('main() cancelled')
+    except Exception as e:
+        print(f'main() got: {e}')
+</code></pre>
+<p>This does not suspend the main coroutine and allows other coroutines to run. Instead, it blocks the asyncio event loop and prevents any other coroutines from running.</p>
+<p>As such, the main coroutine does not suspend after the SIGINT is raised and never handles it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of default SIGINT handling
+import signal
+import asyncio
+import time
+
+# coroutine to perform some work
+async def work():
+    try:
+        # report a message
+        print('Work is starting...')
+        # suspend a while
+        await asyncio.sleep(10)
+        # report a message
+        print('Work is done')
+    except asyncio.CancelledError as e:
+        print('work() cancelled')
+    except Exception as e:
+        print(f'work() got: {e}')
+
+# main coroutine
+async def main():
+    try:
+        # create and schedule the event
+        task = asyncio.create_task(work())
+        # wait a moment
+        await asyncio.sleep(2)
+        # report progress
+        print('Sending SIGINT')
+        # raise a sigint in the current process
+        signal.raise_signal(signal.SIGINT)
+        # perform blocking task
+        for i in range(5):
+            time.sleep(1)
+        # report a final message
+        print('Main is done')
+    except asyncio.CancelledError as e:
+        print('main() cancelled')
+    except Exception as e:
+        print(f'main() got: {e}')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and starts the asyncio event loop to run it.</p>
+<p>The <strong>main()</strong> coroutine runs and registers our <strong>signal_handler()</strong> function to handle any SIGINT signals that are raised.</p>
+<p>The <strong>main()</strong> coroutine then creates the <strong>work()</strong> coroutine and runs it as a background task. It then suspends for a moment to allow the task to begin.</p>
+<p>The <strong>work()</strong> coroutine runs and reports a message, it then sleeps for an extended period.</p>
+<p>The <strong>main()</strong> coroutine results and raises a SIGINT in the current process that is running the asyncio event loop.</p>
+<p>It then does not suspend and allows the event loop to handle the signal. Instead, it loops and executes a blocking call, then reports a final message and terminates.</p>
+<p>When the <strong>main()</strong> coroutine terminates, the <strong>work()</strong> coroutine is canceled, the normal behavior when the main task exits.</p>
+<p>Finally, the main thread of the program handles the SIGINT, and a KeyboardInterrupt is raised and not handled. This terminates the program.</p>
+<p>This highlights that the main coroutine in an asyncio program can be too busy to respond to a SIGINT, which is then handled by the main thread after the asyncio program terminates.</p>
+<pre><code>Work is starting...
+Sending SIGINT
+Main is done
+work() cancelled
+Traceback (most recent call last):
+
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+KeyboardInterrupt
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how asyncio programs can handle Control-C or SIGINT signals.</p>
+</main>
+</body>
+</html>

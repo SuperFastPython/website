@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Deadlock in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Deadlock in Python</h1>
+<div class="post-meta">February 19, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can identify <strong>multiprocessing deadlocks</strong> by seeing examples and developing an intuition for their common causes.</p>
+<p>In most cases, deadlocks can be avoided by using best practices in concurrency programming, such as lock order, using time outs on waits, and using context managers when acquiring locks.</p>
+<p>In this tutorial, you will discover how to <strong>identify deadlocks with process-based concurrency</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>What is a Deadlock</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Deadlock">deadlock</a> is a concurrency failure mode where a <a href="../multiprocessing-in-python/">process or processes</a> wait for a condition that never occurs.</p>
+<p>The result is that the deadlock processes are unable to progress and the program is stuck or frozen and must be terminated forcefully.</p>
+<p>There are many ways in which you may encounter a deadlock in your concurrent program.</p>
+<p>Deadlocks are not developed intentionally, instead, they are an unexpected side effect or bug in concurrency programming.</p>
+<p>Common examples of the cause of deadlocks include:</p>
+<ul>
+<li>Processes that wait on themselves (e.g. attempts to acquire the same mutex lock twice).</li>
+<li>Processes that wait on each other (e.g. A waits on B, B waits on A).</li>
+<li>Processes that fail to release a resource (e.g. mutex lock, semaphore, barrier, condition, event, etc.).</li>
+<li>Processes that acquire mutex locks in different orders (e.g. fail to perform lock ordering).</li>
+</ul>
+<p>Deadlocks may be easy to describe, but hard to detect in an application just from reading code.</p>
+<p>It is important to develop an intuition for the causes of different deadlocks. This will help you identify deadlocks in your own code and trace down the causes of those deadlocks that you may encounter.</p>
+<p>Note, deadlocks may also happen with threads, you can learn more about thread deadlocks in the tutorial:</p>
+<ul>
+<li><a href="../thread-deadlock-in-python/">How to Identify a Deadlock in Python</a></li>
+</ul>
+<p>Deadlocks may also occur with coroutines in asyncio programs. You can learn more about coroutine deadlocks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-deadlock/">Asyncio Deadlocks in Python</a></li>
+</ul>
+<p>Now that we are familiar with what a deadlock is, let's look at some worked examples.</p>
+<h2>Deadlock 1: Process Waits on Itself</h2>
+<p>A common cause of a deadlock is a process that waits on itself.</p>
+<p>We do not intend for this deadlock to occur, e.g. we don't intentionally write code that causes a process to wait on itself. Instead, this occurs accidentally due to a series of function calls and variables being passed around.</p>
+<p>A process may wait on itself for many reasons, such as:</p>
+<ul>
+<li>Waiting to acquire a mutex lock that it has already acquired.</li>
+<li>Waiting to be notified on a condition by itself.</li>
+<li>Waiting for an event to be set by itself.</li>
+<li>Waiting for a semaphore to be released by itself.</li>
+</ul>
+<p>And so on.</p>
+<p>We can demonstrate a deadlock caused by a process waiting on itself.</p>
+<p>In this case, we will develop a <strong>task()</strong> function that directly attempts to acquire the same mutex lock twice. That is, the task will acquire the lock, then attempt to acquire the lock again.</p>
+<p>This will cause a deadlock as the process already holds the lock and will wait forever for itself to release the lock so that it can acquire it again.</p>
+<p>The <strong>task()</strong> function that attempts to acquire the same lock twice and trigger a deadlock is listed below.</p>
+<pre><code># task to be executed in a new process
+def task(lock):
+    print('Process acquiring lock...', flush=True)
+    with lock:
+        print('Process acquiring lock again...', flush=True)
+        with lock:
+            # will never get here
+            pass
+</code></pre>
+<p>If you are new to using mutex locks with processes, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<p>In the main process, we can then create the lock.</p>
+<pre><code>...
+# create the mutex lock
+lock = Lock()</code></pre>
+<p>We will then create and configure a new process to execute our <strong>task()</strong> function in a child process, then start the process and wait for it to terminate, which it never will.</p>
+<pre><code>...
+# create and configure the new process
+process = Process(target=task, args=(lock,))
+# start the new process
+process.start()
+# wait for process to exit...
+process.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a process that waits on itself resulting in a deadlock
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# task to be executed in a new process
+def task(lock):
+    print('Process acquiring lock...', flush=True)
+    with lock:
+        print('Process acquiring lock again...', flush=True)
+        with lock:
+            # will never get here
+            pass
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the mutex lock
+    lock = Lock()
+    # create and configure the new process
+    process = Process(target=task, args=(lock,))
+    # start the new process
+    process.start()
+    # wait for process to exit...
+    process.join()
+</code></pre>
+<p>Running the example first creates the lock.</p>
+<p>The child process is then configured and started and the main process blocks until the child process terminates, which it never does.</p>
+<p>The child process runs and first acquires the lock. It then attempts to acquire the same mutex lock again and blocks.</p>
+<p>It will block forever waiting for the lock to be released. The lock cannot be released because the child process already holds the lock. Therefore the process has deadlocked.</p>
+<p>The program must be terminated forcefully, e.g. killed via Control-C.</p>
+<pre><code>Process acquiring lock...
+Process acquiring lock again...</code></pre>
+<p>Perhaps the above example is too contrived.</p>
+<p>Attempting the same lock is common if you protect a critical section with a lock and within that critical section, you call another function that attempts to acquire the same lock.</p>
+<p>For example, we can update the previous example to split the <strong>task()</strong> function into two functions <strong>task1()</strong> and <strong>task2()</strong>. The <strong>task1()</strong> function acquires the lock, does some work, then calls <strong>task2()</strong> that does some work, and attempts to acquire the lock again.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of a process that waits on itself resulting in a deadlock
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# task2 to be executed in a new process
+def task2(lock):
+    print('Process acquiring lock again...', flush=True)
+    with lock:
+        # will never get here
+        pass
+
+# task1 to be executed in a new process
+def task1(lock):
+    print('Process acquiring lock...', flush=True)
+    with lock:
+        task2(lock)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the mutex lock
+    lock = Lock()
+    # create and configure the new process
+    process = Process(target=task1, args=(lock,))
+    # start the new process
+    process.start()
+    # wait for process to exit...
+    process.join()
+</code></pre>
+<p>Running the example creates the lock and then creates and starts the child process.</p>
+<p>The process acquires the lock in <strong>task1()</strong>, simulates some work then calls <strong>task2()</strong>.</p>
+<p>The <strong>task2()</strong> function attempts to acquire the same lock and the process is stuck in a deadlock waiting for the lock to be released by itself so it can acquire it again.</p>
+<pre><code>Process acquiring lock...
+Process acquiring lock again...</code></pre>
+<p>This specific deadlock with a mutex lock can be avoided by using a <a href="../multiprocessing-rlock-in-python/">reentrant mutex lock</a>. This allows a process to acquire the same lock more than once.</p>
+<p>A reentrant lock is recommended any time you may have code that acquires a lock that may call other code that may acquire the same lock.</p>
+<p>Next, let's look at a deadlock caused by processes waiting on each other.</p>
+<h2>Deadlock 2: Processes Waiting on Each Other</h2>
+<p>Another common deadlock is to have two (or more) processes waiting on each other.</p>
+<p>For example, Process A is waiting on Process B, and Process B is waiting on Process A.</p>
+<ul>
+<li><strong>Process A</strong>: Waiting on Process B.</li>
+<li><strong>Process B</strong>: Waiting on Process A.</li>
+</ul>
+<p>Or with three processes, you could have a cycle of processes waiting on each other, for example:</p>
+<ul>
+<li><strong>Process A</strong>: Waiting on Process B.</li>
+<li><strong>Process B</strong>: Waiting on Process C.</li>
+<li><strong>Process C</strong>: Waiting on Process A.</li>
+</ul>
+<p>This deadlock is common if you set up processes to wait on the result from other processes, such as in a pipeline or workflow where some dependencies for subtasks are out of order.</p>
+<p>A simple way to demonstrate this deadlock is for the main process to create a child process and then wait for it to complete. The child process can get access to the parent process and wait for it to complete.</p>
+<p>For example:</p>
+<ul>
+<li><strong>New Process</strong>: Waiting on Main Process.</li>
+<li><strong>Main Process</strong>: Waiting on New Process.</li>
+</ul>
+<p>If you are new to parent vs child processes, see the tutorial:</p>
+<ul>
+<li><a href="../parent-process-vs-child-process-in-python/">Parent Process vs Child Process in Python</a></li>
+</ul>
+<p>We can define a task function that gets the parent process as well as the current process, reports the name of each and then waits on the parent process to complete.</p>
+<p>This is somewhat contrived in this case.</p>
+<pre><code># task to be executed in a new process
+def task():
+    # get the current process
+    current = current_process()
+    # get the parent process
+    parent = parent_process()
+    # report a message
+    print(f'[{current.name}] waiting on [{parent.name}]...', flush=True)
+    # wait on the parent process
+    parent.join()
+</code></pre>
+<p>We can then perform a similar action in the main process.</p>
+<p>The main process can create the child process, report the name of the child as well as the name of the main process, then wait for the child process to complete.</p>
+<pre><code>...
+# get the current process
+current = current_process()
+# create the second process
+child = Process(target=task)
+# start the new process
+child.start()
+# wait on the child process
+print(f'[{current.name}] waiting on [{child.name}]...', flush=True)
+child.join()
+</code></pre>
+<p>Tying this together, the complete example of two processes waiting on each other is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by process waiting on each other
+from multiprocessing import parent_process
+from multiprocessing import current_process
+from multiprocessing import Process
+
+# task to be executed in a new process
+def task():
+    # get the current process
+    current = current_process()
+    # get the parent process
+    parent = parent_process()
+    # report a message
+    print(f'[{current.name}] waiting on [{parent.name}]...', flush=True)
+    # wait on the parent process
+    parent.join()
+
+# protect the entry point
+if __name__ == '__main__':
+    # get the current process
+    current = current_process()
+    # create the second process
+    child = Process(target=task)
+    # start the new process
+    child.start()
+    # wait on the child process
+    print(f'[{current.name}] waiting on [{child.name}]...', flush=True)
+    child.join()
+</code></pre>
+<p>Running the example first gets the <strong>multiprocessing.Process</strong> instance for the main process, then creates a child process and calls the <strong>task()</strong>, and starts it. The main process then reports the name of each process and then waits for the child process to complete</p>
+<p>The child process gets the current and parent processes, reports a message, and waits for the parent process to terminate.</p>
+<p>We have a deadlock.</p>
+<p>Each process is waiting on the other to terminate before itself can terminate, resulting in a deadlock.</p>
+<pre><code>[MainProcess] waiting on [Process-1]...
+[Process-1] waiting on [MainProcess]...</code></pre>
+<p>This type of deadlock can happen if processes are waiting on another process to terminate in a way that results in a cycle.</p>
+<p>It may also happen for any type of wait operation, where process dependencies create a cycle, such as waiting on a mutex lock, waiting on a semaphore, waiting to be notified on a condition, and so on.</p>
+<p>The waiting may also be less obvious given a level of indirection. For example, a process may be waiting on a queue that itself is populated by another process. The other process may in turn be waiting on the first process directly.</p>
+<p>Next, let's look at an example of a deadlock caused by processes acquiring locks in different orders.</p>
+<h2>Deadlock 3: Acquiring Locks in the Wrong Order</h2>
+<p>A common cause of a deadlock is when two processes acquire locks in different orders at the same time.</p>
+<p>For example, we may have a critical section protected by a lock and within that critical section, we may have code or a function call that is protected by a second lock.</p>
+<p>We may have a situation where one process acquires lock1, then attempts to acquire lock2, then has a second process that calls functionality that acquires lock2, then attempts to acquire lock1. If this occurs concurrently where process1 holds lock1 and process2 holds lock2, then there will be a deadlock.</p>
+<ul>
+<li><strong>Process1</strong>: Holds Lock1, Waiting for Lock2.</li>
+<li><strong>Process2</strong>: Holds Lock2, Waiting for Lock1.</li>
+</ul>
+<p>We can demonstrate this with a direct example.</p>
+<p>We can create a <strong>task()</strong> function that takes both locks as arguments and then attempts to acquire the first lock and then the second lock.</p>
+<p>Two processes can then be created to call this function with the locks as arguments, but perhaps we make a typo and have the first process take lock1 then lock2 as arguments, and the second process takes lock2 then lock1 as arguments.</p>
+<p>The result will be a deadlock if each process can first acquire a lock and then wait on the second lock.</p>
+<p>First, let's define the <strong>task()</strong> function that takes the two locks as arguments and acquires them one after the other.</p>
+<pre><code># task to be executed in a new process
+def task(number, lock1, lock2):
+    # acquire the first lock
+    print(f'Process {number} acquiring lock 1...', flush=True)
+    with lock1:
+        # wait a moment
+        sleep(1)
+        # acquire the next lock
+        print(f'Process {number} acquiring lock 2...', flush=True)
+        with lock2:
+            # never gets here..
+            pass
+</code></pre>
+<p>Notice that we have added a sleep for one second after acquiring the first lock.</p>
+<p>This ensures that the race condition occurs, giving enough time for each process to acquire its first lock before attempting to acquire the second lock.</p>
+<p>Back in the main process, we can then create two separate mutex locks.</p>
+<pre><code>...
+# create the mutex locks
+lock1 = Lock()
+lock2 = Lock()</code></pre>
+<p>Next, we can create and configure two child processes to call the <strong>task()</strong> function and transpose the lock arguments for one of them.</p>
+<pre><code>...
+# create and configure the new processes
+process1 = Process(target=task, args=(1, lock1, lock2))
+process2 = Process(target=task, args=(2, lock2, lock1))</code></pre>
+<p>Finally, we can start the processes and wait in the main process for both processes to terminate.</p>
+<pre><code>...
+# start the new processes
+process1.start()
+process2.start()
+# wait for processes to exit...
+process1.join()
+process2.join()</code></pre>
+<p>Tying this together, the complete example of a deadlock caused by acquiring locks in the wrong order is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by acquiring locks in a different order
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# task to be executed in a new process
+def task(number, lock1, lock2):
+    # acquire the first lock
+    print(f'Process {number} acquiring lock 1...', flush=True)
+    with lock1:
+        # wait a moment
+        sleep(1)
+        # acquire the next lock
+        print(f'Process {number} acquiring lock 2...', flush=True)
+        with lock2:
+            # never gets here..
+            pass
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the mutex locks
+    lock1 = Lock()
+    lock2 = Lock()
+    # create and configure the new processes
+    process1 = Process(target=task, args=(1, lock1, lock2))
+    process2 = Process(target=task, args=(2, lock2, lock1))
+    # start the new processes
+    process1.start()
+    process2.start()
+    # wait for processes to exit...
+    process1.join()
+    process2.join()
+</code></pre>
+<p>Running the example first creates both locks. Then both processes are created and the main process waits for the child processes to terminate.</p>
+<p>The first process receives lock1 and lock2 as arguments. It acquires lock1 and sleeps.</p>
+<p>The second process receives lock2 and lock1 as arguments. It acquires lock2 and sleeps.</p>
+<p>The first process wakes and tries to acquire lock2, but it must wait as it is already acquired by the second process. The second process wakes and tries to acquire lock1, but it must wait as it is already acquired by the first process.</p>
+<p>The result is a deadlock.</p>
+<pre><code>Process 2 acquiring lock 1...
+Process 1 acquiring lock 1...
+Process 2 acquiring lock 2...
+Process 1 acquiring lock 2...</code></pre>
+<p>The solution is to ensure locks are always acquired in the same order throughout the program.</p>
+<p>This is called <a href="https://en.wikipedia.org/wiki/Locks_with_ordered_sharing">lock ordering</a>.</p>
+<p>This could be achieved by data structures that ensure that locks are always acquired in the same order, e.g. a dict of locks, each assigned a unique number.</p>
+<p>Next, let's consider a deadlock caused by a process failing to release a lock.</p>
+<h2>Deadlock 4: Failing to Release a Lock</h2>
+<p>Another common cause of a deadlock is by a process failing to release a resource.</p>
+<p>This is typically caused by a process raising an error or exception in a critical section, a way that prevents the process from releasing a resource.</p>
+<p>Some examples include:</p>
+<ul>
+<li>Failing to release a lock.</li>
+<li>Failing to release a semaphore.</li>
+<li>Failing to arrive at a barrier.</li>
+<li>Failing to notify processes on a condition.</li>
+<li>Failing to set an event.</li>
+</ul>
+<p>And so on.</p>
+<p>We can demonstrate this deadlock with an example.</p>
+<p>A process may acquire a lock in order to execute a critical section, then raise an exception that prevents the process from releasing the lock. Another process may then try to acquire the same lock and must wait forever as the lock will never be released, resulting in a deadlock.</p>
+<p>First, we can define a <strong>task()</strong> function that takes the lock as an argument, acquires it manually via the <strong>acquire()</strong> function, then raises an exception preventing the lock from being released.</p>
+<pre><code># task to be executed in a new process
+def task(lock):
+    # acquire the lock
+    print('Process acquiring lock...', flush=True)
+    lock.acquire()
+    # fail
+    raise Exception('Something bad happened')
+    # release the lock (never gets here)
+    print('Process releasing lock...', flush=True)
+    lock.release()
+</code></pre>
+<p>Next, in the main process, we can create the lock that will be shared between processes.</p>
+<pre><code>...
+# create the mutex lock
+lock = Lock()</code></pre>
+<p>We will then create and start a child process that will call the <strong>task()</strong> function and the lock as an argument.</p>
+<pre><code>...
+# create and configure the new process
+process = Process(target=task, args=(lock,))
+# start the new process
+process.start()</code></pre>
+<p>The main process will then block for a moment to allow the child process to fail.</p>
+<pre><code>...
+# wait a while
+sleep(1)</code></pre>
+<p>Finally, the main process will attempt to acquire the lock.</p>
+<pre><code>...
+# acquire the lock
+print('Main acquiring lock...')
+lock.acquire()
+# do something...
+# release lock (never gets here)
+lock.release()</code></pre>
+<p>Tying this together, the complete example of a deadlock caused by a process failing to release a lock is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a deadlock caused by a process failing to release a lock
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# task to be executed in a new process
+def task(lock):
+    # acquire the lock
+    print('Process acquiring lock...', flush=True)
+    lock.acquire()
+    # fail
+    raise Exception('Something bad happened')
+    # release the lock (never gets here)
+    print('Process releasing lock...', flush=True)
+    lock.release()
+
+if __name__ == '__main__':
+    # create the mutex lock
+    lock = Lock()
+    # create and configure the new process
+    process = Process(target=task, args=(lock,))
+    # start the new process
+    process.start()
+    # wait a while
+    sleep(1)
+    # acquire the lock
+    print('Main acquiring lock...')
+    lock.acquire()
+    # do something...
+    # release lock (never gets here)
+    lock.release()
+</code></pre>
+<p>Running the example first creates the lock, then creates and starts the child process.</p>
+<p>The main process then blocks.</p>
+<p>The child process runs. It first acquires the lock, then fails by raising an exception. The process unwinds and never makes it to the line of code to release the lock. The child process terminates.</p>
+<p>Finally, the main process wakes up, then attempts to acquire the lock. The main process blocks forever as the lock will not be released, resulting in a deadlock.</p>
+<pre><code>Process acquiring lock...
+Process Process-1:
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened
+Main acquiring lock...
+</code></pre>
+<p>There are two aspects to avoiding this form of deadlock.</p>
+<p>The first is to follow best practices when acquiring and releasing locks.</p>
+<p>If the <strong>task()</strong> function acquired and released the lock using a context manager, then the <strong>release()</strong> function would have been called automatically when the exception was raised and propagated.</p>
+<p>Secondly, the main process can use a timeout while waiting for the lock and give up after a few minutes and handle the failure case.</p>
+<p>Next, let's review a summary of useful tips for avoiding deadlocks.</p>
+<h2>Tips for Avoiding Deadlocks</h2>
+<p>The best approach for avoiding deadlocks is to try to follow best practices when using concurrency in your Python programs.</p>
+<p>A few simple tips will take you a long way.</p>
+<p>In this section, we will review some of these important best practices for avoiding deadlocks.</p>
+<ol>
+<li>Use context managers when acquiring and releasing locks.</li>
+<li>Use timeouts when waiting.</li>
+<li>Always acquire locks in the same order.</li>
+</ol>
+<p>You can also learn more tips in the tutorial:</p>
+<ul>
+<li><a href="../process-safe-in-python/">Process-Safe in Python</a></li>
+</ul>
+<h3>Tip 1: Use Context Managers</h3>
+<p>Acquire and release locks using a context manager, wherever possible.</p>
+<p>Locks can be acquired manually via a call to <strong>acquire()</strong> at the beginning of the critical section followed by a call to <strong>release()</strong> at the end of the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock manually
+lock.acquire()
+# critical section...
+# release the lock
+lock.release()</code></pre>
+<p>This approach should be avoided wherever possible.</p>
+<p>Traditionally, it was recommended to always acquire and release a lock in a try-finally structure.</p>
+<p>The lock is acquired, the critical section is executed in the try block, and the lock is always released in the finally block.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+try:
+	# critical section...
+finally:
+	# always release the lock
+	lock.release()
+</code></pre>
+<p>This was since replaced with the context manager interface that achieves the same thing with less code.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# critical section...
+</code></pre>
+<p>The benefit of the context manager is that the lock is always released as soon as the block is exited, regardless of how it is exited, e.g. normally, a return, an error, or an exception.</p>
+<p>This applies to a number of concurrency primitives, such as:</p>
+<ul>
+<li>Acquiring a mutex lock via the <strong>multiprocessing.Lock</strong> class.</li>
+<li>Acquiring a reentrant mutex lock via the <strong>multiprocessing.RLock</strong> class.</li>
+<li>Acquiring a semaphore via the <strong>multiprocessing.Semaphore</strong> class.</li>
+<li>Acquiring a condition via the <strong>multiprocessing.Condition</strong> class.</li>
+</ul>
+<h3>Tip 2: Use Timeouts When Waiting</h3>
+<p>Always use a timeout when waiting on a blocking call.</p>
+<p>Many calls made on concurrency primitives may block.</p>
+<p>For example:</p>
+<ul>
+<li>Waiting to acquire a <strong>multiprocessing.Lock</strong> via <strong>acquire()</strong>.</li>
+<li>Waiting for a process to terminate via <strong>join()</strong>.</li>
+<li>Waiting to be notified on a <strong>multiprocessing.Condition</strong> via <strong>wait()</strong>.</li>
+</ul>
+<p>And more.</p>
+<p>All blocking calls on concurrency primitives take a “<strong>timeout</strong>” argument and return <strong>True</strong> if the call was successful or <strong>False</strong> otherwise.</p>
+<p>Do not call a blocking call without a timeout, wherever possible.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+if not lock.acquire(timeout=2*60):
+	# handle failure case...
+</code></pre>
+<p>This will allow the waiting process to give up waiting after a fixed time limit and then attempt to rectify the situation, e.g. report an error, force termination, etc.</p>
+<h3>Tip 3: Acquire Locks in Order</h3>
+<p>Acquire locks in the same order throughout the application, wherever possible.</p>
+<p>This is called “<em>lock ordering</em>”.</p>
+<p>In some applications, you may be able to abstract the acquisition of locks using a list of <strong>multiprocessing.Lock</strong> objects that may be iterated and acquired in order, or a function call that acquires locks in a consistent order.</p>
+<p>When this is not possible, you may need to audit your code to confirm that all paths through the code acquire the locks in the same order.</p>
+<h2>Takeaways</h2>
+<p>You now know how to identify multiprocessing deadlocks in Python.</p>
+</main>
+</body>
+</html>

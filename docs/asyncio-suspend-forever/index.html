@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Suspend Forever – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Suspend Forever</h1>
+<div class="post-meta">April 9, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>The <strong>asyncio.Server</strong> in the asyncio module provides a way to <strong>suspend the main coroutine forever</strong> and accept client connections.</p>
+<p>Reviewing the code in the standard library, we can see that this is achieved by creating a new and empty <strong>asyncio.Future</strong> and await it. We can use this approach in our own asyncio server applications to suspend the main coroutine forever.</p>
+<p>In this tutorial, you will discover how to <strong>suspend the main coroutine forever</strong>, such as in a custom asyncio server.</p>
+<p>Let's get started.</p>
+<h2>Asyncio Suspend Forever</h2>
+<p>The asyncio server provides a way to open a TCP or Unix socket server and accept client connections forever.</p>
+<p>It offers this ability via the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.Server.serve_forever"><strong>serve_forever()</strong> method</a>.</p>
+<blockquote>
+<p>Start accepting connections until the coroutine is cancelled. Cancellation of serve_forever task causes the server to be closed. This method can be called if the server is already accepting connections. Only one serve_forever task can exist per one Server object.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-eventloop.html">Event Loop</a></cite></blockquote>
+<p>You can learn more about the asyncio server in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-server/">Asyncio Socket Servers</a></li>
+</ul>
+<p>Calling this method never returns, unless the task is canceled or the program is terminated via a SIGINT (control-c).</p>
+<p><a href="https://github.com/python/cpython/blob/3.12/Lib/asyncio/base_events.py#L358C24-L358C24">Reviewing the code</a> for this method in the standard library, we can see that it calls the <strong><a href="https://docs.python.org/3/library/asyncio-future.html">loop.create_future()</a></strong> to get an empty <strong>asyncio.Future</strong> object then awaits this object.</p>
+<p>For example:</p>
+<pre><code>...
+self._serving_forever_fut = self._loop.create_future()
+
+try:
+    await self._serving_forever_fut
+except exceptions.CancelledError:
+    try:
+        self.close()
+        await self.wait_closed()
+    finally:
+        raise
+finally:
+    self._serving_forever_fut = None
+</code></pre>
+<p>This provides insight into a different way that we can suspend forever in our programs, such as when developing our own asyncio-based servers.</p>
+<p>For more conventional ways to run the event loop forever, see the tutorial:</p>
+<ul>
+<li><a href="../asyncio-run-forever/">Asyncio Run Event Loop Forever</a></li>
+</ul>
+<h2>How to Suspend Forever</h2>
+<p>We can suspend our asyncio program forever by awaiting an empty <a href="https://docs.python.org/3/library/asyncio-future.html"><strong>asyncio.Future</strong> object</a> in the main coroutine.</p>
+<p>An empty future refers to an <strong>asyncio.Future</strong> object that is not associated with any specific asyncio.Task or coroutine. It does not run anything.</p>
+<p>The body of the <strong>asyncio.Future</strong> objects <strong>__await__()</strong> method is a call to yield to itself, meaning that it will wait forever.</p>
+<p>The main coroutine refers to the entry point to the asyncio program passed to the <strong>asyncio.run()</strong> module function.</p>
+<p>You can learn more about the main coroutine in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-main-coroutine/">What is the Main Coroutine</a></li>
+</ul>
+<p>A way that we can suspend our program forever is to create a new <strong>asyncio.Future</strong> object and to await it directly.</p>
+<p>For example:</p>
+<pre><code>...
+# await a future forever
+await asyncio.Future()</code></pre>
+<p>Another way to create an <strong>asyncio.Future</strong> is to get access to the asyncio event loop and call the <strong>create_future()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# await a future forever
+await loop.create_future()</code></pre>
+<p>This is the preferred way to create <strong>asyncio.Future</strong> objects in the low-level API.</p>
+<blockquote>
+<p>The rule of thumb is to never expose Future objects in user-facing APIs, and the recommended way to create a Future object is to call loop.create_future(). This way alternative event loop implementations can inject their own optimized implementations of a Future object.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-future.html">Futures</a></cite></blockquote>
+<p>Either of these approaches provides a way to suspend our program forever.</p>
+<h2>Suspend Forever With Custom Awaitable</h2>
+<p>There is not a lot to an asyncio.Future object.</p>
+<p>It implements the "<strong>future protocol</strong>" as described in the internal documentation, and provides a base class for <strong>asyncio.Task</strong> objects used on high-level asyncio programs.</p>
+<p>We can create a new custom awaitable class that implements the <strong>__await__()</strong> method that can be awaited forever.</p>
+<p>It can implement the minimum set of functionality required for the class to be awaited forever.</p>
+<p>This involves just a few elements (determined after some trial and error), they are:</p>
+<ol>
+<li>An implementation of the <strong>add_done_callback()</strong> method.</li>
+<li>An implementation of the <strong>__await__()</strong> method.</li>
+<li>Assigning a <strong>_loop</strong> attribute to the current event loop.</li>
+<li>Assigning a <strong>_asyncio_future_blocking</strong> attribute to True.</li>
+<li>Yielding self in the body of the <strong>__await__()</strong> method.</li>
+</ol>
+<p>We can declare and define the required attributes as part of the class constructor or as part of the <strong>__await__()</strong> method itself. I prefer the latter to reduce the overall amount of code.</p>
+<p>The complete example of a custom awaitable that can be awaited forever is listed below.</p>
+<pre><code># custom awaitable
+class CustomAwaitable:
+    # add done callbacks
+    def add_done_callback(self, fn, *, context=None):
+        pass
+
+    # await
+    def __await__(self):
+        # reference the event loop
+        self._loop = asyncio.get_running_loop()
+        # indicate that the awaitable is blocking
+        self._asyncio_future_blocking = True
+        # await self forever
+        yield self
+</code></pre>
+<p>You can learn more about implementing a custom awaitable in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-custom-awaitable/">Asyncio Custom Awaitable With __await__()</a></li>
+</ul>
+<p>This may be helpful if we require the capability to suspend our main coroutine forever for a custom server and have more control over how and when it may resume.</p>
+<p>Really, it's just an experiment to learn more about the <strong>asyncio.Future</strong> class.</p>
+<p>If more control is required in a custom server, then it would be preferable to extend the <strong>asyncio.Future</strong> or <strong>asyncio.Task</strong> classes and add the required functionality.</p>
+<p>Now that we know how to suspend forever, let's look at some worked examples.</p>
+<h2>Example of Suspending Forever With An Empty Future</h2>
+<p>We can explore how to suspend the main coroutine forever using an empty future.</p>
+<p>In this case, we will define a main coroutine that reports a message and creates and awaits a new <strong>asyncio.Future</strong> object, then reports a second message.</p>
+<p>The second print statement is never reached as waiting for a new <strong>asyncio.Future</strong> object never returns.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of suspending forever with an empty future
+import asyncio
+
+# main coroutine
+async def main():
+    # report a message
+    print('Main running')
+    # await a future forever
+    await asyncio.Future()
+    # report a message
+    print('Main done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and starts the asyncio event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and reports messages.</p>
+<p>It then creates a new <strong>asyncio.Future</strong> object and awaits it.</p>
+<p>This suspends the main coroutine forever.</p>
+<p>The program must be terminated by sending it a signal interrupt (SIGINT) via the Control-C key combination.</p>
+<p>This highlights how we can await a new and empty <strong>asyncio.Future</strong> object to suspend our asyncio program forever.</p>
+<p>This capability is helpful when developing custom asyncio servers that are required to run for an extended duration.</p>
+<pre><code>Main running</code></pre>
+<p>Next, let's explore how we can suspend forever using a custom awaitable.</p>
+<h2>Example of Suspending Forever With A Custom Awaitable</h2>
+<p>We can explore an example of suspending forever using a custom awaitable.</p>
+<p>In this case, we will use the custom awaitable developed above based on a cut-down version of the <strong>asyncio.Future</strong> class to do one thing, suspend the main coroutine forever.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a custom awaitable that suspends forever
+import asyncio
+
+# custom awaitable
+class CustomAwaitable:
+    # add done callbacks
+    def add_done_callback(self, fn, *, context=None):
+        pass
+
+    # await
+    def __await__(self):
+        # reference the event loop
+        self._loop = asyncio.get_running_loop()
+        # indicate that the awaitable is blocking
+        self._asyncio_future_blocking = True
+        # await self forever
+        yield self
+
+# main coroutine
+async def main():
+    # report a message
+    print('Main running')
+    # await a task forever
+    await CustomAwaitable()
+    # report a message
+    print('Main done')
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and starts the asyncio event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a message.</p>
+<p>It then creates a new instance of our <strong>CustomAwaitable</strong> class and awaits it.</p>
+<p>This suspends the main coroutine forever.</p>
+<p>The program must be terminated by sending it a signal interrupt (SIGINT) via the Control-C key combination.</p>
+<p>This highlights how we can await a custom awaitable object to suspend our asyncio program forever.</p>
+<p>This approach may be helpful in those cases where we require specific capabilities related to suspending the main coroutine forever. Such as resuming occasionally.</p>
+<pre><code>Main running</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to suspend the main coroutine forever.</p>
+</main>
+</body>
+</html>

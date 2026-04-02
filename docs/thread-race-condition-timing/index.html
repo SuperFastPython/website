@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Fix a Race Condition With Timing in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Fix a Race Condition With Timing in Python</h1>
+<div class="post-meta">March 11, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can fix a <strong>race condition based on timing</strong> using a <strong>threading.Event</strong>.</p>
+<p>In this tutorial you will discover how to identify and fix a timing-based race condition in Python.</p>
+<p>Let's get started.</p>
+<h2>Race Condition with Timing</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Race_condition">race condition</a> is a bug in concurrency programming.</p>
+<p>It is a failure case where the behavior of the program is dependent upon the order of execution by two or more threads. This means, the behavior of the program will not be predictable, possibly changing each time it is run.</p>
+<p>There are many types of race conditions, although a common type of race condition is when two threads attempt to coordinate their behavior.</p>
+<p><strong>Note</strong>: Race conditions are a real problem in Python when using threads, even in the presence of the global interpreter lock (GIL). The refrain that there are no race conditions in Python because of the GIL is dangerously wrong.</p>
+<p>For example, consider the case of the use of a <strong>threading.Condition</strong> used by two threads to coordinate their behavior.</p>
+<p>If you are new to a condition object, you can learn more here:</p>
+<ul><li><a href="../thread-condition/">How to Use A Thread Condition Object in Python</a></li></ul>
+<p>One thread may wait on the <strong>threading.Condition</strong> to be notified of some state change within the application via the wait function.</p>
+<pre><code>...
+# wait for a state change
+with condition:
+	condition.wait()
+</code></pre>
+<p>Recall that when using a <strong>threading.Condition</strong>, you must acquire the condition before you can call <strong>wait()</strong> or <strong>notify()</strong>, then release it once you are done. This is easily achieved using the context manager.</p>
+<p>Another thread may perform some change within the application and alert the waiting thread via the condition with the <strong>notify()</strong> function.</p>
+<pre><code>...
+# alert the waiting thread
+with condition:
+	condition.notify()
+</code></pre>
+<p>This is an example of coordinated behavior between two threads where one thread signals another thread.</p>
+<p>For the behavior to work as intended, the notification from the second thread must be sent after the first thread has started waiting. If the first thread calls <strong>wait()</strong> after the second thread calls <strong>notify()</strong>, then it will not be notified and will wait forever.</p>
+<p>This may happen if there is a context switch by the operating system that allows the second thread that calls <strong>notify()</strong> to run before the first thread that calls <strong>wait()</strong> to run.</p>
+<p>You may recall that the operating system controls what threads execute and when, and that a <a href="https://en.wikipedia.org/wiki/Context_switch">context switch</a> refers to pausing the execution of a thread and storing its state, while unpausing another thread and restoring its state.</p>
+<p>Now that we are familiar with a race condition due to timing, let's look at how we might fix it.</p>
+<h2>Fix a Race Condition with Timing</h2>
+<p>There are many ways to fix a race condition between two or more threads based on timing.</p>
+<p>The approach taken may depend on the specifics of the application.</p>
+<p>Nevertheless, one common approach is to have the waiting threads signal that they are ready before the notifying thread starts its work and calls notify.</p>
+<p>This can be achieved with a <strong>threading.Event</strong>, which is like a thread-safe boolean flag variable.</p>
+<p>If you are not familiar with the <strong>threading.Event</strong>, you can learn more here:</p>
+<ul><li><a href="../thread-event-object-in-python/">How to Use an Event Object In Python</a></li></ul>
+<p>A shared <strong>threading.Event</strong> object can be created.</p>
+<pre><code>...
+# create a shared event
+event = threading.Event()</code></pre>
+<p>When the waiting thread (or threads) are ready they can signal this fact via setting the event flag to true.</p>
+<pre><code>...
+# signal that the waiting thread is ready
+event.set()</code></pre>
+<p>Importantly, this should be performed while the waiting thread has acquired the <strong>threading.Condition</strong>. For example:</p>
+<pre><code>...
+# wait to be notified
+with condition:
+    # indicate we are ready to be notified
+    event.set()
+    # wait to be notified
+    condition.wait()
+</code></pre>
+<p>This will be clearer in a moment, but it ensures we avoid fixing the timing race condition by introducing a second timing race condition. Specifically between one thread setting the flag and another waiting on the flag to be set.</p>
+<p>The notifying thread can then wait for the waiting thread to signal that it is ready before doing its work, such as changing state, and notifying the waiting thread.</p>
+<p>This can be achieved using busy waiting. That is, a type of waiting where we check for the event flag to be set in a loop.</p>
+<p>If you are new to busy waiting, you can learn more about it here:</p>
+<ul><li><a href="../thread-busy-waiting-in-python/">How to Use Busy Waiting in Python</a></li></ul>
+<p>To lessen the computational effort of the busy wait loop, the main thread can sleep for a fraction of a second each iteration.</p>
+<p>For example:</p>
+<pre><code>...
+# busy wait for the new thread to get ready
+while not event.is_set():
+    sleep(0.1)
+</code></pre>
+<p>When the <strong>threading.Event</strong> flag is set by the new thread, the main thread will exit its busy wait loop.</p>
+<p>At this time the new thread has already acquired the <strong>threading.Condition</strong> and will call <strong>wait()</strong>.</p>
+<p>After exiting the busy wait loop, the main thread will then acquire the <strong>threading.Condition</strong> and notify the waiting thread.</p>
+<pre><code>...
+# notify the new thread
+with condition:
+    condition.notify()
+</code></pre>
+<p>Importantly, if there was a context switch or a delay of any kind between the new thread calling <strong>event.set()</strong> and <strong>condition.wait()</strong>, it will not introduce a second race condition.</p>
+<p>For example:</p>
+<pre><code>...
+# wait to be notified
+with condition:
+    # indicate we are ready to be notified
+    event.set()
+    # add an artificial delay
+    sleep(5)
+    # wait to be notified
+    condition.wait()
+</code></pre>
+<p>The reason is because the new thread has acquired the <strong>threading.Condition</strong> and no other thread can acquire it until it releases it or waits on it.</p>
+<p>Therefore, even if the new thread performs a long calculation or a sleep between setting the event and waiting on the condition, the main thread will not be able to acquire the <strong>threading.Condition</strong> (and call <strong>notify()</strong>) until the new thread calls <strong>wait()</strong>.</p>
+<p>Now that we know how to fix the race condition due to timing using an event, let's look at a worked example.</p>
+<h2>Example of a Race Condition With Timing</h2>
+<p>We can explore an example of a race condition due to timing.</p>
+<p>In this example we will create a <strong>threading.Condition</strong>, then start a new thread that waits on the condition to be notified and the main thread that notifies the new thread.</p>
+<p>To force the race condition, we will add a delay between the new thread starting and waiting on the condition. This will cause the new thread to always miss the notification from the main thread and wait forever, requiring the program to be killed manually rather than terminating normally.</p>
+<p>Firstly, we can define a function named <strong>task()</strong> to be executed by a new thread.</p>
+<p>The function will first sleep for a fraction of a second to force the timing race condition, then acquire the condition and wait to be notified.</p>
+<p>The complete function is listed below.</p>
+<pre><code># thread waiting to be notified
+def task(condition):
+    # insert a delay
+    sleep(0.5)
+    # wait to be notified
+    print('Thread: Waiting to be notified...')
+    with condition:
+        condition.wait()
+    print('Thread: Notified')
+</code></pre>
+<p>Next, in the main thread we can create the shared <strong>threading.Condition</strong> object.</p>
+<pre><code>...
+# create the shared condition
+condition = Condition()</code></pre>
+<p>Next, we can create and start a <a href="../threading-in-python/">new <strong>threading.Thread</strong></a> configured to execute our <strong>task()</strong> function and pass in the condition as an argument to the function.</p>
+<pre><code>...
+# create the new thread
+thread = Thread(target=task, args=(condition,))
+# start the new thread
+thread.start()</code></pre>
+<p>Finally, the main thread can acquire the <strong>threading.Condition</strong> and notify the new thread.</p>
+<pre><code>...
+# notify the new thread
+print('Main: Notifying the thread')
+with condition:
+    condition.notify()
+print('Main: Done')
+</code></pre>
+<p>Tying this together, the complete example of a race condition based on timing is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a race condition with timing
+from time import sleep
+from threading import Thread
+from threading import Condition
+
+# thread waiting to be notified
+def task(condition):
+    # insert a delay
+    sleep(0.5)
+    # wait to be notified
+    print('Thread: Waiting to be notified...')
+    with condition:
+        condition.wait()
+    print('Thread: Notified')
+
+# create the shared condition
+condition = Condition()
+# create the new thread
+thread = Thread(target=task, args=(condition,))
+# start the new thread
+thread.start()
+# notify the new thread
+print('Main: Notifying the thread')
+with condition:
+    condition.notify()
+print('Main: Done')
+</code></pre>
+<p>Running the example first creates and starts the new thread.</p>
+<p>The new thread starts running and then sleeps for a fraction of a second.</p>
+<p>Meanwhile, the main thread acquires the condition and calls notify().</p>
+<p>The new thread wakes up, acquires the condition and waits to be notified. Because the notification has already occurred, it is missed and the new thread waits forever.</p>
+<p>This demonstrates a race condition based on timing.</p>
+<pre><code>Main: Notifying the thread
+Main: Done
+Thread: Waiting to be notified...</code></pre>
+<p>Next, let's look at how we might fix this race condition using an event.</p>
+<h2>Example of Fixing a Race Condition With Timing</h2>
+<p>A race condition based on timing seen in the previous section can be fixed by allowing the notify thread to wait for the waiting thread to be ready before doing its work and calling <strong>notify()</strong>.</p>
+<p>One way to achieve this is by using a <strong>threading.Event</strong>, which is a thread safe boolean flag variable.</p>
+<p>The shared <strong>threading.Event</strong> can be passed to the <strong>task()</strong> function as an argument and then set by the new thread while holding the <strong>threading.Condition</strong>, right before waiting on the condition.</p>
+<pre><code>...
+# wait to be notified
+with condition:
+    # indicate we are ready to be notified
+    print('Thread: Ready')
+    event.set()
+    # wait to be notified
+    print('Thread: Waiting to be notified...')
+    condition.wait()
+</code></pre>
+<p>It is important in this change that the event is set while the condition is held as it blocks the main thread from acquiring the condition and calling notify until the new thread releases the condition when calling <strong>wait()</strong>.</p>
+<p>The updated version of the task() function with this change is listed below.</p>
+<pre><code># thread waiting to be notified
+def task(condition, event):
+    # insert a delay
+    sleep(0.5)
+    # wait to be notified
+    with condition:
+        # indicate we are ready to be notified
+        print('Thread: Ready')
+        event.set()
+        # wait to be notified
+        print('Thread: Waiting to be notified...')
+        condition.wait()
+    print('Thread: Notified')
+</code></pre>
+<p>The main thread can then create the shared <strong>threading.Event</strong> object.</p>
+<pre><code>...
+# create the shared event
+event = Event()</code></pre>
+<p>It can then be passed to a new thread instance.</p>
+<pre><code>...
+# create the new thread
+thread = Thread(target=task, args=(condition,event))
+# start the new thread
+thread.start()
+</code></pre>
+<p>Finally, the main thread can wait for the <strong>threading.Event</strong> in a busy loop.</p>
+<p>In order to limit the amount of computation performed within the busy loop, we can add a sleep each iteration.</p>
+<pre><code>...
+# busy wait for the new thread to get ready
+print('Main: Waiting for threads to get ready...')
+while not event.is_set():
+    sleep(0.1)
+</code></pre>
+<p>Tying this together, the complete example of fixing a race condition based on timing is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a race condition with timing
+from time import sleep
+from threading import Thread
+from threading import Condition
+from threading import Event
+
+# thread waiting to be notified
+def task(condition, event):
+    # insert a delay
+    sleep(0.5)
+    # wait to be notified
+    with condition:
+        # indicate we are ready to be notified
+        print('Thread: Ready')
+        event.set()
+        # wait to be notified
+        print('Thread: Waiting to be notified...')
+        condition.wait()
+    print('Thread: Notified')
+
+# create the shared condition
+condition = Condition()
+# create the shared event
+event = Event()
+# create the new thread
+thread = Thread(target=task, args=(condition,event))
+# start the new thread
+thread.start()
+# busy wait for the new thread to get ready
+print('Main: Waiting for threads to get ready...')
+while not event.is_set():
+    sleep(0.1)
+# notify the new thread
+print('Main: Notifying the thread')
+with condition:
+    condition.notify()
+print('Main: Done')
+</code></pre>
+<p>Running the example first creates the shared condition and event.</p>
+<p>The new thread is then created and started, which immediately blocks for a moment.</p>
+<p>Me while the main thread enters its busy wait loop and checks the event ten times per second.</p>
+<p>The new thread wakes up, acquires the condition, sets the event and then waits on the condition.</p>
+<p>The main thread notices that the event has been set, then acquires the condition and notifies the new thread.</p>
+<p>The program works as expected and the race condition no longer exists.</p>
+<pre><code>Main: Waiting for threads to get ready...
+Thread: Ready
+Thread: Waiting to be notified...
+Main: Notifying the thread
+Main: Done
+Thread: Notified</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to identify and fix a timing-based race condition in Python.</p>
+</main>
+</body>
+</html>

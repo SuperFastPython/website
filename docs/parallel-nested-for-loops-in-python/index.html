@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parallel Nested For-Loops in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Parallel Nested For-Loops in Python</h1>
+<div class="post-meta">November 15, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can convert <strong>nested for-loops</strong> to execute concurrently or in parallel in Python using thread pools or process pools, depending on the types of tasks that are being executed.</p>
+<p>In this tutorial, you will discover <strong>how to change a nested for-loop to be concurrent or parallel in Python</strong> with a suite of worked examples.</p>
+<p>This tutorial was triggered by questions and discussions with Robert L. Thanks again. If you have questions or want to chat through a technical issue in Python concurrency, <a href="../contact/">message me any time</a>.</p>
+<p>Let's get started.</p>
+<h2>Nested For-Loop in Python</h2>
+<p>A nested for-loop is a loop within a loop.</p>
+<p>For example, we may need to loop over a number of tasks, and each task has subtasks.</p>
+<p>Each task requires effort, e.g. I/O (read or write data) or CPU compute (calculate something), and each subtask also requires some effort.</p>
+<p>Importantly, the number and nature of subtasks for each task are a function of the task and may not be known beforehand. The tasks must be computed in order to determine and then issue the subtasks.</p>
+<p>For example:</p>
+<pre><code>...
+# loop over tasks
+for task in tasks:
+    # exec task and generate subtasks
+    subtasks = do_task(task)
+    # execute subtasks
+    for subtask in subtasks:
+        # execute subtask
+        result = do_subtask(subtask)
+</code></pre>
+<p>Often the tasks are independent of one another, and each subtask is also independent of one another.</p>
+<p>Importantly, subtasks are dependent upon tasks. As such, we cannot pre-define a set of function calls prior and issue them all in batch. Instead, we need to navigate the tree or hierarchy of tasks and subtasks.</p>
+<p>This raises the question, can we perform the tasks and subtasks concurrently or in parallel?</p>
+<p>If so, the concurrent execution of tasks and subtasks can offer a dramatic speed-up.</p>
+<p><strong>How can we execute a nested for-loop in parallel in Python?</strong></p>
+<h2>How to Execute a Parallel Nested For-Loop</h2>
+<p>A nested for-loop can be converted to run in parallel.</p>
+<p>More specifically, we can make it concurrent if the tasks are independent and if the subtasks are independent.</p>
+<p>I/O bound tasks like reading and writing from files and sockets can be executed at the same time concurrently using threads. CPU-bound tasks like parsing a document in memory or calculating something can be performed in parallel using process-based concurrency.</p>
+<p>You can learn more about the difference between when to use threads vs processes in the tutorial:</p>
+<ul>
+<li><a href="../threading-vs-multiprocessing-in-python/">Threading vs Multiprocessing in Python</a></li>
+</ul>
+<p>Therefore, if we have I/O bound tasks or subtasks, we can use a thread pool to make the loops concurrent via the <a href="../threadpoolexecutor-in-python/"><strong>concurrent.futures.ThreadPoolExecutor</strong> class</a> or the <a href="../threadpool-python/"><strong>multiprocessing.pool.ThreadPool</strong> class</a>.</p>
+<p>Concurrent for-loops (not nested) are straightforward, for example:</p>
+<ul>
+<li><a href="../threadpool-for-loop/">Concurrent For-Loop With a ThreadPool in Python</a></li>
+</ul>
+<p>More work is required for concurrent nested for-loops.</p>
+<p>If we have CPU-bound tasks or subtasks, we can use a process pool to make loops parallel via the <a href="../processpoolexecutor-in-python/"><strong>concurrent.futures.ProcessPoolExecutor</strong> class</a> or the <a href="../multiprocessing-pool-python/"><strong>multiprocessing.Pool</strong> class</a>.</p>
+<p>Parallel for-loops (not bested) are straightforward, for example:</p>
+<ul>
+<li><a href="../multiprocessing-pool-for-loop/">Parallel For-Loop With a Multiprocessing Pool</a></li>
+</ul>
+<p>More work is required for parallel nested for-loops.</p>
+<p>There are two main approaches we can use to make a nested for-loop concurrent.</p>
+<p>They are:</p>
+<ol>
+<li>Create a pool of workers at each level in the hierarchy.</li>
+<li>Share a pool of workers across the hierarchy.</li>
+</ol>
+<p>Let's take a closer look at each approach.</p>
+<h3>Approach 1: One Pool of Workers Per Level</h3>
+<p>Each level in a nested for-loop can have its own pool of workers.</p>
+<p>That is, each task runs, does its work, creates a pool of workers, and issues the subtasks to the pool. If there is another level of subsubtasks, each of these would create its own pool of workers and issue its own tasks.</p>
+<p>This is suited to nested for-loops that have a large number of tasks to execute at a given level.</p>
+<p>The downside is the redundancy of having many pools of workers competing with each other. This is not a problem with thread pools, as we may have many thousands of concurrent threads, but process pools are typically limited to one worker per CPU core.</p>
+<p>As such, some tuning of the number of workers per pool may be required.</p>
+<p>Another downside of this approach is when using process pools, child processes are typically daemonic and are unable to create their own child processes. This means if tasks executing in a child process tries to create their own pool of workers it will fail with an error.</p>
+<p>As such, this approach may only be viable when working with thread pools, and even then, perhaps only in a nested loop with tasks and subtasks with many subtasks per task.</p>
+<h3>Approach 2: Shared Pool of Workers Across Levels</h3>
+<p>Another approach is to create one pool of workers and issue all tasks, subtasks, and subsubtasks to this pool.</p>
+<p>When using thread pools in one process, the pool can be shared with tasks and subtasks as a shared global variable, allowing tasks to be issued directly.</p>
+<p>When using process pools, things are more tricky. A centralized pool of workers can be created in a server process using a multiprocessing.Manager and the proxy objects for using the centralized server can be shared among all tasks and subtasks.</p>
+<p>An alternate design might be to use a shared queue. All tasks and subtasks may be placed onto the queue and a single consumer of tasks can retrieve items from the queue and issue them to the pool of workers.</p>
+<p>This is functionally the same, although it separates the concern of issuing tasks from how they are executed, potentially allowing the consumer to decide to use a thread pool or process pool based on the types of tasks issued to the queue.</p>
+<p>Now that we have considered some designs on how to convert a nested for-loop to run concurrently, let's look at some worked examples.</p>
+<h2>Example of a Nested For-Loop in Python (slow version)</h2>
+<p>Firstly let's develop a nested for-loop that does not run concurrently.</p>
+<p>In this example, we will design a loop with 3 levels.</p>
+<p>That is, tasks that generate subtasks, that themselves generate subsubtasks.</p>
+<p>Each task will simulate effort with a sleep of one second and report a message.</p>
+<p>The complete example of a nested for-loop is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a nested for-loop
+import time
+
+# third level task
+def task3(arg):
+    # report message
+    print(f'\t\t&gt;&gt;&gt;task3 {arg}', flush=True)
+    # do work
+    time.sleep(1)
+
+# second level task
+def task2(arg):
+    # report message
+    print(f'\t&gt;&gt;task2 {arg}', flush=True)
+    # do work
+    time.sleep(1)
+    # issue third level tasks
+    for i in range(2):
+        task3(i)
+
+# top level task
+def task1(arg):
+    # report message
+    print(f'&gt;task1 {arg}', flush=True)
+    # do work
+    time.sleep(1)
+    # issue second level tasks
+    for i in range(3):
+        task2(i)
+
+# protect the entry point
+if __name__ == '__main__':
+    # issue top level tasks to pool
+    for i in range(5):
+        task1(i)
+</code></pre>
+<p>Running the example first executes 5 tasks.</p>
+<p>Each task simulates work by reporting a message and taking a one-second sleep and executing 3 subtasks.</p>
+<p>Each subtask simulates work by reporting a message and taking a one-second sleep and executing 2 subsubtasks.</p>
+<p>Finally, each subsubtask simulates work by reporting a message and taking a one-second sleep.</p>
+<p>There are 50 tasks in total. Given that each task involves a one-second sleep, the nested for-loop takes 50 seconds to complete.</p>
+<p>The output of the program is listed below.</p>
+<pre><code>&gt;task1 0
+    &gt;&gt;task2 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+&gt;task1 1
+    &gt;&gt;task2 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+&gt;task1 2
+    &gt;&gt;task2 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+&gt;task1 3
+    &gt;&gt;task2 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+&gt;task1 4
+    &gt;&gt;task2 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+</code></pre>
+<p>Next, let's explore how we might make this nested for-loop concurrent using thread pools.</p>
+<h2>Examples of Concurrent Nested For-Loops</h2>
+<p>The nested for-loop from the previous example can be updated to be concurrent using thread pools.</p>
+<p>Recall, thread pools are appropriate for tasks that are I/O bound like reading and writing from files, sockets, and devices.</p>
+<p>In this case, we will use the <strong>multiprocessing.pool.ThreadPool</strong> class, but the examples could just as easily use the <strong>concurrent.futures.ThreadPoolExecutor</strong>.</p>
+<p>We can use a concurrent version of the <a href="https://docs.python.org/3/library/functions.html#map">built-in <strong>map()</strong> function</a> on the <strong>ThreadPool</strong> to call a function for each item in an iterable and have each function call issued as a concurrent task. This can be achieved using the <a href="../threadpool-map/"><strong>map()</strong> method</a>.</p>
+<p>You can learn more about how to use the <strong>ThreadPool</strong> class in the guide:</p>
+<ul>
+<li><a href="../threadpool-python/">Python ThreadPool: The Complete Guide</a></li>
+</ul>
+<p>Next, let's explore different designs for making the nested for-loop concurrent.</p>
+<h3>Single Shared ThreadPool</h3>
+<p>We can update the nested for-loop to use a single shared thread pool.</p>
+<p>This can be achieved by creating a thread pool as a global variable, then having each task and subtask function access the global variable and issue tasks to the same shared thread pool directly.</p>
+<p>It requires that the pool have enough capacity to execute all tasks, in this case at least 50 worker threads.</p>
+<p>We need a way for the program to wait for all tasks to be completed.</p>
+<p>One approach is to have each task wait for its subtasks. This is a straightforward solution, although it has the downside of occupying a worker thread while it waits for all subtasks to complete. This could turn disastrous, resulting in a deadlock if more tasks/subtasks/subsubtassk are issued to the thread pool than there are worker threads.</p>
+<p>The example below demonstrates this approach of using a shared thread pool and having each task wait for its subtasks.</p>
+<p>This approach can only be used if the total number of overall tasks/subtasks/etc is known and as many or more workers than tasks can be specified.</p>
+<pre><code># SuperFastPython.com
+# example of a nested for-loop to use a single shared thread pool
+import time
+import multiprocessing.pool
+
+# third level task
+def task3(arg):
+    # report message
+    print(f'\t\t&gt;&gt;&gt;task3 {arg}')
+    # do work
+    time.sleep(1)
+
+# second level task
+def task2(arg):
+    # declare the global pool
+    global pool
+    # report message
+    print(f'\t&gt;&gt;task2 {arg}')
+    # do work
+    time.sleep(1)
+    # issue third level tasks and wait
+    pool.map(task3, range(2))
+
+# top level task
+def task1(arg):
+    # declare the global pool
+    global pool
+    # report message
+    print(f'&gt;task1 {arg}')
+    # do work
+    time.sleep(1)
+    # issue second level tasks and wait
+    pool.map(task2, range(3))
+
+# protect the entry point
+if __name__ == '__main__':
+    # declare global pool
+    global pool
+    # assign the global pool
+    pool = multiprocessing.pool.ThreadPool(100)
+    # issue top level tasks to pool and wait
+    pool.map(task1, range(5))
+    # close the pool
+    pool.close()
+</code></pre>
+<p>Running the example first creates the shared thread pool as a global variable.</p>
+<p>It then issues 5 tasks to the pool and waits for them to complete.</p>
+<p>Each task accesses the shared thread pool, reports a message, and sleeps, then issues 3 subtasks and waits for them to complete.</p>
+<p>Each subtask accesses the same shared thread pool, reports a message, and sleeps, then issues 2 subsubtasks and waits for them to complete.</p>
+<p>The subsubtasks report a message and sleep.</p>
+<p>Critically, the thread pool is created with 100 workers, double the number needed to complete all 50 tasks.</p>
+<p>In this case, all tasks are completed in about 3 seconds.</p>
+<p>This makes sense as at most it takes 3 seconds to complete all three levels in the hierarchy, and all of the hierarchy is executed concurrently.</p>
+<pre><code>&gt;task1 0
+&gt;task1 1
+&gt;task1 2
+&gt;task1 3
+&gt;task1 4
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+</code></pre>
+<p>Next, let's explore how we might update this example to use a queue and release workers immediately after they issue their subtasks.</p>
+<h3>Single ThreadPool With a Shared Queue</h3>
+<p>We can make a nested for-loop concurrent using a single thread pool and a shared queue.</p>
+<p>You may recall that Python provides a thread-safe queue via the <a href="../thread-queue/"><strong>queue.Queue</strong> class</a>.</p>
+<p>Each task can push its subtasks into the queue and finish, allowing workers in the thread pool to be released, rather than wait for the subtasks to be completed.</p>
+<p>Another thread, or the main thread, can consume task requests from the queue and issue them asynchronously to the thread pool, such as via the <a href="../threadpool-apply_async/"><strong>apply_async()</strong> method</a>.</p>
+<p>This is functionally the same as sharing a <strong>ThreadPool</strong> object via a global variable and having tasks issue their subtasks directly.</p>
+<p>The important difference is that because works are released immediately after subtasks are issued, we do not need to have one worker per task in the <strong>ThreadPool</strong>. We have far fewer workers per task, without the risk of a deadlock.</p>
+<p>The downside, still, is that we must know how many tasks overall will be issued.</p>
+<p>The reason is that the thread responsible for issuing tasks to the thread pool needs to know when to stop consuming items from the queue and wait for all issued tasks to complete before terminating the program.</p>
+<p>We can update the nested for-loop program to use a single <strong>ThreadPool</strong> and a queue.</p>
+<p>The queue can be defined as a global variable and shared with all tasks at all levels. Tasks issue their subtasks to the queue as a tuple containing the function name and any arguments.</p>
+<p>The main thread creates the thread pool and then consumes a fixed number of tasks from the queue before stopping and waiting for all issued tasks to the pool to finish.</p>
+<p>This is a better design than the previous example.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a nested for-loop to use a single shared thread pool with a queue
+import time
+import threading
+import multiprocessing.pool
+import queue
+
+# third level task
+def task3(arg):
+    # report message
+    print(f'\t\t&gt;&gt;&gt;task3 {arg}')
+    # do work
+    time.sleep(1)
+
+# second level task
+def task2(arg):
+    # declare the global queue
+    global queue
+    # report message
+    print(f'\t&gt;&gt;task2 {arg}')
+    # do work
+    time.sleep(1)
+    # issue third level tasks
+    for i in range(2):
+        queue.put((task3, (i,)))
+
+# top level task
+def task1(arg):
+    # declare the global queue
+    global queue
+    # report message
+    print(f'&gt;task1 {arg}')
+    # do work
+    time.sleep(1)
+    # issue second level tasks
+    for i in range(3):
+        queue.put((task2, (i,)))
+
+# protect the entry point
+if __name__ == '__main__':
+    # declare the global queue
+    global queue
+    # create the shared queue
+    queue = queue.Queue()
+    # issue all top-level tasks
+    for i in range(5):
+        queue.put((task1, (i,)))
+    # assume we know the total number of tasks
+    total_tasks = 50
+    # create a thread pool
+    with multiprocessing.pool.ThreadPool(total_tasks) as pool:
+        # loop over all known tasks
+        for _ in range(total_tasks):
+            # consume a task
+            task, args = queue.get()
+            # issue task to the thread pool
+            pool.apply_async(task, args)
+        # close the pool
+        pool.close()
+        # wait for all tasks to be processed
+        pool.join()
+</code></pre>
+<p>Running the example first creates the shared queue as a global variable.</p>
+<p>It then issues 5 tasks to the queue.</p>
+<p>The overall total number of tasks is known and stated. It is used as the number of workers in the pool and in a loop over the number of tasks to retrieve from the queue.</p>
+<p>Importantly, we could have far fewer workers in the thread pool than there are total tasks without fear of a deadlock because workers are released as soon as their subtasks are issued to the queue.</p>
+<p>The main thread consumes items from the queue and issues them to the thread pool one by one.</p>
+<p>Tasks run, report a message, sleep, then issue their subtasks to the queue before exiting.</p>
+<p>Subtasks run, report their message, sleep and issue their subsubtasks to the queue before exiting.</p>
+<p>Subsubsub tasks run, report their message, sleep, and exit.</p>
+<p>In this case, all tasks are completed in about 3 seconds as before.</p>
+<pre><code>&gt;task1 0
+&gt;task1 1
+&gt;task1 2
+&gt;task1 3
+&gt;task1 4
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+</code></pre>
+<p>Next, let's look at how we might update this example further so we don't need to know the total number of tasks in the hierarchy beforehand.</p>
+<h3>Single ThreadPool With a Shared Queue (Unbounded)</h3>
+<p>We can update the single thread pool with the shared queue so that the total number of tasks does not need to be known.</p>
+<p>This can be achieved by maintaining a shared thread-safe counter that is incremented for each task/subtask/subsubtask that is issued and is only decremented once a given task is completed and known not to issue a subtask.</p>
+<p>Once the counter is zero, we know there are no further tasks running and no further tasks to be issued, meaning we can stop consuming items from the queue and close the thread pool.</p>
+<p>The downside is that both the queue and the counter must be shared with each task. This could be abstracted away with a more clever design (something like: sharing them as arguments to worker initialization functions, store them in thread local or global vars, then using a separate single function from all tasks used to issue subtasks).</p>
+<p>We can develop our own thread-safe counter, but for brevity, we can use a <a href="../thread-semaphore/"><strong>threading.Semaphore</strong> class</a>.</p>
+<p>The initial value of the <strong>Semaphore</strong> will be 5, for the known 5 tasks issued from the main thread.</p>
+<p>For example:</p>
+<pre><code>...
+# shared counter for total tasks
+global counter
+counter = threading.Semaphore(5)</code></pre>
+<p>The <strong>Semaphore</strong> can be incremented by calling the <strong>release()</strong> method and specifying the "<strong>n</strong>" argument as the number of subtasks by which to increment the counter.</p>
+<p>The <strong>Semaphore</strong> can be decremented by calling the <strong>acquire()</strong> method.</p>
+<p>We can check if the counter is zero by acquiring the internal condition variable and checking the internal counter value.</p>
+<p>Therefore, our loop in the main thread can loop forever until we explicitly break the loop when the counter is zero.</p>
+<p>For example:</p>
+<pre><code>...
+# loop over all known tasks
+while True:
+    # check for no further tasks
+    with counter._cond:
+        if not counter._value:
+            break
+</code></pre>
+<p>This is fragile because we are accessing private members in the stdlib. A custom counter class is preferred if you are implementing this for a production system.</p>
+<p>You can learn more about advanced and off-label use of threading semaphores in the tutorial:</p>
+<ul>
+<li><a href="../thread-semaphore-advanced/">Advanced Semaphore Examples</a></li>
+</ul>
+<p>You can learn more about developing your own custom thread-safe counter class in the tutorial:</p>
+<ul>
+<li><a href="../thread-safe-counter-in-python/">Thread-Safe Counter in Python</a></li>
+</ul>
+<p>It is possible that we may try to get a task from the queue when there are no further tasks to consume, such as when the final task is running but not yet done. The queue is empty in this case, but the counter is non-zero.</p>
+<p>To overcome this case we can get items from the queue with a small timeout, allowing us to give up and check the counter again.</p>
+<p>For example:</p>
+<pre><code>...
+# consume a task
+try:
+    task, args = task_queue.get(timeout=0.5)
+except queue.Empty:
+    continue
+</code></pre>
+<p>You can learn more about how to get the most out of the thread-safe <strong>queue.Queue</strong> class in the tutorial:</p>
+<ul>
+<li><a href="../thread-queue/">Thread-Safe Queue in Python</a></li>
+</ul>
+<p>We can decrement the counter automatically after every task is completed using a callback function on the asynchronous task in the <strong>ThreadPool</strong>.</p>
+<p>We can define a callback function and have it decrement the counter.</p>
+<p>For example:</p>
+<pre><code># callback on all tasks in the thread pool
+def callback(arg):
+    global counter
+    # decrement the counter
+    counter.acquire()
+</code></pre>
+<p>The callback can be attached to each task issued to the thread pool via the <a href="../threadpool-apply_async/"><strong>apply_async()</strong> method</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# issue task to the thread pool
+async_result = pool.apply_async(task, args, callback=callback)</code></pre>
+<p>You can learn more about callback functions in the <strong>ThreadPool</strong> class in the tutorial:</p>
+<ul>
+<li><a href="../threadpool-callback/">ThreadPool Callback Functions in Python</a></li>
+</ul>
+<p>Each task can be updated to declare the global counter (semaphore) variable as well as the queue.</p>
+<p>For example:</p>
+<pre><code>...
+# declare the global queue and counter
+global task_queue, counter</code></pre>
+<p>Then after subtasks and subsubtasks are issued to the queue, we can increment the counter.</p>
+<p>For example:</p>
+<pre><code>...
+# increment the counter by the number of subtasks
+counter.release(n=3)</code></pre>
+<p>That's about it.</p>
+<p>We have a way of using a single thread pool, issuing tasks using a shared queue, allowing the thread pool to have an arbitrary number of workers, and the program to have an unknown number of total tasks.</p>
+<p>This is an off-the-cuff program design (design by the seat of my pants!), if you have a tighter design, please let me know in the comments below.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a nested for-loop to use a single shared thread pool with a queue unbounded
+import time
+import threading
+import multiprocessing.pool
+import queue
+
+# third level task
+def task3(arg):
+    # report message
+    print(f'\t\t&gt;&gt;&gt;task3 {arg}')
+    # do work
+    time.sleep(1)
+
+# second level task
+def task2(arg):
+    # declare the global queue and counter
+    global task_queue, counter
+    # report message
+    print(f'\t&gt;&gt;task2 {arg}')
+    # do work
+    time.sleep(1)
+    # issue third level tasks
+    for i in range(2):
+        task_queue.put((task3, (i,)))
+    # increment the counter by the number of subtasks
+    counter.release(n=2)
+
+# top level task
+def task1(arg):
+    # declare the global queue and counter
+    global task_queue, counter
+    # report message
+    print(f'&gt;task1 {arg}')
+    # do work
+    time.sleep(1)
+    # issue second level tasks
+    for i in range(3):
+        task_queue.put((task2, (i,)))
+    # increment the counter by the number of subtasks
+    counter.release(n=3)
+
+# callback on all tasks in the thread pool
+def callback(arg):
+    global counter
+    # decrement the counter
+    counter.acquire()
+
+# protect the entry point
+if __name__ == '__main__':
+    # declare the global queue
+    global task_queue
+    # create the shared queue
+    task_queue = queue.Queue()
+    # issue all top-level tasks
+    for i in range(5):
+        task_queue.put((task1, (i,)))
+    # shared counter for total tasks
+    global counter
+    counter = threading.Semaphore(5)
+    # create a thread pool
+    with multiprocessing.pool.ThreadPool(30) as pool:
+        # loop over all known tasks
+        while True:
+            # check for no further tasks
+            with counter._cond:
+                if not counter._value:
+                    break
+            # consume a task
+            try:
+                task, args = task_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            # issue task to the thread pool
+            async_result = pool.apply_async(task, args, callback=callback)
+        # close the pool
+        pool.close()
+        # wait for all tasks to be processed
+        pool.join()
+</code></pre>
+<p>Running the example first creates the shared queue as a global variable.</p>
+<p>It then issues 5 tasks to the queue and initializes the shared counter to 5.</p>
+<p>The thread pool is created with 30 workers, an arbitrary number and fewer than the 50 concurrent tasks we know we will be executing.</p>
+<p>The main thread loops forever. It first checks if the counter is zero and if not it then tries to get an item from the queue. If there is an item in the queue within half a second (chosen arbitrarily), it is retrieved and issued as a task with a callback function. If not, the loop starts again.</p>
+<p>Tasks run, report a message, sleep, then issue their subtasks to the queue before incrementing the shared counter and exiting. After each task exits, the counter is decremented by one by the callback function.</p>
+<p>Subtasks run, report their message, sleep and issue their subsubtasks to the queue before incrementing the shared counter and exiting. After each subtask exits, the counter is decremented by one by the callback function.</p>
+<p>Subsubsub tasks run, report their message, sleep, and exit. After each subsubtask exits, the counter is decremented by one by the callback function.</p>
+<p>The counter reaches zero and the main thread exits the loop and closes the pool.</p>
+<p>In this case, all tasks are completed in about 3 seconds as before.</p>
+<p>I don't think there's a race condition but be warned, I have not unit-tested or stress-tested this design.</p>
+<pre><code>&gt;task1 0
+&gt;task1 1
+&gt;task1 2
+&gt;task1 3
+&gt;task1 4
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+</code></pre>
+<p>Next, let's explore the case of creating a separate pool of workers at each level.</p>
+<h3>Separate Thread Pools</h3>
+<p>An alternate solution to making a nested for-loop concurrent is to create a separate pool of workers at each level of the hierarchy of tasks.</p>
+<p>This is easily done with thread pools.</p>
+<p>The example below shows the nested for-loop updated to create a thread pool per level, where each thread pool is configured with one worker per subtask required.</p>
+<pre><code># SuperFastPython.com
+# example of a nested for-loop with separate thread pools
+import time
+import multiprocessing.pool
+
+# third level task
+def task3(arg):
+    # report message
+    print(f'\t\t&gt;&gt;&gt;task3 {arg}')
+    # do work
+    time.sleep(1)
+
+# second level task
+def task2(arg):
+    # report message
+    print(f'\t&gt;&gt;task2 {arg}')
+    # do work
+    time.sleep(1)
+    # create pool
+    with multiprocessing.pool.ThreadPool(3) as pool:
+        # issue third level tasks
+        pool.map(task3, range(2))
+
+# top level task
+def task1(arg):
+    # report message
+    print(f'&gt;task1 {arg}')
+    # do work
+    time.sleep(1)
+    # create pool
+    with multiprocessing.pool.ThreadPool(3) as pool:
+        # issue second level tasks and wait
+        pool.map(task2, range(3))
+
+# protect the entry point
+if __name__ == '__main__':
+    # create pool
+    with multiprocessing.pool.ThreadPool(5) as pool:
+        # issue top level tasks to pool and wait
+        pool.map(task1, range(5))
+</code></pre>
+<p>Running the example first creates the private thread pool.</p>
+<p>The main thread then issues 5 tasks to the pool and waits for them to complete.</p>
+<p>Each task reports a message and sleeps, then creates its own thread pool and issues 3 subtasks, and waits for them to complete.</p>
+<p>We now have 6 thread pools running.</p>
+<p>Each subtask reports a message and sleeps, then creates its own thread pool and issues 2 subsubtasks, and waits for them to complete.</p>
+<p>We now have 16 thread pools running. Ouch. We have 5 workers at level 1, 3 * 5 workers at level 2, and 3 * 5 * 2 workers at level 3. That is 50 workers, one for each task in the hierarchy.</p>
+<p>The subsubtasks report a message and sleep.</p>
+<p>In this case, all tasks are completed in about 3 seconds again.</p>
+<p>This makes sense as at most it takes 3 seconds to complete all three levels in the hierarchy, and all of the hierarchy is executed concurrently.</p>
+<p>This approach overcomes the problem of needing to know the total number of tasks in the hierarchy as we did in the first approach but means we have many more concurrent thread pools. Importantly, we have exactly enough concurrent workers to complete all tasks.</p>
+<p>This approach is fine, as long as the total number of concurrent tasks does not exceed the capability of the system. This may not be the case if a level in the hierarchy balloons.</p>
+<p>A modern system may only be able to support a maximum of a few thousand concurrent threads before running out of main memory and/or taxing the underlying operating system too much with context switching required between threads.</p>
+<pre><code>&gt;task1 0
+&gt;task1 1
+&gt;task1 2
+&gt;task1 3
+&gt;task1 4
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 0
+    &gt;&gt;task2 0
+    &gt;&gt;task2 2
+    &gt;&gt;task2 1
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 2
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+</code></pre>
+<p>Let’s leave threads pools for now and take a look at process pools for executing tasks in parallel.</p>
+<h2>Examples of Parallel Nested For-Loops</h2>
+<p>Running loops in parallel is more challenging than using process pools.</p>
+<p>The reason is twofold.</p>
+<p>Firstly, workers in a process are <a href="../daemon-process-in-python/">daemon processes</a> and are unable to create their own child processes.</p>
+<p>This means that tasks executed by workers in a process pool cannot create their own process pool to execute subtasks. Doing so will result in an error, for example:</p>
+<pre><code>AssertionError: daemonic processes are not allowed to have children</code></pre>
+<p>I know, I tried.</p>
+<p>Secondly, processes do not have shared memory.</p>
+<p>Instead, at best they have a copy of the global variables from the parent process, depending on the <a href="../multiprocessing-start-method/">start method</a>.</p>
+<p>Therefore, in order to share a process pool across all tasks/subtasks/etc in the hierarchy we must simulate a shared memory, such as by using a centralized process pool in a server process via a <a href="../multiprocessing-manager-example/"><strong>multiprocessing.Manager</strong> object</a>.</p>
+<p>We can explore this with a <strong>multiprocessing.Pool</strong>, although a <strong>concurrent.futures.ProcessPoolExecutor</strong> would be very similar.</p>
+<p>You can learn more about how to use the <strong>Pool</strong> class in the guide:</p>
+<ul>
+<li><a href="../multiprocessing-pool-python/">Python Multiprocessing Pool: The Complete Guide</a></li>
+</ul>
+<p>Let's dive in.</p>
+<h3>Shared Process Pool</h3>
+<p>We can update the nested for-loop to use a shared process pool accessed from each task.</p>
+<p>Firstly, we can create a manager, which will create a server process for hosting a centralized process pool.</p>
+<p>We can then create a hosted process pool and get a proxy object for the pool that we can share around with tasks in other processes.</p>
+<pre><code>...
+# create manager
+with multiprocessing.Manager() as manager:
+    # create the shared pool
+    pool = manager.Pool(100)
+</code></pre>
+<p>If we just tried to create a process pool and share it with workers, we would get an error indicating that the <strong>Pool</strong> object cannot be pickled.</p>
+<p>You can learn more about using managers to host a centralized <strong>Pool</strong> and sharing it with child workers in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pool-share-with-workers/">Share a Multiprocessing Pool With Workers</a></li>
+</ul>
+<p>We can then pass the "<em>pool</em>" proxy object as an argument to our tasks.</p>
+<p>This can be achieved by changing our task/subtask/etc functions to take the pool as an argument and using the <a href="../multiprocessing-pool-starmap/"><strong>starmap()</strong> method</a> instead of <strong>map()</strong> method that supports multiple arguments.</p>
+<p>The updated version of the nested-for loop that executes all tasks in parallel using a shared process pool is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a nested for-loop with a shared process pool
+import time
+import multiprocessing
+
+# third level task
+def task3(arg):
+    # report message
+    print(f'\t\t&gt;&gt;&gt;task3 {arg}', flush=True)
+    # do work
+    time.sleep(1)
+
+# second level task
+def task2(arg, pool):
+    # report message
+    print(f'\t&gt;&gt;task2 {arg}', flush=True)
+    # do work
+    time.sleep(1)
+    # issue third level tasks and wait
+    pool.map(task3, range(2))
+
+# top level task
+def task1(arg, pool):
+    # report message
+    print(f'&gt;task1 {arg}', flush=True)
+    # do work
+    time.sleep(1)
+    # prepare task arguments
+    args = [(i, pool) for i in range(3)]
+    # issue second level tasks and wait
+    pool.starmap(task2, args)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create manager
+    with multiprocessing.Manager() as manager:
+        # create the shared pool
+        with manager.Pool(100) as pool:
+            # prepare arguments to tasks
+            args = [(i, pool) for i in range(5)]
+            # execute top level tasks and wait
+            pool.starmap(task1, args)
+</code></pre>
+<p>Running the example first creates the manager, which starts a server process.</p>
+<p>The manager is then used to create a process pool. This returns a proxy object for the pool that is safe to share with child processes, like those in the pool itself via the tasks and subtasks we wish to execute.</p>
+<p>The main thread then issues 5 tasks to the shared pool and waits for them to complete.</p>
+<p>Each task receives the proxy object for the shared pool as an argument. Each task reports a message and sleeps, then issues 3 subtasks to the shared pool and waits for them to complete.</p>
+<p>Each subtask receives access to the same shared pool via the provided arguments, reports a message, sleeps, then issues 2 subsubtasks and waits for them to complete.</p>
+<p>The subsubtasks report a message and sleep.</p>
+<p>As with the shared thread pool example above, the process pool is created with 100 worker processes, double the number needed to complete all 50 tasks.</p>
+<p>This approach requires prior knowledge of the total number of tasks that will be issued to the pool in the hierarchy, and the configuration of a pool large enough to support all of those tasks concurrently.</p>
+<p>This is bad news because we very likely have more CPU-bound tasks than CPU cores available and would prefer to queue up tasks and have them executed one per CPU core.</p>
+<p>As such, this design is fragile.</p>
+<p>In this case, all tasks are completed in about 4 seconds, slightly longer than the thread pool example because of the overhead in starting child processes and transmitting data between them.</p>
+<pre><code>&gt;task1 0
+&gt;task1 3
+&gt;task1 2
+&gt;task1 4
+&gt;task1 1
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 2
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 1
+    &gt;&gt;task2 0
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+</code></pre>
+<p>Next, let's look at how we might update our queue-based example for an unknown number of tasks developed for the <strong>ThreadPool</strong> (above) and adapt it for use with the <strong>Pool</strong> class.</p>
+<h3>Single Process Pool and Shared Queue (unbounded)</h3>
+<p>In a prior section, we developed an example using the <strong>ThreadPool</strong> with a shared queue and an unknown number of tasks using a shared counter.</p>
+<p>We can update that example to use a <strong>Pool</strong> class.</p>
+<p>It requires some changes.</p>
+<p>Firstly, we must develop a custom counter class to be shared among child processes that has an internal integer and a lock to protect it.</p>
+<p>We need a custom counter class because when we pass around a shared semaphore via a proxy object, we cannot easily get access to the internals, like the condition variable and integer count value.</p>
+<p>For example, a custom process-safe counter may look as follows:</p>
+<pre><code># custom counter class
+class SafeCounter():
+    def __init__(self, count):
+        self._lock = multiprocessing.Lock()
+        self._value = count
+
+    def is_zero(self):
+        with self._lock:
+            return self._value == 0
+
+    def increment(self, value=1):
+        with self._lock:
+            self._value += value
+
+    def decrement(self, value=1):
+        with self._lock:
+            self._value -= value
+</code></pre>
+<p>If you are new to developing thread-safe (or process-safe) counter classes, see the tutorial:</p>
+<ul>
+<li><a href="../thread-safe-counter-in-python/">Thread-Safe Counter in Python</a></li>
+</ul>
+<p>We then must use a custom <strong>Manager</strong> that allows us to host a centralized version of our SafeCounter.</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(multiprocessing.managers.BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>We can create the custom manager and use it to host our centralized queue and counter.</p>
+<p>For example:</p>
+<pre><code>...
+# register the custom class on the custom manager
+CustomManager.register('SafeCounter', SafeCounter)
+CustomManager.register('Queue', multiprocessing.Queue)
+# create manager
+with CustomManager() as manager:
+    # create the shared queue
+    task_queue = manager.Queue()
+    # create the shared counter
+    counter = manager.SafeCounter(5)
+</code></pre>
+<p>If you are new to sharing custom classes on the <strong>Manager</strong>, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager-custom-class/">Multiprocessing Manager With a Custom Class</a></li>
+</ul>
+<p>The tasks cannot access the shared queue and counter via a global variable.</p>
+<p>In this case, we will work around that by passing them directly as arguments.</p>
+<p>Finally, the callback function cannot access the shared counter as a global variable.</p>
+<p>In this case, we can solve this by having each task decrement the counter directly.</p>
+<p>I don’t like the tasks having to know so much about how to issue and manage subtasks. This can all be abstracted away with some custom functions/classes so the tasks can remain pure.</p>
+<p>And that's it.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a nested for-loop to use a single shared process pool with a queue unbounded
+import time
+import queue
+import multiprocessing
+import multiprocessing.managers
+
+# custom counter class
+class SafeCounter():
+    def __init__(self, count):
+        self._lock = multiprocessing.Lock()
+        self._value = count
+
+    def is_zero(self):
+        with self._lock:
+            return self._value == 0
+
+    def increment(self, value=1):
+        with self._lock:
+            self._value += value
+
+    def decrement(self, value=1):
+        with self._lock:
+            self._value -= value
+
+# custom manager to support custom classes
+class CustomManager(multiprocessing.managers.BaseManager):
+    # nothing
+    pass
+
+# third level task
+def task3(arg, task_queue, counter):
+    # report message
+    print(f'\t\t&gt;&gt;&gt;task3 {arg}', flush=True)
+    # do work
+    time.sleep(1)
+    # decrement the counter
+    counter.decrement()
+
+# second level task
+def task2(arg, task_queue, counter):
+    # report message
+    print(f'\t&gt;&gt;task2 {arg}', flush=True)
+    # do work
+    time.sleep(1)
+    # issue third level tasks
+    for i in range(2):
+        task_queue.put((task3, (i,task_queue,counter)))
+        # increment the counter by the number of subtasks
+        counter.increment()
+    # decrement the counter
+    counter.decrement()
+
+# top level task
+def task1(arg, task_queue, counter):
+    # report message
+    print(f'&gt;task1 {arg}', flush=True)
+    # do work
+    time.sleep(1)
+    # issue second level tasks
+    for i in range(3):
+        task_queue.put((task2, (i,task_queue,counter)))
+        # increment the counter by the number of subtasks
+        counter.increment()
+    # decrement the counter
+    counter.decrement()
+
+# protect the entry point
+if __name__ == '__main__':
+    # register the custom class on the custom manager
+    CustomManager.register('SafeCounter', SafeCounter)
+    CustomManager.register('Queue', multiprocessing.Queue)
+    # create manager
+    with CustomManager() as manager:
+        # create the shared queue
+        task_queue = manager.Queue()
+        # create the shared counter
+        counter = manager.SafeCounter(5)
+        # issue all top-level tasks
+        for i in range(5):
+            task_queue.put((task1, (i,task_queue,counter)))
+        # create a process pool, local to the main thread/process
+        with multiprocessing.Pool(30) as pool:
+            # loop over all known tasks
+            while True:
+                # check for no further tasks
+                if counter.is_zero():
+                    break
+                # consume a task
+                try:
+                    task, args = task_queue.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                # issue task to the process pool
+                async_result = pool.apply_async(task, args)
+            # close the pool
+            pool.close()
+            # wait for all tasks to be processed
+            pool.join()
+</code></pre>
+<p>Running the example first registers the classes on the custom manager.</p>
+<p>The custom manager is then created and used to create the shared queue and counter.</p>
+<p>It then issues 5 tasks to the queue.</p>
+<p>The process pool is created with 30 workers, an arbitrary number and fewer than the 50 parallel tasks we know we will be executing.</p>
+<p>The main thread/process loops forever. It first checks if the counter is zero and if not it then tries to get an item from the queue. If there is an item in the queue within half a second (chosen arbitrarily), it is retrieved and issued as a task. If not, the loop starts again.</p>
+<p>Tasks run, report a message, sleep, then issue their subtasks to the queue before incrementing the shared counter and decrementing the counter for themselves.</p>
+<p>Subtasks run, report their message, sleep and issue their subsubtasks to the queue before incrementing the shared counter and decrementing the counter for themselves.</p>
+<p>Subsubsub tasks run, report their message, sleep, and decrement the counter for themselves.</p>
+<p>The counter reaches zero and the main thread exits the loop and closes the pool and the manager.</p>
+<p>In this case, all tasks are completed in about 4 seconds as in the previous example.</p>
+<p>The benefit of this approach is that the number of workers in the shared process pool can be limited to the number of CPU cores in the system and we do not need to know the total number of tasks beforehand.</p>
+<p>I don't think there's a race condition in this version but be warned, I have not unit-tested or stress-tested this design.</p>
+<pre><code>&gt;task1 0
+&gt;task1 1
+&gt;task1 2
+&gt;task1 3
+&gt;task1 4
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+    &gt;&gt;task2 0
+    &gt;&gt;task2 1
+    &gt;&gt;task2 2
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 0
+        &gt;&gt;&gt;task3 1
+        &gt;&gt;&gt;task3 1
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how changes a nested for-loop to be concurrent or parallel using thread and process pools.</p>
+</main>
+</body>
+</html>

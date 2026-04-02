@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Download a Webpage with Asyncio – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Download a Webpage with Asyncio</h1>
+<div class="post-meta">December 19, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can download webpages asynchronously using asyncio in Python.</p>
+<p>In this tutorial, you will discover how to download an HTML webpage using HTTP and HTTPS using asyncio.</p>
+<p>Let's get started.</p>
+<h2>How to Download a Webpage with Asyncio</h2>
+<p>The asyncio module provides support for opening socket connections and reading and writing data via streams.</p>
+<p>We can use this capability to download webpages.</p>
+<p>This involves perhaps four steps, they are:</p>
+<ul><li>1. Open a connection</li><li>2. Write a request</li><li>3. Read a response</li><li>4. Close the connection</li></ul>
+<p>Let's take a closer look at each part in turn.</p>
+<h3>Open HTTP Connection</h3>
+<p>A connection can be opened in asyncio using the <a href="https://docs.python.org/3/library/asyncio-stream.html#asyncio.open_connection">asyncio.open_connection() function</a>.</p>
+<blockquote><p>Establish a network connection and return a pair of (reader, writer) objects.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Asyncio Streams</a></cite></blockquote>
+<p>Among many arguments, the function takes the string hostname and integer port number</p>
+<p>This is a coroutine that must be awaited and returns a <strong>StreamReader</strong> and a <strong>StreamWriter</strong> for reading and writing with the socket.</p>
+<p>This can be used to open an HTTP connection on port 80.</p>
+<p>For example:</p>
+<pre><code>...
+# open a socket connection
+reader, writer = await asyncio.open_connection('www.google.com', 80)</code></pre>
+<p>We can also open an SSL connection using the <strong>ssl=True</strong> argument. This can be used to open an HTTPS connection on port 443.</p>
+<p>For example:</p>
+<pre><code>...
+# open a socket connection
+reader, writer = await asyncio.open_connection('www.google.com', 443)</code></pre>
+<h3>Write HTTP Request</h3>
+<p>Once open, we can write a query to the <strong>StreamWriter</strong> to make an HTTP request.</p>
+<p>For example, an <a href="https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol">HTTP version 1.1 request</a> is in plain text. We can request the file path '/', which may look as follows:</p>
+<pre><code>GET / HTTP/1.1
+Host: www.google.com</code></pre>
+<p>Importantly, there must be a carriage return and a line feed (\r\n) at the end of each line, and an empty line at the end.</p>
+<p>As Python strings this may look as follows:</p>
+<pre><code>'GET / HTTP/1.1\r\n'
+'Host: www.google.com\r\n'
+'\r\n'</code></pre>
+<p>You can learn more about HTTP v1.1 request messages here:</p>
+<ul><li><a href="https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#HTTP/1.1_request_messages">HTTP/1.1 request messages</a></li></ul>
+<p>This string must be encoded as bytes before being written to the <strong><a href="https://docs.python.org/3/library/asyncio-stream.html#streamwriter">StreamWriter</a></strong>.</p>
+<blockquote><p>Represents a writer object that provides APIs to write data to the IO stream.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Asyncio Streams</a></cite></blockquote>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/stdtypes.html#str.encode"><strong>encode()</strong> method</a> on the string itself.</p>
+<p>The default '<strong>utf-8</strong>' encoding may be sufficient.</p>
+<p>For example:</p>
+<pre><code>...
+# encode string as bytes
+byte_data = string.encode()</code></pre>
+<p>You can see a listing of encodings here:</p>
+<ul><li><a href="https://docs.python.org/3/library/codecs.html#standard-encodings">Python Standard Encodings</a></li></ul>
+<p>The bytes can then be written to the socket via the <strong>StreamWriter</strong> via the <a href="https://docs.python.org/3/library/asyncio-stream.html#asyncio.StreamWriter.write"><strong>write()</strong> method</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# write query to socket
+writer.write(byte_data)</code></pre>
+<p>After writing the request, it is a good idea to wait for the byte data to be sent and for the socket to be ready.</p>
+<p>This can be achieved by the <strong>drain()</strong> method.</p>
+<blockquote><p>Wait until it is appropriate to resume writing to the stream.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Asyncio Streams</a></cite></blockquote>
+<p>This is a coroutine that must be awaited.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the socket to be ready.
+await writer.drain()</code></pre>
+<h3>Read HTTP Response</h3>
+<p>Once the HTTP request has been made, we can read the response.</p>
+<p>This can be achieved via the <strong><a href="https://docs.python.org/3/library/asyncio-stream.html#streamreader">StreamReader</a></strong> for the socket.</p>
+<blockquote><p>Represents a reader object that provides APIs to read data from the IO stream.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Asyncio Streams</a></cite></blockquote>
+<p>The response can be read using the <strong>read()</strong> method which will read a chunk of bytes, or the <strong>readline()</strong> method which will read one line of bytes.</p>
+<p>We might prefer the <strong>readline()</strong> method because we are using the text-based HTTP protocol which sends HTML data one line at a time.</p>
+<p>The <strong>readline()</strong> method is a coroutine and must be awaited.</p>
+<p>For example:</p>
+<pre><code>...
+# read one line of response
+line_bytes = await reader.readline()</code></pre>
+<p><a href="https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#HTTP/1.1_response_messages">HTTP 1.1 responses</a> are composed of two parts, a header separated by an empty line, then the body terminating with an empty line.</p>
+<p>The header has information about whether the request was successful and what type of file will be sent, and the body contains the content of the file, such as an HTML webpage.</p>
+<p>You can learn more about HTTP v1.1 responses here:</p>
+<ul><li><a href="https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#HTTP/1.1_response_messages">HTTP/1.1 response messages</a></li></ul>
+<p>Each line must be decoded from bytes into a string.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/stdtypes.html#bytes.decode"><strong>decode()</strong> method</a> on the byte data. Again, the default encoding is '<strong>utf_8</strong>'.</p>
+<p>For example:</p>
+<pre><code>...
+# decode bytes into a string
+line_data = line_bytes.decode()</code></pre>
+<p>We can continue to read lines in a loop until an empty string (containing only newlines) is returned. This will read the head. We can then do the same thing in order to read the body.</p>
+<p>For example:</p>
+<pre><code># read the header
+while True:
+	# read one line of response
+	line_bytes = await reader.readline()
+	# decode bytes into a string
+	line_data = line_bytes.decode()
+	# remove white space
+	line_data = line_data.strip()
+	# check if empty
+	if not line_data:
+		break</code></pre>
+<p>Helpfully, the <strong>StreamReader</strong> implements the interface for the asynchronous iterator.</p>
+<p>We can see this if we <a href="https://github.com/python/cpython/blob/3.10/Lib/asyncio/streams.py#L721">look in the source code for the <strong>StreamReader</strong></a>. It implements the <strong>__anext__()</strong> method.</p>
+<p>This capability does not appear to be described in the API documentation, at least at the time of writing.</p>
+<p>This will call the <strong>readline()</strong> method until an empty string is read.</p>
+<p>This means we can read lines from the <strong>StreamReader</strong> using the "<strong>async for</strong>" expression.</p>
+<p>For example:</p>
+<pre><code>...
+# read the header
+async for line_bytes in reader:
+	# decode bytes into a string
+	line_data = line_bytes.decode()
+	# remove white space
+	line_data = line_data.strip()
+</code></pre>
+<p>This will automatically suspend the caller and await each line.</p>
+<p>You can learn more about the "<strong>async for</strong>" expression in the tutorial:</p>
+<ul><li><a href="../asyncio-async-for/">Asyncio async for loop</a></li></ul>
+<h3>Close HTTP Connection</h3>
+<p>We can close the socket connection by closing the <strong>StreamWriter</strong>.</p>
+<p>This can be achieved by calling the <a href="https://docs.python.org/3/library/asyncio-stream.html#asyncio.StreamWriter.close"><strong>close()</strong> method</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# close the connection
+writer.close()</code></pre>
+<p>This does not block and may not close the socket immediately.</p>
+<p>We can wait for the socket to close completely.</p>
+<p>This can be achieved using the <strong>wait_closed()</strong> method.</p>
+<p>This is a coroutine that we can await.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for the socket to close completely.
+await writer.closed()</code></pre>
+<p>Now that we know how to download a webpage asynchronously using asyncio, let's look at some worked examples.</p>
+<h2>Example of Downloading HTML over HTTP in Asyncio</h2>
+<p>We can develop an example to download an HTML webpage over HTTP using asyncio.</p>
+<p>Let's dive in.</p>
+<h3>Write HTTP Query</h3>
+<p>We can develop a coroutine that will issue an HTTP GET.</p>
+<p>The coronet will take three arguments, the <strong>StreamWriter</strong> for writing the request to the socket, the path for the file to download, and the hostname.</p>
+<pre><code># coroutine to construct a query and write to socket
+async def http_get(writer, path, host):
+	# ...
+</code></pre>
+<p>The first step is to construct the HTTP request using v1.1 of the protocol.</p>
+<p>This can be achieved in a single line.</p>
+<pre><code>...
+# define request
+query = f'GET {path} HTTP/1.1\r\nHost: {host}\r\n\r\n'</code></pre>
+<p>The request string can then be encoded to bytes using the UTF-8 encoding.</p>
+<pre><code>...
+# encode request as bytes
+query = query.encode()</code></pre>
+<p>The byte string can then be written to the socket via the <strong>StreamWriter</strong>.</p>
+<pre><code>...
+# write query to socket
+writer.write(query)</code></pre>
+<p>Finally, we can drain the socket, waiting until it is ready to continue using.</p>
+<pre><code>...
+# wait for the bytes to be written to the socket
+await writer.drain()</code></pre>
+<p>Tying this together, the complete <strong>http_get()</strong> coroutine is listed below.</p>
+<pre><code># coroutine to construct a query and write to socket
+async def http_get(writer, path, host):
+    # define request
+    query = f'GET {path} HTTP/1.1\r\nHost: {host}\r\n\r\n'
+    # encode request as bytes
+    query = query.encode()
+    # write query to socket
+    writer.write(query)
+    # wait for the bytes to be written to the socket
+    await writer.drain()
+</code></pre>
+<p>Next, we can read the response.</p>
+<h3>Read HTTP Query Results</h3>
+<p>We can develop a coroutine to read a response from the server.</p>
+<p>This coroutine will take a <strong>StreamReader</strong> as an argument.</p>
+<pre><code># coroutine to read an http block from a socket
+async def http_read(reader):
+	# ...
+</code></pre>
+<p>It will read lines from the <strong>StreamReader</strong> until an empty line is read, after which it will return all lines as a single string with new line separators.</p>
+<p>We will do this using a for loop, although a more pythonic way might be to use a simple list comprehension with compound statements.</p>
+<p>First;y we can initialize the target string that will be used to store the complete response.</p>
+<pre><code>...
+data = ''</code></pre>
+<p>We can then use an "<strong>async for</strong>" expression to read lines from the <strong>StreamReader</strong>.</p>
+<p>This will automatically await each line for us.</p>
+<pre><code>...
+# read all data, decode and add to string
+async for line in reader:
+	# ...
+</code></pre>
+<p>Each line can then be decoded using UTF-8 encoding, the default for converting bytes to a string.</p>
+<pre><code>...
+# decode into a string
+line = line.decode()</code></pre>
+<p>We can then strip the white space from the string which leaves the content only.</p>
+<pre><code>...
+# strip white space
+line = line.strip()</code></pre>
+<p>If there is no content, it is likely the end of a block, such as the end of a header or the end of the body.</p>
+<p>Therefore, we can stop reading content from the socket.</p>
+<pre><code>...
+# check for end of block
+if not line:
+    return data
+</code></pre>
+<p>Otherwise, we can append the line to our response string.</p>
+<pre><code>...
+# store line
+data += line + '\n'</code></pre>
+<p>Tying this together, the complete <strong>http_read()</strong> coroutine is listed below.</p>
+<pre><code># coroutine to read a http block from a socket
+async def http_read(reader):
+    data = ''
+    # read all data, decode and add to string
+    async for line in reader:
+        # decode into a string
+        line = line.decode()
+        # strip white space
+        line = line.strip()
+        # check for end of block
+        if not line:
+            return data
+        # store line
+        data += line + '\n'
+</code></pre>
+<p>Next, we can open a connection and tie the asyncio program together.</p>
+<h3>Open Connection</h3>
+<p>We can develop a coroutine to open a connection, make the request and read the response.</p>
+<p>First, we can define the host and file we wish to download.</p>
+<p>We will download the google homepage in this example as it's likely to always be there and accessible to all readers.</p>
+<pre><code>...
+# main coroutine
+async def main():
+    # define the web page we want to download
+    host = 'www.google.com'
+    path = '/'
+</code></pre>
+<p>Next, we can open a connection to the host on port 80 used for HTTP web server socket connections.</p>
+<pre><code>...
+# open the connection
+reader, writer = await asyncio.open_connection(host, 80)
+print(f'Connected to {host}')
+</code></pre>
+<p>This returns a <strong>StreamReader</strong> and <strong>StreamWriter</strong> that we can use to interact with the host.</p>
+<p>Next, we can issue the request to GET the target file.</p>
+<p>This will involve awaiting our <strong>http_get()</strong> coroutine.</p>
+<pre><code>...
+# issue the request
+await http_get(writer, path, host)
+print(f'Issued GET for {path}')</code></pre>
+<p>Next, we can read the header of the HTTP response.</p>
+<p>This involves awaiting our <strong>http_read()</strong> coroutine.</p>
+<p>In this case, we will report the contents of the header, out of interest.</p>
+<pre><code>...
+# reader the header
+header = await http_read(reader)
+# report the header
+print(header)</code></pre>
+<p>We will then read the body of the response and report the number of characters read, a rough approximation because we are stripping white space and adding some back when processing the response.</p>
+<p>Again, we will use our <strong>http_read()</strong> coroutine.</p>
+<pre><code>...
+# read the body
+body = await http_read(reader)
+# report the details of the body
+print(f'Body: {len(body)} characters')</code></pre>
+<p>Finally, we can close the connection.</p>
+<p>This is achieved by closing the <strong>StreamWriter</strong> and waiting for it to close.</p>
+<pre><code>...
+# close writer stream
+writer.close()
+# wait for the writer to close
+await writer.wait_closed()</code></pre>
+<p>Tying this together, the complete <strong>main()</strong> coroutine is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # define the web page we want to download
+    host = 'www.google.com'
+    path = '/'
+    # open the connection
+    reader, writer = await asyncio.open_connection(host, 80)
+    print(f'Connected to {host}')
+    # issue the request
+    await http_get(writer, path, host)
+    print(f'Issued GET for {path}')
+    # reader the header
+    header = await http_read(reader)
+    # report the header
+    print(header)
+    # read the body
+    body = await http_read(reader)
+    # report the details of the body
+    print(f'Body: {len(body)} characters')
+    # close writer stream
+    writer.close()
+    # wait for the writer to close
+    await writer.wait_closed()
+</code></pre>
+<h3>Complete Example</h3>
+<p>We can tie all of these elements together.</p>
+<p>The complete example of downloading an HTML webpage over HTTP using asyncio is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of downloading a webpage over HTTP in asyncio
+import asyncio
+
+# coroutine to construct a query and write to socket
+async def http_get(writer, path, host):
+    # define request
+    query = f'GET {path} HTTP/1.1\r\nHost: {host}\r\n\r\n'
+    # encode request as bytes
+    query = query.encode()
+    # write query to socket
+    writer.write(query)
+    # wait for the bytes to be written to the socket
+    await writer.drain()
+
+# coroutine to read a http block from a socket
+async def http_read(reader):
+    # read all data, decode and add to string
+    data = ''
+    async for line in reader:
+        # decode into a string
+        line = line.decode()
+        # strip white space
+        line = line.strip()
+        # check for end of block
+        if not line:
+            return data
+        # store line
+        data += line + '\n'
+
+# main coroutine
+async def main():
+    # define the web page we want to download
+    host = 'www.google.com'
+    path = '/'
+    # open the connection
+    reader, writer = await asyncio.open_connection(host, 80)
+    print(f'Connected to {host}')
+    # issue the request
+    await http_get(writer, path, host)
+    print(f'Issued GET for {path}')
+    # reader the header
+    header = await http_read(reader)
+    # report the header
+    print(header)
+    # read the body
+    body = await http_read(reader)
+    # report the details of the body
+    print(f'Body: {len(body)} characters')
+    # close writer stream
+    writer.close()
+    # wait for the writer to close
+    await writer.wait_closed()
+
+# entry point
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point for the program.</p>
+<p>The <strong>main()</strong> coroutine runs and defines the host and file to download.</p>
+<p>The <strong>main()</strong> opens the connection, suspending and waiting for the socket to be open and be made ready on port 80.</p>
+<p>Once ready, the coroutine returns a <strong>StreamReader</strong> and <strong>StreamWriter</strong> for interacting with the socket.</p>
+<p>Next, the request is made. The <strong>main()</strong> coroutine calls our <strong>http_get()</strong> coroutine in order to make a request.</p>
+<p>The <strong>http_get()</strong> coroutine runes, constructing and encoding the query then writing the bytes to the socket. The <strong>http_get()</strong> then suspends and waits for the socket to be ready before returning.</p>
+<p>The <strong>main()</strong> coroutine resumes and reads the header, calling our <strong>http_read()</strong> coroutine and suspending.</p>
+<p>The <strong>http_read()</strong> coroutine runs, reading lines and appending them to a string until an empty line is read, likely signaling the end of a header or body block.</p>
+<p>Each call to the <strong>readline()</strong> coroutine is awaited automatically using the "<strong>async for</strong>" expression on the <strong>StreamReader</strong>.</p>
+<p>The <strong>http_read()</strong> coroutine terminates and the <strong>main()</strong> coroutine resumes, reporting the contents of the HTTP header.</p>
+<p>This contains lots of interesting stuff.</p>
+<p>The body is then read using our <strong>http_read()</strong> coroutine and the number of characters in the content is reported.</p>
+<p>Finally, the socket is closed and the program closes.</p>
+<p>This highlights how we can use write to and read from sockets in asyncio to download an HTML webpage using the HTTP protocol.</p>
+<pre><code>Connected to www.google.com
+Issued GET for /
+HTTP/1.1 200 OK
+Date: Tue, 11 Oct 2022 21:18:16 GMT
+Expires: -1
+Cache-Control: private, max-age=0
+Content-Type: text/html; charset=ISO-8859-1
+P3P: CP="This is not a P3P policy! See g.co/p3phelp for more info."
+Server: gws
+X-XSS-Protection: 0
+X-Frame-Options: SAMEORIGIN
+Set-Cookie: 1P_JAR=2022-10-11-21; expires=Thu, 10-Nov-2022 21:18:16 GMT; path=/; domain=.google.com; Secure
+Set-Cookie: AEC=AakniGNyVHd3MuuDP6JuAtJRtKlAWwZEp04ju-OwpoymwbIp7w77Ieg1Cfs; expires=Sun, 09-Apr-2023 21:18:16 GMT; path=/; domain=.google.com; Secure; HttpOnly; SameSite=lax
+Set-Cookie: NID=511=AT-bATDPaoz9wWo8BQKDycF49LdbCvtiW2-o7_Nwrd3guh3Clgae5kTv-tUqDHVVpRDmzsrWoRzjDVQ6stpkSacom7yv-5Dvaz0ZhhuK8tdKaElUwURML8DAW2spQMJfXHa31aizmwRk1iotwCHtQdmt1cwqulOx10DW6prWIjk; expires=Wed, 12-Apr-2023 21:18:16 GMT; path=/; domain=.google.com; HttpOnly
+Accept-Ranges: none
+Vary: Accept-Encoding
+Transfer-Encoding: chunked
+
+Body: 24446 characters
+</code></pre>
+<p>Next, let's look at how we might update the example to download the same file using HTTPS.</p>
+<h2>Example of Downloading HTML over HTTP in Asyncio</h2>
+<p>We can update the previous example to download a file using HTTPS instead of HTTP.</p>
+<p>Recall that <a href="https://en.wikipedia.org/wiki/HTTPS">HTTPS is a secure version of the HTTP protocol</a> that uses SSL to encrypt the plain text request and responses.</p>
+<p>HTTPS socket connections are made on port 443 instead of port 80.</p>
+<p>We can specify this port in the call to <strong>asyncio.open_connection()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# open the connection
+reader, writer = await asyncio.open_connection(host, 443)</code></pre>
+<p>We also must specify that we want to use SSL when making the connection, e.g. HTTP over SSL.</p>
+<p>This can be achieved by setting the "<strong>ssl</strong>" argument to <strong>True</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# open the connection
+reader, writer = await asyncio.open_connection(host, 443, ssl=True)</code></pre>
+<p>And that is all there is to it.</p>
+<p>Except, there is one small issue.</p>
+<p>There is a bug when waiting for SSL connection to close sometimes.</p>
+<p>Specifically, this line:</p>
+<pre><code>...
+# wait for the writer to close
+await writer.wait_closed()</code></pre>
+<p>This may raise an <strong>ssl.SSLError</strong> exception.</p>
+<p>For example:</p>
+<pre><code>Traceback (most recent call last):
+  ...
+ssl.SSLError: [SSL: APPLICATION_DATA_AFTER_CLOSE_NOTIFY] application data after close notify (_ssl.c:2672)
+</code></pre>
+<p>It is a known bug and not fixed at the time of writing:</p>
+<ul><li><a href="https://bugs.python.org/issue39951">Ignore specific errors when closing ssl connections</a></li></ul>
+<p>We can avoid the exception by removing our call to <strong>wait_closed()</strong>.</p>
+<p>The complete example updated to download the HTML webpage using HTTPS instead of HTTP with asyncio is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of downloading a webpage over HTTPS in asyncio
+import asyncio
+
+# coroutine to construct a query and write to socket
+async def http_get(writer, path, host):
+    # define request
+    query = f'GET {path} HTTP/1.1\r\nHost: {host}\r\n\r\n'
+    # encode request as bytes
+    query = query.encode()
+    # write query to socket
+    writer.write(query)
+    # wait for the bytes to be written to the socket
+    await writer.drain()
+
+# coroutine to read a http block from a socket
+async def http_read(reader):
+    # read all data, decode and add to string
+    data = ''
+    async for line in reader:
+        # decode into a string
+        line = line.decode()
+        # strip white space
+        line = line.strip()
+        # # check for end of block
+        if not line:
+            return data
+        # store line
+        data += line + '\n'
+
+# main coroutine
+async def main():
+    # define the web page we want to download
+    host = 'www.google.com'
+    path = '/'
+    # open the connection
+    reader, writer = await asyncio.open_connection(host, 443, ssl=True)
+    print(f'Connected to {host}')
+    # issue the request
+    await http_get(writer, path, host)
+    print(f'Issued GET for {path}')
+    # reader the header
+    header = await http_read(reader)
+    # report the header
+    print(header)
+    # read the body
+    body = await http_read(reader)
+    # report the details of the body
+    print(f'Body: {len(body)} characters')
+    # close writer stream
+    writer.close()
+
+# entry point
+asyncio.run(main())
+</code></pre>
+<p>Running the example downloads the header and body of the file from google.com as before.</p>
+<p>In this case, it is downloaded using the secure HTTPS protocol, instead of the HTTP protocol.</p>
+<pre><code>Connected to www.google.com
+Issued GET for /
+HTTP/1.1 200 OK
+Date: Tue, 11 Oct 2022 21:18:01 GMT
+Expires: -1
+Cache-Control: private, max-age=0
+Content-Type: text/html; charset=ISO-8859-1
+P3P: CP="This is not a P3P policy! See g.co/p3phelp for more info."
+Server: gws
+X-XSS-Protection: 0
+X-Frame-Options: SAMEORIGIN
+Set-Cookie: 1P_JAR=2022-10-11-21; expires=Thu, 10-Nov-2022 21:18:01 GMT; path=/; domain=.google.com; Secure
+Set-Cookie: AEC=AakniGP5QnZi1OqK0kP5npSVuHy9w4-_JX6zyLxd_P5fPj5St2ev7q-yIg; expires=Sun, 09-Apr-2023 21:18:01 GMT; path=/; domain=.google.com; Secure; HttpOnly; SameSite=lax
+Set-Cookie: NID=511=Wy_eSG5Wg2UvkdHpO6NhymmpxMfWoUrjDLnpklb86V9cYIirGv92MHJfDw7VQP2k_ouIT_3wxAj_6AIddvwohdaFim8SdL_6alVxF-UzARFVeFb6X6Q_BM1Ht5ludtGnPRgAJPa1txxK0F0R0aVvl7qXZHOSFDtrF5hWOWpRiho; expires=Wed, 12-Apr-2023 21:18:01 GMT; path=/; domain=.google.com; HttpOnly
+Alt-Svc: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000,h3-Q050=":443"; ma=2592000,h3-Q046=":443"; ma=2592000,h3-Q043=":443"; ma=2592000,quic=":443"; ma=2592000; v="46,43"
+Accept-Ranges: none
+Vary: Accept-Encoding
+Transfer-Encoding: chunked
+
+Body: 24376 characters
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to download an HTML webpage using HTTP and HTTPS using asyncio.</p>
+</main>
+</body>
+</html>

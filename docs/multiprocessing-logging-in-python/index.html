@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Logging in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Logging in Python</h1>
+<div class="post-meta">June 19, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can <strong>log from multiple processes</strong> directly using the log module or safely using a custom log handler.</p>
+<p>In this tutorial you will discover <strong>how to log from multiple processes in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Log From Multiple Processes</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> is a running instance of a computer program.</p>
+<p>Every Python program is executed in a Process, which is a new instance of the Python interpreter. This process has the name <em>MainProcess</em> and has one thread used to execute the program instructions called the <em>MainThread</em>. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create new child processes in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new processes via the <strong>multiprocessing.Process</strong> class.</p>
+<p>You can learn more about multiprocessing in the tutorial:</p>
+<ul><li><a href="../multiprocessing-in-python/">Multiprocessing in Python: The Complete Guide</a></li></ul>
+<p>In multiprocessing, we may need to log from multiple processes in the application.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>Different processes may perform different tasks and may encounter a range of events.</li><li>Worker processes may encounter exceptions that need to be stored, but should not halt the program.</li><li>Background tasks may need to report progress over the duration of the program.</li></ul>
+<p><strong>What is logging, and is it safe to use from multiple processes?</strong></p>
+<h2>What is Logging</h2>
+<p>Logging is a way of tracking events within a program.</p>
+<p>There are many types of events that may be logged within a program, ranging in different levels of severity, such as debugging and information to warnings, errors and critical events.</p>
+<p>The <a href="https://docs.python.org/3/library/logging.html"><strong>logging</strong> module</a> provides infrastructure for logging within Python programs.</p>
+<blockquote><p>This module defines functions and classes which implement a flexible event logging system for applications and libraries.</p><cite>-- <a href="https://docs.python.org/3/library/logging.html">logging — Logging facility for Python</a></cite></blockquote>
+<p>Logging is achieved by first configuring the log handler and then adding calls to the logging infrastructure at key points in the program.</p>
+<blockquote><p>Handler objects are responsible for dispatching the appropriate log messages (based on the log messages’ severity) to the handler’s specified destination.</p><cite>-- <a href="https://docs.python.org/3/library/logging.html">logging — Logging facility for Python</a></cite></blockquote>
+<p>The default handler will report log messages on the command prompt (e.g. terminal or system output stream).</p>
+<p>Alternate handlers can be configured to write log messages to file, to a database, or to custom target locations. The handler can specify the severity of messages to store.</p>
+<p>For example, we can log to file by calling the <strong>logging.basicConfig()</strong> function and specifying the file name and path to log to (e.g. <strong>application.log</strong>), the level of logging to capture to the file (e.g. from <strong>logging.DEBUG</strong> to <strong>logging.CRITICAL</strong>).</p>
+<pre><code>...
+# log everything to file
+logging.basicConfig(filename='application.log', level=logging.DEBUG)</code></pre>
+<p>Events are logged via function calls based on the type of event performed, e.g. <strong>logging.debug()</strong> for debugging messages.</p>
+<blockquote><p>Logging provides a set of convenience functions for simple logging usage. These are debug(), info(), warning(), error() and critical().</p><cite>-- <a href="https://docs.python.org/3/howto/logging.html">Logging HOWTO</a></cite></blockquote>
+<p>For example, we may add information messages to application code by calling <strong>logging.info()</strong> and passing in the string details of the event.</p>
+<pre><code>...
+# log that data was loaded successfully
+logger.info('All data was loaded successfully')</code></pre>
+<p>We may also log failures, such as exceptions that are important but not critical to the program via the <strong>logger.error()</strong> or <strong>logger.exception()</strong> functions.</p>
+<p>For example:</p>
+<pre><code>...
+# try a thing
+try:
+	# ...
+except Exception as err:
+	logger.exception(f'Unable to perform task because: {err.message} ')
+</code></pre>
+<p>These function calls can then be added throughout an application to capture events of different types, and the log handler or runtime configuration can be used to filter the severity of the messages that are actually stored.</p>
+<p>Next, let's consider logging from multiple processes.</p>
+<h2>How to Log From Multiple Processes</h2>
+<p>There are perhaps three main approaches to logging from multiple processes, they are:</p>
+<ol><li>Use the logging module separately from each process.</li><li>Use <strong>multiprocessing.get_logger()</strong>.</li><li>Use custom process-safe logging.</li></ol>
+<p>Let's take a closer look at each approach in turn.</p>
+<h3>1. Use Logging Module Separately in Each Process</h3>
+<p>We can log directly from each process using the logging module.</p>
+<p>This requires that you configure the logger in each process, including the target (e.g. stream or file) and log level.</p>
+<p>For example:</p>
+<pre><code>...
+# create a logger
+logger = logging.getLogger()
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>Messages can then be logged directly.</p>
+<p>For example:</p>
+<pre><code>...
+# report a message
+logging.info('Hello world.')</code></pre>
+<p>This is an easy approach in that it does not require anything sophisticated.</p>
+<p>The downside is that you have to duplicate code in order to configure a separate logger for each new process.</p>
+<p>The major limitation of this approach is that log messages may be lost or corrupted. This is because multiple processes will attempt to write log messages to the same target, e.g. stream or file.</p>
+<h3>2. Use Multiprocessing Module Logger (not recommended)</h3>
+<p>The multiprocessing module has its own logger with the name "<strong>multiprocessing</strong>".</p>
+<p>This logger is used within objects and functions within the multiprocessing module to log messages, such as debug messages that processes are running or have shutdown.</p>
+<p>We can get this logger and use it for logging.</p>
+<p>The logger used by the multiprocessing module can be acquired via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.get_logger"><strong>multiprocessing.get_logger()</strong> function</a>. Once acquired, it can be configured, e.g. to specify a handler and a log level.</p>
+<blockquote><p>Returns the logger used by multiprocessing. If necessary, a new one will be created.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# get the multiprocessing logger
+logger = get_logger()
+# configure a stream handler
+logger.addHandler(logging.StreamHandler())
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>Messages logged by the multiprocessing module itself will appear in this log at the appropriate log level, e.g. there are many debug messages in the module.</p>
+<p>We can also get a logger for the multiprocessing module that will log to standard error (stderr) by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.log_to_stderr"><strong>multiprocessing.log_to_stderr()</strong> function</a>. This will log module messages to stderr.</p>
+<p>We can then set the log level.</p>
+<p>For example:</p>
+<pre><code>...
+# get the multiprocessing logger with stderr stream handler added
+logger = multiprocessing.log_to_stderr()
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>We can also set the level as an argument to the <strong>multiprocessing.log_to_stderr()</strong> function via the "<strong>level</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# get the multiprocessing logger with stderr stream handler added
+logger = multiprocessing.log_to_stderr(level=logging.DEBUG)</code></pre>
+<p>This logger is not shared among processes and is not process-safe.</p>
+<p>It is simply using the logger module directly as in the previous example, although for the "<strong>multiprocessing</strong>" logging namespace.</p>
+<p>As such it has the same downside that the logger must be configured again within each child process and that log messages may be lost or corrupted.</p>
+<h3>3. Use Custom Process-Safe Logging (recommended)</h3>
+<p>Effective logging from multiple processes requires custom code.</p>
+<p>The logging module cookbook provides examples on how this can be achieved, in the section:</p>
+<ul><li><a href="https://docs.python.org/3/howto/logging-cookbook.html#logging-to-a-single-file-from-multiple-processes">Logging to a single file from multiple processes</a></li></ul>
+<p>A few approaches are described, including:</p>
+<ul><li>Use a socket handler and send messages to a logging process.</li><li>Use a custom handler that internally uses a shared mutex to ensure one process logs at a time.</li><li>Use a queue handler that uses a shared queue to send messages to a logging process.</li></ul>
+<p>All approaches are similar in that they require that log messages are serialized before being stored.</p>
+<p>This can be achieved by serializing messages on a shared <strong><a href="https://docs.python.org/3.10/library/multiprocessing.html#multiprocessing.Queue">multiprocessing.Queue</a></strong> via a <strong><a href="https://docs.python.org/3/library/logging.handlers.html#logging.handlers.QueueHandler">logging.handlers.QueueHandler</a></strong> and letting one process read messages one at a time and store them to stream or file.</p>
+<p>Alternatively, it can be achieved by allowing each process to write directly to the same location, but to use a shared lock to ensure that access to the target resource, such as a stream or file, is mutually exclusive.</p>
+<p>The approaches are generally equivalent and a matter of taste and application requirements.</p>
+<p>Now that we know how to log from multiple processes, let's look at some worked examples.</p>
+<h2>Example Using the Logging Module</h2>
+<p>We can explore using the logging module directly from multiple processes.</p>
+<p>This is appropriate for simple Python programs that may log non-critical messages to stderr.</p>
+<p>In this example we will create a number of child processes to execute a custom function. A logger will be configured in the main process and in each child process to report all messages debug and higher to stderr.</p>
+<p>Firstly, we can prepare the function to run in child functions.</p>
+<pre><code># task to be executed in child processes
+def task():
+	# ...
+</code></pre>
+<p>The function must first configure a log instance with the appropriate level.</p>
+<pre><code>...
+# create a logger
+logger = logging.getLogger()
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>We can then get the current process so that we can include the process name in the messages.</p>
+<pre><code>...
+# get the current process
+process = current_process()</code></pre>
+<p>The child process can then log a message, loop a few times and report a message each iteration and block for a random fraction of a second, then log a message before exiting.</p>
+<pre><code>...
+# report initial message
+logging.info(f'Child {process.name} starting.')
+# simulate doing work
+for i in range(5):
+    # report a message
+    logging.debug(f'Child {process.name} step {i}.')
+    # block
+    # sleep(random())
+# report final message
+logging.info(f'Child {process.name} done.')
+</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function is listed below.</p>
+<pre><code># task to be executed in child processes
+def task():
+    # create a logger
+    logger = logging.getLogger()
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # get the current process
+    process = current_process()
+    # report initial message
+    logging.info(f'Child {process.name} starting.')
+    # simulate doing work
+    for i in range(5):
+        # report a message
+        logging.debug(f'Child {process.name} step {i}.')
+        # block
+        sleep(random())
+    # report final message
+    logging.info(f'Child {process.name} done.')
+</code></pre>
+<p>Next, in the main process, we can configure a logger for logging from this process.</p>
+<pre><code>...
+# create a logger
+logger = logging.getLogger()
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>The main process will then report a message that it is getting started, then configure and start five processes to execute our custom <strong>task()</strong> function, wait for the child processes to finish, then report a final message.</p>
+<pre><code>...
+# report initial message
+logging.info('Main process started.')
+# configure child processes
+processes = [Process(target=task) for i in range(5)]
+# start child processes
+for process in processes:
+    process.start()
+# wait for child processes to finish
+for process in processes:
+    process.join()
+# report final message
+logging.info('Main process done.')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging from multiple processes with the logging module
+from random import random
+from time import sleep
+from multiprocessing import current_process
+from multiprocessing import Process
+import logging
+
+# task to be executed in child processes
+def task():
+    # create a logger
+    logger = logging.getLogger()
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # get the current process
+    process = current_process()
+    # report initial message
+    logging.info(f'Child {process.name} starting.')
+    # simulate doing work
+    for i in range(5):
+        # report a message
+        logging.debug(f'Child {process.name} step {i}.')
+        # block
+        # sleep(random())
+    # report final message
+    logging.info(f'Child {process.name} done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a logger
+    logger = logging.getLogger()
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # report initial message
+    logging.info('Main process started.')
+    # configure child processes
+    processes = [Process(target=task) for i in range(5)]
+    # start child processes
+    for process in processes:
+        process.start()
+    # wait for child processes to finish
+    for process in processes:
+        process.join()
+    # report final message
+    logging.info('Main process done.')
+</code></pre>
+<p>Running the example first configures the logger in the main process, then configures and starts five child processes.</p>
+<p>The main process blocks until the child processes finish.</p>
+<p>Each child process configures its own logger, using the default stream handler that sends messages to stderr, and sets the log level to debug.</p>
+<p>The child processes then perform their simulated task and log messages.</p>
+<p>The child processes finish, then the main process continues on and reports a final message.</p>
+<p>This highlights that the log module can be used directly from multiple processes, although it requires that each process configure the logging infrastructure separately.</p>
+<p>The danger of this approach is that the target where log messages are stored may not reliably handle messages from multiple processes in parallel, in which case messages may overwrite each other and be lost or corrupt. This is especially the case if the loggers are all configured to write to the same file.</p>
+<pre><code>INFO:root:Main process started.
+INFO:root:Child Process-2 starting.
+DEBUG:root:Child Process-2 step 0.
+DEBUG:root:Child Process-2 step 1.
+DEBUG:root:Child Process-2 step 2.
+DEBUG:root:Child Process-2 step 3.
+DEBUG:root:Child Process-2 step 4.
+INFO:root:Child Process-2 done.
+INFO:root:Child Process-1 starting.
+DEBUG:root:Child Process-1 step 0.
+DEBUG:root:Child Process-1 step 1.
+DEBUG:root:Child Process-1 step 2.
+DEBUG:root:Child Process-1 step 3.
+DEBUG:root:Child Process-1 step 4.
+INFO:root:Child Process-1 done.
+INFO:root:Child Process-3 starting.
+DEBUG:root:Child Process-3 step 0.
+DEBUG:root:Child Process-3 step 1.
+DEBUG:root:Child Process-3 step 2.
+DEBUG:root:Child Process-3 step 3.
+DEBUG:root:Child Process-3 step 4.
+INFO:root:Child Process-3 done.
+INFO:root:Child Process-4 starting.
+DEBUG:root:Child Process-4 step 0.
+DEBUG:root:Child Process-4 step 1.
+DEBUG:root:Child Process-4 step 2.
+DEBUG:root:Child Process-4 step 3.
+DEBUG:root:Child Process-4 step 4.
+INFO:root:Child Process-4 done.
+INFO:root:Child Process-5 starting.
+DEBUG:root:Child Process-5 step 0.
+DEBUG:root:Child Process-5 step 1.
+DEBUG:root:Child Process-5 step 2.
+DEBUG:root:Child Process-5 step 3.
+DEBUG:root:Child Process-5 step 4.
+INFO:root:Child Process-5 done.
+INFO:root:Main process done.</code></pre>
+<h2>Example Using the Multiprocessing Logger</h2>
+<p>We can explore logging from multiple processes using the multiprocessing module's logger.</p>
+<p>This is the same as logging directly using the logging infrastructure in the previous example in that logging is not process-safe and log messages may be lost or corrupted if written to the same target stream or handler.</p>
+<p>The main difference is that it is using the same shared logger used by the multiprocessing module itself. It is not clear why this logger is exposed on the multiprocessing module for general use, other than perhaps to be used by classes that extend objects or functionality in the multiprocessing module.</p>
+<p>I do not recommend this approach, however, we can explore how we might use this logger directly to log messages from multiple processes as a proof of concept.</p>
+<p>In this example, we can update the previous example to log from multiple child processes using the multiprocessing module logger in each process, including the main process and all child processes.</p>
+<p>Firstly, we can change the way we get the logger in order to configure it. Instead of calling <strong>logger.getLogger()</strong>, we can call <strong>multiprocessing.get_logger()</strong> to get the module logger.</p>
+<p>This can be performed in the child process, for example:</p>
+<pre><code>...
+# get the multiprocessing logger
+logger = get_logger()</code></pre>
+<p>This logger does not have a handler installed by default. Therefore, can add a <strong>StreamHandler</strong> so that messages are logged to stderr.</p>
+<pre><code>...
+# configure a stream handler
+logger.addHandler(logging.StreamHandler())</code></pre>
+<p>We can then set the preferred log level on the logger, in this case debug messages and above.</p>
+<pre><code>...
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>Logging at different levels can then be performed on the logger object directly instead of via the logger module functions, for example:</p>
+<pre><code>...
+# report initial message
+logger.info(f'Child {process.name} starting.')</code></pre>
+<p>The updated <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task to be executed in child processes
+def task():
+    # get the multiprocessing logger
+    logger = get_logger()
+    # configure a stream handler
+    logger.addHandler(logging.StreamHandler())
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # get the current process
+    process = current_process()
+    # report initial message
+    logger.info(f'Child {process.name} starting.')
+    # simulate doing work
+    for i in range(5):
+        # report a message
+        logger.info(f'Child {process.name} step {i}.')
+        # block
+        sleep(random())
+    # report final message
+    logger.info(f'Child {process.name} done.')
+</code></pre>
+<p>We can then make the same changes to configure the logger and use the logger in the main process.</p>
+<p>For example:</p>
+<pre><code>...
+# get the multiprocessing logger
+logger = get_logger()
+# configure a stream handler
+logger.addHandler(logging.StreamHandler())
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging from multiple processes with multiprocessing logging
+from random import random
+from time import sleep
+from multiprocessing import current_process
+from multiprocessing import Process
+from multiprocessing import get_logger
+import logging
+
+# task to be executed in child processes
+def task():
+    # get the multiprocessing logger
+    logger = get_logger()
+    # configure a stream handler
+    logger.addHandler(logging.StreamHandler())
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # get the current process
+    process = current_process()
+    # report initial message
+    logger.info(f'Child {process.name} starting.')
+    # simulate doing work
+    for i in range(5):
+        # report a message
+        logger.info(f'Child {process.name} step {i}.')
+        # block
+        sleep(random())
+    # report final message
+    logger.info(f'Child {process.name} done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # get the multiprocessing logger
+    logger = get_logger()
+    # configure a stream handler
+    logger.addHandler(logging.StreamHandler())
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # report initial message
+    logger.info(f'Main process started.')
+    # configure child processes
+    processes = [Process(target=task) for i in range(5)]
+    # start child processes
+    for process in processes:
+        process.start()
+    # wait for child processes to finish
+    for process in processes:
+        process.join()
+    # report final message
+    logger.info(f'Main process done.')
+</code></pre>
+<p>Running the example first acquires the logger used in the multiprocessing module in the main process, then configures and starts five child processes.</p>
+<p>The main process blocks until the child processes finish.</p>
+<p>Each child process configures its own logger from the multiprocessing module, using a stream handler that sends messages to stderr, and sets the log level to debug.</p>
+<p>The child processes then perform their simulated task and log messages.</p>
+<p>The child processes finish, and we notice debug messages from the multiprocessing module also appear related to each child process finishing. We can also see that the format of the messages is simplified, specified by the multiprocessing module.</p>
+<p>The main process continues on and reports a final message.</p>
+<p>This highlights that the logger from the multiprocessing module can be used directly from multiple processes, and like using the logger module directly, it requires that each process configure the logging infrastructure separately.</p>
+<p>The danger of this approach is the same as the danger of using the logging module directly from multiple processes, namely that the target where log messages are stored may not reliably handle messages from multiple processes in parallel, in which case messages may overwrite each other and be lost or corrupt.</p>
+<pre><code>Main process started.
+Child Process-4 starting.
+Child Process-4 step 0.
+Child Process-2 starting.
+Child Process-2 step 0.
+Child Process-1 starting.
+Child Process-1 step 0.
+Child Process-3 starting.
+Child Process-3 step 0.
+Child Process-5 starting.
+Child Process-5 step 0.
+Child Process-5 step 1.
+Child Process-4 step 1.
+Child Process-3 step 1.
+Child Process-2 step 1.
+Child Process-2 step 2.
+Child Process-5 step 2.
+Child Process-1 step 1.
+Child Process-4 step 2.
+Child Process-5 step 3.
+Child Process-3 step 2.
+Child Process-1 step 2.
+Child Process-2 step 3.
+Child Process-3 step 3.
+Child Process-5 step 4.
+Child Process-4 step 3.
+Child Process-1 step 3.
+Child Process-2 step 4.
+Child Process-3 step 4.
+Child Process-4 step 4.
+Child Process-5 done.
+process shutting down
+running all "atexit" finalizers with priority &gt;= 0
+running the remaining "atexit" finalizers
+process exiting with exitcode 0
+Child Process-1 step 4.
+Child Process-1 done.
+process shutting down
+running all "atexit" finalizers with priority &gt;= 0
+running the remaining "atexit" finalizers
+process exiting with exitcode 0
+Child Process-2 done.
+process shutting down
+running all "atexit" finalizers with priority &gt;= 0
+running the remaining "atexit" finalizers
+process exiting with exitcode 0
+Child Process-4 done.
+process shutting down
+running all "atexit" finalizers with priority &gt;= 0
+running the remaining "atexit" finalizers
+process exiting with exitcode 0
+Child Process-3 done.
+process shutting down
+running all "atexit" finalizers with priority &gt;= 0
+running the remaining "atexit" finalizers
+process exiting with exitcode 0
+Main process done.
+process shutting down
+running all "atexit" finalizers with priority &gt;= 0
+running the remaining "atexit" finalizers
+</code></pre>
+<h2>Example Using QueueHandler and a Logging Process</h2>
+<p>We can explore how to log in a process-safe manner.</p>
+<p>The <a href="https://docs.python.org/3/howto/logging-cookbook.html#logging-to-a-single-file-from-multiple-processes">Python logging cookbook</a> has good examples to get started and we can develop a new example inspired by them.</p>
+<p>In this example, we will update the previous example so that log messages are all sent to a new logging process and logged in a serial (one-at-a-time) manner.</p>
+<p>This can be achieved by configuring the logging infrastructure in each process to use a <strong><a href="https://docs.python.org/3/library/logging.handlers.html#queuehandler">logging.handlers.QueueHandler</a></strong> that will send log messages to a shared <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue">multiprocessing.Queue</a></strong>. A new child process will then consume messages from the queue one-at-a-time and store them, in this case on stderr using a <strong>logging.StreamHandler</strong>, but it could just as easily be a file.</p>
+<p>Importantly, in this example, messages cannot be lost or corrupted as only a single process is responsible for "storing" the log messages, and log messages are sent to this one process safely and reliably using a process-aware queue data structure.</p>
+<p>Firstly, we need to define a function to run in a child process responsible for logging.</p>
+<p>This function will take a shared <strong>multiprocessing.Queue </strong>as an argument.</p>
+<pre><code># executed in a process that performs logging
+def logger_process(queue):
+	# ...
+</code></pre>
+<p>We need to configure the logging infrastructure in this process to specify what level of messages to report and where to store them. In this case, we will get a named log for our application called '<strong>app</strong>', and send all messages debug level and up to stderr using a StreamHandler.</p>
+<pre><code>...
+# create a logger
+logger = logging.getLogger('app')
+# configure a stream handler
+logger.addHandler(logging.StreamHandler())
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>This child process will then run forever, reading messages from the queue and logging them. If there are no messages on the queue, it will block until a message arrives.</p>
+<pre><code>...
+# run forever
+while True:
+    # consume a log message, block until one arrives
+    message = queue.get()
+</code></pre>
+<p>If you are new to multiprocessing queues, you can learn more in the tutorial:</p>
+<ul><li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li></ul>
+<p>If the message is a special message None, then the look is broken and the process will terminate normally. This is called a sentinel message and must be sent by the main process before the program exits.</p>
+<pre><code>...
+# check for shutdown
+if message is None:
+    break
+</code></pre>
+<p>Otherwise, if it is a normal log message, we can let our logging infrastructure for this process handle it, e.g. log it to stderr.</p>
+<pre><code>...
+# log the message
+logger.handle(message)</code></pre>
+<p>Tying this together, the complete function for running a child process responsible for logging is listed below.</p>
+<pre><code># executed in a process that performs logging
+def logger_process(queue):
+    # create a logger
+    logger = logging.getLogger('app')
+    # configure a stream handler
+    logger.addHandler(logging.StreamHandler())
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # run forever
+    while True:
+        # consume a log message, block until one arrives
+        message = queue.get()
+        # check for shutdown
+        if message is None:
+            break
+        # log the message
+        logger.handle(message)
+</code></pre>
+<p>We can then update the child process to configure its local logging infrastructure to send log messages into the shared queue.</p>
+<p>Firstly, we can update the function to take the shared queue as an argument.</p>
+<pre><code># task to be executed in child processes
+def task(queue):
+	# ...
+</code></pre>
+<p>We can then configure a new logger instance to use a <strong>QueueHandler</strong> that makes use of the shared queue.</p>
+<pre><code>...
+# create a logger
+logger = logging.getLogger('app')
+# add a handler that uses the shared queue
+logger.addHandler(QueueHandler(queue))
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)
+</code></pre>
+<p>This configured logger can then be used in call logging calls in the child process.</p>
+<p>Finally, we can update the main process to first create the queue that will be shared among all processes.</p>
+<pre><code>...
+# create the shared queue
+queue = Queue()</code></pre>
+<p>The main process can then configure its logging infrastructure to use the <strong>QueueHandler</strong> so that messages are sent to the logging child process.</p>
+<pre><code>...
+# create the shared queue
+queue = Queue()
+# create a logger
+logger = logging.getLogger('app')
+# add a handler that uses the shared queue
+logger.addHandler(QueueHandler(queue))
+# log all messages, debug and up
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>Next, we can create and start a new child process to run our custom <strong>logger_process()</strong> function responsible for reading log messages and logging them to stderr.</p>
+<pre><code>...
+# start the logger process
+logger_p = Process(target=logger_process, args=(queue,))
+logger_p.start()</code></pre>
+<p>The child processes performing our simulated work need to receive the shared queue as an argument when configured.</p>
+<pre><code>...
+# configure child processes
+processes = [Process(target=task, args=(queue,)) for i in range(5)]</code></pre>
+<p>Finally, before the program exits, we need to send the special <strong>None</strong> sentinel value that will instruct the logging child process to exit its loop and terminate.</p>
+<pre><code>...
+# shutdown the queue correctly
+queue.put(None)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging from multiple processes in a process-safe manner
+from random import random
+from time import sleep
+from multiprocessing import current_process
+from multiprocessing import Process
+from multiprocessing import Queue
+from logging.handlers import QueueHandler
+import logging
+
+# executed in a process that performs logging
+def logger_process(queue):
+    # create a logger
+    logger = logging.getLogger('app')
+    # configure a stream handler
+    logger.addHandler(logging.StreamHandler())
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # run forever
+    while True:
+        # consume a log message, block until one arrives
+        message = queue.get()
+        # check for shutdown
+        if message is None:
+            break
+        # log the message
+        logger.handle(message)
+
+# task to be executed in child processes
+def task(queue):
+    # create a logger
+    logger = logging.getLogger('app')
+    # add a handler that uses the shared queue
+    logger.addHandler(QueueHandler(queue))
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # get the current process
+    process = current_process()
+    # report initial message
+    logger.info(f'Child {process.name} starting.')
+    # simulate doing work
+    for i in range(5):
+        # report a message
+        logger.debug(f'Child {process.name} step {i}.')
+        # block
+        sleep(random())
+    # report final message
+    logger.info(f'Child {process.name} done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared queue
+    queue = Queue()
+    # create a logger
+    logger = logging.getLogger('app')
+    # add a handler that uses the shared queue
+    logger.addHandler(QueueHandler(queue))
+    # log all messages, debug and up
+    logger.setLevel(logging.DEBUG)
+    # start the logger process
+    logger_p = Process(target=logger_process, args=(queue,))
+    logger_p.start()
+    # report initial message
+    logger.info('Main process started.')
+    # configure child processes
+    processes = [Process(target=task, args=(queue,)) for i in range(5)]
+    # start child processes
+    for process in processes:
+        process.start()
+    # wait for child processes to finish
+    for process in processes:
+        process.join()
+    # report final message
+    logger.info('Main process done.')
+    # shutdown the queue correctly
+    queue.put(None)
+</code></pre>
+<p>Running the example first creates the shared queue and configures the logging infrastructure in the main process to use the <strong>QueueHandler</strong> with the shared queue.</p>
+<p>This ensures that any logging in the main process is sent to the logging process.</p>
+<p>Next, a child process is configured and started and is responsible for reading messages from the shared queue and logging them to a central location, in this case to standard error.</p>
+<p>The child processes are then configured and started as before and the main process blocks, waiting for them to finish.</p>
+<p>Each child process runs and configures its logging infrastructure to use a <strong>QueueHandler</strong> with the shared queue. The child processes then perform their task and log their messages which are all sent into the shared queue to the logging process.</p>
+<p>The logging process reads messages one-at-a-time from the queue and lets its local logging infrastructure handle them, logging them to stderr.</p>
+<p>The child processes finish and the main process carries on. It sends a None message into the queue which triggers the logging process to exit its loop and terminate.</p>
+<p>All child processes are finished, allowing the main process to terminate.</p>
+<pre><code>Main process started.
+Child Process-2 starting.
+Child Process-2 step 0.
+Child Process-3 starting.
+Child Process-3 step 0.
+Child Process-4 starting.
+Child Process-4 step 0.
+Child Process-5 starting.
+Child Process-5 step 0.
+Child Process-6 starting.
+Child Process-6 step 0.
+Child Process-4 step 1.
+Child Process-5 step 1.
+Child Process-3 step 1.
+Child Process-2 step 1.
+Child Process-4 step 2.
+Child Process-6 step 1.
+Child Process-4 step 3.
+Child Process-5 step 2.
+Child Process-6 step 2.
+Child Process-3 step 2.
+Child Process-6 step 3.
+Child Process-2 step 2.
+Child Process-5 step 3.
+Child Process-4 step 4.
+Child Process-3 step 3.
+Child Process-5 step 4.
+Child Process-6 step 4.
+Child Process-4 done.
+Child Process-2 step 3.
+Child Process-5 done.
+Child Process-2 step 4.
+Child Process-6 done.
+Child Process-3 step 4.
+Child Process-3 done.
+Child Process-2 done.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to log from multiple processes in Python.</p>
+</main>
+</body>
+</html>

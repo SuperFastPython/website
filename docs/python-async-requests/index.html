@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asynchronous Requests in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asynchronous Requests in Python</h1>
+<div class="post-meta">December 9, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>We can make <strong>Async Requests in Python</strong>.</p>
+<p>The Requests Python library does not support asyncio directly.</p>
+<p>If we make HTTP requests using the Requests library, it will block the asyncio event loop and prevent all other coroutines in the program from progressing.</p>
+<p>Instead, we can make async requests using the <strong>asyncio.to_thread()</strong> method provided in the asyncio module in the Python standard library. This will run the blocking network I/O call in a separate worker thread, simulating an asynchronous or non-blocking I/O function call.</p>
+<p>In this tutorial, you will discover how to safely use the Requests library for HTTP requests in asyncio programs.</p>
+<p>Let's get started.</p>
+<h2>Requests Block the Asyncio Event Loop (this is bad)</h2>
+<p>HTTP clients are a large part of Python development.</p>
+<p>Most APIs that we use to access remote resources, websites, and SaaS will use HTTP requests under the covers, typically via a RESTful interface.</p>
+<p>HTTP requests are a type of network I/O and we may want to develop an asyncio program that makes use of the API so that we can have many hundreds or thousands of concurrent HTTP client connections.</p>
+<p>The most popular Python library for making HTTP requests is the Requests library.</p>
+<ul>
+<li><a href="https://github.com/psf/requests">Requests</a>: A simple, yet elegant, HTTP library. </li>
+</ul>
+<blockquote>
+<p>Requests allows you to send HTTP/1.1 requests extremely easily. There's no need to manually add query strings to your URLs, or to form-encode your PUT &amp; POST data — but nowadays, just use the json method!</p>
+<cite>-- <a href="https://github.com/psf/requests">Requests GitHub Project</a>.</cite></blockquote>
+<p>The problem is, the Requests library cannot be used directly in <a href="../python-asyncio/">asyncio programs</a>.</p>
+<p>The reason is because the Requests library will block the asyncio event loop while opening, writing to, and reading from the HTTP socket connection.</p>
+<p>This means that the entire asyncio program will be paused until the HTTP request is completed.</p>
+<p>This is bad, because the whole idea of adopting asyncio is to use asynchronous programming to run many tasks concurrently and to perform non-blocking network I/O.</p>
+<p><strong>How can we use requests safely in asyncio programs?</strong></p>
+<h2>How to Use Requests in Asyncio</h2>
+<p>We can use the Requests library to make HTTP requests safely in asyncio programs by running the blocking call in a new thread.</p>
+<p>This can be achieved using the <strong><a href="../asyncio-to_thread/">asyncio.to_thread()</a></strong> module function.</p>
+<p>The <strong>asyncio.to_thread()</strong> will make use of a <strong>ThreadPoolExecutor</strong> behind the scenes to execute the call in a new thread concurrently with the asyncio program.</p>
+<p>We need to run the blocking network request in a new thread because asyncio runs all coroutines in one thread. If one coroutine in the asyncio program blocks the current thread, it blocks all coroutines in the thread.</p>
+<p>By executing the blocking call in a separate thread, it allows the event loop to continue to run and progress all other coroutines that are running in the program.</p>
+<p>The <strong>asyncio.to_thread()</strong> module function can be treated like a non-blocking call, allowing us to simulate asynchronous requests or non-blocking network I/O with the requests library.</p>
+<p>A typical HTTP GET request made with the Requests library is made via the <strong>requests.get()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# perform http get
+result = requests.get('https://python.org/')</code></pre>
+<p>This will block the event loop.</p>
+<p>We can make this call in a new thread by awaiting a call to <strong>asyncio.to_thread()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# perform http get
+result = await asyncio.to_thread(requests.get, 'https://python.org/')</code></pre>
+<p>Notice that the <strong>asyncio.to_thread()</strong> takes the name of the method or function to call and each argument to provide to the target function.</p>
+<p>You can learn more about the <strong>asyncio.to_thread()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-to_thread/">How to Use Asyncio to_thread()</a></li>
+</ul>
+<p>You can learn more about handling blocking tasks in asyncio programs in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-blocking-tasks/">How to Run Blocking Tasks in Asyncio</a></li>
+</ul>
+<p>Another solution would be to use an alternative to the Requests library that supports asyncio directly, e.g. an async-first HTTP client library. Popular examples include <a href="https://github.com/aio-libs/aiohttp">aiohttp</a> and <a href="https://github.com/encode/httpx/">httpx</a>.</p>
+<p>Now that we know how we can use the Requests library in asyncio safely, let's look at some worked examples.</p>
+<h2>Example of Requests API (regular Python)</h2>
+<p>Firstly, let's look at how to make a simple HTTP GET request using the Requests library.</p>
+<p>The example below makes a request and reports the HTTP status and the length of the content.</p>
+<pre><code># SuperFastPython.com
+# example of an http client with requests
+import requests
+# define the url we want to get
+url = 'https://python.org/'
+# perform http get
+result = requests.get(url)
+# report results
+print(f'Status Code: {result.status_code}')
+print(f'Content Length: {len(result.text)}')</code></pre>
+<p>Running the program performs the request and reports the status code and length of all downloaded text.</p>
+<p>We can see that it is a very clean and simple API.</p>
+<p>The HTTP GET is a blocking call that opens a network connection, sends an HTTP request, and downloads an HTTP response, then parses the response into structures we can access.</p>
+<pre><code>Status Code: 200
+Content Length: 51225</code></pre>
+<h2>Example of Requests API in Asyncio (blocking the event loop)</h2>
+<p>We can call the <strong>requests.get()</strong> in asyncio programs, but it will block the event loop, as we have discussed.</p>
+<p>The example below updates the example to run in the asyncio event loop.</p>
+<pre><code># SuperFastPython.com
+# example of an http client with requests in asyncio
+import requests
+import asyncio
+
+# main coroutine
+async def main():
+    # define the url we want to get
+    url = 'https://python.org/'
+    # perform a blocking http get request
+    result = requests.get(url)
+    # report results
+    print(f'Status Code: {result.status_code}')
+    print(f'Content Length: {len(result.text)}')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>The example works, what's the problem?</p>
+<p>The problem is that when we call <strong>requests.get()</strong> it blocks the thread.</p>
+<p>This means that any other coroutines we might have running in our asyncio event loop will not progress.</p>
+<p>Blocking the event loop is an anti-pattern in asyncio programs. A bad practice. Antithetical. We use asyncio so that our tasks can cooperate and execute concurrently.</p>
+<pre><code>Status Code: 200
+Content Length: 51225</code></pre>
+<h2>Example Confirming Requests API Blocks The Asyncio Event Loop</h2>
+<p>Let's make this obvious by running another coroutine in the background.</p>
+<p>We can define a coroutine that prints a message and sleeps every 10 milliseconds.</p>
+<pre><code># some background task
+async def background():
+    while True:
+        print('Running in the background...')
+        await asyncio.sleep(0.01)
+</code></pre>
+<p>We can start this task first, and allow it to begin running immediately.</p>
+<pre><code>...
+# create the background task
+task = asyncio.create_task(background())
+# allow the background task to start executing
+await asyncio.sleep(0)
+</code></pre>
+<p>We can then perform our request and report a message right before we block the thread with our request.</p>
+<pre><code>...
+# perform a blocking http get request in a separate thread
+print('Starting request')
+result = requests.get(url)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an http client with requests in asyncio
+import requests
+import asyncio
+
+# some background task
+async def background():
+    while True:
+        print('Running in the background...')
+        await asyncio.sleep(0.01)
+
+# main coroutine
+async def main():
+    # create the background task
+    task = asyncio.create_task(background())
+    # allow the background task to start executing
+    await asyncio.sleep(0)
+    # define the url we want to get
+    url = 'https://python.org/'
+    # perform a blocking http get request in a separate thread
+    print('Starting request')
+    result = requests.get(url)
+    # report results
+    print(f'Status Code: {result.status_code}')
+    print(f'Content Length: {len(result.text)}')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts our background task and allows it to run.</p>
+<p>The background task gets one opportunity to run before sleeping.</p>
+<p>The <strong>main()</strong> coroutine resumes, prints a message and makes the HTTP GET request.</p>
+<p>This takes a moment and blocks the asyncio event loop for the duration. Our background task is unable to progress and print messages.</p>
+<p>The GET finishes, the <strong>main()</strong> coroutine reports status, exits, and cancels the background task as the event loop is shut down.</p>
+<p>We must run the blocking call in a way that does not block the event loop.</p>
+<pre><code>Running in the background...
+Starting request
+Status Code: 200
+Content Length: 51225</code></pre>
+<h2>Example Running Requests API Calls in A Separate Thread</h2>
+<p>We can perform blocking Requests API calls in a separate thread in our asyncio programs.</p>
+<p>This can be achieved via the <strong>asyncio.to_thread()</strong> function that will use a pool of worker threads behind the scenes to execute blocking tasks.</p>
+<p>We can then await the call like any other coroutine.</p>
+<p>For example:</p>
+<pre><code>...
+# perform a blocking http get request in a separate thread
+result = await asyncio.to_thread(requests.get, url)</code></pre>
+<p>The updated version of our program with this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an http client with requests in asyncio
+import requests
+import asyncio
+
+# some background task
+async def background():
+    while True:
+        print('Running in the background...')
+        await asyncio.sleep(0.01)
+
+# main coroutine
+async def main():
+    # create the background task
+    task = asyncio.create_task(background())
+    # allow the background task to start executing
+    await asyncio.sleep(0)
+    # define the url we want to get
+    url = 'https://python.org/'
+    # perform a blocking http get request in a separate thread
+    print('Starting request')
+    result = await asyncio.to_thread(requests.get, url)
+    # report results
+    print(f'Status Code: {result.status_code}')
+    print(f'Content Length: {len(result.text)}')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>The program runs as before, with one important difference.</p>
+<p>This does not block the current thread.</p>
+<p>The background task is created and started, run one time before the <strong>main()</strong> coroutine resumes.</p>
+<p>The <strong>main()</strong> coroutine then reports the message “Starting request” and then suspends as it makes the HTTP GET request in a separate thread.</p>
+<p>This allows all other coroutines in the event loop to progress. We only have one other coroutine running, our background task, which runs a bunch of times in its loop, happily reporting messages.</p>
+<p>The GET request eventually finishes, and the <strong>main()</strong> coroutine resumes and reports the details before shutting down the event loop.</p>
+<p>This highlights firstly how we can run blocking HTTP calls in the Requests library in a separate thread within our asyncio programs. Secondly, it highlights how doing so allows the event loop to progress other coroutines running while the blocking call is running.</p>
+<pre><code>Running in the background...
+Starting request
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Running in the background...
+Status Code: 200
+Content Length: 51435</code></pre>
+<p>This works, however, there are other ways.</p>
+<p>We can use an async-native library to perform our HTTP requests.</p>
+<p>This may be preferred if we don't want to spin up a pool of worker threads as a workaround for working with synchronous network I/O calls.</p>
+<h2>Takeaways</h2>
+<p>You now know how to use the Requests library in asyncio.</p>
+</main>
+</body>
+</html>

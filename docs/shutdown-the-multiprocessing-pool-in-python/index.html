@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shutdown the Multiprocessing Pool in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Shutdown the Multiprocessing Pool in Python</h1>
+<div class="post-meta">July 5, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>shutdown the <a href="../multiprocessing-pool-python/">process pool</a></strong> via the <strong>Pool.close()</strong> or <strong>Pool.terminate()</strong> functions.</p>
+<p>In this tutorial you will discover how to <strong>shutdown a process pool in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Close a Process Pool</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>. Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>The process pool must be closed once we are finished with it in order to release the child worker processes.</p>
+<p><strong>How can we safely close the process pool once we are finished with it?</strong></p>
+<h2>Problem With Not Closing Process Pool</h2>
+<p>We may encounter problems if we do not close the process pool once we are finished with it.</p>
+<p>The process pool maintains multiple child worker processes. Each process is a heady weight object maintained by the operating system with its own main thread and stack space.</p>
+<p>In addition, the process pool has worker threads responsible for dispatching tasks and gathering results from the child processes.</p>
+<p>If the process pool is not explicitly closed, it means that the resources required to operate the process pool, e.g. the child processes, their threads, and stack space, may not be released and made available to the program.</p>
+<blockquote><p>multiprocessing.pool objects have internal resources that need to be properly managed (like any other resource) by using the pool as a context manager or by calling close() and terminate() manually.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>In addition, it is possible for worker threads to prevent the main process from exiting if they are still running.</p>
+<p>The child worker processes are daemon processes, which means that the main process can exit if worker processes are running.</p>
+<p>You can learn more about daemon processes in the tutorial:</p>
+<ul><li><a href="../daemon-process-in-python/">Daemon Process in Python</a></li></ul>
+<p>Nevertheless, there is a known issue where if we let the Python garbage collector shutdown and delete the process pool for us (e.g. finalize), and an exception is raised during the shutdown process, then it is possible for the pool to not shutdown properly.</p>
+<blockquote><p>... Failure to do this can lead to the process hanging on finalization. Note that it is not correct to rely on the garbage collector to destroy the pool as CPython does not assure that the finalizer of the pool will be called (see object.__del__() for more information).</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Therefore, it is a best practice to always shutdown the process pool.</p>
+<h2>How to Shutdown the Process Pool</h2>
+<p>There are two ways to shutdown the process pool.</p>
+<p>They are:</p>
+<ol><li>Call <strong>Pool.close()</strong>.</li><li>Call <strong>Pool.terminate()</strong>.</li></ol>
+<p>We can also call <strong>Pool.terminate()</strong> automatically via the context manager interface.</p>
+<p>Let's take a closer look at each of these cases in turn.</p>
+<h3>How to Close the Process Pool</h3>
+<p>The process pool can be shutdown by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.close"><strong>Pool.close()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# close the process pool
+pool.close()</code></pre>
+<p>This will prevent the pool from accepting new tasks.</p>
+<p>Once all issued tasks are completed, the resources of the process pool, such as the child worker processes, will be released.</p>
+<blockquote><p>Prevents any more tasks from being submitted to the pool. Once all the tasks have been completed the worker processes will exit.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<h3>How to Terminate the Process Pool</h3>
+<p>The process pool can be forcefully shutdown by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.terminate"><strong>Pool.terminate()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# terminate the process pool
+pool.terminate()</code></pre>
+<p>This will prevent the pool from accepting new tasks.</p>
+<p>It will immediately terminate all child worker processes, even if they are in the middle of executing a task.</p>
+<blockquote><p>Stops the worker processes immediately without completing outstanding work.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This approach to shutting down the process pool is not recommended, as it may leave your task data or program state in an inconsistent state.</p>
+<h3>How to Automatically Terminate the Process Pool</h3>
+<p>The <strong>Pool.terminate()</strong> function can be called automatically in two circumstances:</p>
+<ol><li>By the Python garbage collector, once the pool is no longer used by the program.</li><li>By the context manager interface.</li></ol>
+<p>As mentioned previously, it is not a good idea to rely on the terminate() function being called by the Python garbage collector in order to shutdown the process pool as it can result in the main process hanging in rare circumstances.</p>
+<p>The process pool class provides the context manager interface.</p>
+<p>This means that we can create and configure a process pool, use it within the context manager block, and once the block is exited, the process pool will be closed automatically for us.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool
+with Pool() as pool:
+	# use the process pool
+	# ...
+# process pool is closed automatically
+</code></pre>
+<p>Exiting the block of the context manager normally or via an error will result in the <strong>terminate()</strong> function of the process pool being called automatically.</p>
+<blockquote><p>Pool objects now support the context management protocol [...]. __enter__() returns the pool object, and __exit__() calls terminate().</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>You can learn more about the process pool context manager interface in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<h3>Shutdown With Pool.close() vs Pool.terminate()</h3>
+<p>The key difference between <strong>close()</strong> and <strong>terminate()</strong> is that terminate shuts down the pool immediately, even if tasks are running, whereas <strong>close()</strong> waits for the task to complete before shutting down.</p>
+<p>Use <strong>close()</strong> for a normal shutdown of the pool once you are finished with it.</p>
+<p>Use <strong>terminate()</strong> for emergencies, such as if an exception was raised and the pool must be shutdown immediately, or if the program is exiting.</p>
+<p>You can also use <strong>terminate()</strong> after close as a safety check in another part of the application (e.g. a consistent shutdown procedure) to confirm that the pool is completely shut down.</p>
+<p>Now that we know how to shutdown the process pool, let's look at some worked examples.</p>
+<h2>Example of Closing the Process Pool</h2>
+<p>We can explore how to close the process pool safely.</p>
+<p>In this example we will create a process pool, issue a task, wait for the task to complete, then close the process pool. We will define a new custom function to execute as a task in the pool which will report a message and sleep for a moment.</p>
+<p>Firstly, we can define a function to run in a new task in the process pool.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+</code></pre>
+<p>Next, in the main process we can create a process pool with a default configuration.</p>
+<pre><code>...
+# create and configure the process pool
+pool = Pool()</code></pre>
+<p>Next, we can issue our <strong>task()</strong> function to the process pool asynchronously.</p>
+<p>Notice that we don't have to wait for the task to complete.</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.apply_async(task)</code></pre>
+<p>Next, we can close the process pool, then call <strong>join()</strong> to wait a moment for all resources to be released.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait a moment
+pool.join()
+# report a message
+print('Main all done.')
+</code></pre>
+<p>Finally, we can report the number of child processes for the main process, which we expect to be zero, as the process pool has now shut down.</p>
+<pre><code>...
+# report the number of child processes that are still active
+children = active_children()
+print(f'Active children: {len(children)}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of closing the process pool
+from time import sleep
+from multiprocessing.pool import Pool
+from multiprocessing import active_children
+
+# task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    pool = Pool()
+    # issue tasks to the process pool
+    result = pool.apply_async(task)
+    # close the process pool
+    pool.close()
+    # wait a moment
+    pool.join()
+    # report a message
+    print('Main all done.')
+    # report the number of child processes that are still active
+    children = active_children()
+    print(f'Active children: {len(children)}')
+</code></pre>
+<p>Running the example first creates the process pool then issues the task to the process pool.</p>
+<p>The process pool begins executing the task in a child worker process.</p>
+<p>The main process then closes the process pool while the task is running.</p>
+<p>This prevents the pool from taking any further tasks, then closes all child worker processes once all tasks are completed. The main process blocks waiting for all child processes to be released.</p>
+<p>The task in the process pool finishes and the worker processes in the pool are closed.</p>
+<p>The main process carries on and reports the number of active child processes, which is zero as expected.</p>
+<pre><code>Task executing
+Task done
+Main all done.
+Active children: 0</code></pre>
+<h2>Example of Terminating the Process Pool</h2>
+<p>We can explore how to shutdown the process pool by forcefully terminating the child processes.</p>
+<p>In this example, we can update the previous example and let the issued task run for a moment then terminate the pool before the task has had a chance to complete.</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.apply_async(task)
+# wait a moment
+sleep(0.5)
+# close the process pool
+pool.terminate()</code></pre>
+<p>As before, we can wait for the child worker processes in the pool to finish, then report the number of active child processes for the main process, which we expect to be zero.</p>
+<pre><code>...
+# wait for the child processes to close
+pool.join()
+# report a message
+print('Main all done.')
+# report the number of child processes that are still active
+children = active_children()
+print(f'Active children: {len(children)}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of terminating the process pool
+from time import sleep
+from multiprocessing.pool import Pool
+from multiprocessing import active_children
+
+# task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    pool = Pool()
+    # issue tasks to the process pool
+    result = pool.apply_async(task)
+    # wait a moment
+    sleep(0.5)
+    # close the process pool
+    pool.terminate()
+    # wait for the child processes to close
+    pool.join()
+    # report a message
+    print('Main all done.')
+    # report the number of child processes that are still active
+    children = active_children()
+    print(f'Active children: {len(children)}')
+</code></pre>
+<p>Running the example first creates the process pool then issues the task to the process pool.</p>
+<p>The process pool begins executing the task in a child worker process.</p>
+<p>The main process blocks for a moment, then terminates the process pool.</p>
+<p>This prevents the pool from taking any further tasks, then immediately closes all child worker processes. The main process blocks waiting for all child processes to be terminated.</p>
+<p>The task in the process pool does not get a chance to finish. The worker processes in the pool are closed.</p>
+<p>The main process carries on and reports the number of active child processes, which is zero as expected.</p>
+<pre><code>Task executing
+Main all done.
+Active children: 0</code></pre>
+<h2>Automatically Terminate the Process Pool with Garbage Collection</h2>
+<p>We can explore the Python garbage collector terminating the process pool for us.</p>
+<p>As mentioned above, this approach is not recommended.</p>
+<p>Nevertheless, it is important to understand the behavior of the pool under these circumstances.</p>
+<p>We can update the example to issue above to issue the task to the pool, wait a moment, then exit the main process without explicitly closing the process pool.</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.apply_async(task)
+# wait a moment
+sleep(0.5)
+# report a message
+print('Main all done.')</code></pre>
+<p>This will trigger the Python garbage collector to call <strong>finalize()</strong> on the process pool object.</p>
+<p>At this time the process pool will still be running and executing one task.</p>
+<p>The <strong>terminate()</strong> function will be called to immediately terminate the pool, allowing the main process to exit.</p>
+<p>Note, the child worker processes in the process pool are daemon processes, therefore will not prevent the main process from exiting.</p>
+<p>We can demonstrate this by reporting the daemon status of the child processes.</p>
+<pre><code>...
+# report the number of child processes that are still active
+children = active_children()
+print(f'Active children: {len(children)}')
+# report the daemon status of the child
+for child in children:
+    print(f'Worker daemon={child.daemon}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of not closing the process pool
+from time import sleep
+from multiprocessing.pool import Pool
+from multiprocessing import active_children
+
+# task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    pool = Pool()
+    # issue tasks to the process pool
+    result = pool.apply_async(task)
+    # wait a moment
+    sleep(0.5)
+    # report a message
+    print('Main all done.')
+    # report the number of child processes that are still active
+    children = active_children()
+    print(f'Active children: {len(children)}')
+    # report the daemon status of the child
+    for child in children:
+        print(f'Worker daemon={child.daemon}')
+</code></pre>
+<p>Running the example first creates the process pool then issues the task to the process pool.</p>
+<p>The process pool begins executing the task in a child worker process.</p>
+<p>The main process blocks for a moment.</p>
+<p>It then reports the number of active processes, which is 8 in this case.</p>
+<p>Note, the number of active child processes will differ depending on your system and the default number of worker processes that were created.</p>
+<p>The daemon status of all child worker processes is then reported.</p>
+<p>We can see that all child workers are daemon processes, as expected. This means they will not prevent the main process from exiting.</p>
+<p>The main process exits. The Python garbage collector triggers the <strong>multiprocessing.pool.Pool</strong> class to be deleted and indirectly results in the terminate() function on the pool being called.</p>
+<p>This prevents the pool from taking any further tasks, then immediately closes all child worker processes.</p>
+<p>The task in the process pool does not get a chance to finish. The worker processes in the pool are closed.</p>
+<pre><code>Task executing
+Main all done.
+Active children: 8
+Worker daemon=True
+Worker daemon=True
+Worker daemon=True
+Worker daemon=True
+Worker daemon=True
+Worker daemon=True
+Worker daemon=True
+Worker daemon=True</code></pre>
+<h2>Automatically Terminate the Process Pool with the Context Manager</h2>
+<p>We can automatically call terminate on the process pool once we are finished with it via the context manager interface.</p>
+<p>This is a preferred way to work with the process pool, if the work with the pool can fit within the context managers block.</p>
+<p>We can update the example to create and configure the pool using the context manager interface.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>We can then issue the task within the pool, and wait for it to complete.</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.apply_async(task)
+# wait a moment
+result.wait()</code></pre>
+<p>It is important that we wait for the task to complete within the context manager block.</p>
+<p>This can be achieved by using blocking calls on the process pool or waiting on the result directly as we are in this case.</p>
+<p>If we carried on and the context manager block exited, then the pool would be terminated while the task was still running.</p>
+<p>One we are finished with the process pool, we can report a message and check the number of active child processes of the main process.</p>
+<pre><code>...
+# report a message
+print('Main all done.')
+# report the number of child processes that are still active
+children = active_children()
+print(f'Active children: {len(children)}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of automatically terminating the process pool
+from time import sleep
+from multiprocessing.pool import Pool
+from multiprocessing import active_children
+
+# task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        result = pool.apply_async(task)
+        # wait a moment
+        result.wait()
+    # report a message
+    print('Main all done.')
+    # report the number of child processes that are still active
+    children = active_children()
+    print(f'Active children: {len(children)}')
+</code></pre>
+<p>Running the example first creates the process pool then issues the task to the process pool.</p>
+<p>The process pool begins executing the task in a child worker process.</p>
+<p>The main process then blocks, waiting for the task to complete.</p>
+<p>Once the task is finished, the main process unblocks and continues on. It exits the context manager block which triggers the <strong>terminate()</strong> function to be called by the <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/pool.py#L735"><strong>__exit__()</strong> function of the context manager</a>.</p>
+<p>The worker processes in the process pool are terminated immediately.</p>
+<p>The main process then reports the number of active child processes, which is zero as expected.</p>
+<pre><code>Task executing
+Task done
+Main all done.
+Active children: 0</code></pre>
+<h2>Error When Issuing Task to Closed Pool</h2>
+<p>We cannot issue new tasks to a process pool that has been shutdown.</p>
+<p>That is, if the pool has been shutdown with a call to <strong>close()</strong> or <strong>terminate()</strong> and we try to issue a new task, it results in an error.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>The example above can be updated so that we close the pool, then issue a second task.</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.apply_async(task)
+# close the process pool
+pool.close()
+# issue another task
+pool.apply_async(task)
+</code></pre>
+<p>This is expected to result in an error.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of issuing a task to a pool that has already been closed.
+from time import sleep
+from multiprocessing.pool import Pool
+from multiprocessing import active_children
+
+# task executed in a worker process
+def task():
+    # report a message
+    print(f'Task executing', flush=True)
+    # block for a moment
+    sleep(1)
+    # report a message
+    print(f'Task done', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    pool = Pool()
+    # issue tasks to the process pool
+    result = pool.apply_async(task)
+    # close the process pool
+    pool.close()
+    # issue another task
+    pool.apply_async(task)
+</code></pre>
+<p>Running the example first creates the process pool then issues the task to the process pool.</p>
+<p>The process pool begins executing the task in a child worker process.</p>
+<p>The main process then closes the process pool while the task is running.</p>
+<p>This prevents the pool from taking any further tasks.</p>
+<p>The main process then attempts to issue a new task to the pool. This results in an error, as expected, reporting "Pool not running".</p>
+<pre><code>Traceback (most recent call last):
+  ...
+ValueError: Pool not running
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to shutdown the process pool in Python.</p>
+</main>
+</body>
+</html>

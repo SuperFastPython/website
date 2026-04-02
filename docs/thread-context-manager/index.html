@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread-Safety With Context Managers in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread-Safety With Context Managers in Python</h1>
+<div class="post-meta">April 6, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can use <strong>context managers</strong> to <strong>avoid race conditions</strong> by automatically acquiring and releasing thread concurrency primitives like locks and semaphores.</p>
+<p>In this tutorial you will discover how to <strong>use context managers for </strong><a href="../threading-in-python/"><strong>threads</strong> in Python</a>.</p>
+<p>Let's get started.</p>
+<h2>What is a Context Manager</h2>
+<p>A context manager is an interface on Python objects for defining a new run context.</p>
+<blockquote><p>Python's with statement supports the concept of a runtime context defined by a context manager. This is implemented using a pair of methods that allow user-defined classes to define a runtime context that is entered before the statement body is executed and exited when the statement ends</p><cite>-- <a href="https://docs.python.org/3/library/stdtypes.html#typecontextmanager">Context Manager Types, Built-in Types</a></cite></blockquote>
+<p>A run context is a block of Python code. Examples of other run contexts include the content of a function or the content of a loop.</p>
+<p>Context managers allow an object to define the code that runs at the beginning and end of a block of code. This is a lot like the try-except-finally pattern, except the code executed before and after the block is hidden within the object and only the body block of code needs to be specified.</p>
+<p>The context manager interface has two methods that must be implemented on an object that supports the interface, they are:</p>
+<ul><li><strong>__enter__()</strong>: Executed prior to the code block.</li><li><strong>__exit__()</strong>: Executed after the code block.</li></ul>
+<p>These two methods are always executed, even if an error or exception occurs within the block. In this way, <strong>__exit__()</strong> acts like a finally block in a try-except-finally pattern.</p>
+<blockquote><p>The with statement is used to wrap the execution of a block with methods defined by a context manager . This allows common try...except...finally usage patterns to be encapsulated for convenient reuse.</p><cite>-- <a href="https://docs.python.org/3/reference/compound_stmts.html#with">8.5. The with statement, 8. Compound statements</a>.</cite></blockquote>
+<p>Context managers on Python objects are used via the "<strong>with</strong>" statement.</p>
+<p>The with statement takes the object instance that implements the context manager interface as an argument. It will execute the code in the object for the beginning of the block, e.g. the <strong>__enter__()</strong> method and return an instance of an object that can be assigned.</p>
+<p>For example:</p>
+<pre><code>...
+# execute the context manager, calls __enter__()
+with object as o:
+	# the main block...
+# end of the context manager, calls __exit__()
+</code></pre>
+<p>Context managers are useful for operations that require the consistent initialization and shutdown of an operation.</p>
+<blockquote><p>The context manager handles the entry into, and the exit from, the desired runtime context for the execution of the block of code.</p><cite>-- <a href="https://docs.python.org/3/reference/datamodel.html#context-managers">3.3.9. With Statement Context Managers</a></cite></blockquote>
+<p>Common examples of context managers provided in the Python standard library include:</p>
+<ul><li>Opening and closing files.</li><li>Opening and closing sockets.</li></ul>
+<p>Now that we know what context managers are, let's look at the use of context managers with threads.</p>
+<h2>What is a Context Manager for Threads</h2>
+<p>Python provides a suite of concurrency primitives for threads that support the context manager interface.</p>
+<p>This includes locks, conditions, and semaphores.</p>
+<p>The context manager interface on concurrency primitives provides a way to easily avoid common classes of concurrency failure modes called deadlocks by abstracting away and automating the process of acquiring and releasing the concurrency primitive.</p>
+<p>Concurrency primitives are typically used to protect a critical section of code subjected to race conditions if executed concurrently by multiple threads.</p>
+<p>The concurrency primitive must be acquired prior to a critical section and released at the end of the critical section.</p>
+<p>There are three main ways we could handle this, they are:</p>
+<ol><li>Directly.</li><li>With a Try-Except-Finally pattern.</li><li>With a Context Manager.</li></ol>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Approach 1: Directly</h3>
+<p>A concurrency primitive can be acquired and released directly.</p>
+<p>This can be achieved by calling the <strong>acquire()</strong> function, followed by the code block, and ending with a call to <strong>release()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the primitive
+primitive.acquire()
+# execute code block
+# ...
+# release the primitive
+primitive.release()</code></pre>
+<p>The danger of this approach is that if the code block between the call to <strong>acquire()</strong> and <strong>release()</strong> raises an <strong>Error</strong> or <strong>Exception</strong>, then <strong>release()</strong> will never be called.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the primitive
+primitive.acquire()
+# execute code block
+# ...
+raise Exception('Something bad happened')
+# ...
+# release the primitive
+primitive.release()</code></pre>
+<p>This is a problem because other threads waiting to acquire the primitive may block forever, resulting in a deadlock.</p>
+<p>You can learn more about deadlocks in this tutorial:</p>
+<ul><li><a href="../thread-deadlock-in-python/">How to Identify a Deadlock in Python</a></li></ul>
+<h3>Approach 2: Try-Except-Finally</h3>
+<p>A better approach to acquiring and releasing a concurrency primitive directly is to use a try-except-finally pattern.</p>
+<p>The primitive is acquired prior to the try statement, the try block defines the main block of code, the exception handles any expected errors or exceptions in the main block of code and the finally block ensures that primitive is always released.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the primitive
+primitive.acquire()
+try:
+	# execute code block
+	# ...
+except:
+	# handle expected errors and exceptions
+finally:
+	# release the primitive
+	primitive.release()
+</code></pre>
+<p>This is an improvement over directly acquiring and releasing the primitive because regardless of what happens in the main block of code, the primitive is always released.</p>
+<p>This prevents a class of deadlocks where primitives are not released due to expected or unexpected errors and exceptions.</p>
+<p>In other programming languages like Java and C#, the try-except-finally pattern is a best practice when acquiring and releasing concurrency primitives.</p>
+<p>It is not a best practice in Python, because we have something better.</p>
+<h3>Approach 3: Context Manager</h3>
+<p>Python provides a context manager interface on concurrency primitives that need to be acquired and released.</p>
+<p>This achieves a similar outcome to using a try-except-finally pattern, with less code.</p>
+<p>Specifically, it is more like a try-finally pattern, where any exception handling must be added and occur within the code block itself.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the primitive
+with primitive:
+	# execute code block
+	# ...
+# release the primitive automatically
+</code></pre>
+<p>The benefit is that we can focus on the content of the block, e.g. the critical section of code protected by the concurrency primitive and the acquisition and releasing of the primitive happens for us behind the scenes.</p>
+<p>This gives the benefit of avoiding deadlocks like using a try-finally block, although with less code and better readability.</p>
+<p>Now that we know the benefit of context managers when using concurrency primitives, let's look at some examples.</p>
+<h2>How to Use Context Managers With Threads</h2>
+<p>We can take a closer look at the context manager interface provided on concurrency primitives in Python.</p>
+<p>Specifically, the interface is provided on the following concurrency primitives:</p>
+<ol><li>Mutex locks provided by the <strong>threading.Lock</strong> class.</li><li>Reentrant locks provided by the <strong>threading.RLock</strong> class.</li><li>Conditions aka Monitors provided by the <strong>threading.Condition</strong> class.</li><li>Semaphores provided by the <strong>threading.Semaphore</strong> class.</li><li>Bounded semaphores provided by the <strong>threading.BoundedSemaphore</strong> class.</li></ol>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Lock Context Manager</h3>
+<p>A mutual exclusion lock or mutex lock is a synchronization primitive intended to prevent race conditions on shared variables.</p>
+<p>Python provides a mutual exclusion lock via the <a href="https://docs.python.org/3/library/threading.html#lock-objects"><strong>threading.Lock</strong> class</a>.</p>
+<p>An instance of the <strong>Lock</strong> can be created and then acquired by threads before accessing a critical section, and released after the critical section.</p>
+<p>This can be achieved using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = threading.Lock()
+...
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>You can learn more about mutex locks in this tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<h3>RLock Context Manager</h3>
+<p>A reentrant mutual exclusion lock or reentrant lock for short, is like a mutex lock except it allows a thread to acquire the lock more than once.</p>
+<p>Python provides a reentrant lock via the <a href="https://docs.python.org/3/library/threading.html#rlock-objects"><strong>threading.RLock</strong> class</a>.</p>
+<p>An instance of the <strong>RLock</strong> can be created and then acquired by threads before accessing a critical section, and released after the critical section.</p>
+<p>This can be achieved using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create a reentrant lock
+lock = threading.RLock()
+...
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>You can learn more about reentrant mutex locks in this tutorial:</p>
+<ul><li><a href="../thread-reentrant-lock/">How to Use a Reentrant Lock in Python</a></li></ul>
+<h3>Condition Context Manager</h3>
+<p>A condition, also called a monitor, allows multiple threads to be notified about some result.</p>
+<p>Python provides a condition via the <a href="https://docs.python.org/3/library/threading.html#condition-objects"><strong>threading.Condition</strong> class</a>.</p>
+<p>We can create a condition object and by default it will create a new reentrant mutex lock (<strong>threading.RLock</strong> class) by default which will be used internally.</p>
+<p>In order for a thread to make use of the condition, it must acquire it and release it, like a mutex lock.</p>
+<p>This can be achieved using the context manager interface.</p>
+<p>Once acquired, we can choose to either notify waiting threads by calling <strong>notify()</strong>, or wait to be notified by other threads by calling <strong>wait()</strong>.</p>
+<p>For example, we can notify waiting threads:</p>
+<pre><code>...
+# create the condition
+condition = threading.Condition()
+# ...
+# acquire the condition
+with condition:
+	# notify a waiting thread
+	condition.notify()
+</code></pre>
+<p>We may also wait to be notified by another thread:</p>
+<pre><code>...
+# create the condition
+condition = threading.Condition()
+# ...
+# acquire the condition
+with condition:
+	# wait to be notified
+	condition.wait()
+</code></pre>
+<p>You can learn more about condition objects in this tutorial:</p>
+<ul><li><a href="../thread-condition/">How to Use A Thread Condition Object in Python</a></li></ul>
+<h3>Semaphore Context Manager</h3>
+<p>A semaphore is a concurrency primitive that allows a limit on the number of threads that can acquire a lock protecting a critical section.</p>
+<p>It is used to limit the number of concurrent threads that can perform an action simultaneously, such as execute a critical section, perform a calculation, or operate an external resource.</p>
+<p>Python provides a semaphore via the <a href="https://docs.python.org/3/library/threading.html#semaphore-objects"><strong>threading.Semaphore</strong> class</a>.</p>
+<p>The <strong>threading.Semaphore</strong> instance must be configured when it is created to set the limit on the internal counter. This limit will match the number of concurrent threads that can hold the semaphore.</p>
+<p>A position on the semaphore can then be acquired and then released once work with the limited resource is finished.</p>
+<p>This can be achieved using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create the semaphore
+semaphore = threading.Semaphore(100)
+# ...
+# acquire the semaphore
+with semaphore:
+	# ...
+</code></pre>
+<p>You can learn more about how to use semaphores in this tutorial:</p>
+<ul><li><a href="../thread-semaphore/">How to Use a Semaphore in Python</a></li></ul>
+<h3>BoundedSemaphore Context Manager</h3>
+<p>A bounded semaphore is a type of semaphore that protects the internal counter going above the initial value.</p>
+<p>It ensures that the semaphore cannot be released more than it was acquired.</p>
+<p>Python provides a semaphore via the <a href="https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore"><strong>threading.BoundedSemaphore</strong> class</a>.</p>
+<p>Like a semaphore, the <strong>threading.BoundedSemaphore</strong> instance must be configured when it is created to set the limit on the internal counter. This limit will match the number of concurrent threads that can hold the semaphore.</p>
+<p>A position on the bounded semaphore can then be acquired and then released once work with the limited resource is finished.</p>
+<p>This can be achieved using the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create the bounded semaphore
+bounded_semaphore = threading.BoundedSemaphore(100)
+# ...
+# acquire the bounded semaphore
+with bounded_semaphore:
+	# ...
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use context managers with threads in Python.</p>
+</main>
+</body>
+</html>

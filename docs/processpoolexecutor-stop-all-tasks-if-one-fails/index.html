@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stop All Tasks if One Fails with the ProcessPoolExecutor in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Stop All Tasks if One Fails with the ProcessPoolExecutor in Python</h1>
+<div class="post-meta">February 1, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>You can <strong>stop all tasks if one task fails</strong> with the <strong><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor</a></strong> using a <strong>multiprocessing.Event</strong>.</p>
+<p>In this tutorial you will discover how to stop all asynchronous tasks if one task fails in the process pool.</p>
+<p>Let's get started.</p>
+<h2 id="need-to-stop-all-tasks-if-one-task-fails">Need to Stop All Tasks if One Task Fails</h2>
+<p>The <strong>ProcessPoolExecutor</strong> in Python provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>You can submit tasks to the process pool by calling the <strong>submit()</strong> function and passing in the name of the function you wish to execute on another process.</p>
+<p>Calling the <strong>submit()</strong> function will return a <strong>Future</strong> object that allows you to check on the status of the task and get the result from the task once it completes.</p>
+<p>Tasks executed in the process pool.</p>
+<p>The most common pattern for task failure is for a target task function to raise an error or exception.</p>
+<p>The exception is then caught by the process pool so that it does not affect the worker process.</p>
+<p>The caught exception can then be accessed by calling the <strong>exception()</strong> function on the <strong>Future</strong> object or will be re-thrown when getting the result from the task via the <strong>result()</strong> function on the <strong>Future</strong> object.</p>
+<p>When a task fails, we may wish to stop executing all tasks running in the process pool.</p>
+<p>The process pool does not provide a facility to stop running tasks. Instead, it only provides a way to cancel tasks via their <strong>Future</strong> objects only for those tasks that are not yet running and are not done.</p>
+<p>As such, how do we stop all running tasks when one task fails by raising an exception?</p>
+<h2 id="how-to-stop-all-running-tasks-if-one-fails">How to Stop All Running Tasks If One Fails</h2>
+<p>The <strong>ProcessPoolExecutor</strong> does not provide a facility to stop running tasks.</p>
+<p>Nevertheless, we can update our target task functions to stop running when a process-safe flag is set.</p>
+<p>This can be implemented using <strong>multiprocessing.Event</strong>.</p>
+<p>We cannot create <strong>Event</strong> objects directly and pass them around when working with processes, as we can when working with threads. Instead, we must use a <strong>multiprocessing.Manager</strong> to create the <strong>Event</strong> object for us.</p>
+<p><strong>Managers</strong> are used to create and manage shared state between processes, like data and variables.</p>
+<p>You can learn more about <strong>Events</strong> and <strong>Managers</strong> here:</p>
+<ul><li><a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></li></ul>
+<p><strong>Managers</strong> have to be created and closed which can be achieved seamlessly using the context manager, for example:</p>
+<pre><code>...
+# create the manager used for sharing state between processes
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>Next, we can use the <strong>Manager</strong> to create the event:</p>
+<pre><code>...
+# create an event to shut down all running tasks
+event = manager.Event()
+</code></pre>
+<p>This <strong>Event</strong> can then be passed to each target task function as an argument to be checked within separate worker processes.</p>
+<pre><code>...
+# execute the task, passing the event
+future = executor.submit(work, event)</code></pre>
+<p>Once the tasks are running, they can be stopped any time by setting the value of the even flag.</p>
+<pre><code>...
+# stop running tasks via the event
+event.set()</code></pre>
+<p>Each target task function must check the status of the event frequently, such as within each iteration of a loop within the task.</p>
+<p>If the event is set, the task can then stop running, perhaps by returning immediately.</p>
+<pre><code>...
+# check the status of the flag
+if event.is_set():
+    return
+</code></pre>
+<p>If your target task function has some resources open, it may need to clean up before returning.</p>
+<p>This approach to stopping running tasks may require that you change the structure of your task so that you have a loop allowing you to check the value of the flag.</p>
+<p>For example, if your task reads data from a file or a socket, you may need to change the read operation to be performed in blocks of data in a loop so that each iteration of the loop you can check the status of the flag.</p>
+<p>Now that we know how to stop all running tasks, we need to consider the trigger for stopping the tasks.</p>
+<p>We want to stop all running tasks if any task raises an exception.</p>
+<p>This can be achieved using the <strong>wait()</strong> module function.</p>
+<p>This function takes a collection of <strong>Future</strong> objects and returns a tuple of two sets, one containing all done tasks and a second that contains all non-done tasks.</p>
+<p>Recall that we get one <strong>Future</strong> object for each call to the <strong>submit()</strong> function when issuing tasks to the process pool to be executed asynchronously.</p>
+<p>By default, the <strong>wait()</strong> function will return when all passed in tasks have completed. This is controlled via the "<strong>return_when</strong>" argument that is set to the <strong>ALL_COMPLETED</strong> constant. We can change the value to the <strong>FIRST_EXCEPTION</strong> constant which will return when any task raises an exception or when all tasks are completed.</p>
+<pre><code>...
+# wait until any task raises an exception or all tasks complete
+done, not_done = wait(futures, return_when=FIRST_EXCEPTION)</code></pre>
+<p>Once the call to <strong>wait()</strong> returns, we can inspect the "<strong>done</strong>" set. If it contains one <strong>Future</strong> object and that <strong>Future</strong> object has an exception via a call to the <strong>exception()</strong> function that does not return <strong>None</strong>, then we can trigger all running tasks to stop.</p>
+<pre><code>...
+# check if a task raised an exception
+if len(done) == 1 and done.pop().exception != None:
+	# stop all running tasks
+	event.set()
+</code></pre>
+<p>We may also want to cancel any tasks that have not yet started running.</p>
+<pre><code>...
+# cancel any tasks that are not yet running
+for future in futures:
+	future.cancel()
+</code></pre>
+<p>Now that we know how to stop all running tasks when one task fails, let's look at a worked example.</p>
+<h2 id="example-of-stopping-all-running-tasks-when-one-task-fails">Example of Stopping All Running Tasks When One Task Fails</h2>
+<p>Let's develop an example in which a problem occurs in one task and triggers all running tasks to stop when using the <strong>ProcessPoolExecutor</strong>.</p>
+<p>First, we must create the <strong>Manager</strong> and then create the <strong>Event</strong> that will be passed to all tasks executed in the process pool.</p>
+<pre><code>...
+# create a manager for sharing events
+with Manager() as manager:
+    # create an event used to stop running tasks
+    event = manager.Event()
+</code></pre>
+<p>We can then pass this event to our target function when we submit the task to the pool for execution.</p>
+<pre><code>...
+# execute one task
+future = executor.submit(work, event, ...)</code></pre>
+<p>Next, we can define a task function that does work in a loop including a sleep for one second to simulate a IO-bound task. The loop checks the status of the event each iteration and returns if the event is triggered.</p>
+<p>Each task has a unique name and we use this to keep track of what is going on.</p>
+<p>If the task has a name of 0 (the first task) then it will fail by raising an exception.</p>
+<pre><code># target task function
+def work(event, name):
+    # pretend read data for a long time
+    for _ in range(10):
+        # pretend to read some data
+        sleep(1)
+        # check if this task should fail
+        if name == 0:
+            print(f'Task has failed, name={name}')
+            raise Exception('Something bad happened')
+        # check if the task should stop
+        if event.is_set():
+            print(f'Stopping, name={name}')
+            return
+</code></pre>
+<p>So far so good.</p>
+<p>Next, we can start a process pool with ten worker processes and submit ten tasks to the process pool with names from 0 to 9.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Cancel Tasks in the ProcessPoolExecutor – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Cancel Tasks in the ProcessPoolExecutor</h1>
+<div class="post-meta">January 18, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>You can <strong>cancel tasks</strong> in the <strong><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor</a></strong> by calling the <strong>cancel()</strong> function on the Future task.</p>
+<p>In this tutorial you will discover how to cancel tasks in a Python process pool.</p>
+<p>Let's get started.</p>
+<h2 id="need-to-cancel-tasks-in-the-process-pool">Need to Cancel Tasks in the Process Pool</h2>
+<p>The <strong>ProcessPoolExecutor</strong> in Python provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>You can submit tasks to the process pool by calling the <strong>submit()</strong> function and passing in the name of the function you wish to execute on another process.</p>
+<p>Calling the <strong>submit()</strong> function will return a <strong>Future</strong> object that allows you to check on the status of the task and get the result from the task once it completes.</p>
+<p>You may submit tasks that you may later decide you no longer need to complete.</p>
+<p>Letting the tasks run may use up unwanted resources.</p>
+<p>Additionally, you may have to wait for all tasks in the process pool to complete before you can shut it down.</p>
+<p>The solution is to cancel unwanted tasks.</p>
+<h2 id="how-to-cancel-submitted-tasks">How to Cancel Submitted Tasks</h2>
+<p>You can cancel tasks submitted to the <strong>ProcessPoolExecutor</strong> by calling the <strong>cancel()</strong> function on the <strong>Future</strong> object.</p>
+<p>Recall that you will receive a <strong>Future</strong> object when you submit your task to the process pool when you call the <strong>submit()</strong> function.</p>
+<pre><code>...
+# submit a task to the process pool
+future = executor.submit(work)</code></pre>
+<p>The <strong>Future</strong> object has a function called <strong>cancel()</strong> that will cancel the task if it has not yet started running and is not done, e.g. is pending.</p>
+<pre><code>...
+# cancel a task submitted to the process pool
+was_canceled = future.cancel()</code></pre>
+<p>The <strong>cancel()</strong> function returns <strong>True</strong> if the task was canceled, otherwise <strong>False</strong> if the task could not be canceled.</p>
+<p>If you successfully cancel the task, it will not execute.</p>
+<p>If you try to retrieve a result from a cancelled task by calling the <strong>result()</strong> function, a <strong>CancelledError</strong> will be raised. Similarly, if you try to get any exception raised while executing the task that was cancelled by calling the <strong>exception()</strong> function, a <strong>CancelledError</strong> will be raised.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result
+try:
+    result = future.result()
+except CancelledError:
+    print('No result, task was cancelled')
+</code></pre>
+<p>You may fail to cancel a task submitted to the process pool for one of three reasons:</p>
+<ul><li>The task was already cancelled.</li><li>The task is currently running.</li><li>The task is done.</li></ul>
+<p>There is often some confusion with the difference between a task that has been submitted and a task that is running.</p>
+<p>A <strong>ProcessPoolExecutor</strong> has a fixed number of processes, limiting the number of tasks that can be executed at once.</p>
+<p>A task that is submitted to the <strong>ProcessPoolExecutor</strong> may not start running immediately if all processes in the pool are currently occupied. Once a process in the pool becomes available, it will take a task from the internal queue of tasks and begin executing it, changing its status to "<em>running</em>".</p>
+<p>We can check if a task is running by calling the <strong>running()</strong> function on the <strong>Future</strong> object for the task.</p>
+<p>Only tasks that are scheduled in the process pool but have not yet started running can be cancelled.</p>
+<p>Now that we know how to cancel tasks in a <strong>ProcessPoolExecutor</strong>, let's look at a worked example.</p>
+<h2 id="example-of-cancelling-a-task">Example of Cancelling a Task</h2>
+<p>Let's demonstrate how to cancel a task submitted to the <strong>ProcessPoolExecutor</strong>.</p>
+<p>First, we can define a simple task that will block for a given number of seconds.</p>
+<pre><code># task that will block for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+</code></pre>
+<p>We can then create a process pool with one process and submit a long running task to occupy the single process in the pool.</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor(1) as executor:
+    # start a long running task
+    future1 = executor.submit(work, 2)
+    print(f'First task running={future1.running()}')
+</code></pre>
+<p>Next, we can submit a second shorter task and confirm that it is not yet running.</p>
+<pre><code>...
+# start a second
+future2 = executor.submit(work, 0.1)
+print(f'Second task running={future2.running()}')
+</code></pre>
+<p>We can then cancel the second task, and confirm that it indeed was canceled and will not run.</p>
+<pre><code>...
+# cancel the second task
+was_cancelled = future2.cancel()
+print(f'Second task was cancelled: {was_cancelled}')
+</code></pre>
+<p>Tying this together, the complete example of cancelling a task in the <strong>ProcessPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of cancelling a task in a process pool
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# task that will block for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+
+# entry point
+if __name__ == '__main__':
+    # create a process pool
+    with ProcessPoolExecutor(1) as executor:
+        # start a long running task
+        future1 = executor.submit(work, 2)
+        print(f'First task running={future1.running()}')
+        # start a second
+        future2 = executor.submit(work, 0.1)
+        print(f'Second task running={future2.running()}')
+        # cancel the second task
+        was_cancelled = future2.cancel()
+        print(f'Second task was cancelled: {was_cancelled}')
+</code></pre>
+<p>Running the example first starts the long running task and confirms that it is running.</p>
+<p>The second short duration task is submitted and is not yet running.</p>
+<p>We then cancel the second task and confirm that it will not run.</p>
+<pre><code>First task running=True
+Second task running=False
+Second task was cancelled: True</code></pre>
+<h2 id="no-results-from-cancelled-tasks">No Results from Cancelled Tasks</h2>
+<p>You cannot get results or exceptions from cancelled tasks.</p>
+<p>If we try to get a result from a cancelled task by calling the <strong>result() </strong>function, a <strong>CancelledError</strong> will be raised. The same would be the case if we tried to get the exception by calling the <strong>exception()</strong> function.</p>
+<p>We can demonstrate this by updating the example from the previous section.</p>
+<p>First, let’s update the target task function to return a value so we have a result to retrieve from the task. In this case, the argument that was passed in.</p>
+<pre><code># task that will block for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+    return sleep_time
+</code></pre>
+<p>Next, we can attempt to get the result from the cancelled task (the short duration task) and handle the expected <strong>CancelledError</strong> that will be raised because the task was cancelled.</p>
+<pre><code>...
+# get the result
+try:
+    result = future2.result()
+except CancelledError:
+    print('No result, task was cancelled')
+</code></pre>
+<p>Finally, we can try and get the exception from the cancelled task and handle the same expected <strong>CancelledError</strong> because the task was cancelled.</p>
+<pre><code>...
+# get the exception
+try:
+    e = future2.exception()
+except CancelledError:
+    print('No exception, task was cancelled')
+</code></pre>
+<p>Tying this together, the complete example of attempting to get a result and an exception from a cancelled task is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting results and an exception from a cancelled task
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import CancelledError
+
+# task that will block for a moment
+def work(sleep_time):
+    sleep(sleep_time)
+    return sleep_time
+
+if __name__ == '__main__':
+    # create a process pool
+    with ProcessPoolExecutor(1) as executor:
+        # start a long running task
+        future1 = executor.submit(work, 2)
+        print(f'First task running={future1.running()}')
+        # start a second
+        future2 = executor.submit(work, 0.1)
+        print(f'Second task running={future2.running()}')
+        # cancel the second task
+        was_cancelled = future2.cancel()
+        print(f'Second task was cancelled: {was_cancelled}')
+        # get the result
+        try:
+            result = future2.result()
+        except CancelledError:
+            print('No result, task was cancelled')
+        # get the exception
+        try:
+            e = future2.exception()
+        except CancelledError:
+            print('No exception, task was cancelled')
+</code></pre>
+<p>Running the example first starts the long running task and confirms that it is running. The second short duration task is submitted, then successfully cancelled.</p>
+<p>We then try to retrieve the result from the cancelled task and handle an expected <strong>CancelledError</strong>.</p>
+<p>Finally, we try to retrieve any exception that occurred during the execution of the short duration task and a <strong>CancelledError</strong> is raised and handled, again because the task was cancelled.</p>
+<pre><code>First task running=True
+Second task running=False
+Second task was cancelled: True
+No result, task was cancelled
+No exception, task was cancelled
+</code></pre>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how to cancel tasks that have been submitted to the Python <strong>ProcessPoolExecutor</strong>.</p>
+</main>
+</body>
+</html>

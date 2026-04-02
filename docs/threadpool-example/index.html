@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPool Example in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPool Example in Python</h1>
+<div class="post-meta">October 23, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>The <strong><a href="../threadpool-python/">ThreadPool</a></strong> is a flexible and powerful thread pool for executing ad hoc tasks in an asynchronous manner.</p>
+<p>In this tutorial, you will discover a <strong>ThreadPool example</strong> that you can use as a template for your own project.</p>
+<p>Let's dive in.</p>
+<h2>How to Scan Ports on a Server One-by-One (slow)</h2>
+<p>We can connect to other computers by <a href="https://en.wikipedia.org/wiki/Network_socket">opening a socket</a>, called socket programming.</p>
+<p>Opening a socket requires both the name or IP address of the server and a port number on which to connect.</p>
+<p>For example, when your web browser opens a web page on python.org, it is opening a socket connection to that server on port 80, then using the HTTP protocol to request and download (GET) an HTML file.</p>
+<p><a href="https://en.wikipedia.org/wiki/Computer_network_programming">Socket programming</a> or network programming is a lot of fun.</p>
+<p>A good first socket programming project is to develop a <a href="https://en.wikipedia.org/wiki/Port_scanner">port scanner</a>.</p>
+<p>This is a program that reports all of the open sockets on a given server.</p>
+<p>A simple way to implement a port scanner is to loop over all the ports you want to test and attempt to make a socket connection on each. If a connection can be made, we disconnect immediately and report that the port on the server is open.</p>
+<p>For example, we know that port 80 is open on python.org, but what other ports might be open?</p>
+<p>Historically, having many open ports on a server was a security risk, so it is common to lock down a public-facing server and close all non-essential ports to external traffic. This means scanning public servers will likely yield few open ports in the best case or will deny future access in the worst case if the server thinks you're trying to break in.</p>
+<p>As such, although developing a port scanner is a fun socket programming exercise, we must be careful in how we use it and what servers we scan.</p>
+<p>Next, let's look at how we can open a socket connection on a single port.</p>
+<h3>Open a Socket Connection on a Port</h3>
+<p>Python provides socket communication in the socket module.</p>
+<p>A socket must first be configured in terms of the type of host address and type of socket we will create, then the configured socket can be connected.</p>
+<p>You can learn more about the socket module in Python here:</p>
+<ul><li><a href="https://docs.python.org/3/library/socket.html">socket — Low-level networking interface</a></li></ul>
+<p>There are many ways to specify a host address, although perhaps the most common is the IP address (IPv4) or the domain name resolved by DNS. We can configure a socket to expect this type of address via the <strong>AF_INET</strong> constant.</p>
+<p>There are also different socket types, the most common being a TCP or stream type socket and a less reliable UDP type socket. We will attempt to open TCP sockets in this case, as they are more commonly used for services like email, web, FTP, and so on. We can configure our socket for TCP using the <strong>SOCK_STREAM</strong> constant.</p>
+<p>We can create and configure our socket as follows:</p>
+<pre><code>...
+# set a timeout of a few seconds
+sock = socket(AF_INET, SOCK_STREAM)</code></pre>
+<p>We must close our socket once we are finished with it by calling the <strong>close()</strong> function; for example:</p>
+<pre><code>...
+# close the socket
+sock.close()</code></pre>
+<p>While working with the socket, an exception may be raised for many reasons, such as an invalid address or a failure to connect. We must ensure that the connection is closed regardless, therefore we can automatically close the socket using the context manager; for example:</p>
+<pre><code>...
+# create and configure the socket
+with socket(AF_INET, SOCK_STREAM) as sock:
+	# ...
+</code></pre>
+<p>Next, we can further configure the socket before we open a connection.</p>
+<p>Specifically, it is a good idea to set a timeout because attempting to open network connections can be slow. We want to give up connecting and raise an exception if a given number of seconds elapses and we still haven't connected.</p>
+<p>This can be achieved by calling the <strong>settimeout()</strong> function on the socket. In this case, we will use a somewhat aggressive timeout of 3 seconds.</p>
+<pre><code>...
+# set a timeout of a few seconds
+sock.settimeout(3)</code></pre>
+<p>Finally, we can attempt to make a connection to a server.</p>
+<p>This requires a hostname and a port, which we can pair together into a tuple and pass to the <strong>connect()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# attempt to connect
+sock.connect((host, port))</code></pre>
+<p>If the connection succeeds, we could start sending data to the server and receive it back via this socket using the protocol suggested by the port number. We don't want to communicate with the server so we will close the connection immediately.</p>
+<p>If the connection fails, an exception will be raised indicating that the port is likely not open (or not open to us).</p>
+<p>Therefore, we can wrap the attempt to connect in some exception handling.</p>
+<pre><code>...
+# connecting may fail
+try:
+    # attempt to connect
+    sock.connect((host, port))
+    # a successful connection was made
+except:
+    # ignore the failure, the port is closed to us
+</code></pre>
+<p>Tying this together, the <strong>test_port_number()</strong> will take a host number and a port will return <strong>True</strong> if a socket can be opened or <strong>False</strong> otherwise.</p>
+<pre><code># returns True if a connection can be made, False otherwise
+def test_port_number(host, port):
+    # create and configure the socket
+    with socket(AF_INET, SOCK_STREAM) as sock:
+        # set a timeout of a few seconds
+        sock.settimeout(3)
+        # connecting may fail
+        try:
+            # attempt to connect
+            sock.connect((host, port))
+            # a successful connection was made
+            return True
+        except:
+            # ignore the failure
+            return False
+</code></pre>
+<p>Next, let's look at how we can use this function we have developed to scan a range of ports.</p>
+<h3>Scan a Range of Ports on a Server</h3>
+<p>We can scan a range of ports on a given host.</p>
+<p>Many common internet services are provided on ports between 0 and 1024.</p>
+<p>The viable range of ports is 0 to 65535, and you can see a list of the most common port numbers and the services that use them in the file <strong>/etc/services</strong> on POSIX systems.</p>
+<p>Wikipedia also has a page that lists the most common port numbers:</p>
+<ul><li><a href="https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers">List of TCP and UDP port numbers</a></li></ul>
+<p>We will limit our scanning to the range of 0 to 1024.</p>
+<p>To scan a range of ports, we can repeatedly call our <strong>test_port_number()</strong> function that we developed in the previous section and report any ports that permit a connection as 'open'.</p>
+<p>The <strong>port_scan()</strong> function below implements this reporting of any open ports that are discovered.</p>
+<pre><code># scan port numbers on a host
+def port_scan(host, ports):
+    print(f'Scanning {host}...')
+    # scan each port number
+    for port in ports:
+        if test_port_number(host, port):
+            print(f'&gt; {host}:{port} open')
+</code></pre>
+<p>Finally, we can call this function and specify the host and range of ports.</p>
+<p>In this case, we will port scan python.org (out of love for python, not malicious intent).</p>
+<pre><code>...
+# define host and port numbers to scan
+HOST = 'python.org'
+PORTS = range(1024)
+# test the ports
+port_scan(HOST, PORTS)</code></pre>
+<p>We would expect that at the least port 80 would be open for HTTP connections.</p>
+<p>Tying this together, the complete example of port scanning a host in Python is listed below.</p>
+<pre><code># SuperFastPython.com
+# scan a range of port numbers on the host one by one
+from socket import AF_INET
+from socket import SOCK_STREAM
+from socket import socket
+
+# returns True if a connection can be made, False otherwise
+def test_port_number(host, port):
+    # create and configure the socket
+    with socket(AF_INET, SOCK_STREAM) as sock:
+        # set a timeout of a few seconds
+        sock.settimeout(3)
+        # connecting may fail
+        try:
+            # attempt to connect
+            sock.connect((host, port))
+            # a successful connection was made
+            return True
+        except:
+            # ignore the failure
+            return False
+
+# scan port numbers on a host
+def port_scan(host, ports):
+    print(f'Scanning {host}...')
+    # scan each port number
+    for port in ports:
+        if test_port_number(host, port):
+            print(f'&gt; {host}:{port} open')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define host and port numbers to scan
+    host = 'python.org'
+    ports = range(1024)
+    # test the ports
+    port_scan(host, ports)
+</code></pre>
+<p>Running the example attempts to make a connection for each port number between 0 and 1023 (one minus 1024) and reports all open ports.</p>
+<p>In this case, we can see that port 80 for HTTP is open as expected, and port 443 is also open for HTTPS.</p>
+<p>The program works fine, but it is painfully slow.</p>
+<p>On my system, it took 235.8 seconds to complete (nearly 4 minutes).</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 open
+&gt; python.org:443 open</code></pre>
+<p>Next, let's explore how we might update the example to check ports concurrently using the <strong>ThreadPool</strong>.</p>
+<h2>How to Scan Ports Concurrently (fast)</h2>
+<p>The program for port scanning a server can be adapted to use the <strong>ThreadPool</strong> with very little change.</p>
+<p>The <strong>test_port_number()</strong> function was already called separately for each port. This can be performed in a separate thread so each port is tested concurrently.</p>
+<p>We want to report port numbers in numerical order. This can be achieved by submitting the tasks to the thread pool using the <strong>map()</strong> function and then iterating the <strong>True</strong>/<strong>False</strong> results returned for each port number.</p>
+<p>Firstly, we can create the thread pool with one thread per port to be tested.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPool(len(ports)) as pool:
+	# ...
+</code></pre>
+<p>We can issue the tasks to the <strong>ThreadPool</strong> using the <strong>map()</strong> method and then iterate the <strong>True</strong>/<strong>False</strong> results returned for each port number.</p>
+<p>The problem is, that the <strong>map()</strong> method only supports target functions that take a single argument.</p>
+<p>Therefore, we must use the <strong>starmap()</strong> method instead.</p>
+<p>We can prepare the iterable of arguments for each call to the <strong>test_port_number()</strong> function using a list comprehension, then call <strong>starmap()</strong> directly, which will return an iterable of return values once all tasks are complete.</p>
+<pre><code>...
+# prepare arguments for starmap
+args = [(host,p) for p in ports]
+# dispatch all tasks
+results = pool.starmap(test_port_number, args)
+</code></pre>
+<p>We can then iterate over the return values and report the results.</p>
+<p>The problem is, that we want to report the return value (open <strong>True</strong> or <strong>False</strong>) along with the port number.</p>
+<p>This can be achieved using the <strong>zip()</strong> built-in function which can traverse two or more iterables at once and yield a value from each. In this case, we can <strong>zip()</strong> our return values and port numbers iterables.</p>
+<pre><code>...
+# report results in order
+for port,is_open in zip(ports,results):
+    if is_open:
+        print(f'&gt; {host}:{port} open')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# scan a range of port numbers on a host concurrently
+from socket import AF_INET
+from socket import SOCK_STREAM
+from socket import socket
+from multiprocessing.pool import ThreadPool
+
+# returns True if a connection can be made, False otherwise
+def test_port_number(host, port):
+    # create and configure the socket
+    with socket(AF_INET, SOCK_STREAM) as sock:
+        # set a timeout of a few seconds
+        sock.settimeout(3)
+        # connecting may fail
+        try:
+            # attempt to connect
+            sock.connect((host, port))
+            # a successful connection was made
+            return True
+        except:
+            # ignore the failure
+            return False
+
+# scan port numbers on a host
+def port_scan(host, ports):
+    print(f'Scanning {host}...')
+    # create the thread pool
+    with ThreadPool(len(ports)) as pool:
+        # prepare the arguments
+        args = [(host,port) for port in ports]
+        # dispatch all tasks
+        results = pool.starmap(test_port_number, args)
+        # report results in order
+        for port,is_open in zip(ports,results):
+            if is_open:
+                print(f'&gt; {host}:{port} open')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define host and port numbers to scan
+    host = 'python.org'
+    ports = range(1024)
+    # test the ports
+    port_scan(host, ports)
+</code></pre>
+<p>Running the program attempts to open a socket connection for all ports in the range 0 and 1023 and reports ports 80 and 443 open as before.</p>
+<p>In this case, the program is dramatically faster.</p>
+<p>On my system, it completed in about 3.1 seconds, compared to the 235.8 seconds for the serial case, which is about 76 times faster.</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 open
+&gt; python.org:443 open</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to download files concurrently with this <strong>ThreadPool</strong> example.</p>
+</main>
+</body>
+</html>

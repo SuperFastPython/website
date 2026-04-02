@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Wait for All Background Asyncio Tasks in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Wait for All Background Asyncio Tasks in Python</h1>
+<div class="post-meta">January 17, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can wait for many independent tasks to complete by first getting the set of all running tasks, removing the current task, then waiting on the remaining tasks in the set.</p>
+<p>This will allow an asyncio program to schedule many independent tasks throughout its lifetime and for the main coroutine to wait for them to complete without exiting and closing the event loop, terminating the tasks early.</p>
+<p>In this tutorial, you will discover <strong>how to wait for all asyncio background tasks to complete</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>Need to Wait for All Background Tasks in Asyncio</h2>
+<p>It is common in an asyncio to issue many tasks.</p>
+<p>The <strong>asyncio.create_task()</strong> function can be used to wrap a coroutine in an <strong>asyncio.Task</strong> and schedule it for execution independent of the calling coroutine.</p>
+<p>This allows the caller to continue on with other activities and for the task to run as soon as it is able.</p>
+<p>For example:</p>
+<pre><code>...
+# schedule a task
+task = asyncio.create_task(coro())</code></pre>
+<p>You can learn more about creating independent tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-create-task/">How to Create an Asyncio Task in Python</a></li>
+</ul>
+<p>May may issue many tasks that all run in the background.</p>
+<p>This may be in a loop or periodically throughout our code.</p>
+<p>It is possible to exit the <strong>main()</strong> coroutine while independent tasks are still running in the background.</p>
+<p>This will terminate the asyncio event loop and all running tasks.</p>
+<p>Instead, we would prefer to wait for any remaining tasks to complete before exiting the event loop.</p>
+<p><strong>How can we wait for background tasks in asyncio?</strong></p>
+<h2>How to Wait for All Background Tasks</h2>
+<p>We can wait for all independent tasks in an asyncio program.</p>
+<p>This can be achieved by first getting a set of all currently running tasks via the <strong>asyncio.all_tasks()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# get a set of all running tasks
+all_tasks = asyncio.all_tasks()</code></pre>
+<p>You can learn more about getting all running tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-all-tasks/">How to Get All Asyncio Tasks in Python</a></li>
+</ul>
+<p>This will return a set that contains one <strong>asyncio.Task</strong> object for each task that is currently running, including the <strong>main()</strong> coroutine.</p>
+<p>We cannot wait on this set directly, as it will block forever as it includes the task that is the current task.</p>
+<p>Therefore we can get the <strong>asyncio.Task</strong> object for the currently running task and remove it from the set.</p>
+<p>This can be achieved by first calling the <strong>asyncio.current_task()</strong> method to get the task for the current coroutine and then remove it from the set via the <strong>remove()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# get the current tasks
+current_task = asyncio.current_task()
+# remove the current task from the list of all tasks
+all_tasks.remove(current_task)</code></pre>
+<p>You can learn more about getting the current task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-current-task/">How to Get the Current Asyncio Task in Python</a></li>
+</ul>
+<p>Finally, we can wait on the set of remaining tasks.</p>
+<p>This will suspend the caller until all tasks in the set are complete.</p>
+<p>For example:</p>
+<pre><code>...
+# suspend until all tasks are completed
+await asyncio.wait(all_tasks)</code></pre>
+<p>You can learn more about waiting on a collection of tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait/">How to Use Asyncio wait() in Python</a></li>
+</ul>
+<p>Tying this together, the snippet below added to the end of the <strong>main()</strong> coroutine will wait for all background tasks to complete.</p>
+<pre><code>...
+# get a set of all running tasks
+all_tasks = asyncio.all_tasks()
+# get the current tasks
+current_task = asyncio.current_task()
+# remove the current task from the list of all tasks
+all_tasks.remove(current_task)
+# suspend until all tasks are completed
+await asyncio.wait(all_tasks)</code></pre>
+<p>Now that we know how to wait for all background tasks to complete, let's look at a worked example.</p>
+<h2>Example of Waiting for All Background Tasks</h2>
+<p>We can explore an example of waiting for all background tasks to complete before exiting.</p>
+<p>In this example, we will define a task that will sleep for a random number of seconds and then report a message.</p>
+<p>We will issue 20 of these tasks to run independently from the <strong>main()</strong> coroutine and then wait for them to complete using the approach developed in the previous section.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for all background tasks in asyncio
+import random
+import asyncio
+
+# coroutine run in the background
+async def task(number):
+    # generate a random value between 0 and 10
+    value = random.random() * 10.0
+    # suspend for some time
+    await asyncio.sleep(value)
+    # report done
+    print(f'&gt;Task {number} done')
+
+# main coroutine
+async def main():
+    # start many background tasks
+    for i in range(20):
+        asyncio.create_task(task(i))
+    # allow tasks to start
+    await asyncio.sleep(0)
+    # get a set of all running tasks
+    all_tasks = asyncio.all_tasks()
+    # get the current tasks
+    current_task = asyncio.current_task()
+    # remove the current task from the list of all tasks
+    all_tasks.remove(current_task)
+    # report a message
+    print(f'Main waiting for {len(all_tasks)} tasks...')
+    # suspend until all tasks are completed
+    await asyncio.wait(all_tasks)
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and runs it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and schedules 20 tasks for execution, each assigned a unique integer argument from 0 to 19.</p>
+<p>The <strong>main()</strong> coroutine then suspends for zero seconds, allowing the scheduling tasks to run.</p>
+<p>The tasks run, first generating a random number between 0 and 10 and then sleeping for that many seconds.</p>
+<p>The <strong>main()</strong> coroutine resumes and then gets a set of all running tasks, which includes all 20 tasks. It then gets the task for itself and removes it from the set before finally suspending and waiting for all tasks to be complete.</p>
+<p>Each task completes its sleep and reports a message, then terminates.</p>
+<p>Once all tasks are complete, the <strong>main()</strong> coroutine resumes and terminates.</p>
+<p>This highlights how an asyncio program may issue many tasks to run independently in the background and how the <strong>main()</strong> coroutine can wait for them to complete before closing the event loop.</p>
+<pre><code>Main waiting for 20 tasks...
+&gt;Task 8 done
+&gt;Task 1 done
+&gt;Task 19 done
+&gt;Task 17 done
+&gt;Task 4 done
+&gt;Task 12 done
+&gt;Task 5 done
+&gt;Task 6 done
+&gt;Task 3 done
+&gt;Task 2 done
+&gt;Task 7 done
+&gt;Task 13 done
+&gt;Task 16 done
+&gt;Task 18 done
+&gt;Task 9 done
+&gt;Task 10 done
+&gt;Task 15 done
+&gt;Task 14 done
+&gt;Task 0 done
+&gt;Task 11 done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to wait for all asyncio background tasks to complete in Python.</p>
+</main>
+</body>
+</html>

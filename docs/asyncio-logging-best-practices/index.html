@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Logging Best Practices – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Logging Best Practices</h1>
+<div class="post-meta">February 4, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>Asyncio programs should log, like any other production-quality Python program.</p>
+<p>There are special considerations and <strong>best practices</strong> when <strong>logging from asyncio</strong> programs. These practices have been collected together into this asyncio logging best practices guide.</p>
+<p>In this tutorial, you will discover the <strong>best practices for logging in asyncio</strong> programs in Python.</p>
+<p>Let's get started.</p>
+<h2>What is Logging</h2>
+<p>Logging is a way of tracking events within a program.</p>
+<p>There are many types of events that may be logged within a program, ranging in different levels of severity, such as debugging and information to warnings, errors, and critical events.</p>
+<p>The <a href="https://docs.python.org/3/library/logging.html"><strong>logging</strong> module</a> provides infrastructure for logging within Python programs.</p>
+<blockquote>
+<p>This module defines functions and classes which implement a flexible event logging system for applications and libraries.</p>
+<cite>-- <a href="https://docs.python.org/3/library/logging.html">logging — Logging facility for Python</a></cite></blockquote>
+<p>Logging is achieved by first configuring the log handler and then adding calls to the logging infrastructure at key points in the program.</p>
+<blockquote>
+<p>Handler objects are responsible for dispatching the appropriate log messages (based on the log messages' severity) to the handler's specified destination.</p>
+<cite>-- <a href="https://docs.python.org/3/library/logging.html">logging — Logging facility for Python</a></cite></blockquote>
+<p>The default handler will report log messages on the command prompt (e.g. terminal or system output stream).</p>
+<p>Alternate handlers can be configured to write log messages to file, to a database, or to custom target locations. The handler can specify the severity of messages to report.</p>
+<p>For example, we can log to file by calling the <strong>logging.basicConfig()</strong> function and specifying the file name and path to log to (e.g. application.log), the level of logging to capture to the file (e.g. from <strong>logging.DEBUG</strong> to <strong>logging.CRITICAL</strong>).</p>
+<pre><code>...
+# log everything to file
+logging.basicConfig(filename='application.log', level=logging.DEBUG)</code></pre>
+<p>Events are logged via function calls based on the type of event performed, e.g. <strong>logging.debug()</strong> for debugging messages.</p>
+<blockquote>
+<p>Logging provides a set of convenience functions for simple logging usage. These are debug(), info(), warning(), error() and critical().</p>
+<cite>-- <a href="https://docs.python.org/3/howto/logging.html">Logging HOWTO</a></cite></blockquote>
+<p>For example, we may add information messages to our application code by calling <strong>logging.info()</strong> and passing in the string details of the event.</p>
+<pre><code>...
+# log that data was loaded successfully
+logger.info('All data was loaded successfully')</code></pre>
+<p>We may also log failures, such as exceptions that are important but not critical to the program via the <strong>logger.error()</strong> or <strong>logger.exception()</strong> functions.</p>
+<p>For example:</p>
+<pre><code>...
+# try a thing
+try:
+    # ...
+except Exception as err:
+    logger.exception(f'Unable to perform task because: {err.message} ')
+</code></pre>
+<p>These function calls can then be added throughout an application to capture events of different types, and the log handler or runtime configuration can be used to filter the severity of the messages that are actually stored.</p>
+<p>Now that we know about logging, let's consider logging best practices in asyncio programs.</p>
+<h2>12 Asyncio Logging Best Practices</h2>
+<p>This section lists some best practices related to logging in to asyncio programs, they are:</p>
+<ol>
+<li>Enable asyncio Module Logging</li>
+<li>Log Application Details With ContextVars</li>
+<li>Log Asyncio Warnings</li>
+<li>Log From Asyncio Without Blocking</li>
+<li>Log CancelledError Exceptions</li>
+<li>Log Application Exceptions in Asyncio</li>
+<li>Log Task Exceptions Automatically With a Done Callback</li>
+<li>Log Silent Exceptions Automatically</li>
+<li>Log Without Blocking via aiologger</li>
+<li>Log Long-Running Tasks with aiodebug</li>
+<li>Enable Logging When in Asyncio Debug Mode</li>
+<li>Log Trace Of All Running Tasks</li>
+</ol>
+<p><strong>Do you know any more best practices for logging in asyncio programs?</strong><br/>Let me know in the comments below.</p>
+<p>Let's take a closer look at each of these practices in turn.</p>
+<h2>Practice #01. Enable asyncio Module Logging</h2>
+<p>It is a good practice to log messages from the asyncio module.</p>
+<p>The asyncio module will log messages automatically.</p>
+<p>This includes details, such as which selector the event loop is using.</p>
+<p>We can enable logging for the asyncio module, by getting the logger for the module and setting the log level.</p>
+<p>For example:</p>
+<pre><code>...
+# enable debug logging for the asyncio module
+logging.getLogger("asyncio").setLevel(logging.WARNING)</code></pre>
+<p>Alternatively, we can enable debug level for the entire program.</p>
+<p>For example:</p>
+<pre><code>...
+# enable debug logging
+logging.basicConfig(level=logging.DEBUG)</code></pre>
+<p>You can learn more about the asyncio module logging in the tutorial:</p>
+<ul>
+<li><a href="../debug-asyncio/">How to Debug Asyncio</a></li>
+</ul>
+<h2>Practice #02. Log Application Details With ContextVars</h2>
+<p>It is a good practice to store application details in context vars.</p>
+<p>Threads provide a facility for private variables called thread local storage.</p>
+<p>It allows different threads to execute the same code and the same variables, yet have their own private copy of the variables.</p>
+<p>We can achieve the same effect in asyncio for coroutines and tasks using context vars.</p>
+<p>This can be useful to have different tasks execute and access the same global variables, yet have their own private values.</p>
+<p>This mechanism can be used to log details such as:</p>
+<ul>
+<li> Task id</li>
+<li>Session id</li>
+<li>Request details</li>
+<li>Error id</li>
+</ul>
+<p>And so much more.</p>
+<p>For example, we can create a global context variable:</p>
+<pre><code>...
+# create shared context variable (for all coroutines/tasks)
+shared_request_id = contextvars.ContextVar('request_id')</code></pre>
+<p>We can then store a value in this within a task, e.g. at the root level.</p>
+<pre><code>...
+# write data in the context variable
+shared_request_id.set(value)</code></pre>
+<p>Later, a subtask may log and access a private version of this variable specific to the parent task hierarchy.</p>
+<pre><code>...
+# read data from the context variable
+value = shared_request_id.get()</code></pre>
+<p>You can learn more about how to use contextvars with asyncio in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-context-variables/">Asyncio Context Variables For Shared State</a></li>
+</ul>
+<h2>Practice #03. Log Asyncio Warnings</h2>
+<p>It is a good practice to log asyncio warnings.</p>
+<p>The asyncio event loop will automatically emit warnings under unusual circumstances, such as:</p>
+<ul>
+<li>When a coroutine is created and not awaited.</li>
+<li>When a task fails with an exception and the exception is not retrieved.</li>
+</ul>
+<p>By default, these warnings will be reported to standard output.</p>
+<p>We can log these warnings by configuring the Python logging infrastructure to capture warnings.</p>
+<p>For example:</p>
+<pre><code>...
+# turn warnings into WARNING level log message.
+logging.captureWarnings(True)</code></pre>
+<p>We can also enable more warnings from asyncio, such as those related to resources.</p>
+<pre><code>...
+import warnings
+# always show ResourceWarning warnings
+warnings.filterwarnings('always', category=ResourceWarning)</code></pre>
+<p>You can learn more about asyncio warnings in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-warnings/">Configure, Suppress, and Log Asyncio Warnings</a></li>
+</ul>
+<h2>Practice #04. Log From Asyncio Without Blocking</h2>
+<p>It is a good practice to log from asyncio without blocking.</p>
+<p>By default, the Python logging infrastructure will block when reporting log messages.</p>
+<p>This is typically fine for most Python programs, not can cause problems in asyncio programs.</p>
+<p>If the logging operation involves storing log messages in a file or in a remote database, the call to log will block the asyncio event loop.</p>
+<p>This means that no other coroutines or tasks will execute until the log operation is complete.</p>
+<p>Therefore, it is a good practice to log in a way that does not block the event loop.</p>
+<p>This can be achieved by configuring logging to use a <strong>QueueHandler</strong> so that log messages are put on a queue.</p>
+<p>For example:</p>
+<pre><code>...
+# get the root logger
+log = logging.getLogger()
+# create the shared queue
+que = Queue()
+# add a handler that uses the shared queue
+log.addHandler(QueueHandler(que))</code></pre>
+<p>A <strong>QueueListener</strong> can then be configured to consume log messages and dispatch them as needed within a separate thread.</p>
+<p>The <strong>QueueListener</strong> thread must then be shut down when we close our asyncio program, to ensure all log messages have been dispatched. We can achieve this by running an asyncio task in the background that will close the QueueListener for us when the task is canceled.</p>
+<p>For example:</p>
+<pre><code>...
+# create a listener for messages on the queue
+listener = QueueListener(que, StreamHandler())
+try:
+    # start the listener
+    listener.start()
+    # report the logger is ready
+    logging.debug(f'Logger has started')
+    # wait forever
+    while True:
+        await asyncio.sleep(60)
+finally:
+    # report the logger is done
+    logging.debug(f'Logger is shutting down')
+    # ensure the listener is closed
+    listener.stop()
+</code></pre>
+<p>You can learn more about logging in asyncio without blocking in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-log-blocking/">Asyncio Logging Without Blocking</a></li>
+</ul>
+<h2>Practice #05. Log CancelledError Exceptions</h2>
+<p>It can be a good practice to log <strong>CancelledError</strong> exceptions.</p>
+<p>Recall that when a task is requested to cancel via the <strong>cancel()</strong> method the target task will raise a <strong>CancelledError</strong> exception the next time it is run.</p>
+<p>You can learn about canceling asyncio tasks in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<p>The <strong>CancelledError</strong> exception typically bubbles up and terminates the target task.</p>
+<p>The caller that canceled the target task typically must handle the <strong>CancelledError</strong> exception that is bubbled up.</p>
+<p>This may be achieved with a try-except block.</p>
+<p>We can log the <strong>CancelledError</strong> exception in the except block in the caller that canceled the task. This provides confirmation in the logs that the cancellation occurred as expected and that the target task did not suppress the <strong>CancelledError</strong> exception or raise another exception during cancellation.</p>
+<p>This can be performed as part of a cancel-and-wait pattern.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel the target task
+task.cancel()
+try:
+	await task
+except CancelledError:
+	logging.debug(f'Confirmed that task {task} was cancelled as expected')
+</code></pre>
+<p>You can learn more about the cancel and wait pattern in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task-and-wait/">Asyncio Cancel Task and Wait</a></li>
+</ul>
+<p>A task may also log its own <strong>CancelledError</strong> exception, as long as it propagates the <strong>CancelledError</strong> exception afterward, meeting the contact with the <strong>cancel()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+try:
+	...
+except CancelledError:
+	# shutdown resources
+	...
+	# log the cancellation
+	logging.debug(f'Task was cancelled, details: {...}')
+	# re-raise the exception
+	raise
+</code></pre>
+<p>You can learn more about asyncio task cancellation best practices in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-cancellation-best-practices/">Asyncio Task Cancellation Best Practices</a></li>
+</ul>
+<h2>Practice #06. Log Application Exceptions in Asyncio</h2>
+<p>It is a good practice to log applications in asyncio programs.</p>
+<p>This goes without saying and is the same as the practice of logging exceptions in normal Python programs.</p>
+<p>When an exception occurs within an asyncio task, it is suppressed until a caller retrieves it.</p>
+<p>It can be retrieved by awaiting the task or by calling the <strong>result()</strong> method, after which the exception is re-raised.</p>
+<p>A caller can handle the exception and log it.</p>
+<p>For example:</p>
+<pre><code>...
+# await a task that may fail
+try:
+	await task
+except Exception as e:
+	logger.exception(f'Task {task} failed with exception {e}')
+</code></pre>
+<p>This is better than retrieving the exception via the <strong>exception()</strong> method on the task because in the above case the exception is re-raised providing a trace that will be logged as part of the <strong>logger.exception()</strong> call in the except block.</p>
+<p>You can learn more about logging task exceptions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-log-exceptions/">Asyncio Log Exceptions</a></li>
+</ul>
+<h2>Practice #07. Log Task Exceptions With a Done Callback</h2>
+<p>It is a good practice to log task exceptions automatically using a done callback function.</p>
+<p>A task is done if it completes normally, is canceled, or fails with an exception.</p>
+<p>Recall that we can have a callback function executed automatically when a task is done.</p>
+<p>You can learn more about done callback functions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-done-callback-functions/">How to Use Asyncio Task Done Callback Functions</a></li>
+</ul>
+<p>We can define a done callback function to check if a task failed with an exception, and then log it.</p>
+<p>For example:</p>
+<pre><code># callback func called for all tasks
+def helper_done_callback(task):
+	# check if the task had an exception
+	if task.exception():
+		try:
+			# re-raise exception
+			task.result()
+		except Exception as e:
+			logger.exception(f'Task {task} failed with exception {e}')</code></pre>
+<p>We can reuse this callback function to automatically log exceptions in all tasks automatically by defining a helper function to create tasks and add the done callback.</p>
+<p>For example:</p>
+<pre><code># helper for creating all tasks
+def create_task_helper(coroutine):
+    # wrap and schedule the task
+    task = asyncio.create_task(coroutine)
+    # add custom callback to task
+    task.add_done_callback(helper_done_callback)
+    # return the task that was created
+    return task
+</code></pre>
+<p>You can learn more about logging task exceptions automatically in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-log-all-exceptions/">Log All Silent Exceptions in Asyncio</a></li>
+</ul>
+<h2>Practice #08. Log Silent Exceptions Automatically</h2>
+<p>It is a best practice to automatically log never-retrieved exceptions in asyncio.</p>
+<p>Recall that an asyncio task can fail with an exception. If the exception is never retrieved, it is referred to as a never-retrieved exception.</p>
+<p>We can log these exceptions automatically once the event loop has terminated.</p>
+<p>This can be achieved by configuring an exception handler in the event loop.</p>
+<p>Firstly, we can define an exception handler that will log the exception for us.</p>
+<pre><code># define an exception handler
+def exception_handler(loop, context):
+	# log exception
+    logging.error(f'Never retrieved exception: {context['exception']}')
+</code></pre>
+<p>We can then configure the asyncio event loop to call our handler function for each never-retrieved exception.</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# set the exception handler
+loop.set_exception_handler(exception_handler)</code></pre>
+<p>You can learn more about logging task exceptions automatically in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-log-all-exceptions/">Log All Silent Exceptions in Asyncio</a></li>
+</ul>
+<h2>Practice #09. Log Without Blocking via aiologger</h2>
+<p>It is a good practice to log from asyncio without blocking and the <strong>aiologger</strong> library offers this capability.</p>
+<p>This library does all the heavy lifting for us, providing a ready-to-use logging module for asyncio programs that will perform the log operations in a separate thread, behind the scenes.</p>
+<p>The first step is to install the <strong>aiologger</strong> library.</p>
+<pre><code>pip install aiologger</code></pre>
+<p>Once <strong>aiologger</strong> is installed, we can use it in our asyncio programs.</p>
+<p>This requires first importing the aiologger.Logger class.</p>
+<pre><code>from aiologger import Logger</code></pre>
+<p>Once imported, we can then configure the <strong>Logger</strong> class in terms of the log name, handlers, and log level we wish to use.</p>
+<p>This can be achieved via the <strong>Logger.with_default_handlers()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# configure the logger
+logger = Logger.with_default_handlers(name='my-logger')</code></pre>
+<p>We can use the Logger instance to log directly, without blocking.</p>
+<p>For example:</p>
+<pre><code>...
+# log a message
+logger.debug("something happened")</code></pre>
+<p>We can also await the log message.</p>
+<pre><code>...
+# log a message
+await logger.debug("something happened")</code></pre>
+<p>You can learn more about how to use the aiologger library in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-aiologger/">Asyncio Non-Blocking Logging With aiologger</a></li>
+</ul>
+<h2>Practice #10. Log Long-Running Tasks with aiodebug</h2>
+<p>It is a good practice to log long-running tasks via the <strong>aiodebug</strong> library.</p>
+<p>The asyncio event loop will log asyncio tasks that block the event loop for a configurable long time.</p>
+<p>This is helpful to find blocking calls in asyncio that could be performed in a separate thread.</p>
+<p>It is typically slow to run asyncio in debug mode in production in order to achieve this capability.</p>
+<p>Instead, we can get this capability via the <strong>aiodebug</strong> library.</p>
+<p>The aiodebug library can be installed using your favorite package manager.</p>
+<p>For example, we can install it using pip:</p>
+<pre><code>pip install aiodebug</code></pre>
+<p>We can use aiodebug in our program to identify long-running tasks that block the asyncio event loop for “too long”.</p>
+<p>This can be achieved by calling the <strong>aiodebug.log_slow_callbacks.enable()</strong> function and specifying the time in seconds that a task takes that is too long.</p>
+<p>For example:</p>
+<pre><code>import aiodebug.log_slow_callbacks
+...
+# set time in sec for long running tasks
+aiodebug.log_slow_callbacks.enable(0.1)</code></pre>
+<p>When a task is completed, if it has blocked the event loop for longer than the specified time, then its details will be reported in standard output.</p>
+<p>We can configure a handler function so that we can log these tasks.</p>
+<p>This can be achieved by defining a function that takes the task and duration it ran as an argument and then logging it using the Python logging infrastructure.</p>
+<p>For example:</p>
+<pre><code># handler for long running tasks
+def log_slow_handler(task, duration):
+    # log the task
+    logging.debug(f'Task blocked async loop for too long. Task {task} Duration {duration} ')
+</code></pre>
+<p>We can then configure the aiodebug package to call our function each time a task is done and has blocked the event loop for too long.</p>
+<p>This can be achieved by calling the <strong>aiodebug.log_slow_callbacks.enable()</strong> function and specifying the “<strong>on_slow_callback</strong>” argument to equal the name of our function.</p>
+<p>For example:</p>
+<pre><code>...
+# enable logging of long running tasks
+aiodebug.log_slow_callbacks.enable(1, on_slow_callback=log_slow_handler)</code></pre>
+<p>You can learn more about logging blocking calls made in asyncio programs in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-log-long-running-aiodebug/">Asyncio Log Long-Running Blocking Calls With aiodebug</a></li>
+</ul>
+<h2>Practice #11. Enable Logging When in Asyncio Debug Mode</h2>
+<p>It is a good practice to enable logging when configuring the asyncio event loop into debug mode.</p>
+<p>Recall, you can configure the event loop to run in debug mode by setting the "<strong>debug</strong>" argument to True when starting the event loop with <strong>asyncio.run()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main(), debug=True)</code></pre>
+<p>When the event loop is run in debug mode, the asyncio module will also log additional details such as:</p>
+<ul>
+<li>When the event loop is closed</li>
+<li>Warnings for coroutines that block the event loop for too long.</li>
+</ul>
+<p>You can learn more about the asyncio logging and debug mode in the tutorial:</p>
+<ul>
+<li><a href="../debug-asyncio/">How to Debug Asyncio</a></li>
+</ul>
+<h2>Practice #12. Log Trace Of All Running Tasks</h2>
+<p>It is a good practice to log a trace of long-running tasks.</p>
+<p>Recall that we can log a trace of a given task via the <strong>print_trace()</strong> method. The trace can be stored in a string buffer and logged.</p>
+<p>For example:</p>
+<pre><code>...
+# create a string buffer
+buffer = io.StringIO("")
+# print the task stack
+task.print_stack(file=buffer)
+# log the trace
+logging.debug(buffer.getvalue())
+# close the string buffer
+buffer.close()
+</code></pre>
+<p>We can run a background asyncio task that keeps track of how long tasks have been alive and log their trace if they have been alive for too long, e.g. minutes, hours, days, depending on the application.</p>
+<p>For example, the coroutine below will monitor all running tasks by name and log a message for those tasks that have been alive for too long.</p>
+</main>
+</body>
+</html>

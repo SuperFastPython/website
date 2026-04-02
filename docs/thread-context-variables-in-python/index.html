@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread Context Variables in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread Context Variables in Python</h1>
+<div class="post-meta">May 2, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can create and use <strong>context variables</strong> via the <strong>contextvars.ContextVar</strong> class.</p>
+<p>In this tutorial you will discover how to <strong>use context variables in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>What are Context Variables</h2>
+<p>A <a href="https://peps.python.org/pep-0567/"><strong>Context Variables</strong> or <strong>contextvars</strong></a> for short is a variable that can be defined per <a href="../threading-in-python/">thread</a> or per coroutine.</p>
+<p>They provide local storage for variables that is distinct per context, where the context may be:</p>
+<ul><li>A thread, meaning each thread will have a different version of a contextvar variable.</li><li>A coroutine, meaning each coroutine task will have a different version of a variable.</li></ul>
+<p>Recall, threads are available in Python via the <a href="https://docs.python.org/3/library/threading.html"><strong>threading</strong> module</a> and coroutines are available in Python via the <a href="https://docs.python.org/3/library/asyncio.html"><strong>asyncio</strong> module</a>.</p>
+<p>Context variables were created to provide thread-local-like storage that works the same way in threads and in coroutines.</p>
+<blockquote><p>This concept is similar to thread-local storage (TLS), but, unlike TLS, it also allows correctly keeping track of values per asynchronous task, e.g. asyncio.Task.</p><cite>-- <a href="https://peps.python.org/pep-0567/">PEP 567 – Context Variables</a></cite></blockquote>
+<p>As such, contextvars were primarily developed for use with asyncio. Strictly, asyncio will define the "current context" within the asyncio framework, such as at the per-task level.</p>
+<blockquote><p>Manipulation of the current context is the responsibility of the task framework, e.g. asyncio.</p><cite>-- <a href="https://peps.python.org/pep-0567/">PEP 567 – Context Variables</a></cite></blockquote>
+<p>Nevertheless, they can be used with Python thread as well for consistency.</p>
+<p>Now that we know what context variables are, let's consider why we might use them.</p>
+<h2>Why Use Context Variables?</h2>
+<p>The use case for context variables is similar to that of thread-local storage.</p>
+<p>Specifically, we may have code that relies on state that we would like to be specific per concurrent task, such as a thread or a coroutine.</p>
+<p>A common situation occurs where the state is managed in a global variable, for example, one function or a call graph of functions that read and write state in global variables.</p>
+<p>If this code was made concurrent with threads or coroutines, then each concurrent task would use the same global state, which would quickly become corrupt.</p>
+<p>One solution would be to protect the global state using synchronization primitives, like mutual exclusion (mutex) locks. But this is inappropriate if the tasks do not share state with each other, and instead only use the same global state variables.</p>
+<p>Instead, the global state may be changed to use contextvars.</p>
+<p>In this case, each concurrent task (thread or coroutine) may then read and write its own values to the contextvars which is isolated automatically from all other concurrent tasks.</p>
+<p>This is particularly useful for updating legacy programs that use global state to be concurrent.</p>
+<p>Now that we know why we might want to use context variables, let's contrast them with thread-local storage.</p>
+<h2>Context Variables vs Thread-Local Storage</h2>
+<p>Both context variables and thread-local storage manage variables per concurrent task.</p>
+<p>The main differences between the two are:</p>
+<ol><li>Thread-Local Storage only works per-thread, whereas context variables work per thread or per coroutine.</li><li>They have a different API, the thread-local storage API is simpler, context variables API is slightly more complex.</li></ol>
+<p><a href="https://en.wikipedia.org/wiki/Thread-local_storage">Thread-Local Storage</a> will manage variables with the same name per thread.</p>
+<p>This means the same thread local storage context can define and use a variable with the same name in different threads without any interaction. Thread-local variables are completely isolated from all other threads.</p>
+<blockquote><p>Thread-local data is data whose values are thread specific. To manage thread-local data, just create an instance of local (or a subclass) and store attributes on it</p><cite>-- <a href="https://docs.python.org/3/library/threading.html#thread-local-data">Thread-Local Data</a></cite></blockquote>
+<p>This mechanism is typically provided by the operating system and Python provides access to this capability via the <a href="https://docs.python.org/3/library/threading.html#thread-local-data"><strong>threading.local()</strong> function</a>.</p>
+<p>For example, a thread-local context can first be created:</p>
+<pre><code>...
+# create a thread-local context
+context = threading.local()</code></pre>
+<p>Then a variable can be defined and assigned on the context with an arbitrary name, for example:</p>
+<pre><code>...
+# define a variable on the thread-local context
+context.name = 'Tom'</code></pre>
+<p>Each thread that accesses or modifies the thread-local variable will be isolated and distinct from all other threads.</p>
+<p>This allows each thread to re-use the same code without side-effects.</p>
+<p>You can learn more about how to use thread-local storage in Python here:</p>
+<ul><li><a href="../thread-local-data/">How to Use Thread-Local Data in Python</a></li></ul>
+<p>Context Variables operate much like thread-local variables.</p>
+<p>The main difference is the variables are isolated per "<em>context</em>" rather than per thread, where the context is either per thread or per asyncio Task.</p>
+<p>As such, contextvars provide thread-local storage capabilities for concurrent tasks other than threads, specifically for coroutine tasks provided by the <strong>asyncio</strong> module.</p>
+<p>The manner in which context variables are defined and accessed is also very different to thread local data, let's look at that next.</p>
+<h2>How to Use Context Variables</h2>
+<p>Python provides context variables via the <a href="https://docs.python.org/3/library/contextvars.html"><strong>contextvars</strong> module</a>.</p>
+<p>Contextvars were added to Python in version 3.7, ensure you are using this version of Python or higher.</p>
+<p>A context variable can be defined via the <a href="https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar"><strong>contextvars.ContextVar()</strong> class</a>.</p>
+<blockquote><p>This module provides APIs to manage, store, and access context-local state. The ContextVar class is used to declare and work with Context Variables.</p><cite>-- <a href="https://docs.python.org/3/library/contextvars.html">contextvars — Context Variables</a></cite></blockquote>
+<p>The constructor of the class takes a variable "<strong>name</strong>", which is just used for debugging, and an optional default value for the variable.</p>
+<p>We can define a context variable with the name "<strong>color</strong>".</p>
+<p>For example:</p>
+<pre><code>...
+# create a context variable
+color = contextvars.ContextVar('color')</code></pre>
+<p>We can also create a context variable with a default value of '<strong>red</strong>' by specifying the "<strong>default</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# create a context variable with a default value
+color = contextvars.ContextVar('color', default='red')</code></pre>
+<p>The value of the contextvar can be retrieved via the <strong>get()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# get the value of the context variable
+value = color.get()</code></pre>
+<p>We might also want to get the value of the context variable and specify a default to return if no value has been set.</p>
+<p>For example:</p>
+<pre><code>...
+# get the value of the context variable
+value = color.get(default='red')</code></pre>
+<p>The value of the context variable can be set via the set() function.</p>
+<p>For example:</p>
+<pre><code>...
+# change the value of the context variable
+color.set('blue')</code></pre>
+<p>Setting the value of a context variable returns a token that captures the value of the context variable before it was changed. This token can be saved.</p>
+<p>For example:</p>
+<pre><code>...
+# change the value of the context variable and store token
+token = color.set('blue')</code></pre>
+<p>Finally, the value of the context variable can be restored using a saved token by calling the <strong>reset() </strong>function.</p>
+<p>For example:</p>
+<pre><code>...
+# restore the context variable
+color.reset(token)</code></pre>
+<p>Now that we know how to use context variables, let's look at a worked example.</p>
+<h2>Example of Context Variables</h2>
+<p>We can develop an example to demonstrate how to use context variables.</p>
+<p>To make this interesting, we can define a program that uses global state, update it to use threads and show the problems, then adapt it to use context variables that address the problems. We can also update the program to use thread local data to address the problems as a point of comparison with context variables.</p>
+<p>Let's dive in.</p>
+<h3>Program With Global State</h3>
+<p>We can develop a simple program that uses global state that we can later update to use contextvars.</p>
+<p>In this example, we will have a task function that uses a global variable. Initially the value of the global variable is undefined, then it is set to specific values and the task function is executed.</p>
+<p>This is a good task to explore context variables, as the task relies on global state and we may want to execute the task concurrently with different global states in a thread-safe manner.</p>
+<p>Firstly, we can define the task function.</p>
+<p>The function takes no arguments and uses a "<strong>color</strong>" global variable that it assumes has been set. The function blocks for a random fraction of a second to simulate doing something useful, then reports the current value of the color.</p>
+<p>The <strong>color_report()</strong> function below implements this.</p>
+<pre><code># work with the color
+def color_report():
+    global color
+    # block for a moment
+    sleep(random())
+    # report the color
+    print(f'The color is {color}')
+</code></pre>
+<p>Next, we can define the global variable and initialize it to an unset by human readable value.</p>
+<pre><code>...
+# define global state
+color = 'Unknown'</code></pre>
+<p>We can then define a series of colors that we may wish to work through using our color task.</p>
+<pre><code>...
+# define all the colors we want to work with
+colors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple']</code></pre>
+<p>Finally, we can iterate over our list of colors. Each iteration we can set the global variable to have the value of a color, then execute the color task.</p>
+<pre><code>...
+# process colors
+for col in colors:
+    # set the color
+    color = col
+    # report color
+    color_report()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of single-threaded with global state
+from random import random
+from time import sleep
+
+# work with the color
+def color_report():
+    global color
+    # block for a moment
+    sleep(random())
+    # report the color
+    print(f'The color is {color}')
+
+# define global state
+color = 'Unknown'
+# define all the colors we want to work with
+colors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple']
+# process colors
+for col in colors:
+    # set the color
+    color = col
+    # report color
+    color_report()
+</code></pre>
+<p>Running the program iterates over the list of colors.</p>
+<p>Each iteration the color is set and the color report task is executed. The task blocks for a moment then uses the global color variable in a print message.</p>
+<p>A sample of the program output is listed below.</p>
+<pre><code>The color is red
+The color is green
+The color is blue
+The color is yellow
+The color is orange
+The color is purple</code></pre>
+<p>Next, let's look at what happens if we naively try to perform the task concurrently with threads.</p>
+<h3>Naive Update To Use Threads</h3>
+<p>We can naively update the program in the previous section to perform each task concurrently with threads.</p>
+<p>The program involves executing the same task on different colors. As such, it is a natural case for speed-up by executing each task concurrently.</p>
+<p>A naive approach would be to execute each task in a new thread.</p>
+<p>This can be achieved by defining a new function that takes a color, sets the global "<strong>color</strong>" variable to the color, then calls the <strong>color_report()</strong> function.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task setup the color and call the task
+def task(color_arg):
+    global color
+    # set the color
+    color = color_arg
+    # report color
+    color_report()
+</code></pre>
+<p>Next, we can then create one thread per color and configure each thread to execute the <strong>task()</strong> function and pass in a color as an argument.</p>
+<p>This can be achieved by creating instances of the <strong>threading.Thread</strong> class and specifying the function to execute in a new thread via the "<strong>target</strong>" argument and the arguments to this function as a tuple to the "<strong>args</strong>" argument.</p>
+<p>We can achieve this in a list comprehension, iterating over the list of colors and creating a thread for each.</p>
+<pre><code>...
+# create a thread for each color
+threads = [Thread(target=task, args=(col,)) for col in colors]</code></pre>
+<p>Next, we can iterate the list of threads and start each one in turn.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+    thread.start()
+</code></pre>
+<p>Finally, the main thread can wait for all threads to finish.</p>
+<pre><code>...
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>And that's it.</p>
+<p>Easy enough, except there is a massive problem.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-unsafe global state
+from random import random
+from time import sleep
+from threading import Thread
+from contextvars import ContextVar
+
+# work with the color
+def color_report():
+    global color
+    # block for a moment
+    sleep(random())
+    # report the color
+    print(f'The color is {color}')
+
+# task setup the color and call the task
+def task(color_arg):
+    global color
+    # set the color
+    color = color_arg
+    # report color
+    color_report()
+
+# define global state
+color = 'Unknown'
+# define all the colors we want to work with
+colors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple']
+# create a thread for each color
+threads = [Thread(target=task, args=(col,)) for col in colors]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example creates and configures one thread per color.</p>
+<p>The threads are started and each thread executes the <strong>task()</strong> function. The global variable is assigned to a specific color and the <strong>color_report()</strong> task is executed.</p>
+<p>The problem is, all variables attempt to change the same global variable.</p>
+<p>This means that when the <strong>color_report()</strong> function is executed from each thread, it reads the same global variable shared among all threads that has the same value, e.g. the value assigned by the last thread to run, such as the one for '<strong>purple</strong>'.</p>
+<p>This was a naive adaptation of a program with a global state to use concurrency with threads.</p>
+<p>We need a way for each thread to have its own version of the color global variable, protected from being modified by other threads.</p>
+<p>A sample output of the program is listed below, showing the corrupted output of the program.</p>
+<pre><code>The color is purple
+The color is purple
+The color is purple
+The color is purple
+The color is purple
+The color is purple</code></pre>
+<p>Next, let's look at how we can protect global state from other threads using context variables.</p>
+<h3>Update To Use Context Variables</h3>
+<p>We can update the example from the previous section to use context variables in order to prevent the threads from stepping on each other.</p>
+<p>This can be achieved by changing the "<strong>color</strong>" global variable to be a context variable.</p>
+<p>This will require a change to the <strong>color_report()</strong> function when accessing the value, a change to the <strong>task()</strong> function when setting the value and a change when defining the variable.</p>
+<p>Firstly, we can update the <strong>color_report()</strong> function to call the <strong>get()</strong> function on the color global variable when printing its value.</p>
+<pre><code>...
+# report the color
+print(f'The color is {color.get()}')</code></pre>
+<p>The updated version of the <strong>color_report()</strong> function with this change is listed below.</p>
+<pre><code># work with the color
+def color_report():
+    global color
+    # block for a moment
+    sleep(random())
+    # report the color
+    print(f'The color is {color.get()}')
+</code></pre>
+<p>Next, we can update the <strong>task()</strong> function to call the <strong>set()</strong> function on the color global variable when assigning it to a color for a specific thread.</p>
+<pre><code>...
+# set the color
+color.set(color_arg)</code></pre>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task setup the color and call the task
+def task(color_arg):
+    global color
+    # set the color
+    color.set(color_arg)
+    # report color
+    color_report()
+</code></pre>
+<p>Finally, we can change the definition of the color global variable to be an instance of the <strong>contextvars.ContextVar</strong> class with a default value.</p>
+<pre><code>...
+# define global state
+color = ContextVar('color', default='Unknown')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-safe global state using context variables
+from random import random
+from time import sleep
+from threading import Thread
+from contextvars import ContextVar
+
+# work with the color
+def color_report():
+    global color
+    # block for a moment
+    sleep(random())
+    # report the color
+    print(f'The color is {color.get()}')
+
+# task setup the color and call the task
+def task(color_arg):
+    global color
+    # set the color
+    color.set(color_arg)
+    # report color
+    color_report()
+
+# define global state
+color = ContextVar('color', default='Unknown')
+# define all the colors we want to work with
+colors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple']
+# create a thread for each color
+threads = [Thread(target=task, args=(col,)) for col in colors]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the context variable global variable, then creates and configures one thread per color.</p>
+<p>The threads are started and the main thread blocks until the new threads finish.</p>
+<p>Each thread executes the <strong>task()</strong> function. The context variable is assigned to the color argument for the thread and the <strong>color_report()</strong> function is called.</p>
+<p>The change to the context variable only has an effect for the thread, and is not impacted by changes by other threads.</p>
+<p>As such, when the <strong>color_report()</strong> function is executed by each thread, it uses the thread's value of the context variable and reports the correct value.</p>
+<p>A sample output of the program is listed below, showing that using context variables corrects the problem of threads sharing global state and stepping on each other.</p>
+<pre><code>The color is purple
+The color is green
+The color is orange
+The color is blue
+The color is yellow
+The color is red</code></pre>
+<p>Next, let's explore how we might also fix the problem using thread-local data.</p>
+<h3>Update To Use Thread-Local Storage</h3>
+<p>Because we are using threads, we can also update the program to use thread-local storage that will also address the problem of threads stepping on each other.</p>
+<p>This can be achieved by changing the color global variable to be a thread-local context shared among all threads.</p>
+<p>This requires changes to the program where the <strong>color</strong> global variable is used. This includes in the <strong>color_report()</strong> function where the <strong>color</strong> variable is used and printed, in the <strong>task()</strong> function where the global variable is assigned, and in the body of the program where the global variable is defined and initially assigned.</p>
+<p>First, we can update the <strong>color_report()</strong> function and access the <strong>color</strong> thread-local storage context and the value of the color which we will store as "<strong>value</strong>".</p>
+<pre><code>...
+# report the color
+print(f'The color is {color.value}')</code></pre>
+<p>The updated <strong>color_report()</strong> function with this change is listed below.</p>
+<pre><code># work with the color
+def color_report():
+    global color
+    # block for a moment
+    sleep(random())
+    # report the color
+    print(f'The color is {color.value}')
+</code></pre>
+<p>Next we can update the <strong>task()</strong> function to assign the variable to the value of the color provided to the thread as an argument.</p>
+<p>This will change "<strong>value</strong>" on the thread-local storage to a value only accessible to the thread.</p>
+<pre><code>...
+# set the color
+color.value = color_arg</code></pre>
+<p>The updated version of the <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task setup the color and call the task
+def task(color_arg):
+    global color
+    # set the color
+    color.value = color_arg
+    # report color
+    color_report()
+</code></pre>
+<p>Finally, we can update the definition of the color global variable.</p>
+<p>First, we need to create a thread-local storage context shared among all threads.</p>
+<pre><code>...
+color = local()</code></pre>
+<p>We then need to define a variable in this context to hold our color, which we will call "<strong>value</strong>" and assign it to a default value of "<strong>Unknown</strong>".</p>
+<p>In fact, this has no effect in any thread other than the main thread, but makes it clear in the program that we expect the color value to be get and set via "<strong>color.value</strong>".</p>
+<pre><code>...
+color.value = 'Unknown'</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-safe global state using thread-local storage
+from random import random
+from time import sleep
+from threading import Thread
+from threading import local
+
+# work with the color
+def color_report():
+    global color
+    # block for a moment
+    sleep(random())
+    # report the color
+    print(f'The color is {color.value}')
+
+# task setup the color and call the task
+def task(color_arg):
+    global color
+    # set the color
+    color.value = color_arg
+    # report color
+    color_report()
+
+# define global state
+color = local()
+color.value = 'Unknown'
+# define all the colors we want to work with
+colors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple']
+# create a thread for each color
+threads = [Thread(target=task, args=(col,)) for col in colors]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the global thread-local data context, then creates and configures one thread per color.</p>
+<p>The threads are started and the main thread blocks until the new threads finish.</p>
+<p>Each thread executes the <strong>task()</strong> function. The variable on the thread-local storage is assigned to the color argument for the thread and the <strong>color_report()</strong> function is called.</p>
+<p>The change to the thread-local variable only has an effect for the thread, and is not impacted by changes by other threads.</p>
+<p>As such, when the <strong>color_report()</strong> function is executed by each thread, it uses the thread's value of the thread-local variable and reports the correct value.</p>
+<p>A sample output of the program is listed below, showing that using a thread-local variable corrects the problem of threads sharing global state and stepping on each other.</p>
+<pre><code>The color is orange
+The color is blue
+The color is red
+The color is yellow
+The color is green
+The color is purple</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use context variables in Python.</p>
+</main>
+</body>
+</html>

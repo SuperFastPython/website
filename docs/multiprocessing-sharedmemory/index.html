@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Use SharedMemory in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Use SharedMemory in Python</h1>
+<div class="post-meta">March 23, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can create and share a memory block between processes via the SharedMemory class.</p>
+<p>In this tutorial, you will discover <strong>how to use shared memory between processes</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>What is SharedMemory</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html#multiprocessing.shared_memory.SharedMemory"><strong>multiprocessing.shared_memory.SharedMemory</strong> class</a> allows a block of memory to be used by multiple Python processes.</p>
+<p>A <strong>SharedMemory</strong> object can be created and shared directly among multiple processes, or it can assigned a meaningful name attached to a process using that name,</p>
+<blockquote>
+<p>Creates a new shared memory block or attaches to an existing shared memory block. Each shared memory block is assigned a unique name. In this way, one process can create a shared memory block with a particular name and a different process can attach to that same shared memory block using that same name.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>A <strong>SharedMemory</strong> has a fixed size and stores byte data.</p>
+<p>Python types can be converted to arrays of bytes and stored in a <strong>SharedMemory</strong> and read as arrays of bytes and converted back into Python types.</p>
+<p>It allows processes to read and write from the same memory, which is faster and more efficient than sharing data via message passing, such as via a <strong>multiprocessing.Queue</strong> or <strong>multiprocessing.Pipe</strong>.</p>
+<blockquote>
+<p>Processes are conventionally limited to only have access to their own process memory space but shared memory permits the sharing of data between processes, avoiding the need to instead send messages between processes containing that data. Sharing data directly via memory can provide significant performance benefits compared to sharing data via disk or socket or other communications requiring the serialization/deserialization and copying of data.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>Now that we know what a <strong>SharedMemory</strong> object is, let's look at how to use it.</p>
+<h2>How to Use SharedMemory</h2>
+<p>A <strong>SharedMemory</strong> can be created in a process by calling the constructor and specifying a "<strong>size</strong>" in bytes and the "<strong>create</strong>" argument to <strong>True</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared memory
+shared_mem = SharedMemory(size=1024, create=True)</code></pre>
+<p>A shared memory object can be assigned a meaningful name via the "<strong>name</strong>" attribute to the constructor.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared memory with a name
+shared_mem = SharedMemory(name='MyMemory', size=1024, create=True)</code></pre>
+<p>Another process can access a shared memory via its name. This is called attaching to a shared memory.</p>
+<p>This can be achieved by specifying the name of the shared memory that has already been created and setting the "create" argument to False (the default).</p>
+<p>For example:</p>
+<pre><code>...
+# attach to a shared memory
+shared_mem = SharedMemory(name='MyMemory', create=False)</code></pre>
+<p>Once created data can be stored in the shared memory via the "<strong>buf</strong>" attribute that acts like an array of bytes.</p>
+<p>For example:</p>
+<pre><code>...
+# write data to shared memory
+shared_mem.buf[0] = 1</code></pre>
+<p>Data can be read from the "<strong>buf</strong>" attribute in the same manner.</p>
+<p>For example:</p>
+<pre><code>...
+# read data from shared memory
+data = shared_mem[0]</code></pre>
+<p>Once a process is finished using the shared memory, it can be closed to signal that access is no longer required.</p>
+<pre><code>...
+# close access to the shared memory
+shared_mem.close()</code></pre>
+<p>All processes should close the shared memory once they are finished with it.</p>
+<blockquote>
+<p>Closes access to the shared memory from this instance. In order to ensure proper cleanup of resources, all instances should call close() once the instance is no longer needed. Note that calling close() does not cause the shared memory block itself to be destroyed.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>Once all processes are finished with the shared memory, it must be explicitly released.</p>
+<p>This can be achieved by calling the <strong>unklink()</strong> method.</p>
+<blockquote>
+<p>Requests that the underlying shared memory block be destroyed. In order to ensure proper cleanup of resources, unlink() should be called once (and only once) across all processes which have need for the shared memory block.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>Ideally, the process that created the shared memory would also release it.</p>
+<p>For example:</p>
+<pre><code>...
+# destroy the shared memory
+shared_mem.unlink()</code></pre>
+<p>Now that we know how to use the <strong>SharedMemory</strong> object, let's look at some worked examples.</p>
+<h2>Example of Using SharedMemory with Strings</h2>
+<p>We can explore an example of how to share a SharedMemory object between processes and use it to store and retrieve String data.</p>
+<p>In this example, we can define a task that executes in a child process. The task function tasks the shared memory as an argument and writes a string to the shared memory. The main process starts the child process, waits for it to complete, then reports the data in the shared memory.</p>
+<p>Firstly, we can define the task function that takes the shared memory as an argument.</p>
+<p>String data can be written to the shared memory via the "<strong>buf</strong>" attribute. Recall that a string can be converted to bytes by prepending the "<strong>b</strong>" expression to the front of it, automatically encoding the string.</p>
+<pre><code># task executed in a child process
+def task(shared_mem):
+    # write some string data to the shared memory
+    shared_mem.buf[:24] = b'Hello from child process'
+    # close as no longer needed
+    shared_mem.close()
+</code></pre>
+<p>The main process can first create the shared memory.</p>
+<pre><code>...
+# create a shared memory
+shared_mem = SharedMemory(create=True, size=100)</code></pre>
+<p>Next, the child process can be created and configured to execute our <strong>task()</strong> function and pass it the shared memory as an argument. The process can be started and the main process can wait for it to complete.</p>
+<pre><code>...
+# create a child process
+process = Process(target=task, args=(shared_mem,))
+# start the child process
+process.start()
+# wait for the child process to finish
+process.join()</code></pre>
+<p>Next, the main process can read the string data from the shared memory.</p>
+<p>Recall that we can convert an array of bytes to a string via the <a href="https://docs.python.org/3/library/stdtypes.html#bytes.decode"><strong>decode()</strong> method</a>.</p>
+<pre><code>...
+# report the shared memory
+data = bytes(shared_mem.buf[:24]).decode()
+print(data)</code></pre>
+<p>Finally, the main process can close and release the shared memory block.</p>
+<pre><code>...
+# close the shared memory
+shared_mem.close()
+# release the shared memory
+shared_mem.unlink()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using shared memory with strings
+from multiprocessing.shared_memory import SharedMemory
+from multiprocessing import Process
+
+# task executed in a child process
+def task(shared_mem):
+    # write some string data to the shared memory
+    shared_mem.buf[:24] = b'Hello from child process'
+    # close as no longer needed
+    shared_mem.close()
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a shared memory
+    shared_mem = SharedMemory(create=True, size=100)
+    # create a child process
+    process = Process(target=task, args=(shared_mem,))
+    # start the child process
+    process.start()
+    # wait for the child process to finish
+    process.join()
+    # report the shared memory
+    data = bytes(shared_mem.buf[:24]).decode()
+    print(data)
+    # close the shared memory
+    shared_mem.close()
+    # release the shared memory
+    shared_mem.unlink()
+</code></pre>
+<p>Running the example first creates the shared memory.</p>
+<p>The child process is then created and configured to run our custom function and pass the shared memory.</p>
+<p>The main process starts the child process and waits for it to complete.</p>
+<p>The child process runs and stores a string in the shared memory, then terminates.</p>
+<p>The main process resumes and retrieves the bytes data from the shared memory and decodes it into a string, then reports it.</p>
+<p>We can see that the reported string matches the string that was stored in the child process.</p>
+<p>The shared memory is then closed and released.</p>
+<p>This highlights how we can share string data between processes using shared memory.</p>
+<pre><code>Hello from child process</code></pre>
+<p>Next, let's look at sharing integer data between processes using shared memory.</p>
+<h2>Example of Using SharedMemory with Integers</h2>
+<p>We can explore an example of how to share a <strong>SharedMemory</strong> object between processes and use it to store and retrieve integer data.</p>
+<p>In this example, we can update the previous example to store and retrieve a list of integers from the shared memory.</p>
+<p>Firstly, we can update the <strong>task()</strong> function to store a list of integers. This can be achieved by converting the list into an array of bytes via the <a href="https://docs.python.org/3/library/stdtypes.html#bytearray"><strong>bytearray()</strong> built-in function</a>.</p>
+<pre><code># task executed in a child process
+def task(shared_mem):
+    # write some integer data to the shared memory
+    shared_mem.buf[:5] = bytearray([1, 2, 3, 4, 5])
+    # close as no longer needed
+    shared_mem.close()
+</code></pre>
+<p>Next, in the main process, we can retrieve the integer data from the shared memory buffer.</p>
+<p>There are many ways to do this. In this case, we will read each item in turn and cast them to an integer type using a list comprehension.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orphaned Processes in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Orphaned Processes in Python</h1>
+<div class="post-meta">May 23, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>An <strong>orphan process</strong> is a <a href="../multiprocessing-in-python/">process</a> that does not have a running parent process.</p>
+<p>In this tutorial you will discover <strong>orphan processes</strong> and <strong>how to identify them in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>What is an Orphan Process</h2>
+<p>An orphan process is a process that does not have a parent process.</p>
+<blockquote><p>An orphan process is a computer process whose parent process has finished or terminated, though it remains running itself.</p><cite>-- <a href="https://en.wikipedia.org/wiki/Orphan_process">Orphan process, Wikipedia</a>.</cite></blockquote>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> is a running instance of a computer program.</p>
+<p>Every Python program is executed in a Process, which is a new instance of the Python interpreter. This process has the name <em>MainProcess</em> and has one thread used to execute the program instructions called the <em>MainThread</em>. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create new child processes in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process"><strong>multiprocessing.Process</strong> class</a>.</p>
+<p>It is possible to create child processes and for the parent process to stop or be killed, leaving one or more child processes to continue running.</p>
+<p>These child processes are called <a href="https://en.wikipedia.org/wiki/Orphan_process">orphan processes</a>.</p>
+<p>Next, let's consider how a child process may be orphaned.</p>
+<h2>How To Orphan a Child Process</h2>
+<p>An orphan process is created when the parent of a child process is terminated.</p>
+<p>This can happen for many reasons, both intentional and otherwise.</p>
+<p>Some ways that a parent process may be terminated leaving the child process orphaned include:</p>
+<ul><li>Parent process finishes.</li><li>Parent raises an uncaught error or exception.</li><li>Parent process calls <strong>sys.exit()</strong> or <strong>os._exit()</strong>.</li><li>The <strong>Process.terminate()</strong> or <strong>Process.kill()</strong> methods are called on the parent.</li><li>A process calls <strong>os.kill()</strong> with the parent's PID.</li><li>Process is killed externally, e.g. via the <strong>kill</strong> command.</li></ul>
+<p>Now that we know what orphan processes are, let's look at problems with orphan processes.</p>
+<h2>Problem of Orphan Processes</h2>
+<p>Orphan processes can be a problem in some situations.</p>
+<p>Typically, we can get a handle on child processes via the parent process. This is helpful for querying the status of the process or forcefully killing child processes.</p>
+<p>If a process is orphaned, it can be difficult to programmatically get a handle on it.</p>
+<p>In turn, it can be challenging to query the status of orphaned processes or to terminate them.</p>
+<p>Some solutions could be:</p>
+<ul><li>Other processes keep a reference to processes that could be orphaned, e.g. Process instances.</li><li>Store process identifiers (PIDs) for child processes that could be orphaned, e.g. in a file.</li><li>Child processes can check if they are orphaned and take action accordingly.</li></ul>
+<p>Next, let's take a look at how a process can check if it is orphaned.</p>
+<h2>How To Check if a Process is Orphaned</h2>
+<p>A process is orphaned if it has no parent process, or if the parent process is not running.</p>
+<p>By this definition, the <em>MainProcess</em> in a Python program is an orphan.</p>
+<p>A process can check if it is orphaned by calling the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.parent_process"><strong>multiprocessing.parent_process()</strong> function</a>.</p>
+<p>This function returns the <strong>multiprocessing.Process</strong> instance for the parent process for the current process.</p>
+<p>If this value is <strong>None</strong>, the process is orphaned.</p>
+<p>For example:</p>
+<pre><code>...
+# check for no parent process
+if multiprocessing.parent_process() is None:
+	print('Orphaned')
+</code></pre>
+<p>Alternatively, a child process may have a <strong>multiprocessing.Process</strong> instance returned from the <strong>multiprocessing.parent_process()</strong> function, but the process may not be running. In which case, the process is orphaned.</p>
+<p>We can check if the parent process is running via a call to the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.is_alive"><strong>Process.is_alive()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# get the parent process
+parent = multiprocessing.parent_process()
+if parent is not None and not parent.is_alive():
+	print('Orphaned')
+</code></pre>
+<p>We can wrap this into a function that returns <strong>True</strong> if a process is orphaned and <strong>False</strong> otherwise.</p>
+<p>For example:</p>
+<pre><code># return True if the current process is orphaned, False otherwise
+def is_orphan():
+    # get the parent process
+    parent = parent_process()
+    # check if orphaned
+    if parent is None or not parent.is_alive():
+        return True
+    # not orphaned
+    return False
+</code></pre>
+<p>Now that we know how to identify an orphaned process, let's look at some examples of orphaned processes.</p>
+<h2>Example MainProcess is an Orphan</h2>
+<p>Technically, the main process for a Python program is an orphan process.</p>
+<p>This is because the main process does not have a parent process.</p>
+<p>We can demonstrate this with an example. We can call the <strong>multiprocessing.parent_process()</strong> function and confirm that it returns <strong>None</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# get the parent process
+parent = parent_process()
+print(f'Parent: {parent}')</code></pre>
+<p>We can also test our <strong>is_orphan()</strong> function developed in the previous section.</p>
+<p>For example:</p>
+<pre><code>...
+# check if orphan
+print(f'Orphaned: {is_orphan()}')</code></pre>
+<p>Tying this together, the complete example of checking if the main process is an orphan process is listed below.</p>
+<pre><code># SuperFastPython.com
+# example confirming that the main process is an orphan process
+from multiprocessing import parent_process
+
+# return True if the current process is orphaned, False otherwise
+def is_orphan():
+    # get the parent process
+    parent = parent_process()
+    # check if orphaned
+    if parent is None or not parent.is_alive():
+        return True
+    # not orphaned
+    return False
+
+# entry point
+if __name__ == '__main__':
+    # get the parent process
+    parent = parent_process()
+    print(f'Parent: {parent}')
+    # check if orphan
+    print(f'Orphaned: {is_orphan()}')
+</code></pre>
+<p>Running the example first gets the parent process of the main process and prints it directly.</p>
+<p>In this case, we can confirm that the parent of the main process is <strong>None</strong>. This highlights that technically the main process is an orphan process.</p>
+<p>Next, we can test our <strong>is_orphan()</strong> function for the main process.</p>
+<p>This returns True, confirming that our function operates as expected.</p>
+<pre><code>Parent: None
+Orphaned: True</code></pre>
+<h2>Example of Orphaned Child Process</h2>
+<p>We can explore how to create an orphaned child process.</p>
+<p>In this example we will create a child process, then from this child process create another child process.</p>
+<ul><li>MainProcess (level0)<ul><li>Child Process (level1) <ul><li>Child Process (level2)</li></ul></li></ul></li></ul>
+<p>The main process will then terminate the first child process and leave the second child process as an orphan process.</p>
+<p>First, we must define a function to be executed by the second level child process. This function will first check if it is an orphan (it won't be), then sleep for a moment, then check if it is an orphan again (it will be).</p>
+<p>We can call our <strong>is_orphan()</strong> function developed above to check if the process is an orphan.</p>
+<p>The <strong>level2()</strong> function below implements this.</p>
+<pre><code># task for level 3 child
+def level2():
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+    # block for a moment
+    sleep(3)
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+</code></pre>
+<p>Next, we need a function to be executed by the first-level child process.</p>
+<p>This is the process created directly by the <em>MainProcess</em> that will in turn create the second level process that executes <strong>level2()</strong> listed above.</p>
+<p>The <strong>level1()</strong> function below implements this.</p>
+<pre><code># task for level 1 child
+def level1():
+    # create a new process
+    process = Process(target=level2)
+    # start the new process
+    process.start()
+</code></pre>
+<p>Finally, the main process will create a new child process that executes the <strong>level1()</strong> function, then start this process.</p>
+<pre><code>...
+# create a new process
+process = Process(target=level1)
+# start the new process
+process.start()</code></pre>
+<p>The main process will then block for a moment.</p>
+<pre><code>...
+# block for a moment
+sleep(1)</code></pre>
+<p>Finally, it will terminate the level1 child process so that the level2 child process will be orphaned.</p>
+<pre><code>...
+# terminate the child process
+process.terminate()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of creating an orphan process
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import parent_process
+
+# return True if the current process is orphaned, False otherwise
+def is_orphan():
+    # get the parent process
+    parent = parent_process()
+    # check if orphaned
+    if parent is None or not parent.is_alive():
+        return True
+    # not orphaned
+    return False
+
+# task for level 3 child
+def level2():
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+    # block for a moment
+    sleep(3)
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+
+# task for level 1 child
+def level1():
+    # create a new process
+    process = Process(target=level2)
+    # start the new process
+    process.start()
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=level1)
+    # start the new process
+    process.start()
+    # block for a moment
+    sleep(1)
+    # terminate the child process
+    process.terminate()
+</code></pre>
+<p>Running the example first creates a child process in the main process.</p>
+<p>The main process then blocks.</p>
+<p>The first-level child process then creates a second-level child process and finishes running.</p>
+<p>The second-level child process checks if it is orphaned, which it is not, then blocks.</p>
+<p>The main process then terminates the first-level child process and finishes running.</p>
+<p>The first-level child process had already finished running, but was still alive. This is because it had at least one non-daemon child process still running. Once terminated, it was no longer alive.</p>
+<p>At this time the main process is no longer "running" but is still alive because there is still at least one non-daemon process running.</p>
+<p>The second-level process wakes-up, checks if it is orphaned, which it is, then the program terminates as all non-daemon processes have finished.</p>
+<pre><code>Orphaned: False
+Orphaned: True</code></pre>
+<h2>Common Questions</h2>
+<p>This section lists some common questions about orphan processes.</p>
+<p><strong>Do you have any questions about orphan processes?</strong><br/>List your questions below in the comments and I may add them to this section.</p>
+<h3>Will Calling sys.exit() Create an Orphan Process?</h3>
+<p>No.</p>
+<p>The <a href="https://docs.python.org/3/library/sys.html#sys.exit"><strong>sys.exit()</strong> function</a> will raise a <strong>SystemExit</strong> exception and signal to the interpreter that the process should exit.</p>
+<p>This may stop the process from "running" but it will stay alive if it has child processes.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of creating an orphan process
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import parent_process
+import sys
+
+# return True if the current process is orphaned, False otherwise
+def is_orphan():
+    # get the parent process
+    parent = parent_process()
+    # check if orphaned
+    if parent is None or not parent.is_alive():
+        return True
+    # not orphaned
+    return False
+
+# task for level 3 child
+def level2():
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+    # block for a moment
+    sleep(3)
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+
+# task for level 1 child
+def level1():
+    # create a new process
+    process = Process(target=level2)
+    # start the new process
+    process.start()
+    # attempt to terminate
+    sys.exit(0)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=level1)
+    # start the new process
+    process.start()
+    # block for a moment
+    sleep(1)
+    # check if alive
+    print(f'Child Alive: {process.is_alive()}')
+</code></pre>
+<p>Running the example shows that the first-level child process stops running and attempts to exit, yet remains running according to both the parent and the second-level child process.</p>
+<pre><code>Orphaned: False
+Child Alive: True
+Orphaned: False</code></pre>
+<h3>Can We Terminate the MainProcess To Create an Orphan?</h3>
+<p>Yes, but not easily.</p>
+<p>We can call <strong>sys.exit(0)</strong> to exit the main process, yet it stays alive.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of creating an orphan process
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import parent_process
+import sys
+
+# return True if the current process is orphaned, False otherwise
+def is_orphan():
+    # get the parent process
+    parent = parent_process()
+    # check if orphaned
+    if parent is None or not parent.is_alive():
+        return True
+    # not orphaned
+    return False
+
+# function executed in a new process
+def task():
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+    # block for a moment
+    sleep(3)
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+    print(f'Parent Alive: {parent_process().is_alive()}', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # block for a moment
+    sleep(1)
+    # all done
+    print('MainProcess all done')
+    # process terminates itself
+    sys.exit(0)
+</code></pre>
+<p>Running the example shows that the child is not an orphan and that the parent process is still running.</p>
+<pre><code>Orphaned: False
+MainProcess all done
+Orphaned: False
+Parent Alive: True</code></pre>
+<p>We can attempt to get the <strong>multiprocessing.Process</strong> instance for the main process via <strong>multiprocessing.current_process()</strong> function and have the main process terminate itself, but Python reports no such function or attribute.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of creating an orphan process
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import parent_process
+from multiprocessing import current_process
+
+# return True if the current process is orphaned, False otherwise
+def is_orphan():
+    # get the parent process
+    parent = parent_process()
+    # check if orphaned
+    if parent is None or not parent.is_alive():
+        return True
+    # not orphaned
+    return False
+
+# function executed in a new process
+def task():
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+    # block for a moment
+    sleep(3)
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # block for a moment
+    sleep(1)
+    # all done
+    print('MainProcess all done')
+    # process terminates itself
+    p = current_process()
+    p.terminate()
+</code></pre>
+<p>Running the example reports that there is no such method as <strong>terminate()</strong> on the <strong>multiprocessing.Process</strong> class.</p>
+<p>Although, of course there is, e.g. <strong><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.terminate">multiprocessing.Process.terminate()</a></strong>.</p>
+<pre><code>Orphaned: False
+MainProcess all done
+Traceback (most recent call last):
+  ...
+AttributeError: 'NoneType' object has no attribute 'terminate'
+Orphaned: False
+</code></pre>
+<p>We get the same result if the child tries to terminate the parent process itself.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of creating an orphan process
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import parent_process
+from multiprocessing import current_process
+
+# return True if the current process is orphaned, False otherwise
+def is_orphan():
+    # get the parent process
+    parent = parent_process()
+    # check if orphaned
+    if parent is None or not parent.is_alive():
+        return True
+    # not orphaned
+    return False
+
+# function executed in a new process
+def task():
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+    # block for a moment
+    sleep(3)
+    # get the parent process and terminate it
+    p = parent_process()
+    p.terminate()
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # block for a moment
+    sleep(1)
+    # all done
+    print('MainProcess all done')
+</code></pre>
+<p>Running the example again reports that there is no such function as <strong>terminate()</strong> on the <strong>multiprocessing.Process</strong> class, although we know there is.</p>
+<pre><code>Orphaned: False
+MainProcess all done
+Process Process-1:
+Traceback (most recent call last):
+  ...
+AttributeError: 'NoneType' object has no attribute 'terminate'
+</code></pre>
+<p>Nevertheless, the main process can terminate itself via the <a href="https://docs.python.org/3/library/os.html#os._exit"><strong>os._exit()</strong> function</a> which will create an orphan child process.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of creating an orphan process
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import parent_process
+import os
+
+# return True if the current process is orphaned, False otherwise
+def is_orphan():
+    # get the parent process
+    parent = parent_process()
+    # check if orphaned
+    if parent is None or not parent.is_alive():
+        return True
+    # not orphaned
+    return False
+
+# function executed in a new process
+def task():
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+    # block for a moment
+    sleep(3)
+    # check if orphaned
+    print(f'Orphaned: {is_orphan()}', flush=True)
+    print(f'Parent Alive: {parent_process().is_alive()}', flush=True)
+
+# entry point
+if __name__ == '__main__':
+    # create a new process
+    process = Process(target=task)
+    # start the new process
+    process.start()
+    # block for a moment
+    sleep(1)
+    # all done
+    print('MainProcess all done')
+    # process terminates itself
+    os._exit(0)
+</code></pre>
+<p>Running the example shows that the parent process is no longer running and the child was correctly orphaned.</p>
+<pre><code>Orphaned: False
+MainProcess all done
+Orphaned: True
+Parent Alive: False
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to identify an orphaned process in Python.</p>
+</main>
+</body>
+</html>

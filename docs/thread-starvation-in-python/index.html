@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread Starvation in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread Starvation in Python</h1>
+<div class="post-meta">April 18, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can <strong>starve a </strong><a href="../threading-in-python/"><strong>thread</strong> of execution</a>, which is a concurrency failure mode called <strong>thread starvation</strong>.</p>
+<p>In this tutorial you will discover <strong>thread starvation</strong> and how to fix it in Python.</p>
+<p>Let's get started.</p>
+<h2>What is Thread Starvation</h2>
+<p><a href="https://en.wikipedia.org/wiki/Starvation_(computer_science)">Thread starvation</a> is a concurrency failure mode.</p>
+<p>Generally, starvation refers to the case where one thread gets preferential access to a resource over other threads, making access to the resource uneven or unfair.</p>
+<blockquote><p><strong>Starvation</strong>: A condition of execution in which a thread is not allowed to proceed with assigned computations. This term applies to threads that are blocked from being scheduled into a processor by the operating system due to execution of higher priority threads.</p><cite>-- Page 272, <a href="https://amzn.to/3z1XhOz">The Art of Concurrency</a>, 2009.</cite></blockquote>
+<p>It often refers to the scheduling of threads, such as a bug in an operating system or thread-scheduler.</p>
+<blockquote><p>... starvation is the responsibility of the scheduler. Whenever multiple threads are ready to run, the scheduler decides which one or, on a parallel processor, which set of threads gets to run. If a thread is never scheduled, then it will starve, no matter what we do with semaphores.</p><cite>-- Page 81, <a href="https://amzn.to/38mEy5t">The Little Book of Semaphores</a>, 2009.</cite></blockquote>
+<p>It may also occur within concurrent application programming.</p>
+<p>In concurrent programming, thread starvation refers to the situation where one thread monopolizes a resource protected by a concurrency primitive and prevents one or more other threads from accessing the resource fairly.</p>
+<p>Now that we know what thread starvation is, let's consider some common examples.</p>
+<h2>Examples of Thread Starvation</h2>
+<p>Thread Starvation can happen for many reasons, although it is common when a concurrency primitive is acquired too far from the critical section.</p>
+<p>Here, "too far" refers to the number of lines of code or instructions executed prior to the point in the code where the resource or critical section requires protection from the concurrency programming.</p>
+<p>This leads to the heuristic:</p>
+<p>- Acquire concurrency primitives as close as possible (in code) to the resource or critical section they protect.</p>
+<p>Thread starvation can occur with most concurrency primitives that must be acquired, such as:</p>
+<ul><li>Mutual exclusion (mutex) locks.</li><li>Semaphores.</li><li>Conditions</li></ul>
+<p>For example, there might be a critical section of code protected by a mutual exclusion (mutex) lock. This critical section may need to be executed many times by a given thread, and by multiple threads. Thread starvation may occur if one thread continues to acquire the mutex lock and execute the critical section, starving out or preventing all other threads from acquiring the lock and executing the critical section.</p>
+<p>Another example might be a resource with limited access protected by a semaphore. Multiple threads may need to acquire a position on the semaphore repeatedly as part of their task. Thread starvation may occur if the number of positions on the semaphore are limited and the same thread or threads continue to acquire those positions, starving out or preventing other threads from acquiring a position on the semaphore.</p>
+<p>Next, let's compare thread starvation to other concurrency failure modes.</p>
+<h2>Thread Starvation vs Deadlock and Livelock.</h2>
+<p>Thread starvation is a concurrency failure mode, like a deadlock and like a livelock.</p>
+<p>A deadlock is a situation where threads are unable to make progress and cannot execute. This can happen for many reasons, although typically involves one thread waiting to acquire a lock held by another thread and the other thread unable to release the lock.</p>
+<p>You can learn more about deadlocks in this tutorial:</p>
+<ul><li><a href="../thread-deadlock-in-python/">How to Identify a Deadlock in Python</a></li></ul>
+<p>A livelock is a situation where threads are unable to make progress in the application, but continue to execute. This can happen for many reasons, although typically involves two threads repeatedly competing for a shared resource and preventing each other, such as in a spinlock.</p>
+<p>You can learn more about livelocks in this tutorial:</p>
+<ul><li><a href="../thread-livelock-in-python/">Thread Livelocks in Python</a></li></ul>
+<p>Thread starvation is similar to a deadlock and a livelock in that one or more threads are unable to make progress, but other threads in the system are able to make progress and the starved thread may or may not be a temporary condition.</p>
+<p>In thread starvation, typically the thread starved of execution will make progress once the greedy thread or threads that cause the starvation move on or terminate. Alternately, the starved thread may make progress, but it may be less or slower than other threads accessing the same resource.</p>
+<p>In this way, thread starvation is more related to the fairness of access to a resource, although the program may still progress. Whereas, a deadlock and a livelock are typically both fatal to the application.</p>
+<p>Next, let's consider how we might fix thread starvation.</p>
+<h2>How To Fix Thread Starvation</h2>
+<p>A common example of thread starvation is a critical section executed in a loop, protected by a concurrency primitive.</p>
+<p>The critical section often involves some blocking call, such as writing to a file or reading from a socket.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire lock
+with lock:
+	for i in range(...):
+		# execute critical section
+		# ...</code></pre>
+<p>As such, each iteration is slow because of the blocking call and the lock is held for a long time by a thread.</p>
+<p>This starves other threads blocked attempting to acquire the same lock.</p>
+<p>Let's consider some fixes for the above thread starvation case.</p>
+<h3>Fix 1: Move the Concurrency Primitive Closer</h3>
+<p>The first fix to consider is to move the concurrency primitive closer to the critical section.</p>
+<p>We might require that the thread acquire the lock each iteration within the loop.</p>
+<p>This might be computationally less efficient because acquiring a lock can be expensive, but may reduce the starvation of other threads. This is because each loop the lock is acquired, then released, potentially allowing other threads to acquire it.</p>
+<p>For example:</p>
+<pre><code>...
+for i in range(...):
+	# acquire lock
+	with lock:
+		# execute critical section
+		# ...
+</code></pre>
+<p>This may or may not improve the fairness of the access to the shared resource.</p>
+<h3>Fix 2: Don't Use Context Manager</h3>
+<p>In the above example, we use the context manager to acquire the concurrency primitive, then to automatically release it. This is a helpful and safe way for acquiring and releasing concurrency primitives.</p>
+<p>An alternate approach might be to explicitly acquire and release the resource, in case the context manager is causing some additional code optimizing efficiency within the Python virtual machine resulting in less fair access to the critical section.</p>
+<p>There is some anecdotal evidence that it may help in some situations or on some platforms.</p>
+<p>This can be achieved by manually calling the <strong>acquire()</strong> function at the beginning of the critical section, then manually calling <strong>release()</strong> at the end of the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+for i in range(...):
+	# acquire lock
+	lock.acquire()
+	# execute critical section
+	# ...
+	# release the lock
+	lock.release()
+</code></pre>
+<h3>Fix 3: Use a Binary Semaphore</h3>
+<p>Sometimes simple loops like the above may be optimized by the Python interpreter, or the thread scheduler in the operating system.</p>
+<p>As such, the fairness of access to the critical section or shared resource may be modified in a way that is out of our control.</p>
+<p>As such, we may need to try other tactics.</p>
+<p>For example, instead of using a mutex lock, we may use a binary semaphore. Threads will queue up waiting to access the semaphore.</p>
+<p>This may or may not improve the fairness of access to the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# use a binary semaphore as a mutex
+lock = Semaphore(1)</code></pre>
+<h3>Fix 4: Add a Blocking Call</h3>
+<p>Another tactic may be to introduce a blocking call prior to acquiring the lock.</p>
+<p>This will likely trigger a context switch in the operating system and cause the thread scheduler to preferentially choose another non-blocked thread to execute. The result is likely less starvation and more fair access to the critical section.</p>
+<p>We could add a blocking call like a sleep so that each thread may block for one millisecond (one one-thousandth of a second) prior to acquiring the lock.</p>
+<p>For example:</p>
+<pre><code>...
+for i in range(...):
+    # give another thread a chance to acquire the lock
+    sleep(0.001) # 1 ms
+	# acquire lock
+	with lock:
+		# execute critical section
+		# ...</code></pre>
+<p>Now that we have reviewed some fixes for thread starvation, let's look at some worked examples.</p>
+<h2>Example of Thread Starvation</h2>
+<p>We can explore an example of thread starvation, common in concurrency programming.</p>
+<p>In this example we will have a task that executes a loop and each iteration in the loop is a critical section that contains a blocking call. A mutex lock is used to protect the critical section, by protecting the entire task. Two threads execute the task, where one thread always starves out the other thread.</p>
+<p>First, we can define the task function.</p>
+<p>The function takes the shared mutex lock and a unique identifier for the thread, which we can use in our print messages.</p>
+<pre><code>...
+# task
+def task(lock, identifier):
+	# ...
+</code></pre>
+<p>First, we acquire the lock using the context manager.</p>
+<pre><code>...
+# acquire lock
+with lock:
+	# ...
+</code></pre>
+<p>Next, we loop five times.</p>
+<pre><code>...
+# execute task
+for i in range(5):
+	# ...
+</code></pre>
+<p>The critical section involves printing a message that includes the thread identifier and then blocking, in this case sleeping for one second.</p>
+<pre><code>...
+# simulate effort
+print(f'Thread {identifier} working')
+sleep(1)
+</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function is listed below.</p>
+<pre><code># task
+def task(lock, identifier):
+    # acquire lock
+    with lock:
+        # execute task
+        for i in range(5):
+            # simulate effort
+            print(f'Thread {identifier} working')
+            sleep(1)
+</code></pre>
+<p>In the main thread, we can first create the shared mutex lock.</p>
+<pre><code>...
+# create shared lock
+lock = Lock()</code></pre>
+<p>Next, we can create two threads to execute the <strong>task()</strong> function and pass the shared lock and a unique integer identifier 0 or 1.</p>
+<p>This can be achieved in a list comprehension.</p>
+<pre><code>...
+# create worker threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(2)]</code></pre>
+<p>The main thread can then start both threads, then block until both threads terminate.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread starvation
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task
+def task(lock, identifier):
+    # acquire lock
+    with lock:
+        # execute task
+        for i in range(5):
+            # simulate effort
+            print(f'Thread {identifier} working')
+            sleep(1)
+
+# create shared lock
+lock = Lock()
+# create worker threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(2)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared lock.</p>
+<p>Both threads are created and configured. The main thread starts both new threads, then blocks until they terminate.</p>
+<p>One thread acquires the lock, then proceeds with the task. The second thread is blocked until the first thread completely finishes the task and releases the lock.</p>
+<p>A sample of results is listed below. In this case Thread 0 acquires the lock first, starving Thread 1. Thread 0 finishes, allowing Thread 1 to acquire the lock and perform the task.</p>
+<p>This is a common example of thread starvation in concurrency programming caused by the use of a lock that is too liberal.</p>
+<pre><code>Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working</code></pre>
+<p>Next, let's look at how we might start to improve this code to reduce thread starvation.</p>
+<h2>Thread Starvation Fix: Move the Lock</h2>
+<p>We may be able to reduce thread starvation by moving the usage of the lock closer to the critical section.</p>
+<p>That is, rather than locking the entire task, we can lock each iteration of the looped task.</p>
+<p>Each iteration of the loop, a thread will acquire the lock, perform the task, then release the lock. This may allow another thread to acquire the lock and perform the task, making access to the critical section more fair and reducing starvation.</p>
+<p>We can update the example in the previous section to demonstrate this fix.</p>
+<p>This can be achieved by moving the mutex from the top of the task function to within the loop of the iterated critical section.</p>
+<p>The <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task
+def task(lock, identifier):
+    # execute task
+    for i in range(5):
+        # acquire lock
+        with lock:
+            # simulate effort
+            print(f'Thread {identifier} working')
+            sleep(1)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a fix for thread starvation by moving the lock
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task
+def task(lock, identifier):
+    # execute task
+    for i in range(5):
+        # acquire lock
+        with lock:
+            # simulate effort
+            print(f'Thread {identifier} working')
+            sleep(1)
+
+# create shared lock
+lock = Lock()
+# create worker threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(2)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example creates the shared lock, then creates and starts the new threads.</p>
+<p>Each iteration, a thread will acquire the lock, execute the critical section of the task, then release the lock.</p>
+<p>The hope is that the repeated acquiring and releasing of the lock will give each thread a fair and equal chance of acquiring the lock.</p>
+<p>In this example, we can see that this was not the case.</p>
+<p>One thread acquired the lock and then repeatedly acquired the lock each iteration, starving out the other thread.</p>
+<p>Importantly, this result is repeatable, showing a similar outcome each time the program is run.</p>
+<p>The result suggests that the Python interpreter may have optimized the bytecode of the program which has allowed one thread to be favored over another when executing the example, or the operating system that schedules the threads chooses to favor one thread over another.</p>
+<p>This highlights that even though a fix for thread starvation looks plausible from a design perspective, we cannot know whether it is effective until the code is run.</p>
+<pre><code>Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working</code></pre>
+<p>Next, let's explore further changes we can make to reduce thread starvation.</p>
+<h2>Thread Starvation Fix: Manually Acquire and Release</h2>
+<p>There are some anecdotes that more thread starvation can be seen when using the context manager interface for concurrency primitives.</p>
+<p>Another fix to reducing thread starvation might be to manually acquire and release the concurrency primitive, like the lock or semaphore.</p>
+<p>This involves manually calling <strong>acquire()</strong> on the mutex at the beginning of the critical section, then manually calling <strong>release()</strong> at the end of the critical section. If the critical section can raise an error or exception, then a try-finally pattern may be used with the try block holding the critical section and the call to <strong>release()</strong> in the finally block.</p>
+<p>For more about the try-finally pattern and context managers for concurrent primitives, see the tutorial:</p>
+<ul><li><a href="../thread-context-manager/">Thread-Safety With Context Managers in Python</a></li></ul>
+<p>We can update the above example to achieve this.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire lock
+lock.acquire()
+# simulate effort
+print(f'Thread {identifier} working')
+sleep(1)
+# release lock
+lock.release()</code></pre>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task
+def task(lock, identifier):
+    # execute task
+    for i in range(5):
+        # acquire lock
+        lock.acquire()
+        # simulate effort
+        print(f'Thread {identifier} working')
+        sleep(1)
+        # release lock
+        lock.release()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a fix for thread starvation by moving the lock
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task
+def task(lock, identifier):
+    # execute task
+    for i in range(5):
+        # acquire lock
+        lock.acquire()
+        # simulate effort
+        print(f'Thread {identifier} working')
+        sleep(1)
+        # release lock
+        lock.release()
+
+# create shared lock
+lock = Lock()
+# create worker threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(2)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example creates the shared lock, then creates and starts the new threads.</p>
+<p>Each iteration of the task, each thread will attempt to manually acquire the mutex lock. One thread will acquire it, execute the critical section, then release the lock.</p>
+<p>The hope is that the explicit function calls will give each thread an even and fair chance of acquiring the lock each iteration, reducing thread starvation.</p>
+<p>In this case, we can see some reduction in thread starvation, but we do not see a fair interleaving of threads accessing the critical section.</p>
+<pre><code>Thread 0 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 0 working</code></pre>
+<p>This type of result is not seen every time the code is executed. Sometimes one thread is completely starved of access to the critical section.</p>
+<p>For example:</p>
+<pre><code>Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working</code></pre>
+<p>These results may lend some credence to the anecdotes that manual calls to <strong>acquire()</strong> and <strong>release()</strong> reduce starvation, although perhaps further systematic testing is required.</p>
+<p>Next, let's consider changing the concurrent primitive.</p>
+<h2>Thread Starvation Fix: Change Concurrency Primitive</h2>
+<p>Changing the concurrency primitive may help with thread starvation.</p>
+<p>For example, a binary semaphore could be used in place of a mutex lock.</p>
+<p>When using a semaphore, threads may queue up in FIFO order waiting to acquire the semaphore. Releasing the semaphore may notify these threads, allowing them to acquire the semaphore on the next iteration and reduce the thread starvation.</p>
+<p>This can be achieved by replacing the <strong>threading.Lock</strong> with a <strong>threading.Semaphore</strong> configured with an initial count of 1.</p>
+<p>For example:</p>
+<pre><code>...
+# create shared lock
+lock = Semaphore(1)</code></pre>
+<p>The semaphore may then be used just like a mutex lock in the task, acquired and released each iteration via the context manager or manually via calls to <strong>acquire()</strong> and <strong>release()</strong>.</p>
+<p>The example from the previous section can be updated to use a binary semaphore instead of a mutex.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a fix for thread starvation by using a semaphore
+from time import sleep
+from threading import Thread
+from threading import Semaphore
+
+# task
+def task(lock, identifier):
+    # execute task
+    for i in range(5):
+        # acquire lock
+        with lock:
+            # simulate effort
+            print(f'Thread {identifier} working')
+            sleep(1)
+
+# create shared lock
+lock = Semaphore(1)
+# create worker threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(2)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example creates the shared binary semaphore, then creates and starts the two new threads.</p>
+<p>The semaphore is acquired each iteration, the critical section executed, and the semaphore is released.</p>
+<p>The hope is that each time the semaphore is released it will notify the waiting thread which will acquire it and have a turn at executing the critical section, causing the first thread to block. This would give each thread a fair and even chance at executing the critical section and reduce thread starvation.</p>
+<p>In this case, we can see that using a binary semaphore instead of a mutex did not reduce thread starvation.</p>
+<pre><code>Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 0 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working
+Thread 1 working</code></pre>
+<p>Perhaps this approach would be more successful in your application, your platform, or your version of the Python interpreter.</p>
+<p>If so, let me know in the comments below.</p>
+<p>Alternatively, perhaps alternate concurrency primitives can be used, such as a <strong>threading.Event</strong> or a <strong>threading.Condition</strong>.</p>
+<p>Next, let's look at reducing starvation by adding a blocking call.</p>
+<h2>Thread Starvation Fix: Add Blocking Call</h2>
+<p>A common fix for thread starvation is to add a blocking call right before acquiring the concurrency primitive.</p>
+<p>For example a call to <strong>time.sleep()</strong> can be made right before acquiring a mutex lock.</p>
+<p>The sleep interval may be for a tiny fraction of a second, such as 1 millisecond (one one-thousandth of a second). This will be enough to suggest a context switch to the underlying operating system.</p>
+<p>For example:</p>
+<pre><code>...
+# give another thread a chance to acquire the lock
+sleep(0.001) # 1 ms</code></pre>
+<p>Some operating systems may permit you to sleep for zero seconds, and possibly trigger a context switch.</p>
+<p>For example:</p>
+<pre><code>...
+# give another thread a chance to acquire the lock
+sleep(0)</code></pre>
+<p>This may or may not be supported on your operating system, or may be optimized away by modern versions of the Python interpreter or underlying C-code.</p>
+<p>I would recommend using a fraction of a second instead of zero as an argument to <strong>time.sleep()</strong>.</p>
+<p>The expected result is that the operating system will give a fair and even split of access to the critical section to the competing threads, at least on average. The operating system still must schedule the threads, and it is possible for access to not be perfectly even, especially if the number of threads is three or more.</p>
+<p>We can update the above example to test this fix.</p>
+<p>The call to sleep would be added at the beginning of each iteration of the task loop right before the lock is acquired.</p>
+<p>For example:</p>
+<pre><code>...
+# give another thread a chance to acquire the lock
+sleep(0.001) # 1 ms
+# acquire lock
+with lock:
+    # simulate effort
+    print(f'Thread {identifier} working')
+    sleep(1)
+</code></pre>
+<p>The updated task() function with this change is listed below.</p>
+<pre><code># task
+def task(lock, identifier):
+    # execute task
+    for i in range(5):
+        # give another thread a chance to acquire the lock
+        sleep(0.001) # 1 ms
+        # acquire lock
+        with lock:
+            # simulate effort
+            print(f'Thread {identifier} working')
+            sleep(1)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a fix for thread starvation by adding a sleep
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task
+def task(lock, identifier):
+    # execute task
+    for i in range(5):
+        # give another thread a chance to acquire the lock
+        sleep(0.001) # 1 ms
+        # acquire lock
+        with lock:
+            # simulate effort
+            print(f'Thread {identifier} working')
+            sleep(1)
+
+# create shared lock
+lock = Lock()
+# create worker threads
+threads = [Thread(target=task, args=(lock,i)) for i in range(2)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example creates the shared lock, then creates and starts the two new threads.</p>
+<p>Each thread blocks for a tiny fraction of a second each iteration, then attempts to acquire the lock.</p>
+<p>One thread will acquire the lock, execute the critical section, then release the lock. Before this thread can acquire the lock again on the next iteration, it must block. This very likely will give the chance for another thread to run (e.g. be scheduled by the operating system) and acquire the lock instead.</p>
+<p>In this case, we can see that adding a block for one millisecond had the desired effect of completely removing thread starvation and allowing fair and equal access to the critical section.</p>
+<pre><code>Thread 0 working
+Thread 1 working
+Thread 0 working
+Thread 1 working
+Thread 0 working
+Thread 1 working
+Thread 0 working
+Thread 1 working
+Thread 0 working
+Thread 1 working</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to identify and fix thread starvation in Python.</p>
+</main>
+</body>
+</html>

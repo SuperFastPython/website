@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Develop a Multithreaded Port Scanner in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Develop a Multithreaded Port Scanner in Python</h1>
+<div class="post-meta">December 23, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>The <strong><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor</a></strong> class in Python can be used to <strong>scan multiple ports</strong> on a server at the same time.</p>
+<p>This can dramatically speed up the process compared to attempting to connect to each port sequentially, one by one.</p>
+<p>In this tutorial, you will discover how to develop a multithreaded <strong>port scanner</strong> in Python.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul><li>How to open a socket connection to each port sequentially and how slow it can be.</li><li>How to use the <strong>ThreadPoolExecutor</strong> to manage a pool of worker threads.</li><li>How to update the code to connect to multiple ports at the same time and dramatically accelerate the process.</li></ul>
+<p>Let's dive in.</p>
+<h2>Scan Ports One-by-One (slowly)</h2>
+<p>We can connect to other computers by <a href="https://en.wikipedia.org/wiki/Network_socket">opening a socket</a>, called socket programming.</p>
+<p>Opening a socket requires both the name or IP address of the server and a port number on which to connect.</p>
+<p>For example, when your web browser opens a web page on python.org, it is opening a socket connection to that server on port 80, then using the HTTP protocol to request and download (GET) an HTML file.</p>
+<p><a href="https://en.wikipedia.org/wiki/Computer_network_programming">Socket programming</a> or network programming is a lot of fun.</p>
+<p>A good first socket programming project is to develop a <a href="https://en.wikipedia.org/wiki/Port_scanner">port scanner</a>.</p>
+<p>This is a program that reports all of the open sockets on a given server.</p>
+<p>A simple way to implement a port scanner is to loop over all the ports you want to test and attempt to make a socket connection on each. If a connection can be made, we disconnect immediately and report that the port on the server is open.</p>
+<p><strong>For example, we know that port 80 is open on python.org, but what other ports might be open?</strong></p>
+<p>Historically, having many open ports on a server was a security risk, so it is common to lock down a public facing server and close all non-essential ports to external traffic. This means scanning public servers will likely yield few open ports in the best case, or will deny future access in the worst case, if the server thinks you're trying to break in.</p>
+<p>As such, although developing a port scanner is a fun socket programming exercise, we must be careful in how we use it and what servers we scan.</p>
+<p>Next, let's look at how we can open a socket connection on a single port.</p>
+<h3>Open a Socket Connection on a Port</h3>
+<p>Python provides socket communication in the socket module.</p>
+<p>A socket must first be configured in terms of the type of host address and type of socket we will create, then the configured socket can be connected.</p>
+<p>You can learn more about the socket module in Python here:</p>
+<ul><li><a href="https://docs.python.org/3/library/socket.html">socket — Low-level networking interface</a></li></ul>
+<p>There are many ways to specify a host address, although perhaps the most common is the IP address (<a href="https://en.wikipedia.org/wiki/IPv4">IPv4</a>) or the domain name resolved by DNS. We can configure a socket to expect this type of address via the <strong>AF_INET</strong> constant.</p>
+<p>There are also different socket types, the most common being a TCP or stream type socket and a less reliable UDP type socket. We will attempt to open TCP sockets in this case, as they are more commonly used for services like email, web, ftp, and so on. We can configure our socket for TCP using the <strong>SOCK_STREAM</strong> constant.</p>
+<p>We can create and configure our socket as follows:</p>
+<pre><code>...
+# set a timeout of a few seconds
+sock = socket(AF_INET, SOCK_STREAM)
+</code></pre>
+<p>We must close our socket once we are finished with it by calling the <strong>close()</strong> function; for example:</p>
+<pre><code>...
+# close the socket
+sock.close()
+</code></pre>
+<p>While working with the socket, an exception may be raised for many reasons, such as an invalid address or a failure to connect. We must ensure that the connection is closed regardless, therefore we can automatically close the socket using the context manager; for example:</p>
+<pre><code>...
+# create and configure the socket
+with socket(AF_INET, SOCK_STREAM) as sock:
+	# ...
+</code></pre>
+<p>Next, we can further configure the socket before we open a connection.</p>
+<p>Specifically, it is a good idea to set a timeout because attempting to open network connections can be slow. We want to give up connecting and raise an exception if a given number of seconds elapses and we still haven't connected.</p>
+<p>This can be achieved by calling the <strong>settimeout()</strong> function on the socket. In this case, we will use a somewhat aggressive timeout of 3 seconds.</p>
+<pre><code>...
+# set a timeout of a few seconds
+sock.settimeout(3)
+</code></pre>
+<p>Finally, we can attempt to make a connection to a server.</p>
+<p>This requires a host name and a port, which we can pair together into a tuple and pass to the <strong>connect()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# attempt to connect
+sock.connect((host, port))
+</code></pre>
+<p>If the connection succeeds, we could start sending data to the server and receive it back via this socket using the protocol suggested by the port number. We don't want to communicate with the server so we will close the connection immediately.</p>
+<p>If the connection fails, an exception will be raised indicating that the port is likely not open (or not open to us).</p>
+<p>Therefore, we can wrap the attempt to connect in some exception handling.</p>
+<pre><code>...
+# connecting may fail
+try:
+    # attempt to connect
+    sock.connect((host, port))
+    # a successful connection was made
+except:
+    # ignore the failure, the port is closed to us
+</code></pre>
+<p>Tying this together, the <strong>test_port_number()</strong> will take a host number and a port will return <strong>True</strong> if a socket can be opened or <strong>False</strong> otherwise.</p>
+<pre><code># returns True if a connection can be made, False otherwise
+def test_port_number(host, port):
+    # create and configure the socket
+    with socket(AF_INET, SOCK_STREAM) as sock:
+        # set a timeout of a few seconds
+        sock.settimeout(3)
+        # connecting may fail
+        try:
+            # attempt to connect
+            sock.connect((host, port))
+            # a successful connection was made
+            return True
+        except:
+            # ignore the failure
+            return False
+</code></pre>
+<p>Next, let's look at how we can use this function we have developed to scan a range of ports.</p>
+<h3>Scan a Range of Ports on a Server</h3>
+<p>We can scan a range of ports on a given host.</p>
+<p>Many common internet services are provided on ports between 0 and 1024.</p>
+<p>The viable range of ports is 0 to 65535, and you can see a list of the most common port numbers and the services that use them in the file <strong>/etc/services</strong> on POSIX systems.</p>
+<p>Wikipedia also has a page that lists the most common port numbers:</p>
+<ul><li><a href="https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers">List of TCP and UDP port numbers</a></li></ul>
+<p>We will limit our scanning to the range of 0 to 1024.</p>
+<p>To scan a range of ports, we can repeatedly call our <strong>test_port_number()</strong> function that we developed in the previous section and report any ports that permit a connection as 'open'.</p>
+<p>The <strong>port_scan()</strong> function below implements this reporting any open ports that are discovered.</p>
+<pre><code># scan port numbers on a host
+def port_scan(host, ports):
+    print(f'Scanning {host}...')
+    # scan each port number
+    for port in ports:
+        if test_port_number(host, port):
+            print(f'&gt; {host}:{port} open')
+</code></pre>
+<p>Finally, we can call this function and specify the host and range of ports.</p>
+<p>In this case, we will port scan python.org (out of love for python, not malicious intent).</p>
+<pre><code>...
+# define host and port numbers to scan
+HOST = 'python.org'
+PORTS = range(1024)
+# test the ports
+port_scan(HOST, PORTS)
+</code></pre>
+<p>We would expect that at the least port 80 would be open for HTTP connections.</p>
+<p>Tying this together, the complete example of port scanning a host in Python is listed below.</p>
+<pre><code># SuperFastPython.com
+# scan a range of port numbers on host one by one
+from socket import AF_INET
+from socket import SOCK_STREAM
+from socket import socket
+
+# returns True if a connection can be made, False otherwise
+def test_port_number(host, port):
+    # create and configure the socket
+    with socket(AF_INET, SOCK_STREAM) as sock:
+        # set a timeout of a few seconds
+        sock.settimeout(3)
+        # connecting may fail
+        try:
+            # attempt to connect
+            sock.connect((host, port))
+            # a successful connection was made
+            return True
+        except:
+            # ignore the failure
+            return False
+
+# scan port numbers on a host
+def port_scan(host, ports):
+    print(f'Scanning {host}...')
+    # scan each port number
+    for port in ports:
+        if test_port_number(host, port):
+            print(f'&gt; {host}:{port} open')
+
+# define host and port numbers to scan
+HOST = 'python.org'
+PORTS = range(1024)
+# test the ports
+port_scan(HOST, PORTS)
+</code></pre>
+<p>Running the example attempts to make a connection for each port number between 0 and 1023 (one minus 1024) and reports all open ports.</p>
+<p>In this case, we can see that port 80 for HTTP is open as expected, and port 443 is also open for HTTPS.</p>
+<p>The program works fine, but it is painfully slow.</p>
+<p>On my system, it took 235.8 seconds to complete (nearly 4 minutes).</p>
+<pre><code>Scanning python.org...
+&gt; python.org:80 open
+&gt; python.org:443 open
+</code></pre>
+<p>Next, we will look at the <strong>ThreadPoolExecutor</strong> class that can be used to create a pool of worker threads that will allow us to speed up this port scanning process.</p>
+<h2>Create a Pool of Worker Threads </h2>
+<p>We can use the <strong>ThreadPoolExecutor</strong> to speed up the process of scanning multiple ports on a host.</p>
+<p>The <strong>ThreadPoolExecutor</strong> class is provided as part of the <strong>concurrent.futures</strong> module for easily running concurrent tasks.</p>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of worker threads, which is different from the <strong>ProcessPoolExecutor</strong> that provides a pool of worker processes.</p>
+<p>Generally, <strong>ThreadPoolExecutor</strong> should be used for concurrent IO-bound tasks, like downloading URLs, and the <strong>ProcessPoolExecutor</strong> should be used for concurrent CPU-bound tasks, like calculating.</p>
+<p>Using the <strong>ThreadPoolExecutor</strong> was designed to be easy and straightforward. It is like the "<em>automatic mode</em>" for Python threads.</p>
+<ol><li>Create the thread pool by calling <strong>ThreadPoolExecutor()</strong>.</li><li>Submit tasks and get futures by calling <strong>submit()</strong>.</li><li>Wait and get results as tasks complete by calling <strong>as_completed()</strong>.</li><li>Shut down the thread pool by calling <strong>shutdown()</strong>.</li></ol>
+<h3>1. Create the Thread Pool</h3>
+<p>First, a <strong>ThreadPoolExecutor</strong> instance must be created. By default, it will create a pool of five times the number of CPUs you have available. This is good for most purposes.</p>
+<pre><code>...
+# create a thread pool with the default number of worker threads
+executor = ThreadPoolExecutor()
+</code></pre>
+<p>You can run tens to hundreds of concurrent IO-bound threads per CPU, although perhaps not thousands or tens of thousands. You can specify the number of threads to create in the pool via the <strong>max_workers</strong> argument; for example:</p>
+<pre><code>...
+# create a thread pool with 10 worker threads
+executor = ThreadPoolExecutor(max_workers=10)
+</code></pre>
+<h3>2. Submit Tasks to the Tread Pool</h3>
+<p>Once created, it can send tasks into the pool to be completed using the <strong>submit()</strong> function.</p>
+<p>This function takes the name of the function to call any and all arguments and returns a <strong>Future</strong> object.</p>
+<p>The <meta/><strong>Future</strong> object is a promise to return the results from the task (if any) and provides a way to determine if a specific task has been completed or not.</p>
+<pre><code>...
+# submit a task
+future = executor.submit(task, arg1, arg2, ...)
+</code></pre>
+<p>The return from a function executed by the thread pool can be accessed via the <strong>result()</strong> function on the <strong>Future</strong> object. It will wait until the result is available, if needed, or return immediately if the result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from a future
+result = future.result()
+</code></pre>
+<h3>3. Get Results as Tasks Complete</h3>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available, rather than waiting for tasks to be completed in the order they were submitted.</p>
+<p>The concurrent.futures module provides an <strong>as_completed()</strong> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
+<p>We can call the function and provide it a list of future objects created by calling <strong>submit()</strong> and it will return future objects as they are completed in whatever order.</p>
+<p>For example, we can use a list comprehension to submit the tasks and create the list of future objects:</p>
+</main>
+</body>
+</html>

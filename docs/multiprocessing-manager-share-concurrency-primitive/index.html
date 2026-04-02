@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Manager Share Concurrency Primitives in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Manager Share Concurrency Primitives in Python</h1>
+<div class="post-meta">September 1, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can use a <strong>manager</strong> to create hosted versions of <strong>concurrency primitives</strong>. It will return a proxy object that can be pickled and provide process-safe access to the hosted concurrency primitive objects.</p>
+<p>In this tutorial you will discover how to use a <strong>multiprocessing manager</strong> to <strong>share concurrency primitives in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need Manager to Share Concurrency Primitives</h2>
+<p>A manager in the multiprocessing module provides a way to create Python objects that can be shared easily between processes.</p>
+<blockquote><p>Managers provide a way to create data which can be shared between different processes, including sharing over a network between processes running on different machines. A manager object controls a server process which manages shared objects. Other processes can access the shared objects by using proxies.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>A manager creates a server process that hosts a centralized version of objects that can be shared among multiple processes.</p>
+<p>The objects are not shared directly. Instead, the manager creates a proxy object for each object that it manages and the proxy objects are shared among processes.</p>
+<p>The proxy objects are used and operate just like the original objects, except that they serialize data, synchronize and coordinate with the centralized version of the object hosted in the manager server process.</p>
+<blockquote><p>A proxy is an object which refers to a shared object which lives (presumably) in a different process. [...] A proxy object has methods which invoke corresponding methods of its referent (although not every method of the referent will necessarily be available through the proxy).</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This makes managers a process-safe and preferred way to share Python objects safely and seamlessly among processes.</p>
+<p>You can learn more about multiprocessing managers in the tutorial:</p>
+<ul><li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li></ul>
+<p>We may need to use a Manager to host concurrency primitives, like a mutex lock.</p>
+<p>This is because concurrency primitives cannot be pickled, and we may have to pickle objects when sending them to a child process such as via a Pipe, via Queue or as an argument to a task in a process pool.</p>
+<p><strong>How can we use a multiprocessing manager to share concurrency primitives among child processes?</strong></p>
+<h2>How to Use a Manager to Share Concurrency Primitives</h2>
+<p>Concurrency primitives can be created in a Manager directly and shared among child processes.</p>
+<p>Managers are provided via the <strong>multiprocessing.Manager</strong> class, which creates and returns a <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.managers.SyncManager"><strong>multiprocessing.managers.SyncManager</strong> instance</a>.</p>
+<p>The <strong>SyncManager</strong> allows a suite of Python objects to be created and managed by default, including concurrency primitives such as:</p>
+<ul><li>Lock</li><li>Event</li><li>Condition</li><li>Semaphore</li><li>BoundedSemaphore</li><li>Barrier</li></ul>
+<p>Therefore, we can create a <strong>Manager</strong> instance and use it directly to create a concurrency primitive.</p>
+<p>This will create a hosted version of the primitive in the <strong>Manager</strong>'s server process and return proxy objects for the primitive that can be pickled and shared with child processes.</p>
+<p>For example, we can create a shared mutex lock with a manager as follows:</p>
+<pre><code># create the manager
+with Manager() as manager:
+    # create the shared mutex lock
+    semaphore = manager.Lock()
+    # ...
+</code></pre>
+<p>We might create a shared semaphore with a manager as follows:</p>
+<pre><code># create the manager
+with Manager() as manager:
+    # create the shared semaphore
+    semaphore = manager.Semaphore(10)
+    # ...
+</code></pre>
+<p>Now that we know how to use a manager to create shared concurrency primitives, let's look at some worked examples.</p>
+<h2>Example of Using a Manager for Shared Lock</h2>
+<p>We can use a manager to share a <a href="../multiprocessing-mutex-lock-in-python/">mutex lock</a> safely with multiple processes.</p>
+<p>In this example we will define a task that is constrained by a mutex lock so that only one instance of the task can run at any one time. We will then execute the target from many child processes in parallel. The lock will be shared with each process to ensure that the critical section within the task is protected.</p>
+<p>Firstly, we can define a function to execute in child processes.</p>
+<p>The function will take an integer number argument and the shared lock. It will then generate a random number between 0 and 1, block for a fraction of a second, then report the number that was generated.</p>
+<p>This critical section is contrived and provides a template that you can adapt in your own projects.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a new process
+def task(number, shared_lock):
+    # acquire the shared lock
+    with shared_lock:
+        # generate a number between 0 and 1
+        value = random()
+        # block for a fraction of a second
+        sleep(value)
+        # report the generated value
+        print(f'{number} got {value}')
+</code></pre>
+<p>Note that we are acquiring the lock using the context manager interface that ensures that it is released once we are finished with it.</p>
+<p>If you are new to using mutex locks in process-based concurrency, you can get started here:</p>
+<ul><li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li></ul>
+<p>Next, in the main process, we will create and start a <strong>Manager</strong> instance using the context manager interface.</p>
+<pre><code>...
+# create the manager
+with Manager() as manager:
+    # ...
+</code></pre>
+<p>We can then use the manager to create a shared mutex lock.</p>
+<p>The Lock object will be hosted in the manager server process and returns proxy objects that can be shared among child processes, can be pickled if needed, and used to interact with the Lock in a process-safe manner.</p>
+<pre><code>...
+# create the shared mutex lock
+shared_lock = manager.Lock()</code></pre>
+<p>Next, we can create many <strong>multiprocessing.Process</strong> instances configured to run our <strong>task() </strong>function and pass an integer and the shared <strong>Lock</strong> object as arguments.</p>
+<p>This can be achieved in a list comprehension that will create a list of configured <strong>Process</strong> instances.</p>
+<pre><code>...
+# create many child processes
+processes = [Process(target=task, args=(i, shared_lock)) for i in range(10)]</code></pre>
+<p>The main process can then iterate through the processes and start each in turn.</p>
+<pre><code>...
+# start all processes
+for process in processes:
+    process.start()
+</code></pre>
+<p>The main process can then wait until all the processes finish.</p>
+<p>This can be achieved by traversing the list of running <strong>Process</strong> instances and calling the <strong>join()</strong> function on each. This will block until the Process instance finishes, and once all processes have been joined we know that they have all terminated.</p>
+<pre><code>...
+# wait for all processes to complete
+for process in processes:
+    process.join()
+</code></pre>
+<p>If you are new to joining processes, you can learn more in this tutorial:</p>
+<ul><li><a href="../join-a-process-in-python/">How to Join a Process in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using a manager to share a muted lock with child processes
+from time import sleep
+from random import random
+from multiprocessing import Process
+from multiprocessing import Manager
+
+# task executed in a new process
+def task(number, shared_lock):
+    # acquire the shared lock
+    with shared_lock:
+        # generate a number between 0 and 1
+        value = random()
+        # block for a fraction of a second
+        sleep(value)
+        # report the generated value
+        print(f'{number} got {value}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared mutex lock
+        shared_lock = manager.Lock()
+        # create many child processes
+        processes = [Process(target=task, args=(i, shared_lock)) for i in range(10)]
+        # start all processes
+        for process in processes:
+            process.start()
+        # wait for all processes to complete
+        for process in processes:
+            process.join()
+</code></pre>
+<p>Running the example first creates the manager using the context manager interface.</p>
+<p>Next, the manager is used to create the shared <strong>Lock</strong> object.</p>
+<p>This creates a centralized version of the Lock on the manager's server process and returns proxy objects for interacting with the Lock.</p>
+<p>Next, 10 child processes are created and configured to call our custom <strong>task()</strong> function with the shared lock, then the processes are started. The main process then blocks until all child processes complete.</p>
+<p>Each process first attempts to acquire the <strong>Lock</strong> via the <strong>Lock</strong>'s proxy object. Only one child process can acquire the lock at a time, whilst all other processes must wait their turn.</p>
+<p>Once the <strong>Lock</strong> is acquired, the process will generate a random number, block for a fraction of a second then report a message.</p>
+<p>All tasks complete and the main process unblocks and the program terminates.</p>
+<p><strong>Note</strong>: Results will vary each time the program is run given the use of random numbers.</p>
+<pre><code>2 got 0.5864368625706725
+0 got 0.8103738265597983
+4 got 0.5730217503246685
+5 got 0.2079962531879581
+3 got 0.20031901361695348
+1 got 0.2591675313220979
+6 got 0.060164383845161096
+8 got 0.3615848478753587
+7 got 0.26580907843880375
+9 got 0.7784274416480854</code></pre>
+<p>Next, let's look at an example where we might share a semaphore with workers in the multiprocessing Pool.</p>
+<h2>Example of Using a Manager for Shared Semaphore</h2>
+<p>We can use a manager to share a semaphore among workers in the multiprocessing pool.</p>
+<p>Like all concurrency primitives, the semaphore cannot be pickled.</p>
+<p>This is a problem when using the <strong>multiprocessing.Pool</strong> class to execute an ad hoc function because all arguments to tasks in the pool must be pickled.</p>
+<p>As such, passing a semaphore to the <strong>Pool</strong> will result in an RuntimeError, as follows:</p>
+<pre><code>RuntimeError: Semaphore objects should only be shared between processes through inheritance</code></pre>
+<p>Instead, we must use a <strong>Manager</strong> to create a hosted centralized version of the <strong>Semaphore</strong> and then share it with workers in the multiprocessing <strong>Pool</strong>.</p>
+<p>You can learn more about sharing semaphores in the multiprocessing pool in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-semaphore/">Use a Semaphore in the Multiprocessing Pool</a></li></ul>
+<p>In this example we will define a task that is constrained by a semaphore so that only two instances of the task can run in parallel at any one time. The tasks will be executed by workers in the multiprocessing pool and a manager will be used to create a centralized semaphore that can be used safely in the child worker processes of the pool.</p>
+<p>We can update the <strong>task()</strong> function from the previous section to take a shared semaphore as an argument, instead of a shared lock.</p>
+<p>The semaphore can be acquired using the context manager interface, like the <strong>Lock</strong> class, so the changes are minimal.</p>
+<p>The updated <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># task executed in a new process
+def task(number, semaphore):
+    # acquire the shared semaphore
+    with semaphore:
+        # generate a number between 0 and 1
+        value = random()
+        # block for a fraction of a second
+        sleep(value)
+        # report the generated value
+        print(f'{number} got {value}')
+</code></pre>
+<p>Next, in the main process, we can use the <strong>Manager</strong> to create a shared semaphore instance.</p>
+<p>This will create the <strong>Semaphore</strong> in the <strong>Manager</strong>'s server process and return a proxy object that can be shared with processes and pickled.</p>
+<p>THis is important as we will share it with workers in the multiprocessing pool that require that arguments are pickled.</p>
+<pre><code>...
+# create the shared semaphore
+semaphore = manager.Semaphore(2)</code></pre>
+<p>Next, we can create a multiprocessing <strong>Pool</strong> instance. We will use the context manager interface to ensure that the <strong>Pool</strong> is closed once we are finished with it.</p>
+<pre><code>...
+# create the shared pool
+with Pool() as pool:
+    # ...
+</code></pre>
+<p>You can learn more about the context manager for the multiprocessing pool in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Multiprocessing Pool Context Manager</a></li></ul>
+<p>Finally, we can issue tasks to the Pool to execute our <strong>task()</strong> function in parallel with the shared semaphore.</p>
+<p>Because we have two arguments to the target function, we can issue tasks to the pool using the <strong>starmap()</strong> method.</p>
+<p>This method requires that we specify the function to execute and provide an iterable of arguments. The iterable must contain one iterable for each call to the function with the arguments for the call, such as in a tuple.</p>
+<p>These arguments can be prepared in a list comprehension with 10 items for the 10 calls to the <strong>task() </strong>function.</p>
+<pre><code>...
+# prepare arguments for task
+args = [(i,semaphore) for i in range(10)]</code></pre>
+<p>We can then issue the tasks with the <strong>starmap()</strong> method. This will block until all tasks are complete.</p>
+<pre><code>...
+# issue many tasks to the process pool
+pool.starmap(task, args)</code></pre>
+<p>You can learn more about issuing tasks to the multiprocessing pool with the <strong>starmap()</strong> method in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-starmap/">Multiprocessing Pool.starmap() in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of shared semaphore using a manager
+from time import sleep
+from random import random
+from multiprocessing import Manager
+from multiprocessing import Pool
+
+# task executed in a new process
+def task(number, semaphore):
+    # acquire the shared semaphore
+    with semaphore:
+        # generate a number between 0 and 1
+        value = random()
+        # block for a fraction of a second
+        sleep(value)
+        # report the generated value
+        print(f'{number} got {value}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the manager
+    with Manager() as manager:
+        # create the shared semaphore
+        semaphore = manager.Semaphore(2)
+        # create the shared pool
+        with Pool() as pool:
+            # prepare arguments for task
+            args = [(i,semaphore) for i in range(10)]
+            # issue many tasks to the process pool
+            pool.starmap(task, args)
+</code></pre>
+<p>Running the example first creates the manager using the context manager interface.</p>
+<p>Next, the manager is used to create the shared semaphore with two positions, returning a proxy object for the hosted object that can be shared among processes.</p>
+<p>A multiprocessing pool is then created with the default number of workers. A list of tuples is then created as arguments for the task function, one tuple for each call to the task function.</p>
+<p>The calls to the <strong>task()</strong> function with arguments are then issued to the multiprocessing pool using the <strong>starmap()</strong> function and the main process blocks until the tasks are completed.</p>
+<p>Each task attempts to acquire the semaphore, but only two tasks are able to acquire it at a time. Tasks generate a random number, block for a fraction of a second then report their generated number.</p>
+<p>All tasks complete and the multiprocessing pool is shutdown automatically via the context manager interface, followed by the manager.</p>
+<p>If the semaphore was not created using the manager, an error would be raised by the multiprocessing pool indicating that a semaphore cannot be passed directly to child worker processes.</p>
+<p><strong>Note</strong>: Results will vary each time the program is run given the use of random numbers.</p>
+<pre><code>4 got 0.6477163269260953
+3 got 0.36257010063693895
+5 got 0.5121752319871548
+2 got 0.795369090090284
+6 got 0.4784123199328061
+7 got 0.480959275085588
+1 got 0.6841684456946335
+9 got 0.5539105856832549</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a multiprocessing manager to share concurrency primitives in Python.</p>
+</main>
+</body>
+</html>

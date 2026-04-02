@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Numpy Multithreaded Matrix Solvers (up to 2x faster) – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Numpy Multithreaded Matrix Solvers (up to 2x faster)</h1>
+<div class="post-meta">April 27, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can solve matrices of linear systems of equations in numpy in parallel using multithreaded implementations of the algorithms.</p>
+<p>In this tutorial, you will discover how to solve systems of linear equations using multithreaded numpy functions.</p>
+<p>Let's get started.</p>
+<h2>Numpy Matrix Solvers are Multithreaded</h2>
+<p><a href="https://en.wikipedia.org/wiki/Linear_algebra">Linear algebra</a> is a field of mathematics concerned with linear equations with arrays and matrices of numbers.</p>
+<p>Numpy is a Python library for working with arrays of numbers. As such, it implements many linear algebra functions in the <strong>numpy.linalg</strong> module.</p>
+<p>Included are functions for solving systems of linear equations.</p>
+<p>Many of the <strong>numpy.linalg</strong> functions for working with matrices call down into the BLAS and LAPACK libraries. These libraries provide efficient implementations of common matrix functions. Some of these efficient implementations are multithreaded.</p>
+<blockquote>
+<p>The NumPy linear algebra functions rely on BLAS and LAPACK to provide efficient low level implementations of standard linear algebra algorithms.</p>
+<cite>-- <a href="https://numpy.org/doc/stable/reference/routines.linalg.html">Linear algebra (numpy.linalg)</a></cite></blockquote>
+<p>Numpy calls down into LAPACK libraries to solve systems of linear equations. The implementation of these functions are multithreaded.</p>
+<p>The specific solvers that are multithreaded include:</p>
+<ul>
+<li>Solve linear matrix equation: <strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.solve.html">numpy.linalg.solve()</a></strong>, which calls <strong>_gesv</strong> in LAPACK.</li>
+<li>Solve linear least squares: <strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.lstsq.html">numpy.linalg.lstsq()</a></strong></li>
+</ul>
+<p>The BLAS and LAPACK libraries will use all CPU cores by default. Nevertheless, we can configure the libraries to use a specific number of threads, such as one thread for a single-threaded version of a function and one thread per physical CPU core, which often results in better performance.</p>
+<p>You can learn more about BLAS and LAPACK in numpy in the tutorial:</p>
+<ul>
+<li><a href="../what-is-blas-and-lapack-in-numpy/">What is BLAS and LAPACK in NumPy</a></li>
+</ul>
+<p>This can be achieved using an environment variable, such as <strong>OMP_NUM_THREADS</strong> for OpenBLAS. Check the documentation for your BLAS library in order to discover which environment variable to set.</p>
+<p>You can learn more about setting the number of BLAS threads in the tutorial:</p>
+<ul>
+<li><a href="../numpy-number-blas-threads/">Configure the Number of NumPy BLAS Threads</a></li>
+</ul>
+<p>Now that we know that common linear algebra matrix solvers are multithreaded, let's look at some worked examples.</p>
+<h2>Parallel Matrix Solver</h2>
+<p>In this section, we will explore a parallel implementation of the linear matrix equation solver.</p>
+<blockquote>
+<p>In mathematics, a system of linear equations (or linear system) is a collection of one or more linear equations involving the same variables.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/System_of_linear_equations">System of linear equations, Wikipedia</a>.</cite></blockquote>
+<p>We can implement the matrix multiplication with NumPy via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.solve.html"><strong>numpy.linalg.solve()</strong> function</a>.</p>
+<blockquote>
+<p>Solve a linear matrix equation, or system of linear scalar equations. Computes the “exact” solution, x, of the well-determined, i.e., full rank, linear matrix equation ax = b.</p>
+<cite>-- <a href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.solve.html">numpy.linalg.solve API</a></cite></blockquote>
+<p>Let's take a closer look at a single-threaded and multithreaded version of the algorithm.</p>
+<h3>Single Threaded Matrix Solver</h3>
+<p>In this example, we will configure BLAS to use a single thread.</p>
+<p>We will create a square matrix with the dimensions 8,000 x 8,000 and a vector with 8,000 elements to solve the system of linear equations.</p>
+<p>The complete example is listed below.</p>
+<pre><code># example of single threaded matrix solver
+from os import environ
+environ['OMP_NUM_THREADS'] = '1'
+from time import time
+from numpy.random import rand
+from numpy.linalg import solve
+# record the start time
+start = time()
+# size of arrays
+n = 8000
+# create matrix
+a = rand(n, n)
+# create result
+b = rand(n, 1)
+# solve least squares equation
+x = solve(a, b)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the example took about 7.070 seconds on my system.</p>
+<p>It may take more or fewer seconds, depending on the hardware in your system and the versions of Python, Numpy, Scipy, and the BLAS library installed.</p>
+<pre><code>Took 7.070 seconds</code></pre>
+<p>Next, we can run the same example with a multithreaded algorithm.</p>
+<h3>Multithreaded Matrix Solver</h3>
+<p>We can update the above example to use one thread per physical CPU core in the system.</p>
+<p>I have 4 cores, therefore, OpenBLAS is configured to use 4 threads. Set the number of threads to match the number of cores in your system accordingly.</p>
+<p>The complete example is listed below.</p>
+<pre><code># example of multithreaded matrix solver
+from os import environ
+environ['OMP_NUM_THREADS'] = '4'
+from time import time
+from numpy.random import rand
+from numpy.linalg import solve
+# record the start time
+start = time()
+# size of arrays
+n = 8000
+# create matrix
+a = rand(n, n)
+# create result
+b = rand(n, 1)
+# solve least squares equation
+x = solve(a, b)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the example took about 3.098 seconds.</p>
+<p>That is about 3.972 seconds faster or a speed-up of about 2.28x.</p>
+<pre><code>Took 3.098 seconds</code></pre>
+<h2>Parallel Matrix Least Squares Solver</h2>
+<p>In this section, we will explore a parallel implementation of the linear least squares solver.</p>
+<p>That is, using the least squares method to solve a system of linear equations.</p>
+<blockquote>
+<p>Linear least squares (LLS) is the least squares approximation of linear functions to data. It is a set of formulations for solving statistical problems involved in linear regression, including variants for ordinary (unweighted), weighted, and generalized (correlated) residuals.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Linear_least_squares">Linear least squares, Wikipedia</a>.</cite></blockquote>
+<p>We can implement the matrix multiplication with NumPy via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.lstsq.html"><strong>numpy.linalg.lstsq()</strong> function</a>.</p>
+<blockquote>
+<p>Return the least-squares solution to a linear matrix equation. Computes the vector x that approximately solves the equation a @ x = b.</p>
+<cite>-- <a href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.lstsq.html">numpy.linalg.lstsq API</a>.</cite></blockquote>
+<p>Let's take a closer look at a single-threaded and multithreaded version of the algorithm.</p>
+<h3>Single Threaded Matrix Least Squares Solver</h3>
+<p>In this example, we will configure BLAS to use a single thread.</p>
+<p>We will create a square matrix with the dimensions 5,000 x 5,000 and a vector with 5,000 elements to solve the system of linear equations.</p>
+<p>The complete example is listed below.</p>
+<pre><code># example of single threaded matrix least squares solution
+from os import environ
+environ['OMP_NUM_THREADS'] = '1'
+from time import time
+from numpy.random import rand
+from numpy.linalg import lstsq
+# record the start time
+start = time()
+# size of arrays
+n = 5000
+# create matrix
+a = rand(n, n)
+# create result
+b = rand(n, 1)
+# solve least squares equation
+x, _, _, _ = lstsq(a, b, rcond=None)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the example took about 35.347 seconds on my system.</p>
+<pre><code>Took 35.347 seconds</code></pre>
+<p>Next, we can run the same example with a multithreaded algorithm.</p>
+<h3>Multithreaded Matrix Least Squares Solver</h3>
+<p>We can update the above example to use one thread per physical CPU core in the system.</p>
+<p>I have 4 cores, therefore, OpenBLAS is configured to use 4 threads. Set the number of threads to match the number of cores in your system accordingly.</p>
+<p>The complete example is listed below.</p>
+<pre><code># example of multithreaded matrix least squares solution
+from os import environ
+environ['OMP_NUM_THREADS'] = '4'
+from time import time
+from numpy.random import rand
+from numpy.linalg import lstsq
+# record the start time
+start = time()
+# size of arrays
+n = 5000
+# create matrix
+a = rand(n, n)
+# create result
+b = rand(n, 1)
+# solve least squares equation
+x, _, _, _ = lstsq(a, b, rcond=None)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')</code></pre>
+<p>Running the example took about 29.909 seconds.</p>
+<p>That is about 5.438 seconds faster or a speed-up of about 1.18x.</p>
+<pre><code>Took 29.909 seconds</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to solve systems of linear equations using multithreaded numpy functions.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Query Quake 3 Servers Concurrently in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Query Quake 3 Servers Concurrently in Python</h1>
+<div class="post-meta">November 28, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>The <a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor class in Python</a> can be used to query hundreds of game servers concurrently.</p>
+<p>This can dramatically speed up the query process compared to querying each game server sequentially, one by one.</p>
+<p>In this tutorial, you will discover how to query Quake 3 game servers faster using ThreadPoolExecutor in Python.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul><li>How to query the Quake 3 master server and individual servers for their current status.</li><li>How to use the ThreadPoolExecutor to create and manage thread pools in Python.</li><li>How to speed up the querying of Quake 3 game servers nearly 300% using the ThreadPoolExecutor.</li></ul>
+<p>Let's dive in.</p>
+<h2 id="query-quake3-servers-in-python">Query Quake3 Servers in Python</h2>
+<p><a href="https://en.wikipedia.org/wiki/Quake_III_Arena">Quake III Arena</a>, or Quake 3 for short, is a first person shooter (FPS) computer game that was released in 1999 by id Software.</p>
+<p>It remains a popular game today for competitive play and among die-hard gamers.</p>
+<p>Players join servers online for play, and each server has a specific configuration that defines the rules used for games played on that server. Additionally, each game server has a current status that indicates the number of players and the current game level that is being played.</p>
+<p>Quake servers can be queried for their status using a well-defined socket protocol.</p>
+<p>Additionally, a Quake 3 master server is a special type of game server that keeps track of all of the currently active Quake 3 game servers. Similarly, Quake 3 master servers can also be queried for a list of game servers using a well-defined socket protocol.</p>
+<p>Quake 3 players typically use third party software to keep track of current master servers and to refresh the current status of all active game servers so that they can choose a game to join online. Additionally, the game itself has a similar interface built in.</p>
+<p>We can develop our own Quake 3 server querying program in Python.</p>
+<p>Thankfully, there are open source libraries available for querying Quake3 servers so that we don't have to implement the protocol from scratch.</p>
+<p>One example is the <a href="https://github.com/cetteup/pyq3serverlist">pyq3serverlist</a> project maintained by the user <a href="https://cetteup.com/">cetteup</a>.</p>
+<p>The project is based on the "Quake 3 Server List" or <a href="https://github.com/jacklul/q3serverlist">q3serverlist</a> PHP project maintained by Jack'lul.</p>
+<p>The <strong>pyq3serverlist</strong> library can be installed using your Python package manager, such as pip. For example:</p>
+<pre><code>pip3 install pyq3serverlist</code></pre>
+<p>Once installed, it is relatively easy to use.</p>
+<p>A quake 3 master server can be queried by first creating an instance of the <code>PrincipalServer</code> object specifying the host name and port number.</p>
+<p>Then the <code>get_servers()</code> function can be called to get a list of all currently active game servers known to the master server, specifying the game protocol number (68 for Quake III Arena).</p>
+<pre><code>...
+# connect to the master server
+principal = PrincipalServer(host, port)
+# get a list of game servers
+servers = principal.get_servers(master_protocol)
+</code></pre>
+<p>Once we have a list of servers, we can query each game server in turn by calling the <code>get_status()</code> function on the server object; for example:</p>
+<pre><code>...
+for server in servers:
+	status = server.get_status()
+</code></pre>
+<p>This status returns a dictionary of status names to status values from which we can choose specific properties of the game server to display, such as the game server name, current map name, and current number of players.</p>
+<p>Let's develop a simple Quake 3 server query program step by step.</p>
+<p>We can divide this process into the following elements:</p>
+<ol><li>Query a Quake 3 Master Server</li><li>Query a Quake 3 Game Server</li><li>Query all Quake 3 Game Servers</li></ol>
+<h3 id="query-a-quake-3-master-server">Query a Quake 3 Master Server</h3>
+<p>The first step is to develop an example for querying the Quake 3 master server to get a list of game servers.</p>
+<p>Configuring the PrincipalServer is straightforward, as we saw in the previous section.</p>
+<p>We will use a master server listed on the "q3serverlist" project page that has the following details:</p>
+<ul><li><strong>host</strong>: master.quake3arena.com</li><li><strong>port</strong>: 27950</li><li><strong>protocol</strong>: 68</li></ul>
+<p>For example:</p>
+<pre><code>...
+# configure the master server and connect
+principal = PrincipalServer('master.quake3arena.com', 27950)
+</code></pre>
+<p>Once connected, we can call the <code>get_servers()</code> function with the protocol number. This function can throw a number of exceptions if the connection fails. Therefore, we must use a try-except block to wrap the call.</p>
+<pre><code>...
+try:
+    # retrieve a list of servers
+    servers = principal.get_servers(68)
+except:
+    # an empty list if we cannot query the server
+    servers = []
+</code></pre>
+<p>We can tie this together into a function named <code>get_quake3_server_list()</code> that takes a tuple containing the master server host and port number and returns a list of server objects or an empty list on error.</p>
+<pre><code># query a master server and get a list of game servers
+def get_quake3_server_list(master_server, master_protocol=68):
+    # configure the master server and connect
+    principal = PrincipalServer(master_server[0], master_server[1])
+    try:
+        # retrieve a list of servers
+        return principal.get_servers(master_protocol)
+    except:
+        # return an empty list if we cannot query the server
+        return []
+</code></pre>
+<p>We can then call this function and print each server object, which will report the IP address and port of each server.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# query a quake3 master server for a list of game servers
+from pyq3serverlist import PrincipalServer
+
+# query a master server and get a list of game servers
+def get_quake3_server_list(master_server, master_protocol=68):
+    # configure the master server and connect
+    principal = PrincipalServer(master_server[0], master_server[1])
+    try:
+        # retrieve a list of servers
+        return principal.get_servers(master_protocol)
+    except:
+        # return an empty list if we cannot query the server
+        return []
+
+# entry point
+MASTER_SERVER = ('master.quake3arena.com', 27950)
+# query for a list of game server
+servers = get_quake3_server_list(MASTER_SERVER)
+# report the number of servers
+print(f'Found {len(servers)} Quake 3 Arena servers.')
+# report list
+for server in servers:
+    print(server)
+</code></pre>
+<p>Running the example first connects to the master server, then reports the list of servers provided.</p>
+<p>An truncated example of the output is listed below.</p>
+<pre><code>Found 652 Quake 3 Arena servers.
+149.28.199.8:29588
+198.46.223.132:28408
+195.201.30.139:27960
+185.107.96.124:1041
+97.90.63.254:27961
+190.220.150.154:27962
+104.196.190.1:27960
+149.28.199.8:28819
+149.28.199.8:29852
+...
+</code></pre>
+<p>Now that we know how to get a list of game servers from a master server, let's look at how to query a single game server for its status.</p>
+<h3 id="query-a-quake-3-game-server">Query a Quake 3 Game Server</h3>
+<p>Once we have a list of game server objects, we can query each in turn to determine their status.</p>
+<p>As with querying the master server, querying each game server requires some exception handling as the host may be down or may speak a different protocol from what we expect.</p>
+<p>In fact, many of the servers received from the master server may, in fact, not be live.</p>
+<p>We can iterate game servers, querying each in turn until we get a response, then display the response for review.</p>
+<p>For example:</p>
+<pre><code>...
+# get status for one server
+for server in servers:
+    try:
+        status = server.get_status()
+        print(status)
+        break
+    except:
+        continue
+</code></pre>
+<p>Combining this with the query of the master server from the previous section, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# query the status of one game server
+from pyq3serverlist import PrincipalServer
+
+# query a master server and get a list of game servers
+def get_quake3_server_list(master_server, master_protocol=68):
+    # configure the master server and connect
+    principal = PrincipalServer(master_server[0], master_server[1])
+    try:
+        # retrieve a list of servers
+        return principal.get_servers(master_protocol)
+    except:
+        # return an empty list if we cannot query the server
+        return []
+
+# entry point
+MASTER_SERVER = ('master.quake3arena.com', 27950)
+# query for a list of game server
+servers = get_quake3_server_list(MASTER_SERVER)
+# report the number of servers
+print(f'Found {len(servers)} Quake 3 Arena servers.')
+# get status for one server
+for server in servers:
+    try:
+        status = server.get_status()
+        print(status)
+        break
+    except:
+        continue
+</code></pre>
+<p>Running the example first reports the number of servers received from the master server.</p>
+<p>Then the status of the first game server to respond is displayed.</p>
+<p>Your results will differ as the number of servers live at the time you run the code will change, and the first server to respond will also differ.</p>
+<p>We can see that, as expected, the status of the server is a dictionary of field names and values summarizing a range of interesting things about the status of the game currently in progress.</p>
+<pre><code>Found 653 Quake 3 Arena servers.
+{'ip': '185.107.96.124', 'port': 1041, 'capturelimit': '5', 'g_maxGameClients': '0', 'sv_floodProtect': '1', 'sv_maxPing': '0', 'sv_minPing': '0', 'sv_maxRate': '80000', 'sv_minRate': '0', 'sv_maxclients': '64', 'sv_hostname': 'VOGON NETHERWORLD', 'timelimit': '5', 'fraglimit': '0', 'dmflags': '0', 'version': 'ioq3 1.36 linux-i386 May 30 2010', 'g_gametype': '0', 'protocol': '68', 'mapname': 'q3tourney1', 'sv_privateClients': '0', 'sv_allowDownload': '0', 'bot_minplayers': '0', '.www': 'vogon.top - vogonhq.com', 'gamename': 'VOGON', 'g_needpass': '0', 'players': []}
+</code></pre>
+<p>Three pieces of information that may interest us include:</p>
+<ul><li>The server name (e.g. <code>'sv_hostname'</code>).</li><li>The current map name (e.g. <code>'mapname'</code>).</li><li>The current number of players (e.g. the length of the <code>'players'</code> list).</li></ul>
+<p>We now have enough information to develop a simple Quake 3 game server query program.</p>
+<h3 id="query-all-quake-3-game-servers-one-by-one">Query All Quake 3 Game Servers (one-by-one)</h3>
+<p>We can now develop a simple Quake 3 game server query program.</p>
+<p>The key part of this program will be the way in which we report the status of each game server.</p>
+<p>We selected three key pieces of information to display in the previous section: the server name, map name and number of players.</p>
+<p>These fields can be retrieved directly from the dictionary response object from the game server; for example:</p>
+<pre><code>...
+# retrieve useful data to report
+name = status['sv_hostname']
+mapname = status['mapname']
+players = len(status['players'])
+</code></pre>
+<p>The game server names can be pretty wild, such as including non ASCII characters and being very long, perhaps as a type of marketing of servers to game players, a way of standing out.</p>
+<p>Nevertheless, we will have to clean up the server names to display them nicely on the command prompt when running the code.</p>
+<p>First, let's trim out all characters in the name that are not ASCII. Python provides the <a href="https://docs.python.org/3/library/string.html">string.printable</a> constant that lists all of the standard ASCII characters. We can enumerate all characters in the game server name and only keep those that are in the <code>printable</code> constant.</p>
+</main>
+</body>
+</html>

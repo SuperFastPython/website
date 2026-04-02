@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Handle Exceptions in Tasks With the ThreadPoolExecutor in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Handle Exceptions in Tasks With the ThreadPoolExecutor in Python</h1>
+<div class="post-meta">December 5, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You can handle exceptions in the <strong><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor</a></strong> raised by tasks by catching them when getting the result.</p>
+<p>In this tutorial, you will discover how to handle exceptions in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Handle Exceptions Raised by Tasks</h2>
+<p>The <code>ThreadPoolExecutor</code> in Python provides a pool of reusable threads for executing ad hoc tasks.</p>
+<p>You can submit tasks to the thread pool by calling the <meta/><code>submit()</code> function and passing in the name of the function you wish to execute on another thread.</p>
+<p>Calling the <code>submit()</code> function will return a <code>Future</code> object that allows you to check on the status of the task and get the result from the task once it completes.</p>
+<p>You can also submit tasks by calling the <code>map()</code> function and specifying the name of the function to execute and the iterable of items to which your function will be applied.</p>
+<p>An exception raised in a single threaded program must be caught, otherwise it will unwind the main thread.</p>
+<p>Unwinding a thread means that the exception is propagated up to the top of the stack of function calls until it reaches the top level at which it will cause the main thread to exit and close the program.</p>
+<p>The <meta/><meta/><code>ThreadPoolExecutor</code> can be used to execute arbitrary functions.</p>
+<p>Each task submitted to the thread pool is picked-up by a worker thread and executed. While executing, the function may raise an exception. </p>
+<p><strong>If uncaught, does the exception may unwind the worker thread and it permanently unavailable in the thread pool?</strong></p>
+<p>Additionally, we may need to know if a task raised an exception when getting the result so that we can take appropriate action, such as submit a follow-up task or perhaps re-try the task.</p>
+<p><strong>How do you handle the exception raised by a task in a ThreadPoolExecutor?</strong></p>
+<h2>How to Handle Exceptions in Tasks</h2>
+<p>An exception raised by a target function executed by a worker thread will not unwind the worker thread.</p>
+<p>The thread pool is robust to target functions that raise exceptions that are not caught. The exception will be caught by the thread pool automatically, and the worker thread will remain available for executing tasks.</p>
+<p>There are three ways you may handle exceptions raised by a target function, they are:</p>
+<ol><li>Handle exceptions when getting the task result.</li><li>Check for raised exceptions.</li><li>Handle exceptions within the task function.</li></ol>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Handle Exceptions When Getting the Result</h3>
+<p>You can handle exceptions raised within a task when getting the result from the task.</p>
+<p>Recall that when you submit a task to the thread pool, you will receive a <meta/><code>Future</code> object in return.</p>
+<p>When you wish to retrieve the result from the task, you can call the <code>result()</code> function in the <meta/><code>Future</code> for the task.</p>
+<p>If the task is completed successfully, it will return the result from your function or <meta/><code>None</code> if your function does not return a result.</p>
+<p>If your target task function raises an exception during execution, the exception will be raised again (re-raised) when calling the <meta/><code>result()</code> function, where you may need to handle it.</p>
+<pre><code>...
+# handle a possible exception raised in a task
+try:
+	result = future.result()
+exception:
+	# handle exception...
+</code></pre>
+<p>The failure of the task will not break the worker thread and will not break the thread pool. The worker thread that executed the task can be reused for additional tasks in the future without any problem.</p>
+<h3>Check for a Raised Exception</h3>
+<p>Alternatively, you can call the <code>exception()</code> function on the task.</p>
+<p>This will return once the task has completed and will contain the exception raised during the execution of the task, or <code>None</code> if no exception was raised</p>
+<pre><code>...
+# get the exception raised by the task
+exception = future.exception()
+</code></pre>
+<p>Both the <code>result()</code> and <meta/><code>exception()</code> functions on the <code>Future</code> object allow you to specify a <code>timeout</code> argument, which is the time in seconds you are willing to wait for a result or an exception respectively if the task is scheduled or running, before giving up.</p>
+<h3>Handle Exceptions in the Task Function</h3>
+<p>A third option is to catch the exception within the target task function itself and handle it.</p>
+<p>This approach may be desired if you are submitting tasks to the thread pool via the <code>map()</code> function, in which case you will not have a <meta/><code>Future</code> object from which to call <meta/><code>result()</code> or <meta/><code>exception()</code> to handle the exception.</p>
+<pre><code># target task function
+def work()
+	try:
+		# do something...
+	exception:
+		# handle exception...</code></pre>
+<p>The downside of this approach is that any recipient of the result from the task, e.g. callers waiting on the result, may not be aware that an exception occurred within the task.</p>
+<p>You may need to log the exception within the task and perhaps pass on the failure within the task via a return value from the target task function.</p>
+<p>Now that we know how to handle an exception within a task executed by a <code>ThreadPoolExecutor</code>, let's look at some worked examples.</p>
+<h2>Example of Not Handling the Exception</h2>
+<p>Before we explore how to handle an exception raised by a task, let's explore what happens if we don't handle it.</p>
+<p>First, let’s define a task that sleeps for a moment, then raises an exception.</p>
+<pre><code># mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened')
+    return "Task is done"</code></pre>
+<p>Next, we can start a thread pool and submit the task for execution and receive a <meta/><code>Future</code> object in return.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)</code></pre>
+<p>We will then not get the result from the task, and instead will wait around for a moment.</p>
+<p>We want to see if the exception raised by the task has any effect on the thread pool or the main thread.</p>
+<pre><code>...
+# wait around for a moment
+sleep(2)</code></pre>
+<p>Tying this all together, the complete example of executing a task that raises an exception and not handling the exception is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of not handling an exception raised by task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# task function that blocks for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened')
+    return "Task is done"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # wait around for a moment
+    sleep(2)
+print('All done')</code></pre>
+<p>Running the example will start the thread pool and submit the task.</p>
+<p>The task will block for a moment and then raises an exception.</p>
+<p>The main thread waits around for a moment, then the thread pool is closed and the main thread exits.</p>
+<p>This shows that if we don't attempt to get the result from the task, we have no idea whether the task succeeded or failed. It looks like the task failed silently.</p>
+<p>Importantly, it shows that the exception raised by the task function did not unwind the worker thread or the main thread.</p>
+<pre><code>All done</code></pre>
+<p>We can update the example to attempt to get the result, again, without handling the exception.</p>
+<pre><code>...
+# get the result from the task
+result = future.result()
+print(result)</code></pre>
+<p>Tying this together, the complete example of attempting to get the result from a task that we know has raised an exception is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of attempting to get the result from a task that has raised an exception
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# task function that blocks for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened')
+    return "Task is done"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # get the result from the task
+    result = future.result()
+    print(result)
+print('All done')</code></pre>
+<p>Running the example creates the thread pool and submits the task. The task blocks then raises an exception which is caught by the thread pool.</p>
+<p>The main thread attempts to get the result from the task and the exception is re-raised by the thread pool and is not caught by the main thread.</p>
+<p>This unwinds the main thread and closes the program, just like if we called the task function directly.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+    raise Exception('Something bad happened')
+Exception: Something bad happened</code></pre>
+<h2>Example of Handling the Exception When Getting the Result</h2>
+<p>Let's demonstrate how to handle an exception raised within a task executed by the <meta/><code>ThreadPoolExecutor</code>.</p>
+<p>We can use the same task from the previous section that blocks for a moment, then raises an exception.</p>
+<pre><code># mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened')
+    return "Task is done"
+</code></pre>
+<p>The task will fail, but it will not break the worker thread that executed or the thread pool.</p>
+<p>Next, we can start a thread pool and submit the task for execution and receive a <meta/><code>Future</code> object in return.</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+</code></pre>
+<p>We can then attempt to get the result from the task once it is done.</p>
+<p>The result can be retrieved by calling the <code>result()</code> function on the <code>Future</code> object, which we can wrap in a try-except block to handle any exception raised by the task, and re-raised by the thread pool.</p>
+<pre><code>..
+# get the result from the task
+try:
+    result = future.result()
+    print(result)
+except Exception:
+    print('Unable to get the result')
+</code></pre>
+<p>Tying this together, the complete example of handling an exception in a task executed by the ThreadPoolExecutor is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised by task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened')
+    return "Task is done"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # get the result from the task
+    try:
+        result = future.result()
+        print(result)
+    except Exception:
+        print('Unable to get the result')
+</code></pre>
+<p>Running the example will start the thread pool and submit the task as per normal.</p>
+<p>We attempt to retrieve the result and the exception is raised, which we handle explicitly and, in this case, report the failure.</p>
+<pre><code>Unable to get the result</code></pre>
+<h2>Example of Checking for an Exception</h2>
+<p>An alternative approach to handling the exception is to check for an exception directly.</p>
+<p>This can be achieved by calling the <code>exception()</code> function in the future, which returns the exception raised within the task or None if no exception was raised.</p>
+<pre><code>...
+# get the exception from the task when it is finished
+exception = future.exception()
+print(exception)
+</code></pre>
+<p>Tying this together, the updated version of the example that directly checks for an exception raised by the task is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of checking for an exception directly
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    raise Exception('Something bad happened')
+    return "Task is done"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # get the exception from the task when it is finished
+    exception = future.exception()
+    print(exception)
+</code></pre>
+<p>Running the example starts the thread pool and submits the task as per normal.</p>
+<p>We then check for an exception in the task, which does not return until the task is done.</p>
+<p>In this case, an exception is returned as expected and reported directly.</p>
+<pre><code>Something bad happened</code></pre>
+<h2><meta/>Example of Handling the Exception within the Task</h2>
+<p>We can handle the exception directly within the task function.</p>
+<p>This requires updating the task function to explicitly handle the exception, for example:</p>
+<pre><code># mock task that will sleep for a moment
+def work():
+    sleep(1)
+    try:
+        raise Exception('Something bad happened')
+    except:
+            return "Unable to get the result"
+    return "Task is done"</code></pre>
+<p>The downside of this approach is that the caller that retrieves the result has no clear indication that the task failed and instead must rely on the returned value.</p>
+<p>Tying this together, the complete example of handling the exception within the task function is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of handling the exception within the task
+from time import sleep
+from concurrent.futures import ThreadPoolExecutor
+
+# mock task that will sleep for a moment
+def work():
+    sleep(1)
+    try:
+        raise Exception('Something bad happened')
+    except:
+            return "Unable to get the result"
+    return "Task is done"
+
+# create a thread pool
+with ThreadPoolExecutor() as executor:
+    # execute our task
+    future = executor.submit(work)
+    # get the result
+    result = future.result()
+    print(result)</code></pre>
+<p>Running the example starts the thread pool and submits the task as per normal.</p>
+<p>The task function raises an exception that is immediately caught and handled, returning a message that no result could be calculated.</p>
+<pre><code>Unable to get the result</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to handle exceptions raised within tasks executed by the <code>ThreadPoolExecutor</code>.</p>
+</main>
+</body>
+</html>

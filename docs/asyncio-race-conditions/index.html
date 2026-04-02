@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Race Conditions – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Race Conditions</h1>
+<div class="post-meta">December 10, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can suffer race conditions with coroutines in asyncio.</p>
+<p>In this tutorial, you will discover examples of <strong>ascynio race conditions</strong> with coroutines in Python.</p>
+<p>Let's get started.</p>
+<h2>What is a Race Condition</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Race_condition">race condition</a> is a bug in concurrency programming.</p>
+<p>It is a failure case where the behavior of the program is dependent upon the order of execution by two or more threads. This means that the behavior of the program will not be predictable, possibly changing each time it is run.</p>
+<blockquote><p>Race condition: A flaw in a concurrent application in which the result is dependent on the timing or sequence of multiple threads’ execution.</p><cite>-- Glossary, <a href="https://amzn.to/3Eb4T4b">The Art of Concurrency</a>, 2009.</cite></blockquote>
+<p>There are many types of race conditions, although a common type of race condition is when two or more threads attempt to change the same data variable.</p>
+<p><strong>NOTE</strong>: Race conditions are a real problem in Python when using threads, even in the presence of the global interpreter lock (GIL). The refrain that there are no race conditions in Python because of the GIL is dangerously wrong.</p>
+<p>You can learn more about race conditions for Python threads in the tutorials:</p>
+<ul><li><a href="../thread-race-condition-shared-variable/">Race Condition With a Shared Variable in Python</a></li><li><a href="../thread-race-condition-timing/">How to Fix a Race Condition With Timing in Python</a></li></ul>
+<p>Next, let's consider race conditions in asyncio.</p>
+<h2>Race Conditions Are Possible in Asyncio</h2>
+<p>Race conditions are typically described in terms of threads.</p>
+<p>Nevertheless, they are possible with other units of concurrency, such as Python processes.</p>
+<p>Are race conditions possible in asyncio?</p>
+<p>Asyncio coroutines run in a single thread. Within the event loop, only a single coroutine can run at a time.</p>
+<p>Unlike Python threads, we have a lot of control over when asyncio coroutines run. Specifically, a coroutine is only suspended and yields to other coroutines when we explicitly await an awaitable.</p>
+<p>Therefore, the types of race conditions we may see with Python threads and processes where the operating system controls the time and duration of context switches will not be seen with coroutines.</p>
+<p>Are race conditions possible in asyncio?</p>
+<p>I'll give you a hint.</p>
+<p>The API provides a mutex lock via the <strong>asyncio.Lock</strong> class. The lock is only present to ensure that execution of blocks of code is executed in a mutually exclusive manner among coroutines.</p>
+<p>You can learn more about mutex locks in asyncio in the tutorial:</p>
+<ul><li><a href="../asyncio-lock/">How to use Asyncio Mutex Locks</a></li></ul>
+<p>Yes, race conditions are possible in asyncio.</p>
+<p>Let's dig into this further.</p>
+<h2>Asyncio Race Conditions with Shared Memory</h2>
+<p>Coroutines can suffer race conditions with shared memory used among multiple coroutines.</p>
+<p>They are just more obvious than similar race conditions with Python threads.</p>
+<p>For example, a common race condition with Python threads involves when adding or subtracting a value from an integer.</p>
+<pre><code>...
+# add a value to an integer
+value += 1</code></pre>
+<p>This is a possible source of race conditions because this expression is in fact at least three Python bytecode instructions:</p>
+<ol><li>Read the current value of the variable.</li><li>Calculate a new value for the variable.</li><li>Write a new value for the variable.</li></ol>
+<p>A Python thread may be context switched by the operating system in the middle of these operations, leaving the value in an inconsistent state.</p>
+<p>You can see examples of this in the tutorial:</p>
+<ul><li><a href="../thread-safe-counter-in-python/">Thread-Safe Counter in Python</a></li></ul>
+<p>Race conditions with this expression are not possible with asyncio coroutines.</p>
+<p>The reason is that a coroutine is only context-switched when we explicitly suspend via the await expression or similar expressions such as "<strong>async for</strong>" or "<strong>async with</strong>".</p>
+<p>Nevertheless, this type of race condition can happen in an asyncio program, as long as we space out the operations and suspend the coroutine between or more of the operations.</p>
+<p>For example:</p>
+<pre><code>...
+# retrieve the value
+tmp = value
+# suspend for a moment
+await asyncio.sleep(0)
+# update the tmp value
+tmp = tmp + 1
+# suspend for a moment
+await asyncio.sleep(0)
+# store the updated value
+value = tmp</code></pre>
+<p>Executing this block among multiple coroutines can result in a race condition.</p>
+<h2>Asyncio Race Conditions with Shared Resources</h2>
+<p>Coroutines can suffer race conditions when using a shared resource.</p>
+<p>This is perhaps more common and more accidental in practice.</p>
+<p>We see this when multiple threads share an I/O resource such as a file handle or stream handle. Multiple threads reading or writing from the same handle result in data loss and corruption. This even applies to simple streams like standard input and standard output.</p>
+<p>We can suffer similar problems when sharing I/O resources in asyncio programs among multiple coroutines.</p>
+<p>In this case, an I/O source resource is typically a socket.</p>
+<p>A single socket connection is a connection from one process (or computer) to another and both parties generally expect it to operate serially with send and receive commands.</p>
+<p>Nevertheless, if multiple coroutines race to operate on the same resource concurrently, then the data read from the socket may be unexpected, incomplete, or corrupted. Messages sent to the resource may be out of order, resulting in confusing the remote party.</p>
+<p>Next, let's look at a concrete example of a race condition between coroutines in asyncio.</p>
+<h2>Example of an Asyncio Race Condition</h2>
+<p>We can explore a race condition with multiple coroutines.</p>
+<p>Although contrived, this example is indicative of a broader class of races among coroutines for a shared resource.</p>
+<p>We can define a task coroutine that simply increments a shared global variable. It does this in a multi-step manner, forcing a sleep and suspension between each step to allow other coroutines to run.</p>
+<p>The <strong>task()</strong> coroutine below implements this.</p>
+<pre><code># task that operates on a shared variable
+async def task():
+    # declare global variable
+    global value
+    # retrieve the value
+    tmp = value
+    # suspend for a moment
+    await asyncio.sleep(0)
+    # update the tmp value
+    tmp = tmp + 1
+    # suspend for a moment
+    await asyncio.sleep(0)
+    # store the updated value
+    value = tmp
+</code></pre>
+<p>Next, in the main coroutine, we can declare the global variable and initialize it with a value of 0.</p>
+<p>We can then create 10,000 instances of the coroutine to update the variable and execute them all concurrently.</p>
+<p>Finally, the value of the global variable is reported.</p>
+</main>
+</body>
+</html>

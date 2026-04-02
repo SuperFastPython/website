@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How Does The ProcessPoolExecutor Work in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How Does The ProcessPoolExecutor Work in Python</h1>
+<div class="post-meta">February 6, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>Effective use of the <a href="../processpoolexecutor-in-python/"><strong>ProcessPoolExecutor</strong> in Python</a> requires some knowledge of how it works internally.</p>
+<p>In this tutorial you will discover how the <strong>ProcessPoolExecutor</strong> works so that you can use it better in your projects.</p>
+<p>Let's get started.</p>
+<h2 id="how-does-processpoolexecutor-work-internally">How Does ProcessPoolExecutor Work Internally</h2>
+<p>It is important to pause for a moment and look at how the <strong>ProcessPoolExecutor</strong> works internally.</p>
+<p>The internal workings of the class impact how we use the process pool and the behavior we can expect, specifically around cancelling tasks.</p>
+<p>Without this knowledge, some of the behavior of the process pool may appear confusing or even buggy from the outside.</p>
+<p>You can see the source code for the <strong>ProcessPoolExecutor</strong> and the base class here:</p>
+<ul><li><a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/process.py">cpython/Lib/concurrent/futures/process.py</a></li><li><a href="https://github.com/python/cpython/blob/3.10/Lib/concurrent/futures/_base.py">cpython/Lib/concurrent/futures/_base.py</a></li></ul>
+<p>There is a lot we could learn about how the process pool works internally, but we will limit ourselves to the most critical aspects.</p>
+<h2 id="task-are-added-to-internal-queues">Task Are Added To Internal Queues</h2>
+<p>The source code for the <strong>ProcessPoolExecutor</strong> provides a good summary for how the pool works internally.</p>
+<p>There is an ASCII diagram in the source that we can reproduce here that will help:</p>
+<pre><code>|======================= In-process =====================|== Out-of-process ==|
++----------+     +----------+       +--------+     +-----------+    +---------+
+|          |  =&gt; | Work Ids |       |        |     | Call Q    |    | Process |
+|          |     +----------+       |        |     +-----------+    |  Pool   |
+|          |     | ...      |       |        |     | ...       |    +---------+
+|          |     | 6        |    =&gt; |        |  =&gt; | 5, call() | =&gt; |         |
+|          |     | 7        |       |        |     | ...       |    |         |
+| Process  |     | ...      |       | Local  |     +-----------+    | Process |
+|  Pool    |     +----------+       | Worker |                      |  #1..n  |
+| Executor |                        | Thread |                      |         |
+|          |     +----------- +     |        |     +-----------+    |         |
+|          | &lt;=&gt; | Work Items | &lt;=&gt; |        | &lt;=  | Result Q  | &lt;= |         |
+|          |     +------------+     |        |     +-----------+    |         |
+|          |     | 6: call()  |     |        |     | ...       |    |         |
+|          |     |    future  |     |        |     | 4, result |    |         |
+|          |     | ...        |     |        |     | 3, except |    |         |
++----------+     +------------+     +--------+     +-----------+    +---------+
+</code></pre>
+<p>The data flow for submitting new tasks to the pool is as follows.</p>
+<p>First we call <strong>submit()</strong> on the pool to add a new task. Note that calling <strong>map()</strong> internally will call the <strong>submit()</strong> function.</p>
+<p>This will add a work item to an internal dictionary, specifically an instance of an internal class named <strong>_WorkItem</strong>. Each work item also has a unique identifier that is tracked in an internal <strong>Queue</strong>.</p>
+<p>The process pool has an internal worker thread that is responsible for preparing work for the worker processes. It will wake-up when new work is added to the queue of work ids and will retrieve the new task and submit it to a second queue.</p>
+<p>This second queue contains the tasks to be executed by worker processes, which are consumed by worker processes. Results of the target task functions are then placed in a result queue to be read by the worker thread and made available to any associated <strong>Future</strong> objects.</p>
+<p>This decoupling between the queue that the user interacts with and the queue of tasks that the processes interact with is intentional and provides some measure of control and safety.</p>
+<p>The important aspect about these internals from a user perspective is in cancelling tasks via their <strong>Future</strong> objects.</p>
+<p>Tasks in the internal work queue can be canceled. Otherwise tasks cannot be cancelled, such as running tasks. Additionally, tasks in the internal call queue cannot be cancelled, but may not yet be running.</p>
+<p>This means, we may query the status of a <strong>Future</strong> object and see that it is not running and is not done. Then attempt to cancel it, fail to cancel it, and see that the task begins running and is then done.</p>
+<p>This happens because some number of tasks will sit in the call queue waiting to be consumed by the processes.</p>
+<p>Specifically, the call queue will match the number of worker processes, plus one.</p>
+<h2 id="worker-processes-are-created-as-needed">Worker Processes Are Created As Needed</h2>
+<p>Worker processes are not created when the process pool is created.</p>
+<p>Instead, worker processes are created on demand or just-in-time.</p>
+<p>Each time a task is added to the internal queues, the process pool will check if the number of active processes is less than the upper limit of processes supported by the pool. If so, an additional process is created to handle the new work.</p>
+<p>Once a process has completed a task, it will wait on the call queue for new work to arrive. As new work arrives, all processes waiting on the queue will be notified and one will attempt to consume the unit of work and start executing it.</p>
+<p>These two points show how the pool will only ever create new processes until the limit is reached and how processes will be reused, waiting for new tasks without consuming computational resources.</p>
+<p>It also shows that the process pool will not release worker processes after a fixed number of units of work. Perhaps this would be a nice addition to the API in the future.</p>
+<h2 id="takeaways">Takeaways</h2>
+<p>You now know how the <strong>ProcessPoolExecutor</strong> in Python works internally.</p>
+</main>
+</body>
+</html>

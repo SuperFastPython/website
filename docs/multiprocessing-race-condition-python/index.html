@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Race Conditions in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Race Conditions in Python</h1>
+<div class="post-meta">November 17, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can suffer <strong>race conditions</strong> when using <strong>process-based concurrency</strong> via the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a> in Python.</p>
+<p>The types of race conditions we can expect may be different than those expected with threads, given that we are working with processes that do not have shared memory. Nevertheless, we must identify and protect critical sections from race conditions when using processes.</p>
+<p>In this tutorial, you will discover <strong>how to identify and fix race conditions with processes</strong> in Python.</p>
+<p>This tutorial was inspired by questions and discussions with Andrii K. Thank you deeply! If you have a question about Python concurrency, <a href="../contact/">message me anytime</a>.</p>
+<p>Let's get started.</p>
+<h2>What is a Race Condition</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Race_condition">race condition</a> is a bug in concurrency programming.</p>
+<blockquote>
+<p><strong>Race condition</strong>: A flaw in a concurrent application in which the result is dependent on the timing or sequence of multiple threads' execution.</p>
+<cite>-- Page 271, <a href="https://amzn.to/3UM7Hu2">The Art of Concurrency</a>, 2009.</cite></blockquote>
+<p>A race condition is a failure case where the behavior of the program is dependent upon the order of execution by two or more threads. This means that the behavior of the program will not be predictable, possibly changing each time it is run.</p>
+<blockquote>
+<p>When threads or processes attempt to simultaneously access a shared resource, and the accesses can result in an error, we often say the program has a race condition, because the threads or processes are in a “race” to carry out an operation.</p>
+<cite>-- Page 53, <a href="https://amzn.to/3LRljie">An Introduction to Parallel Programming</a>, 2020.</cite></blockquote>
+<p>There are many types of race conditions and they almost always have to do with an unexpected sequence of operations.</p>
+<p>Two common classes of race conditions include:</p>
+<ol>
+<li>Race caused by accessing shared data or state.</li>
+<li>Race conditions caused due to timing.</li>
+</ol>
+<p>Both of these race conditions can occur when using threads in Python.</p>
+<h2>Race Conditions with Threads</h2>
+<p>Race conditions are a real problem in Python when using threads, even in the presence of the global interpreter lock (GIL).</p>
+<p>The refrain that there are no race conditions in Python because of the GIL is dangerously wrong.</p>
+<p>Let's look at two examples</p>
+<h3>Race Condition With Shared Data</h3>
+<p>For example, one thread may be adding values to a variable, while another thread is subtracting values from the same variable.</p>
+<p>Let's call them an adder thread and a subtractor thread.</p>
+<p>At some point, the operating system may context switch from the adding thread to the subtracting thread in the middle of updating the variable. Perhaps right at the point where it was about to write an updated value with an addition, say from the current value of 100 to the new value of 110.</p>
+<pre><code>...
+# add to the variable
+variable = variable + 10</code></pre>
+<p>You may recall that the operating system controls what threads execute and when, and that a context switch refers to pausing the execution of a thread and storing its state while unpausing another thread and restoring its state.</p>
+<p>You may also notice that the adding or subtracting from the variable is composed of at least three steps:</p>
+<ol>
+<li>Read the current value of the variable.</li>
+<li>Calculate a new value for the variable.</li>
+<li>Write a new value for the variable.</li>
+</ol>
+<p>A context switch between threads may occur at any point in this task.</p>
+<p>Back to our threads. The subtracting thread runs and reads the current value as 100 and reduces the value from 100 to 90.</p>
+<p>This subtraction is performed as per normal and the variable value is now 90.</p>
+<p>The operating system context switches back to the adding thread and it picks up where it left off writing the value 110.</p>
+<p>This means that in this case, one subtraction operation was lost and the shared balance variable has an inconsistent value. A race condition.</p>
+<p>This type of race condition can be avoided by using a mutex lock.</p>
+<blockquote>
+<p>Thread scheduling is inherently nondeterministic. Because of this, failure to use locks in threaded programs can result in randomly corrupted data and bizarre behavior known as a "race condition." To avoid this, locks should always be used whenever shared mutable state is accessed by multiple threads.</p>
+<cite>-- Page 497, <a href="https://amzn.to/3UGKCJa">Python Cookbook</a>, 2013.</cite></blockquote>
+<p>You can see an example of this type of race condition between threads in the tutorial:</p>
+<ul>
+<li><a href="../thread-race-condition-shared-variable/">Race Condition With a Shared Variable in Python</a></li>
+</ul>
+<h3>Race Condition Due to Timing</h3>
+<p>Python threads may suffer a race condition due to a bug with timing.</p>
+<p>For example, consider the case of the use of a <strong>threading.Condition</strong> used by two threads to coordinate their behavior.</p>
+<p>If you are new to a condition object, you can learn more here:</p>
+<ul>
+<li><a href="../thread-condition/">Threading Condition Variables in Python</a></li>
+</ul>
+<p>One thread may wait on the <strong>threading.Condition</strong> to be notified of some state change within the application via the wait function.</p>
+<pre><code>...
+# wait for a state change
+with condition:
+	condition.wait()
+</code></pre>
+<p>Recall that when using a <strong>threading.Condition</strong>, you must acquire the condition before you can call <strong>wait()</strong> or <strong>notify()</strong>, then release it once you are done. This is easily achieved using the context manager.</p>
+<p>Another thread may perform some change within the application and alert the waiting thread via the condition with the <strong>notify()</strong> function.</p>
+<pre><code>...
+# alert the waiting thread
+with condition:
+	condition.notify()
+</code></pre>
+<p>This is an example of coordinated behavior between two threads where one thread signals another thread.</p>
+<p>For the behavior to work as intended, the notification from the second thread must be sent after the first thread has started waiting. If the first thread calls <strong>wait()</strong> after the second thread calls <strong>notify()</strong>, then it will not be notified and will wait forever.</p>
+<p>This may happen if there is a context switch by the operating system that allows the second thread that calls <strong>notify()</strong> to run before the first thread that calls <strong>wait()</strong> to run.</p>
+<p>You may recall that the operating system controls what threads execute and when, and that a context switch refers to pausing the execution of a thread and storing its state while unpausing another thread and restoring its state.</p>
+<p>You can see an example of a thread race condition due to timing in the tutorial:</p>
+<ul>
+<li><a href="../thread-race-condition-timing/">How to Fix a Race Condition With Timing in Python</a></li>
+</ul>
+<p>Next, let's consider race conditions with processes.</p>
+<h2>Race Conditions with Processes</h2>
+<p>Python provides process-based concurrency via the <strong>multiprocessing</strong> module.</p>
+<p>You can get started with process-based concurrency with the guide:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Python Multiprocessing: The Complete Guide</a></li>
+</ul>
+<p>Race conditions are possible in Python when using process-based concurrency.</p>
+<p>Let's consider the two types of race conditions considered above with threads:</p>
+<ol>
+<li>Race caused by accessing shared data or state.</li>
+<li>Race conditions caused due to timing.</li>
+</ol>
+<h3>Race Condition With Shared Data</h3>
+<p>Race conditions with shared data is challenging with processes.</p>
+<p>The reason is that processes cannot share data directly.</p>
+<p>Threads have shared memory (within one process), therefore a global variable can be accessed by different threads at the same time and left in an inconsistent state.</p>
+<p>This cannot happen directly with processes.</p>
+<p>A child process created using the "fork" start method will get a copy of all global variables from the parent process, but any changes to the global variable in the child will have no effect on the global variable in the parent.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-inherit-global-variables-in-python/">Multiprocessing Inherit Global Variables in Python</a></li>
+</ul>
+<p>There are two mechanics for sharing Python objects and data between processes in a Python program, they are:</p>
+<ol>
+<li>Host the object on a server process and allow processes to interact with it indirectly via proxy objects. This can be achieved using a <strong>multiprocessing.Manager</strong>.</li>
+<li>Share primitive types (e.g. integers and floats) between processes using shared ctypes via the <strong>multiprocessing.Value</strong> and <strong>multiprocessing.Array</strong> classes.</li>
+</ol>
+<p>Race conditions are possible when using either of these two mechanisms to share data between processes.</p>
+<p>Additionally, it is possible for two processes to interact with other types of shared resources and suffer a race condition as a result.</p>
+<p>A common example is a file.</p>
+<p>If two or more processes attempt to write to the same file at the same time, the results may be unpredictable.</p>
+<p>Processes will race to write to the file, overwrite the content of the file and leave the file in an unexpected state.</p>
+<p>This is most commonly seen when logging to one file from multiple processes.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-logging-in-python/">Multiprocessing Logging in Python</a></li>
+</ul>
+<h3>Race Condition Due to Timing</h3>
+<p>Processes can suffer race conditions due to timing.</p>
+<p>This is just like the race conditions seen with threads.</p>
+<p>A synchronization primitive may be shared among processes and one or more processes may wait to be notified after another process has sent the notification message.</p>
+<p>This type of race condition can occur with an assortment of primitives that involve waiting, such as events, condition variables, and barriers.</p>
+<h3>Process Safety</h3>
+<p>The solution is to ensure that multiprocessing code is process-safe.</p>
+<p>Process-safe is the concept of thread safety applied to concurrency with processes.</p>
+<p>This may involve making correct use of synchronization primitives, such as:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">multiprocessing.Lock</a></li>
+<li><a href="../multiprocessing-rlock-in-python/">multiprocessing.RLock</a></li>
+<li><a href="../multiprocessing-semaphore-in-python/">multiprocessing.Semaphore</a></li>
+<li><a href="../multiprocessing-event-object-in-python/">multiprocessing.Even</a></li>
+<li><a href="../multiprocessing-condition-variable-in-python/">multiprocessing.Condition Variable</a></li>
+<li><a href="../multiprocessing-barrier-in-python/">multiprocessing.Barrier</a></li>
+</ul>
+<p>It may also involve separating out responsibilities for interacting with a resource into a controlling process and having other processes send messages to the controlling process via a multiprocessing queue.</p>
+<p>You can learn more about multiprocessing queues in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li>
+</ul>
+<p>You can learn more about process safety in the tutorial:</p>
+<ul>
+<li><a href="../process-safe-in-python/">Process-Safe in Python</a></li>
+</ul>
+<p>Now that we know that race conditions are possible with processes in Python, let's explore some examples.</p>
+<p>Starting with a negative example.</p>
+<h2>Multiprocessing Cannot Race with a Global Variable</h2>
+<p>We can explore the case where a global variable is shared with child processes and does not lead to a race condition.</p>
+<p>This situation is important to demonstrate because the same solution when using thread-based concurrency will lead to a race condition.</p>
+<p>In this example, we will define two tasks, "<em>adder</em>" and "<em>subtractor</em>". The adder task will access a shared global variable named "value" and add one to it, with plenty of room for a context switch to occur during the operation. Similarly, the subtractor operation will access a global variable named "value" and subtract one from it with plenty of room for a context switch during the operation.</p>
+<p>Specifically, will unroll a "value += 1" and "value -= 1" into their separate operations of: "<em>copy value into tmp</em>", "<em>change tmp</em>", and "<em>copy tmp back to value</em>" and add <a href="../thread-sleep-in-python/">sleep operations</a> between each step. This signals to the operating system that the task may context switch at that point.</p>
+<p>Each adder and subtractor task will be performed in a loop that iterates 1,000,000 times, offering many opportunities to race.</p>
+<p>Each task will be executed in a separate child process and the child processes will be created using the <a href="../multiprocessing-start-method/">"fork" start method</a> that ensures that each child is a copy of the parent process.</p>
+<p>Because the "<strong>value</strong>" global variable is defined in the parent process, it will be copied and made available to the child processes.</p>
+<p><strong>Note</strong>: The "<em>fork</em>" start method is not available on windows. As such this example may not run on the Windows platform. It will work fine on Linux, macOS, and other platforms.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an attempted race condition with a shared variable
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import set_start_method
+
+# make additions into the global variable
+def adder(amount, repeats):
+    global value
+    for _ in range(repeats):
+        # copy the value
+        tmp = value
+        # suggest a context switch
+        sleep(0)
+        # change the copy
+        tmp = tmp + amount
+        # suggest a context switch
+        sleep(0)
+        # copy the value back
+        value = tmp
+
+# make subtractions from the global variable
+def subtractor(amount, repeats):
+    global value
+    for _ in range(repeats):
+        # copy the value
+        tmp = value
+        # suggest a context switch
+        sleep(0)
+        # change the copy
+        tmp = tmp - amount
+        # suggest a context switch
+        sleep(0)
+        # copy the value back
+        value = tmp
+
+if __name__ == '__main__':
+    # set start method
+    set_start_method('fork')
+    # define the global variable
+    global value
+    value = 0
+    # start a thread making additions
+    adder_thread = Process(target=adder, args=(1, 1000000))
+    adder_thread.start()
+    # start a thread making subtractions
+    subtractor_thread = Process(target=subtractor, args=(1, 1000000))
+    subtractor_thread.start()
+    # wait for both processes to finish
+    print('Waiting for processes to finish...')
+    adder_thread.join()
+    # subtractor_thread.join()
+    # report the value
+    print(f'Value: {value}')
+</code></pre>
+<p>Running the example first declares and defines the "<strong>value</strong>" global variable.</p>
+<p>The adder and subtractor processes are then created and started.</p>
+<p>The main process then waits for both processes to complete.</p>
+<p>The adder and subtractor processes run, looping one million times each and modifying the global variable.</p>
+<p>The child processes finish and the value of the global variable is reported.</p>
+<p>And it has the expected value of zero.</p>
+<pre><code>Waiting for processes to finish...
+Value: 0</code></pre>
+<p>There was no race condition because each process operated on a separate copy of the "<strong>value</strong>" global variable.</p>
+<p>The main process had one copy that was never changed and remained at the value of zero until reported at the end.</p>
+<p>Each child process had a copy of the global variable and either added to it or subtracted from it. Their values were changed and never interacted with each other or the copy in the main process.</p>
+<p>We cannot get a race condition in this way with processes because we cannot share a global variable directly.</p>
+<p>Next, let's look at an example of sharing data between processes that is subject to a race condition.</p>
+<h2>Multiprocessing Race Condition with a Hosted Variable</h2>
+<p>One way to share data between processes is to use a <strong>multiprocessing.Manager</strong>.</p>
+<p>A manager is a server process that hosts Python objects and returns proxy objects. Processes can then use the hosted object via the proxy objects, just like a shared global variable.</p>
+<p>All of the inter-process communication required to read and write the shared variable is performed automatically behind the scenes via the proxy objects.</p>
+<p>You can learn more about managers in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager/">What is a Multiprocessing Manager</a></li>
+</ul>
+<p>We can create a custom class that suffers race conditions and hosts it with a manager.</p>
+<p><strong>Why not create a custom class with a member variable and share this among child processes directly, without a Manager?</strong></p>
+<p>Excellent question! Because each child process would get and work with a copy of the shared object. Any changes to the shared object would be limited to the process that made those changes (e.g. we would be in the same situation as the example in the previous section). </p>
+<p>You can see an example of this in the tutorial:</p>
+<ul>
+<li><a href="../share-process-attributes/">Shared Process Class Attributes in Python</a></li>
+</ul>
+<p>A manager is required to really share an object between child processes and have changes reflected in other processes.</p>
+<p>Let's explore this case and then how to fix it.</p>
+<h3>Example of Race Condition with a Manager</h3>
+<p>In this example we can define a custom class that is subject to race conditions, host it on the manager and then interact with it from multiple child processes, triggering a race condition.</p>
+<p>Firstly, we can create a custom counter class for incrementing and decrementing a variable.</p>
+<p>We can perform the changes to the variable in a way that strongly encourages the operating system to context switch in the middle of the operations, essentially forcing a race condition.</p>
+<pre><code># custom counter class
+class UnsafeCounter():
+    def __init__(self, count):
+        self._value = count
+
+    # retrieve the variable
+    def get(self):
+        return self._value
+
+    # add one to the variable
+    def increment(self):
+        # copy value
+        tmp = self._value
+        # allow a context switch
+        sleep(0)
+        # increment the value
+        tmp = tmp + 1
+        # allow a context switch
+        sleep(0)
+        # copy the updated value
+        self._value = tmp
+
+    # subtract one from the variable
+    def decrement(self):
+        # copy value
+        tmp = self._value
+        # allow a context switch
+        sleep(0)
+        # increment the value
+        tmp = tmp - 1
+        # allow a context switch
+        sleep(0)
+        # copy the updated value
+        self._value = tmp
+</code></pre>
+<p>We can host this custom class on a <strong>Manager</strong>.</p>
+<p>This requires first defining a custom <strong>Manager</strong> class.</p>
+<pre><code># custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+</code></pre>
+<p>Then registering the custom class on the custom manager class, so it knows how to make it.</p>
+<pre><code>...
+# register the custom class on the custom manager
+CustomManager.register('UnsafeCounter', UnsafeCounter)
+</code></pre>
+<p>You can learn more about hosting custom classes on a manager in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-manager-custom-class/">Multiprocessing Manager With a Custom Class</a></li>
+</ul>
+<p>We can define custom task functions to increment and decrement our shared counter.</p>
+<p>Each task will perform 1,000 iterations and call <strong>increment()</strong> or <strong>decrement()</strong> methods on the shared counter.</p>
+<pre><code># task executed in a child process
+def adder_task(counter):
+    for i in range(1000):
+        counter.increment()
+
+# task executed in a child process
+def subtractor_task(counter):
+    for i in range(1000):
+        counter.decrement()
+</code></pre>
+<p>The main process can first create the custom <strong>Manager</strong> class and then create the shared counter using the manager.</p>
+<p>This will host the counter on the manager server process and return proxy objects that can be shared with the child processes and used to interact with the hosted object.</p>
+<pre><code>...
+# create manager
+with CustomManager() as manager:
+    # create the counter
+    counter = manager.UnsafeCounter(0)
+</code></pre>
+<p>We can then start two child processes, one for adding the shared counter and one for subtracting, and wait for them to complete.</p>
+<pre><code>...
+# create child processes
+adder_process = Process(target=adder_task, args=(counter,))
+subtractor_process = Process(target=subtractor_task, args=(counter,))
+# start child processes
+adder_process.start()
+subtractor_process.start()
+# wait for processes to complete
+adder_process.join()
+subtractor_process.join()
+</code></pre>
+<p>Finally, we can report the value of the shared counter.</p>
+<pre><code>...
+# report the value
+print(f'Value: {counter.get()}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a race condition between processes with shared memory
+from time import sleep
+from multiprocessing import Process
+from multiprocessing.managers import BaseManager
+
+# custom counter class
+class UnsafeCounter():
+    def __init__(self, count):
+        self._value = count
+
+    # retrieve the variable
+    def get(self):
+        return self._value
+
+    # add one to the variable
+    def increment(self):
+        # copy value
+        tmp = self._value
+        # allow a context switch
+        sleep(0)
+        # increment the value
+        tmp = tmp + 1
+        # allow a context switch
+        sleep(0)
+        # copy the updated value
+        self._value = tmp
+
+    # subtract one from the variable
+    def decrement(self):
+        # copy value
+        tmp = self._value
+        # allow a context switch
+        sleep(0)
+        # increment the value
+        tmp = tmp - 1
+        # allow a context switch
+        sleep(0)
+        # copy the updated value
+        self._value = tmp
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# task executed in a child process
+def adder_task(counter):
+    for i in range(1000):
+        counter.increment()
+
+# task executed in a child process
+def subtractor_task(counter):
+    for i in range(1000):
+        counter.decrement()
+
+# protect the entry point
+if __name__ == '__main__':
+    # register the custom class on the custom manager
+    CustomManager.register('UnsafeCounter', UnsafeCounter)
+    # create manager
+    with CustomManager() as manager:
+        # create the counter
+        counter = manager.UnsafeCounter(0)
+        # create child processes
+        adder_process = Process(target=adder_task, args=(counter,))
+        subtractor_process = Process(target=subtractor_task, args=(counter,))
+        # start child processes
+        adder_process.start()
+        subtractor_process.start()
+        # wait for processes to complete
+        adder_process.join()
+        subtractor_process.join()
+        # report the value
+        print(f'Value: {counter.get()}')
+</code></pre>
+<p>Running the example first registers the custom counter class on the custom manager.</p>
+<p>An instance of the custom manager is created which creates a server process, then an instance of the custom counter class is created on the manager process, returning proxy objects.</p>
+<p>The two child processes are created and provided access to the shared counter via proxy objects.</p>
+<p>The main process waits until the tasks are completed.</p>
+<p>Each task loops 1,000 times either incrementing or decrementing the shared counter via the proxy objects.</p>
+<p>The tasks are completed and the value of the shared counter is reported.</p>
+<p>We expect the value to be zero every time because we issued 1,000 increments and 1,000 decrements.</p>
+<p>In this case, we see the value is not zero.</p>
+<pre><code>Value: 3</code></pre>
+<p>In fact, the program gives a different final value every time it is run.</p>
+<pre><code>Value: 5</code></pre>
+<p>We have a race condition.</p>
+<h3>Example of Fixing a Race Condition with a Manager</h3>
+<p>We can fix a race condition between processes using shared memory via a manager.</p>
+<p>There are a few ways we could achieve this.</p>
+<p>One way might be to share a <strong>multiprocessing.Lock</strong> object and use it in each task function to protect the usage of the counter.</p>
+<p>For example:</p>
+<pre><code># task executed in a child process
+def adder_task(counter, lock):
+    for i in range(1000):
+        with lock:
+            counter.increment()
+
+# task executed in a child process
+def subtractor_task(counter, lock):
+    for i in range(1000):
+        with lock:
+            counter.decrement()
+</code></pre>
+<p>This will work.</p>
+<p>The mutex lock can only be acquired and held by one child process at a time, ensuring only one child process can either increment or decrement the shared counter at a time.</p>
+<p>You can learn more about multiprocessing mutex locks in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<p>Another approach is to move the lock into the custom counter class and make it process-safe.</p>
+<p>Each time a method in the class needs to operate on the internal variable, it must acquire the lock first. This ensures that all reads and writes to the shared variable are mutually exclusive, e.g. one at a time.</p>
+<p>This might be a better approach as it hides the change, transforming our <strong>UnsafeCounter</strong> into a <strong>SafeCounter</strong>.</p>
+<p>For example:</p>
+<pre><code># custom counter class
+class SafeCounter():
+    def __init__(self, count):
+        self._lock = Lock()
+        self._value = count
+
+    # retrieve the variable
+    def get(self):
+        with self._lock:
+            return self._value
+
+    # add one to the variable
+    def increment(self):
+        with self._lock:
+            # copy value
+            tmp = self._value
+            # allow a context switch
+            sleep(0)
+            # increment the value
+            tmp = tmp + 1
+            # allow a context switch
+            sleep(0)
+            # copy the updated value
+            self._value = tmp
+
+    # subtract one from the variable
+    def decrement(self):
+        with self._lock:
+            # copy value
+            tmp = self._value
+            # allow a context switch
+            sleep(0)
+            # increment the value
+            tmp = tmp - 1
+            # allow a context switch
+            sleep(0)
+            # copy the updated value
+            self._value = tmp
+</code></pre>
+<p>The updated version with this change is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of fixing a race condition between processes with shared memory
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+from multiprocessing.managers import BaseManager
+
+# custom counter class
+class SafeCounter():
+    def __init__(self, count):
+        self._lock = Lock()
+        self._value = count
+
+    # retrieve the variable
+    def get(self):
+        with self._lock:
+            return self._value
+
+    # add one to the variable
+    def increment(self):
+        with self._lock:
+            # copy value
+            tmp = self._value
+            # allow a context switch
+            sleep(0)
+            # increment the value
+            tmp = tmp + 1
+            # allow a context switch
+            sleep(0)
+            # copy the updated value
+            self._value = tmp
+
+    # subtract one from the variable
+    def decrement(self):
+        with self._lock:
+            # copy value
+            tmp = self._value
+            # allow a context switch
+            sleep(0)
+            # increment the value
+            tmp = tmp - 1
+            # allow a context switch
+            sleep(0)
+            # copy the updated value
+            self._value = tmp
+
+# custom manager to support custom classes
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+# task executed in a child process
+def adder_task(counter):
+    for i in range(1000):
+        counter.increment()
+
+# task executed in a child process
+def subtractor_task(counter):
+    for i in range(1000):
+        counter.decrement()
+
+# protect the entry point
+if __name__ == '__main__':
+    # register the custom class on the custom manager
+    CustomManager.register('SafeCounter', SafeCounter)
+    # create manager
+    with CustomManager() as manager:
+        # create the counter
+        counter = manager.SafeCounter(0)
+        # create child processes
+        adder_process = Process(target=adder_task, args=(counter,))
+        subtractor_process = Process(target=subtractor_task, args=(counter,))
+        # start child processes
+        adder_process.start()
+        subtractor_process.start()
+        # wait for processes to complete
+        adder_process.join()
+        subtractor_process.join()
+        # report the value
+        print(f'Value: {counter.get()}')
+</code></pre>
+<p>Running the example first registers the custom counter class on the custom manager.</p>
+<p>An instance of the custom manager is created which creates a server process, then an instance of the custom counter class is created on the manager process, returning proxy objects.</p>
+<p>Importantly, the counter creates its own internal lock when the object is initialized.</p>
+<p>The two child processes are created and provided access to the shared counter via proxy objects.</p>
+<p>The main process waits until the tasks are completed.</p>
+<p>Each task loops 1,000 times either incrementing or decrementing the shared counter via the proxy objects.</p>
+<p>The tasks are completed and the value of the shared counter is reported.</p>
+<p>We expect the value to be zero every time because we issued 1,000 increments and 1,000 decrements.</p>
+<p>In this case, we can see that this expectation is met. In fact, the value of the shared counter is zero every time the program is run.</p>
+<p>The race condition has been fixed.</p>
+<pre><code>Value: 0</code></pre>
+<p>Next, let's look at a race condition between processes using a shared ctype variable.</p>
+<h2>Multiprocessing Race Condition with a Shared ctype</h2>
+<p>Another way we can share a variable between processes is by using shared ctypes.</p>
+<p>The <a href="https://docs.python.org/3/library/ctypes.html"><strong>ctypes</strong> module</a> provides tools for working with C data types.</p>
+<p>Python provides the capability to <a href="https://docs.python.org/3/library/multiprocessing.html#shared-ctypes-objects">share ctypes</a> between processes on one system.</p>
+<p>This is primarily achieved via the following classes:</p>
+<ul>
+<li><strong>multiprocessing.Value</strong>: manage a shared value.</li>
+<li><strong>multiprocessing.Array</strong>: manage an array of shared values.</li>
+</ul>
+<p>The <strong>multiprocessing.Value</strong> class will create a shared ctype with a specified data type and initial value.</p>
+<p>The first argument defines the data type for the value. It may be a string type code or a Python ctype class. The second argument may be an initial value.</p>
+<p>For example, we can define a signed integer type with the ‘<strong>i</strong>’ type code and an initial value of zero as follows:</p>
+<pre><code>...
+# create a integer value
+variable = multiprocessing.Value('i', 0)</code></pre>
+<p>The data within the <strong>multiprocessing.Value</strong> object can be accessed via the “<strong>value</strong>” attribute.</p>
+<pre><code>...
+# get the data
+data = variable.value</code></pre>
+<p>You can learn more about how to create and share ctypes between processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li>
+</ul>
+<p>We can suffer race conditions when sharing ctypes between processes.</p>
+<p>Let's explore an example and then how to fix it.</p>
+<h3>Example of Race Condition with Shared ctype</h3>
+<p>In this example, we can define an integer shared ctype variable and share it among processes.</p>
+<p>Each process will change the variable at the same time, triggering a race condition and leaving the variable in an unknown and inconsistent state.</p>
+<p>We will define two tasks, an adder, and a subtractor task, which we did previously.</p>
+<p>The adder task will loop 1,000 times and increment the variable each iteration, whereas the subtractor task will subtract from the task each iteration.</p>
+<p>The final value of the shared ctype will be reported, which would expect to be zero, given the balanced number of increments and decrements.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an a race condition with a shared ctype
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Value
+
+# make additions into the shared variable
+def adder(variable):
+    for _ in range(1000):
+        # increment the variable
+        variable.value += 1
+
+# make subtractions from the shared variable
+def subtractor(variable):
+    for _ in range(1000):
+        # decrement the variable
+        variable.value -= 1
+
+if __name__ == '__main__':
+    # create a shared ctype integer
+    variable = Value('i', 0)
+    # start a thread making additions
+    adder_thread = Process(target=adder, args=(variable,))
+    adder_thread.start()
+    # start a thread making subtractions
+    subtractor_thread = Process(target=subtractor, args=(variable,))
+    subtractor_thread.start()
+    # wait for both processes to finish
+    print('Waiting for processes to finish...')
+    adder_thread.join()
+    subtractor_thread.join()
+    # report the value
+    print(f'Value: {variable.value}')</code></pre>
+<p>Running the example first creates the shared ctype and initializes it to zero.</p>
+<p>The adder process is then created and passed the ctype variable, then started. Similarly. the subtractor child process is created and also passed the same ctype variable and started.</p>
+<p>The main process then waits for both processes to complete.</p>
+<p>Each process loops 1,000 times and modifies the value within the shared ctype.</p>
+<p>Because the variable is shared, both processes operate on the same variable.</p>
+<p>Both child processes are completed and the final value of the shared ctype is reported.</p>
+<p>In this case, the final value is not zero.</p>
+<pre><code>Waiting for processes to finish…
+Value: 221</code></pre>
+<p>In fact, the final value is different each time the program is run given a race condition.</p>
+<pre><code>Waiting for processes to finish…
+Value: -659</code></pre>
+<p>Next, let's look at how we can fix this race condition.</p>
+<h3>Example of Fixing a Race Condition with Shared ctype</h3>
+<p>We can fix the race condition by using a shared mutex lock.</p>
+<p>One approach would be to create a mutex lock in the main process and share it with each child process.</p>
+<p>Each time the adder and subtractor tasks change the shared ctype, they can first acquire the lock. This would ensure that all changes to the shared ctype are serialized, that is only one child process can change the variable at a time.</p>
+<p>For example:</p>
+<pre><code># make additions into the shared variable
+def adder(variable, lock):
+    for _ in range(1000):
+        # acquire the lock on the variable
+        with lock:
+            # increment the variable
+            variable.value += 1
+
+# make subtractions from the shared variable
+def subtractor(variable,lock ):
+    for _ in range(1000):
+        # acquire the lock on the variable
+        with lock:
+            # decrement the variable
+            variable.value -= 1</code></pre>
+<p>In fact, this is not necessary.</p>
+<p>By default, the shared ctype <strong>Value</strong> and <strong>Array</strong> objects will create and manage their own internal mutex lock.</p>
+<p>This lock can be retrieved via the <strong>get_lock()</strong> method and can be used to protect direct modification of the shared ctype value.</p>
+<p>For example:</p>
+<pre><code># make additions into the shared variable
+def adder(variable):
+    for _ in range(1000):
+        # acquire the lock on the variable
+        with variable.get_lock():
+            # increment the variable
+            variable.value += 1
+
+# make subtractions from the shared variable
+def subtractor(variable):
+    for _ in range(1000):
+        # acquire the lock on the variable
+        with variable.get_lock():
+            # decrement the variable
+            variable.value -= 1</code></pre>
+<p>This is the correct and preferred way to modify and access the values of a shared ctype to ensure it is process-safe.</p>
+<p>The updated version of the program with these changes that fix the race condition is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of fixing a race condition with a shared ctype
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Value
+
+# make additions into the shared variable
+def adder(variable):
+    for _ in range(1000):
+        # acquire the lock on the variable
+        with variable.get_lock():
+            # increment the variable
+            variable.value += 1
+
+# make subtractions from the shared variable
+def subtractor(variable):
+    for _ in range(1000):
+        # acquire the lock on the variable
+        with variable.get_lock():
+            # decrement the variable
+            variable.value -= 1
+
+if __name__ == '__main__':
+    # create a shared ctype integer
+    variable = Value('i', 0)
+    # start a thread making additions
+    adder_thread = Process(target=adder, args=(variable,))
+    adder_thread.start()
+    # start a thread making subtractions
+    subtractor_thread = Process(target=subtractor, args=(variable,))
+    subtractor_thread.start()
+    # wait for both processes to finish
+    print('Waiting for processes to finish...')
+    adder_thread.join()
+    subtractor_thread.join()
+    # acquire the lock on the variable
+    with variable.get_lock():
+        # report the value
+        print(f'Value: {variable.value}')</code></pre>
+<p>Running the example first creates the shared ctype and initializes it to zero.</p>
+<p>The adder process is then created and passed the ctype variable, then started. Similarly. the subtractor child process is created and also passed the same ctype variable and started.</p>
+<p>The main process then waits for both processes to complete.</p>
+<p>Each process loops 1,000 times. Each iteration, the tasks first acquire the internal mutex lock for the shared ctype variable. Only once the lock is acquired will the task modify the value within the shared ctype.</p>
+<p>Both child processes are completed and the final value of the shared ctype is reported.</p>
+<p>In this case, the final value is always zero.</p>
+<p>The race condition has been fixed.</p>
+<pre><code>Waiting for processes to finish…
+Value: 0</code></pre>
+<p>Next, let's look at sharing a file from multiple processes.</p>
+<h2>Multiprocessing Cannot Race with a Shared File</h2>
+<p>We can explore the case of multiple child processes writing to the same file at the same time.</p>
+<p>When using threads, we can open a handle to the file, share the handle directly with many threads and have them all write to the file at the same time. This leads to a race condition as the threads complete and overwrites each other's data, leading to data corruption and loss.</p>
+<p>For an example of this type of race condition with threads, see the tutorial:</p>
+<ul>
+<li><a href="../thread-safe-write-to-file-in-python/">Thread-Safe Write to File in Python</a></li>
+</ul>
+<p>This type of race condition is challenging to recreate using process-based concurrency.</p>
+<p>Firstly, we cannot open a file handle and share it directly with child processes.</p>
+<p>Doing so results in an error because the file handle cannot be pickled (serialized) and therefore cannot be sent to a child process as an argument.</p>
+<p>An alternate approach is to have each child process open the same file and attempt to write many lines to the file at the same time.</p>
+<p>The example below explores this case.</p>
+<p>We can define a task that takes the filename and loops 10,000 times. Each iteration, the file is opened and one line of text is written. </p>
+<p>We can then perform this task in a large number of child processes, 50 in this case, kept intentionally small as some operating systems like Windows limit the number of child processes that can be created.</p>
+<p>With 50 processes each writing 10K lines, we expect the file to have 500,000 lines of text.</p>
+<p>The program waits for all child processes to finish before loading the file and reporting the total number of lines.</p>
+<p>If there was a race condition leading to corruption and loss, we would expect fewer than 500,000 lines in the final file.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of attempted race condition with shared file
+from random import random
+from time import sleep
+from multiprocessing import Process
+import os
+
+# task for writing data to a file
+def task(filename, arg):
+    # write data to the file
+    for i in range(10000):
+        # open the file
+        with open(filename, 'a') as file:
+            # write one line
+            print(f'Data line {i} from task {arg}.', file=file)
+
+# protect the entry point
+if __name__ == '__main__':
+    # shared filename
+    filename = 'tmp.txt'
+    # delete the file if it exists
+    try:
+        os.remove(filename)
+    except:
+        pass
+    # start some processes to write to the same file
+    processes = [Process(target=task, args=(filename,i)) for i in range(50)]
+    # start the processes
+    for process in processes:
+        process.start()
+    # wait for the processes to complete
+    for process in processes:
+        process.join()
+    # read the file and report results
+    with open(filename, 'r') as file:
+        # read entire file
+        data = file.read()
+        # split into lines
+        data = data.strip().split('\n')
+        # report total lines
+        print(f'{filename} has {len(data)} lines')
+</code></pre>
+<p>Running the example first deletes the shared file if it exists (e.g. if the program has been run before).</p>
+<p>Next, 50 child processes are created and started and the main process waits for them to complete.</p>
+<p>Each process loops 10,000 times, each iteration, opening the file and writing one line.</p>
+<p>The repeated opening and writing to the file is an attempt to force a race between child processes.</p>
+<p>Once all tasks are complete the main process loads the text file and reports the total number of lines.</p>
+<p>In this case, we can see that all 500,000 lines were written without incident.</p>
+<p>No race condition is evident.</p>
+<pre><code>tmp.txt has 500000 lines</code></pre>
+<p>It seems writing to the same file from multiple processes is safe on many modern operating systems, such as Linux and macOS. Not sure about windows, sorry.</p>
+<p>We cannot easily force a race condition in this situation.</p>
+<p>We can see some discussion of this issue on stack overflow, here:</p>
+<ul>
+<li><a href="https://stackoverflow.com/questions/56900163/why-isnt-my-file-corrupted-while-writing-to-it-from-multiple-processes-in-pytho">Why isn't my file corrupted while writing to it from multiple processes in Python?</a></li>
+</ul>
+<p>Nevertheless, I would not rely on this finding in a production system.</p>
+<p>I would strongly recommend creating a lock and sharing it among the child processes and treat operating on the file as a critical section.</p>
+<p>For example:</p>
+<pre><code># task for writing data to a file
+def task(filename, arg, lock):
+    # write data to the file
+    for i in range(10000):
+        # acquire the lock
+        with lock:
+            # open the file
+            with open(filename, 'a') as file:
+                # write one line
+                print(f'Data line {i} from task {arg}.', file=file)</code></pre>
+<p>Maybe this adds too much <a href="../lock-overhead-in-python/">lock overhead</a> in this specific case and the <strong>task()</strong> function should be restricted so that the lock is acquired more efficiently.</p>
+<p>Next, let's explore a race condition between child processes due to timing.</p>
+<h2>Multiprocessing Race Condition with Timing</h2>
+<p>We can explore an example of a race condition between processes due to timing.</p>
+<p>We can then explore how to fix the race condition, ensuring it does not happen.</p>
+<h3>Example of Multiprocessing Race Condition</h3>
+<p>In this example, we will create a <strong>multiprocessing.Condition</strong>, then start a new child process that waits on the condition to be notified and the main process that notifies the child process.</p>
+<p>If you are new to condition variables, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-condition-variable-in-python/">Multiprocessing Condition Variable in Python</a></li>
+</ul>
+<p>To force the race condition, we will add a delay between the new process starting and waiting on the condition. This will cause the new process to always miss the notification from the main process and wait forever, requiring the program to be killed manually rather than terminating normally.</p>
+<p>Firstly, we can define a function named <strong>task()</strong> to be executed by a new process.</p>
+<p>The function will first sleep for a fraction of a second to force the timing race condition, then acquire the condition and wait to be notified.</p>
+<p>The complete function is listed below.</p>
+<pre><code># process waiting to be notified
+def task(condition):
+    # insert a delay
+    sleep(1)
+    # wait to be notified
+    print('Process: Waiting to be notified...', flush=True)
+    with condition:
+        condition.wait()
+    print('Process: Notified', flush=True)
+</code></pre>
+<p>Next, in the main process we can create the shared <strong>multiprocessing.Condition</strong> object.</p>
+<pre><code>...
+# create the shared condition variable
+condition = Condition()</code></pre>
+<p>Next, we can create and start a new <strong>multiprocessing.Process</strong> configured to execute our <strong>task()</strong> function and pass in the condition as an argument to the function.</p>
+<pre><code>...
+# create the new process
+process = Process(target=task, args=(condition,))
+# start the new process
+process.start()</code></pre>
+<p>Finally, the main process can acquire the <strong>multiprocessing.Condition</strong> and notify the child process.</p>
+<pre><code>...
+# allow the new process to start up, but not start waiting
+sleep(0.5)
+# notify the new process
+print('Main: Notifying the process')
+with condition:
+    condition.notify()
+# wait for the task to complete
+process.join()
+print('Main: Done')
+</code></pre>
+<p>Tying this together, the complete example of a race condition based on timing is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a race condition with timing between two processes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Condition
+
+# process waiting to be notified
+def task(condition):
+    # insert a delay
+    sleep(1)
+    # wait to be notified
+    print('Process: Waiting to be notified...', flush=True)
+    with condition:
+        condition.wait()
+    print('Process: Notified', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared condition variable
+    condition = Condition()
+    # create the new process
+    process = Process(target=task, args=(condition,))
+    # start the new process
+    process.start()
+    # allow the new process to start up, but not start waiting
+    sleep(0.5)
+    # notify the new process
+    print('Main: Notifying the process')
+    with condition:
+        condition.notify()
+    # wait for the task to complete
+    process.join()
+    print('Main: Done')
+</code></pre>
+<p>Running the example first creates and starts the child process.</p>
+<p>The child process starts running and then sleeps for one second.</p>
+<p>Meanwhile, the main process acquires the condition and calls notify().</p>
+<p>The child process wakes up, acquires the condition, and waits to be notified. Because the notification has already been sent, it is missed and the child process waits forever.</p>
+<p>This demonstrates a race condition based on timing.</p>
+<p>We might also say that the program is <a href="https://en.wikipedia.org/wiki/Deadlock">deadlocked</a> and unable to progress.</p>
+<pre><code>Main: Notifying the process
+Process: Waiting to be notified...</code></pre>
+<p>Next, let's look at how we might fix this race condition using an event.</p>
+<h3>Example of Fixing a Multiprocessing Race Condition</h3>
+<p>A race condition based on timing seen in the previous section can be fixed by allowing the notify process to wait for the waiting process to be ready before doing its work and calling <strong>notify()</strong>.</p>
+<p>One way to achieve this is by using a <strong>multiprocessing.Event, which is a process-safe</strong> boolean flag variable.</p>
+<p>If you are new to events, see the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-event-object-in-python/">Multiprocessing Event Object In Python</a></li>
+</ul>
+<p>The shared <strong>multiprocessing.Event</strong> can be passed to the <strong>task()</strong> function as an argument and then set by the child process while holding the <strong>multiprocessing.Condition</strong>, right before waiting on the condition.</p>
+<p>It is important in this change that the event is set while the condition is held as it blocks the main process from acquiring the condition and calling notify until the child process releases the condition when calling <strong>wait()</strong>.</p>
+<p>The updated version of the <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># process waiting to be notified
+def task(condition, event):
+    # insert a delay
+    sleep(1)
+    # wait to be notified
+    print('Process: Waiting to be notified...', flush=True)
+    with condition:
+        # report signal that we are ready
+        print('Process: Ready', flush=True)
+        event.set()
+        # wait to be notified
+        condition.wait()
+    print('Process: Notified', flush=True)
+</code></pre>
+<p>The main process can then create the shared <strong>multiprocessing.Event</strong> object.</p>
+<pre><code>...
+# create the shared event
+event = Event()</code></pre>
+<p>It can then be passed to a child process.</p>
+<pre><code>...
+# create the new process
+process = Process(target=task, args=(condition,event))
+# start the new process
+process.start()</code></pre>
+<p>Finally, the main process can wait for the <strong>multiprocessing.Event</strong> to be set before progressing.</p>
+<p>This can be achieved by calling the <strong>wait()</strong> method on the event.</p>
+<pre><code>...
+# wait for the task to signal that it's ready
+event.wait()</code></pre>
+<p>Tying this together, the complete example of fixing a race condition based on timing is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of fixed race condition due to timing between two processes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Condition
+from multiprocessing import Event
+
+# process waiting to be notified
+def task(condition, event):
+    # insert a delay
+    sleep(1)
+    # wait to be notified
+    print('Process: Waiting to be notified...', flush=True)
+    with condition:
+        # report signal that we are ready
+        print('Process: Ready', flush=True)
+        event.set()
+        # wait to be notified
+        condition.wait()
+    print('Process: Notified', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared condition variable
+    condition = Condition()
+    # create the shared event
+    event = Event()
+    # create the new process
+    process = Process(target=task, args=(condition,event))
+    # start the new process
+    process.start()
+    # wait for the task to signal that it's ready
+    event.wait()
+    # notify the new process
+    print('Main: Notifying the process')
+    with condition:
+        condition.notify()
+    # wait for the task to complete
+    process.join()
+    print('Main: Done')
+</code></pre>
+<p>Running the example first creates the shared condition and event.</p>
+<p>The child process is then created and started, which immediately blocks for a moment.</p>
+<p>Meanwhile, the main process waits to be notified that the child process is ready.</p>
+<p>The child process wakes up, acquires the condition, sets the event, and then waits on the condition.</p>
+<p>The main process notices that the event has been set, then acquires the condition and notifies the child process.</p>
+<p>The program works as expected and the race condition no longer exists.</p>
+<pre><code>Process: Waiting to be notified...
+Process: Ready
+Main: Notifying the process
+Process: Notified
+Main: Done</code></pre>
+<p>If you are aware of other race conditions with multiprocessing, please let me know in the comments below.</p>
+<h2>Takeaways</h2>
+<p>You now know how to identify and fix race conditions with processes in Python.</p>
+</main>
+</body>
+</html>

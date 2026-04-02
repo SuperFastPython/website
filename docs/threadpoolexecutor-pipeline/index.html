@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor Pipeline For Multi-Step Tasks – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor Pipeline For Multi-Step Tasks</h1>
+<div class="post-meta">August 13, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You can execute multi-step concurrent tasks using a pipeline of thread pools in Python.</p>
+<p>In this tutorial, you will discover how to execute multi-step tasks using a <strong>ThreadPoolExecutors pipeline</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need a Pipeline To Execute Multi-Step Tasks</h2>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of reusable worker threads using the executor design pattern.</p>
+<p>Tasks executed in new threads are executed concurrently in Python, making the <strong>ThreadPoolExecutor</strong> appropriate for I/O-bound tasks.</p>
+<p>A <strong>ThreadPoolExecutor</strong> can be created directly or via the context manager interface and tasks can be issued one-by-one via the <strong>submit()</strong> method or in batch via the <strong>map()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# issue a task
+	future = tpe.submit(task)
+	# the task result once the task is done
+	result = future.result()
+</code></pre>
+<p>You can learn more about the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor in Python: The Complete Guide</a></li>
+</ul>
+<p>When using the <strong>ThreadPoolExecutor</strong>, there are cases when we need to execute tasks in a sequence.</p>
+<p>For example, each task may require processing in a series of steps and there may be many of these tasks to execute.</p>
+<p>We can refer to these as multi-step tasks.</p>
+<p>An example of problems of this type is the processing of files. Step one might involve loading data from a file, the second step might be to process the loaded data, and the third step might be to store the results back in a file or in a database.</p>
+<ul>
+<li>Step 1: Load data.</li>
+<li>Step 2: Process data.</li>
+<li>Step 3: Store data.</li>
+</ul>
+<p>We may have tens, hundreds, or even thousands of these multi-step tasks to process.</p>
+<p>Each step of the task may be a separate activity that we may wish to execute using the <strong>ThreadPoolExecutor</strong>.</p>
+<p><strong>How can we use the ThreadPoolExecutor to execute a pipeline of sequential tasks?</strong></p>
+<h2>How to Develop a ThreadPoolExecutor Pipeline for Multi-Step Tasks</h2>
+<p>We can use the <strong>ThreadPoolExecutor</strong> to execute a pipeline of task steps.</p>
+<p>Firstly, a pipeline between the steps of each task can be created. We can achieve this by defining a function for each step in the pipeline, then connecting the steps of the pipeline using a queue.</p>
+<p>This means that a given step would read the data required from an input queue and put any output from the task onto the output queue.</p>
+<p>The output queue from one step would then be used as the input queue to the next step.</p>
+<p>We can then use the <strong>ThreadPoolExecutor</strong> to execute the steps in the pipeline.</p>
+<p>There are perhaps two main approaches we can use to structure the use of the <strong>ThreadPoolExecutor</strong> to execute tasks in the pipeline:</p>
+<ol>
+<li>Execute all steps of each task in one <strong>ThreadPoolExecutor</strong>.</li>
+<li>Execute each step of each task in a separate <strong>ThreadPoolExecutor</strong>.</li>
+</ol>
+<p>A single <strong>ThreadPoolExecutor</strong> can be used to execute each step in the pipeline.</p>
+<p>This is a simple design as the program only needs to manage a single thread pool. A downside of this approach is that there is no logical separation between the steps in the pipeline.</p>
+<p>An alternative is to use one thread pool per step in the process. A benefit of this approach is that the workers of each step in the pipeline may be given different names, which can aid in logging and debugging the pipeline, as opposed to using a single thread pool for all tasks, where workers at each step are shared.</p>
+<p>Using separate pools of workers at each step also allows a variable number of dedicated workers to be used at each step, and for the pool of threads to be switched out with a pool of processes, if needed.</p>
+<p>Regardless of the approach taken, the definition of the tasks in the pipeline and the input and output queue structure does not need to change, offering some flexibility.</p>
+<p>To run the pipeline, the data needed for each task is fed into the first input queue. The tasks of the first step consume this data, process, and push results into their output queue which is consumed by the next step in the process. Eventually, the results of each task are put into the final output queue which can be retrieved by the main program.</p>
+<p>When there are no more input tasks, a <a href="https://en.wikipedia.org/wiki/Sentinel_value">sentinel value</a> can be put into the first task's input queue, signaling that there is no more work. Each task can read this value, shut down, and put the value into the input queue for other workers to read and into the output queue for workers at the next step to shutdown. This will safely shut down the entire pipeline.</p>
+<p>Now that we know how to structure a pipeline of tasks using the <strong>ThreadPoolExecutor</strong>, let's look at some worked examples.</p>
+<h2>Example of a ThreadPoolExecutor Pipeline</h2>
+<p>We can develop an example of using the <strong>ThreadPoolExecutor</strong> to execute a pipeline of tasks.</p>
+<p>In this example, each task will have two steps, a separate step to initiate the task and a step to interpret the result of the task.</p>
+<ul>
+<li><strong>Step 0</strong>: Generate an initial value for the task.</li>
+<li><strong>Step 1</strong>: Read a data value, generate a data value, block, report the value, and pass on generated value to the next step.</li>
+<li><strong>Step 2</strong>: Read a data value, generate a data value, block, report the value, and pass on generated value to the next step.</li>
+<li><strong>Step 3</strong>: Read the final value from each task sequence and report it.</li>
+</ul>
+<p>Each task function has access to an input and output queue. The main thread will push the initial value for each task into the first input queue. The output queue of the first task is used as the input queue for the second task, connecting the two. The main thread reads data from the output queue of the second task.</p>
+<p>Steps 1 and 2 of each task will be executed within a single <strong>ThreadPoolExecutor</strong>, providing a simple design with a single thread pool to manage and shut down.</p>
+<p>Firstly, we will define the first step in the sequence.</p>
+<p>This step takes an input and output queue as arguments. The task loops forever. The first step reads data from the input queue.</p>
+<p>If the read data is a sentinel value (None), it puts the sentinel back on the queue, puts it on the output queue, and exits the breaks the loop. If the value is not a sentinel value, it simulates work, generates a random value, blocks for a fraction of a second, reports a message, and puts the generated value on the output queue.</p>
+<p>The <strong>task1()</strong> function below implements this.</p>
+<pre><code># first task in the pipeline
+def task1(queue_in, queue_out):
+    # loop forever
+    while True:
+        # read item from queue
+        data = queue_in.get()
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # generate a random value between 0 and 1
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # report message
+        print(f'&gt; Task1 got {data}, produced {value}')
+        # push result onto queue
+        queue_out.put(value)
+    # report message
+    print('&gt; Task1 done')
+</code></pre>
+<p>Next, we can define a function for the second task in the sequence.</p>
+<p>For simplicity, the second task will be almost identical to the first task, with slightly different messages indicating "<strong>task2</strong>" instead of "<strong>task1</strong>".</p>
+<p>The <strong>task2()</strong> function below implements this.</p>
+<pre><code># second task in the pipeline
+def task2(queue_in, queue_out):
+    # loop forever
+    while True:
+        # read item from queue
+        data = queue_in.get()
+        # check for shutdown
+        if data is None:
+            # put signal back on queue
+            queue_in.put(None)
+            # send signal on output queue
+            queue_out.put(None)
+            # stop processing
+            break
+        # generate a random value between 0 and 1
+        value = random()
+        # block to simulate work
+        sleep(value)
+        # report message
+        print(f'&gt; &gt; Task2 got {data}, produced {value}')
+        # push result onto queue
+        queue_out.put(value)
+    # report message
+    print('&gt; &gt; Task2 done')
+</code></pre>
+<p>Next, the main thread will define the queues that will be used to connect the tasks.</p>
+<p>A total of 3 queues are required.</p>
+<ul>
+<li>An input queue to connect the main thread to the first task.</li>
+<li>An output queue to connect the first task's output to the second task's input.</li>
+<li>Another output queue to connect the second task's output to the main thread.</li>
+</ul>
+<pre><code>...
+# create the shared queues
+task1_queue_in = Queue()
+task1_queue_out = Queue()
+task2_queue_out = Queue()</code></pre>
+<p>Next, the <strong>ThreadPoolExecutor</strong> is created with a capacity for 5 workers at each step of the pipeline, 10 workers in total.</p>
+<p>We then issue 5 step 1 tasks and 5 step tasks to the thread pool using the <strong>submit()</strong> method, careful to provide the correct input and output queues for each task.</p>
+</main>
+</body>
+</html>

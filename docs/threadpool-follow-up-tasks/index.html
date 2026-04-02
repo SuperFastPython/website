@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPool Follow-Up Tasks in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPool Follow-Up Tasks in Python</h1>
+<div class="post-meta">October 11, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>You can issue follow-up tasks with the <strong>ThreadPool</strong> either manually by checking the results of tasks or automatically using a result callback function.</p>
+<p>In this tutorial, you will discover <strong>how to execute follow-up tasks</strong> to the <a href="../threadpool-python/"><strong>ThreadPool</strong> in Python</a>.</p>
+<p>Let's get started.</p>
+<h2>Need to Issue Follow-Up Tasks to the ThreadPool</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.ThreadPool"><strong>multiprocessing.pool.ThreadPool</strong> in Python</a> provides a pool of reusable threads for executing ad hoc tasks.</p>
+<blockquote><p>A thread pool object which controls a pool of worker threads to which jobs can be submitted.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The <strong>ThreadPool</strong> class extends the <strong>Pool</strong> class. The <strong>Pool</strong> class provides a pool of worker processes for process-based concurrency.</p>
+<p>Although the <strong>ThreadPool</strong> class is in the <strong>multiprocessing</strong> module it offers thread-based concurrency and is best suited to IO-bound tasks, such as reading or writing from sockets or files.</p>
+<p>A <strong>ThreadPool</strong> can be configured when it is created, which will prepare the new threads.</p>
+<p>We can issue one-off tasks to the <strong>ThreadPool</strong> using methods such as <strong>apply()</strong> or we can apply the same function to an iterable of items using methods such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the methods such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the <strong>ThreadPool</strong>, we may need to execute follow-up tasks. This may be for many reasons, such as based on the results of tasks already issued to the <strong>ThreadPool</strong>.</p>
+<p><strong>How can we execute follow-up tasks in the ThreadPool?</strong></p>
+<h2>How to Issue Follow-Up Tasks to the ThreadPool</h2>
+<p>We can execute follow-up tasks in the <strong>ThreadPool</strong>.</p>
+<p>There are two main approaches we can use, they are:</p>
+<ol><li>Manually issue follow-up tasks.</li><li>Automatically issue follow-up tasks via a callback.</li></ol>
+<p>Let's take a closer look at each approach to executing a follow-up task.</p>
+<h3>Manually Execute a Follow-Up Task</h3>
+<p>We can manually issue a follow-up task based on the results of a first-round task.</p>
+<p>For example, we may issue a task asynchronously using the <strong>apply_async()</strong> function that returns an <strong>AsyncResult</strong>.</p>
+<pre><code>...
+# issue a task
+result = pool.apply_async(...)</code></pre>
+<p>We can then get the result of the issued task, once available, and conditionally issue a follow-up task.</p>
+<p>For example:</p>
+<pre><code>...
+# check the result of an issued task
+if result.get() &gt; 1.0:
+	# issue a follow-up task
+	pool.apply_async(...)
+</code></pre>
+<h3>Automatically Execute a Follow-Up Task with a Callback</h3>
+<p>We can automatically issue follow-up tasks to the <strong>ThreadPool</strong>.</p>
+<p>This can be achieved by configuring issued tasks to have a result callback function.</p>
+<p>The callback function is a custom function that takes the result of the function call used to issue tasks, e.g. a single return value or an iterator of return values if multiple tasks are issued.</p>
+<p>The callback function is executed in the main thread of the main thread.</p>
+<p>If the <strong>ThreadPool</strong> is created and used within the main thread, then it may be available as a global variable to the result callback function.</p>
+<p>As such, we can directly issue follow-up tasks from the callback function.</p>
+<p>For example:</p>
+<pre><code># result callback function
+def result_callback(result):
+	# check the result of an issued task
+	if result.get() &gt; 1.0:
+		# issue a follow-up task
+		pool.apply_async(...)</code></pre>
+<p>The callback function can be specified when issuing tasks in the main thread via the "<strong>callback</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# issue a task with a result callback
+result = pool.apply_async(..., callback=result_callback)</code></pre>
+<p>Now that we know how to issue follow-up tasks to the <strong>ThreadPool</strong>, let's look at some worked examples.</p>
+<h2>Example of Manually Issuing Follow-Up Tasks to the ThreadPool</h2>
+<p>We can explore how to manually issue follow-up tasks to the <strong>ThreadPool</strong>.</p>
+<p>In this example, we will define a task that takes an integer argument, generates a random number, blocks for a moment, reports the value, then returns the integer argument and generated value. The main thread will issue many of these tasks asynchronously and then check the result. If the result is above a threshold, a follow-up task will be issued that will do much the same as the first task, it will generate a random number, block for a moment and report the values.</p>
+<p>Firstly, we can define the function to execute for the follow-up or second-round task.</p>
+<p>The function takes an integer identifier for the task and a floating point value generated by the first round task.</p>
+<p>The function then generates a random number between 0 and 1 and then blocks for this many seconds to simulate computational effort. It then reports the value and returns a tuple of the two arguments as well as the generated value.</p>
+<p>The <strong>task2()</strong> function below implements this.</p>
+<pre><code># task executed in a worker thread
+def task2(identifier, result):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;&gt;{identifier} with {result}, generated {value}')
+    # return result
+    return (identifier, result, value)
+</code></pre>
+<p>Next, we can define the function to execute first, the first-round task.</p>
+<p>This function takes an integer identifier for the task. It then generates a random value between 0 and 1 and blocks for a fraction of a second. It then reports the value and returns a tuple of the integer argument and the generated value.</p>
+<p>The <strong>task1()</strong> function below implements this.</p>
+<pre><code># task executed in a worker thread
+def task1(identifier):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;{identifier} generated {value}')
+    # return result
+    return (identifier, value)
+</code></pre>
+<p>We then define a <strong>ThreadPool</strong> with the default number of worker threads. In this case, we use the context manager interface to ensure the ThreadPool closes automatically once we are finished with it.</p>
+<pre><code>...
+# create and configure the thread pool
+with ThreadPool() as pool:
+    # ...
+</code></pre>
+<p>You can learn more about the context manager interface in the tutorial:</p>
+<ul><li><a href="../threadpool-context-manager/">How to Use the ThreadPool Context Manager</a></li></ul>
+<p>We can then issue 10 calls to <strong>task1()</strong> asynchronously with integer values from 0 to 9. We will issue the tasks using the <strong>imap_unordered()</strong> function as it will return results as tasks are completed out of order.</p>
+<p>We will iterate the results of <strong>task1()</strong> directly in a for-loop.</p>
+<pre><code>...
+# issue tasks to the thread pool and handle results
+for i,v in pool.imap_unordered(task1, range(10)):
+	# ...
+</code></pre>
+<p>You can learn more about the <strong>imap_unordered()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-imap_unordered/">How to Use ThreadPool imap_unordered() in Python</a></li></ul>
+<p>For each result from the first-round task, we will check if the generated value is above 0.5, and if so, we will issue a single follow-up task using the <strong>apply_async()</strong> function to call <strong>task2()</strong>.</p>
+<pre><code>...
+# issue a follow-up task
+_ = pool.apply_async(task2, args=(i, v))</code></pre>
+<p>You can learn more about the <strong>apply_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-apply_async/">How to Use ThreadPool apply_async() in Python</a></li></ul>
+<p>Once the results from all first-round tasks have been handled and any follow-up tasks issued, we will close the <strong>ThreadPool</strong> to prevent any further tasks from being issued, then join the pool to wait for all issued tasks to be complete.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all issued tasks to complete
+pool.join()</code></pre>
+<p>You can learn more about joining the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul><li><a href="../threadpool-join/">How to Join a ThreadPool in Python</a></li></ul>
+<p>Finally, an "<em>all done</em>" message is reported once all worker threads are closed.</p>
+<pre><code>...
+# all done
+print('All done.')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of manually issuing follow-up tasks to the thread pool
+from random import random
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task2(identifier, result):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;&gt;{identifier} with {result}, generated {value}')
+    # return result
+    return (identifier, result, value)
+
+# task executed in a worker thread
+def task1(identifier):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;{identifier} generated {value}')
+    # return result
+    return (identifier, value)
+
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool and handle results
+        for i,v in pool.imap_unordered(task1, range(10)):
+            # check result
+            if v &gt; 0.5:
+                # issue a follow-up task
+                _ = pool.apply_async(task2, args=(i, v))
+        # close the pool
+        pool.close()
+        # wait for all issued tasks to complete
+        pool.join()
+    # all done
+    print('All done.')
+</code></pre>
+<p>Running the example first creates and starts the <strong>ThreadPool</strong> with a default configuration.</p>
+<p>Next, 10 calls to <strong>task1()</strong> are issued as tasks to the <strong>ThreadPool</strong>, and the results of the tasks are handled in the order that the tasks are completed.</p>
+<p>Each first-round task generates a random number, blocks, reports a message, and returns a tuple.</p>
+<p>The main thread receives results from first-round tasks as they are completed and checks if the generated number was above 0.5. If so, it issues a follow-up task to call <strong>task2()</strong> asynchronously.</p>
+<p>The second-round tasks generate another random number, report the value, and return a tuple. The return results from this task are not considered.</p>
+<p>Once the results from all first-round tasks are handled, the main thread closes the pool and waits for all remaining tasks to complete, e.g. any remaining <strong>task2()</strong> tasks.</p>
+<p>All tasks are completed, and the main thread unblocks and continues on, terminating the application.</p>
+<p>Note, that the results will differ each time the program is run given the use of random numbers. Try running the example a few times.</p>
+<p>This highlights how we can manually issue follow-up tasks to the <strong>ThreadPool</strong> from the main thread.</p>
+<pre><code>&gt;6 generated 0.02968337811151256
+&gt;8 generated 0.2074241065409741
+&gt;5 generated 0.266737147995011
+&gt;7 generated 0.37003972461307033
+&gt;0 generated 0.4234776827040716
+&gt;4 generated 0.5309317967257969
+&gt;9 generated 0.45219036344603725
+&gt;1 generated 0.8073731082312345
+&gt;3 generated 0.868294249111384
+&gt;2 generated 0.9181818442726075
+&gt;&gt;4 with 0.5309317967257969, generated 0.49640855564496544
+&gt;&gt;2 with 0.9181818442726075, generated 0.55859560713572
+&gt;&gt;1 with 0.8073731082312345, generated 0.8500396311572717
+&gt;&gt;3 with 0.868294249111384, generated 0.9677659607712451
+All done.</code></pre>
+<p>Next, let's look at how we might issue follow-up tasks automatically using a callback function.</p>
+<h2>Example of Issuing Follow-Up Tasks From a Callback</h2>
+<p>We can explore how to issue follow-up tasks automatically using a callback function.</p>
+<p>This can be achieved by updating the previous example to define a callback function that handles the results from first-round tasks and issues follow-tasks to the <strong>ThreadPool</strong>. The main thread is only responsible for issuing the first-round tasks.</p>
+<p>This makes the code much cleaner to read and manage.</p>
+<p>Importantly, this is only possible because the callback function is executed in the main thread, which means it has access to the <strong>ThreadPool</strong> directly as a global variable.</p>
+<p>Firstly, we can define a callback function. This function is called only once all first-round tasks are completed and are passed an iterable of all results from the first-round tasks.</p>
+<p>This is a downside of using a callback. Specifically, it is not called until all tasks are completed, compared to the previous approach of issuing follow-up tasks manually as first-round tasks are completed.</p>
+<p>The callback function iterates over the return values from each first-round task, checks the floating point value, and issues a follow-up task call to <strong>task2()</strong> as needed.</p>
+<p>The <strong>result_callback()</strong> function below implements this.</p>
+<pre><code># handle results of the task (in the main thread)
+def result_callback(result_iterator):
+    # unpack result
+    for i,v in result_iterator:
+        # check result
+        if v &gt; 0.5:
+            # issue a follow-up task
+            _ = pool.apply_async(task2, args=(i, v))
+</code></pre>
+<p>Next, in the main thread, we can issue all 10 first-round tasks asynchronously using the <strong>map_async()</strong> function and specify the result callback function.</p>
+<p>This returns an <strong>AsyncResult</strong> object.</p>
+<pre><code>...
+# issue tasks asynchronously to the thread pool
+result = pool.map_async(task1, range(10), callback=result_callback)</code></pre>
+<p>You can learn more about the <strong>map_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-map_async/">How to Use ThreadPool map_async() in Python</a></li></ul>
+<p>We can then wait for all first-round tasks to be completed by waiting on the <strong>AsyncResult</strong> object.</p>
+<pre><code>...
+# wait for issued tasks to complete
+result.wait()</code></pre>
+<p>After we know that all first-round tasks are completed and any follow-up tasks have been issued, we can then close the pool and wait for all second-round tasks to be completed.</p>
+<pre><code>...
+# close the pool
+pool.close()
+# wait for all issued tasks to complete
+pool.join()</code></pre>
+<p>If we did not wait for the first-round tasks to complete first and closed the pool immediately, then we would not be able to issue any follow-up tasks, and an error would be raised.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of issuing a follow-up task automatically with a result callback
+from random import random
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# handle results of the task (in the main thread)
+def result_callback(result_iterator):
+    # unpack result
+    for i,v in result_iterator:
+        # check result
+        if v &gt; 0.5:
+            # issue a follow-up task
+            _ = pool.apply_async(task2, args=(i, v))
+
+# task executed in a worker thread
+def task2(identifier, result):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;&gt;{identifier} with {result}, generated {value}')
+    # return result
+    return (identifier, result, value)
+
+# task executed in a worker thread
+def task1(identifier):
+    # generate a random number
+    value = random()
+    # block for a moment
+    sleep(value)
+    # report result
+    print(f'&gt;{identifier} generated {value}')
+    # return result
+    return (identifier, value)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks asynchronously to the thread pool
+        result = pool.map_async(task1, range(10), callback=result_callback)
+        # wait for issued tasks to complete
+        result.wait()
+        # close the pool
+        pool.close()
+        # wait for all issued tasks to complete
+        pool.join()
+    # all done
+    print('All done.')
+</code></pre>
+<p>Running the example first creates and starts the <strong>ThreadPool</strong> with a default configuration.</p>
+<p>Next, 10 calls to <strong>task1()</strong> are issued as tasks to the <strong>ThreadPool</strong>, and an <strong>AsyncResult</strong> is returned. The main thread then blocks waiting for all first-round tasks to be completed.</p>
+<p>Each first-round task generates a random number, blocks, reports a message, and returns a tuple.</p>
+<p>Once all first-round tasks finish, the result callback is then called with an iterable of the return values from the first-round tasks. The iterable is traversed and any second-round tasks are issued to the <strong>ThreadPool</strong>.</p>
+<p>The main thread carries on, closing the pool and blocking until all second-round tasks are completed.</p>
+<p>The second-round tasks generate another random number, report the value, and return a tuple. The return results from this task are not considered.</p>
+<p>All second-round tasks are completed, and the main thread unblocks and continues on, terminating the application.</p>
+<p>Note, that the results will differ each time the program is run given the use of random numbers. Try running the example a few times.</p>
+<p>This highlights how we can automatically issue follow-up tasks to the <strong>ThreadPool</strong> from the main thread.</p>
+<pre><code>&gt;3 generated 0.2387321541129851
+&gt;6 generated 0.2905473999983814
+&gt;1 generated 0.4747636145164348
+&gt;2 generated 0.5917820472473575
+&gt;4 generated 0.8272344029491345
+&gt;5 generated 0.8663920475565895
+&gt;8 generated 0.655281648334691
+&gt;0 generated 0.9258262409168762
+&gt;7 generated 0.9521778472629924
+&gt;9 generated 0.8818478510866756
+&gt;&gt;0 with 0.9258262409168762, generated 0.012142433405473163
+&gt;&gt;9 with 0.8818478510866756, generated 0.2185535145295543
+&gt;&gt;7 with 0.9521778472629924, generated 0.28010278928179344
+&gt;&gt;2 with 0.5917820472473575, generated 0.4547263678109016
+&gt;&gt;4 with 0.8272344029491345, generated 0.48682374727972644
+&gt;&gt;5 with 0.8663920475565895, generated 0.7814307314216037
+&gt;&gt;8 with 0.655281648334691, generated 0.823282476450547
+All done.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to execute follow-up tasks to the <strong>ThreadPool</strong> in Python.</p>
+</main>
+</body>
+</html>

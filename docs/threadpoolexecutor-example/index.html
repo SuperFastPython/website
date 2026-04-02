@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor Example in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor Example in Python</h1>
+<div class="post-meta">November 27, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>The <a href="../threadpoolexecutor-in-python/"><strong>ThreadPoolExecutor</strong> is a flexible and powerful thread pool</a> for executing ad hoc tasks in an asynchronous manner.</p>
+<p>In this tutorial, you will discover a <strong>ThreadPoolExecutor</strong> example that you can use as a template for your own project.</p>
+<p>Let's get started.</p>
+<h2 id="threadpoolexecutor-example">ThreadPoolExecutor Example</h2>
+<p>Perhaps the most common use case for the <meta/><code>ThreadPoolExecutor</code> is to download files from the internet concurrently.</p>
+<p>It's a useful problem because there are many ways we can download files. We will use this problem as the basis to explore the different patterns with the <code>ThreadPoolExecutor</code> for downloading files concurrently.</p>
+<p>This example is divided into three parts; they are:</p>
+<ol><li>Download Files Serially</li><li>Download Files Concurrently With <code>submit()</code></li><li>Download Files Concurrently With <code>submit()</code> and <code>as_completed()</code></li></ol>
+<p>First, let's develop a serial (non-concurrent) version of the program.</p>
+<h2 id="download-files-serially">Download Files Serially</h2>
+<p></p>
+<p>Consider the situation where we might want to have a local copy of some of the Python API documentation on concurrency for later review.</p>
+<p>Perhaps we are taking a flight and won't have internet access and will need to refer to the documentation in HTML format as it appears on the docs.python.org website. It's a contrived scenario. Python is installed with docs and we also have the pydoc command, but go with me here.</p>
+<p>We may want to download local copies of the following ten URLs that cover the extent of the Python concurrency APIs.</p>
+<ul><li><a href="https://docs.python.org/3/library/concurrency.html">https://docs.python.org/3/library/concurrency.html</a></li><li><a href="https://docs.python.org/3/library/concurrent.html">https://docs.python.org/3/library/concurrent.html</a></li><li><a href="https://docs.python.org/3/library/concurrent.futures.html">https://docs.python.org/3/library/concurrent.futures.html</a></li><li><a href="https://docs.python.org/3/library/threading.html">https://docs.python.org/3/library/threading.html</a></li><li><a href="https://docs.python.org/3/library/multiprocessing.html">https://docs.python.org/3/library/multiprocessing.html</a></li><li><a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">https://docs.python.org/3/library/multiprocessing.shared_memory.html</a></li><li><a href="https://docs.python.org/3/library/subprocess.html">https://docs.python.org/3/library/subprocess.html</a></li><li><a href="https://docs.python.org/3/library/queue.html">https://docs.python.org/3/library/queue.html</a></li><li><a href="https://docs.python.org/3/library/sched.html">https://docs.python.org/3/library/sched.html</a></li><li><a href="https://docs.python.org/3/library/contextvars.html ">https://docs.python.org/3/library/contextvars.html </a></li></ul>
+<p>We can define these URLs as a list of strings for processing in our program.</p>
+<pre><code># python concurrency API docs
+URLS = ['https://docs.python.org/3/library/concurrency.html',
+        'https://docs.python.org/3/library/concurrent.html',
+        'https://docs.python.org/3/library/concurrent.futures.html',
+        'https://docs.python.org/3/library/threading.html',
+        'https://docs.python.org/3/library/multiprocessing.html',
+        'https://docs.python.org/3/library/multiprocessing.shared_memory.html',
+        'https://docs.python.org/3/library/subprocess.html',
+        'https://docs.python.org/3/library/queue.html',
+        'https://docs.python.org/3/library/sched.html',
+        'https://docs.python.org/3/library/contextvars.html']
+</code></pre>
+<p>URLs are reasonably easy to download in Python.</p>
+<p>First, we can attempt to open a connection to the server using the <code>urlopen()</code> function in <code>urllib.request</code> module and specify the URL and a reasonable timeout in seconds.</p>
+<p>This will give a connection, which we can then call the <code>read()</code> function to read the contents of the file. Using the context manager for the connection will ensure it will be closed automatically, even if an exception is thrown.</p>
+<p>The <code>download_url()</code> function below implements this, taking a URL as a parameter and returning the contents of the file, or <code>None</code> if the file cannot be downloaded for whatever reason. We will set a lengthy timeout of 3 seconds in case our internet connection is flaky for some reason.</p>
+<pre><code># download a url and return the raw data, or None on error
+def download_url(url):
+    try:
+        # open a connection to the server
+        with urlopen(url, timeout=3) as connection:
+            # read the contents of the html doc
+            return connection.read()
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return None
+</code></pre>
+<p>Once we have the data for a URL, we can save it as a local file.</p>
+<p>First, we need to retrieve the filename of the file specified in the URL. There are a few ways to do this, but the <code>basename()</code> function from the <code>os.path</code> module is a common approach when working with paths. We can then use the <code>join()</code> function on the same module to construct an output path for saving the file, using a directory we specify and the filename.</p>
+<p>We can then use the <code>open()</code> built-in function to open the file in write-binary mode and save the contents of the file, again using the context manager to ensure the file is closed once we are finished.</p>
+<p>The <code>save_file()</code> function below implements this, taking the URL that was downloaded, the contents of the file that was downloaded, and the local output path where we wish to save downloaded files. It returns the output path that was used to save the file, in case we want to report progress to the user.</p>
+<pre><code># save data to a local file
+def save_file(url, data, path):
+    # get the name of the file from the url
+    filename = basename(url)
+    # construct a local path for saving the file
+    outpath = join(path, filename)
+    # save to file
+    with open(outpath, 'wb') as file:
+        file.write(data)
+    return outpath
+</code></pre>
+<p>Next, we can call the <code>download_url()</code> function for a given URL in our list, then <code>save_file()</code> to save each downloaded file.</p>
+<p>The <code>download_and_save()</code> function below implements this, reporting progress along the way, and handling the case of URLs that cannot be downloaded.</p>
+<pre><code># download and save a url as a local file
+def download_and_save(url, path):
+    # download the url
+    data = download_url(url)
+    # check for no data
+    if data is None:
+        print(f'&gt;Error downloading {url}')
+        return
+    # save the data to a local file
+    outpath = save_file(url, data, path)
+    # report progress
+    print(f'&gt;Saved {url} to {outpath}')
+</code></pre>
+<p>Finally, we need a function to drive the process.</p>
+<p>First, the local output location where we will be saving files needs to be created, if it does not exist. We can achieve this using the <code>makedirs()</code> function in the <code>os</code> module.</p>
+<p>We can iterate over a list of URLs and call our <code>download_and_save()</code> function for each.</p>
+<p>The <meta/><code>download_docs()</code> function below implements this.</p>
+<pre><code># download a list of URLs to local files
+def download_docs(urls, path):
+    # create the local directory, if needed
+    makedirs(path, exist_ok=True)
+    # download each url and save as a local file
+    for url in urls:
+        download_and_save(url, path)
+</code></pre>
+<p>And that's it.</p>
+<p>We can then call our <code>download_docs()</code> with our list of URLs and an output directory. In this case, we will use a <code>'docs/'</code> subdirectory of our current working directory (where the Python script is located) as the output directory.</p>
+<p>Tying this together, the complete example of downloading files serially is listed below.</p>
+<pre><code># SuperFastPython.com
+# download document files and save to local files serially
+from os import makedirs
+from os.path import basename
+from os.path import join
+from urllib.request import urlopen
+
+# download a url and return the raw data, or None on error
+def download_url(url):
+    try:
+        # open a connection to the server
+        with urlopen(url, timeout=3) as connection:
+            # read the contents of the html doc
+            return connection.read()
+    except:
+        # bad url, socket timeout, http forbidden, etc.
+        return None
+
+# save data to a local file
+def save_file(url, data, path):
+    # get the name of the file from the url
+    filename = basename(url)
+    # construct a local path for saving the file
+    outpath = join(path, filename)
+    # save to file
+    with open(outpath, 'wb') as file:
+        file.write(data)
+    return outpath
+
+# download and save a url as a local file
+def download_and_save(url, path):
+    # download the url
+    data = download_url(url)
+    # check for no data
+    if data is None:
+        print(f'&gt;Error downloading {url}')
+        return
+    # save the data to a local file
+    outpath = save_file(url, data, path)
+    # report progress
+    print(f'&gt;Saved {url} to {outpath}')
+
+# download a list of URLs to local files
+def download_docs(urls, path):
+    # create the local directory, if needed
+    makedirs(path, exist_ok=True)
+    # download each url and save as a local file
+    for url in urls:
+        download_and_save(url, path)
+
+# python concurrency API docs
+URLS = ['https://docs.python.org/3/library/concurrency.html',
+        'https://docs.python.org/3/library/concurrent.html',
+        'https://docs.python.org/3/library/concurrent.futures.html',
+        'https://docs.python.org/3/library/threading.html',
+        'https://docs.python.org/3/library/multiprocessing.html',
+        'https://docs.python.org/3/library/multiprocessing.shared_memory.html',
+        'https://docs.python.org/3/library/subprocess.html',
+        'https://docs.python.org/3/library/queue.html',
+        'https://docs.python.org/3/library/sched.html',
+        'https://docs.python.org/3/library/contextvars.html']
+# local path for saving the files
+PATH = 'docs'
+# download all docs
+download_docs(URLS, PATH)
+</code></pre>
+<p>Running the example iterates over the list of URLs and downloads each in turn.</p>
+<p>Each file is then saved to a local file in the specified directory.</p>
+<p>The process takes about 700 milliseconds to about one second (1,000 milliseconds) on my system.</p>
+<p><strong>Try running it a few times; how long does it take on your system?</strong><br/>Let me know in the comments.</p>
+<pre><code>&gt;Saved https://docs.python.org/3/library/concurrency.html to docs/concurrency.html
+&gt;Saved https://docs.python.org/3/library/concurrent.html to docs/concurrent.html
+&gt;Saved https://docs.python.org/3/library/concurrent.futures.html to docs/concurrent.futures.html
+&gt;Saved https://docs.python.org/3/library/threading.html to docs/threading.html
+&gt;Saved https://docs.python.org/3/library/multiprocessing.html to docs/multiprocessing.html
+&gt;Saved https://docs.python.org/3/library/multiprocessing.shared_memory.html to docs/multiprocessing.shared_memory.html
+&gt;Saved https://docs.python.org/3/library/subprocess.html to docs/subprocess.html
+&gt;Saved https://docs.python.org/3/library/queue.html to docs/queue.html
+&gt;Saved https://docs.python.org/3/library/sched.html to docs/sched.html
+&gt;Saved https://docs.python.org/3/library/contextvars.html to docs/contextvars.html
+</code></pre>
+<p>Next, we can look at making the program concurrent using a thread pool.</p>
+<h2 id="download-files-concurrently-with-submit">Download Files Concurrently With submit()</h2>
+<p>Let's look at updating our program to make use of the <code>ThreadPoolExecutor</code> to download files concurrently.</p>
+<p>A first thought might be to use <code>map()</code> as we just want to make a for-loop concurrent.</p>
+<p>Unfortunately, the <code>download_and_save()</code> function that we call each iteration in the loop takes two parameters, only one of which is an iterable.</p>
+<p>An alternate approach is to use <meta/><code>submit()</code> to call <code>download_and_save()</code> in a separate thread for each URL in the provided list.</p>
+<p>We can do this by first configuring a thread pool with the number of threads equal to the number of URLs in the list. We'll use the context manager for the thread pool so that it will be closed automatically for us when we finish.</p>
+<p>We can then call the <code>submit()</code> function for each URL using a list comprehension. We don't even need the <code>Future</code> objects returned from calling <meta/><code>submit()</code>, as there is no result we're waiting for.</p>
+</main>
+</body>
+</html>

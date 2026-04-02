@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Share a NumPy Array Via a Pipe – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Share a NumPy Array Via a Pipe</h1>
+<div class="post-meta">October 3, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>share NumPy arrays between processes</strong> using a <strong>multiprocessing Pipe</strong>.</p>
+<p>A <strong>Pipe</strong> is a data structure for inter-process communication that connects one process with another.</p>
+<p>In this tutorial, you will discover how to share NumPy arrays between processes using a <strong>Pipe</strong>.</p>
+<p>Let's get started.</p>
+<h2>What is a Multiprocessing Pipe</h2>
+<p>In multiprocessing, a <strong>Pipe</strong> class provides a way to send data between two processes.</p>
+<p>Under the covers, a <strong>Pipe</strong> class is implemented using a pair of connection objects.</p>
+<p>Creating a <strong>Pipe</strong> instance will create two connection objects. Both connection objects can be used for sending and receiving data.</p>
+<blockquote>
+<p>The Pipe() function returns a pair of connection objects connected by a pipe which by default is duplex (two-way).</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing -- Process-based parallelism</a>.</cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# create the connections of a shared pipe
+conn1, conn2 = Pipe()</code></pre>
+<p>Python objects can be shared between processes using the <strong>Pipe</strong>, although this is generally discouraged.</p>
+<blockquote>
+<p>However, one should generally avoid sending shared objects to other processes using pipes or queues.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing -- Process-based parallelism</a>.</cite></blockquote>
+<p>The <strong>send()</strong> method on the connection can be used to send objects from one process to another.</p>
+<p>The objects sent must be picklable.</p>
+<p>For example:</p>
+<pre><code>...
+# send an object
+conn2.send('Hello world')</code></pre>
+<p>The <strong>recv()</strong> method on the connection can be used to receive objects in one process sent by another.</p>
+<p>The objects received will be automatically un-pickled.</p>
+<p>For example:</p>
+<pre><code>...
+# receive an object
+value = conn1.recv()</code></pre>
+<p>The function call will block until an object is received.</p>
+<p>Once sharing data has finished, the connection can be closed via the <strong>close()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# close the connection
+conn2.close()</code></pre>
+<p>The connection will be closed automatically when the object is garbage collected. This may mean that we do not have to explicitly close the <strong>Pipe</strong> once we are finished with it.</p>
+<p>You can learn more about how to use a multiprocessing <strong>Pipe</strong> in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-pipe-in-python/">Multiprocessing Pipe in Python</a></li>
+</ul>
+<p>Now that we know how to use a multiprocessing <strong>Pipe</strong>, let's consider how we might use it to share a NumPy array.</p>
+<h2>How to Share an Array Using a Pipe</h2>
+<p>A multiprocessing <strong>Pipe</strong> can be used directly to share a NumPy array.</p>
+<p>This can be achieved by:</p>
+<ul>
+<li>Selecting one connection object for each process.</li>
+<li>Calling the <strong>send()</strong> method and passing the array on one connection.</li>
+<li>Calling the <strong>recv()</strong> method and assigning the array on the other connection.</li>
+</ul>
+<p>This will allow a NumPy array to be transmitted from one process to another, such as:</p>
+<ul>
+<li>Sharing an array prepared in the parent process with a child process.</li>
+<li>Returning an array prepared in a child process to a parent process.</li>
+</ul>
+<p>A limitation of using a <strong>Pipe</strong> to share NumPy arrays is that the array must be pickled in order to be sent, and then unpickled when received.</p>
+<p>This can be very slow.</p>
+<p>For example, you can see a benchmark of sharing an array via a Pipe compared to other methods in the tutorial:</p>
+<ul>
+<li><a href="../numpy-array-share-fastest/">Fastest Way To Share NumPy Array Between Processes</a></li>
+</ul>
+<p>Further, very large Python objects transmitted between processes using a <strong>Pipe</strong> could raise a runtime exception, such as pickled objects larger than 32 megabytes, although preliminary testing as shown this to not be the case in Python 3.11 on macOS.</p>
+<blockquote>
+<p>The object must be picklable. Very large pickles (approximately 32 MiB+, though it depends on the OS) may raise a ValueError exception.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing -- Process-based parallelism</a>.</cite></blockquote>
+<p>Another limitation of using a <strong>Pipe</strong> for inter-process communication is that it is only able to connect one process with another. This is different from a Queue (discussed in the next tutorial), which allows more elaborate connection schemes between processes, such as one-to-many and many-to-many.</p>
+<p>Now that we know how to share a NumPy array between processes using a multiprocessing <strong>Pipe</strong>, let's look at some worked examples, starting with how to transmit an array from a parent to a child process.</p>
+<h2>Example of Sharing a NumPy Array Via a Pipe</h2>
+<p>We can explore the case of sharing a NumPy array with a child process via <strong>Pipe</strong>.</p>
+<p>In this example, we will create an array in the parent process and then create a <strong>Pipe</strong>. The parent process will create and start the child process and pass it to one end of the <strong>Pipe</strong>. The child process will receive the array and block until it arrives. The parent process will then send the array to the child and block until the child process is done, then report the contents of the shared array to show that changes made in the child are not reflected in the parent process.</p>
+<p>Firstly, we can define a task function to be executed in the child process.</p>
+<p>The function will take a connection as an argument. It then calls the <strong>recv()</strong> method on the connection and blocks until the NumPy array is received. It will then report on some of the content of the array, change all values to zero, and then report that the contents of the array were changed.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task(connection):
+    # read the data from the pipe
+    data = connection.recv()
+    # check some data in the array
+    print(data[:5,:5])
+    # change data in the array
+    data.fill(0.0)
+    # confirm the data was changed
+    print(data[:5,:5])
+</code></pre>
+<p>Next, in the main process, we can create an array with a modest size, filled with ones.</p>
+<pre><code>...
+# define the size of the numpy array
+n = 10000
+# create the numpy array
+data = ones((n,n))</code></pre>
+<p>We will then create the <strong>Pipe</strong> which returns two connection objects, one for the parent and one for the child process.</p>
+<pre><code>...
+# create the shared pipe
+conn1, conn2 = Pipe()</code></pre>
+<p>We can then create and configure a child process to execute our <strong>task()</strong> function and pass one connection as an argument.</p>
+<p>The child process is then started so that it blocks waiting to read the transmitted array.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(conn1,))
+# start the child process
+child.start()</code></pre>
+<p>The parent process will then transmit the NumPy array via the other connection object and block until the child process is terminated.</p>
+<pre><code>...
+# send the data to the child process
+conn2.send(data)
+# wait for the child process to complete
+child.join()</code></pre>
+<p>Finally, we can check the contents of the array.</p>
+<pre><code>...
+# check some data in the array
+print(data[:5,:5])</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a numpy array using a pipe
+from multiprocessing import Process
+from multiprocessing import Pipe
+from numpy import ones
+
+# task executed in a child process
+def task(connection):
+    # read the data from the pipe
+    data = connection.recv()
+    # check some data in the array
+    print(data[:5,:5])
+    # change data in the array
+    data.fill(0.0)
+    # confirm the data was changed
+    print(data[:5,:5])
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,n))
+    # create the shared pipe
+    conn1, conn2 = Pipe()
+    # create a child process
+    child = Process(target=task, args=(conn1,))
+    # start the child process
+    child.start()
+    # send the data to the child process
+    conn2.send(data)
+    # wait for the child process to complete
+    child.join()
+    # check some data in the array
+    print(data[:5,:5])
+</code></pre>
+<p>Running the example first creates the NumPy array populated with one values.</p>
+<p>The <strong>Pipe</strong> is then created, providing one connection object for each process.</p>
+<p>The child process is then created, configured with one of the connection objects, and then started. The child process runs and then blocks on the provided connection object until the array is received.</p>
+<p>The main process then transmits the array via the <strong>Pipe</strong>, and then blocks until the child process is done.</p>
+<p>The child process receives the array and then confirms the array was populated with one values. It then fills the array with zero values and confirms the array's contents were changed.</p>
+<p>The child process terminates and the main process resumes. It confirms that the contents of the array in the parent process have not changed.</p>
+<p>This highlights how we can share a copy of an array with a child process via a multiprocessing <strong>Pipe</strong>, and how changes to the copy of the array in the child process are not reflected in the parent process.</p>
+<pre><code>[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+[[0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]
+ [0. 0. 0. 0. 0.]]
+[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+</code></pre>
+<p>Next, let's look at an example of using a <strong>Pipe</strong> to simulate a return value from a child process to a parent process.</p>
+<h2>Example of Returning a NumPy Array Via Pipe</h2>
+<p>We can explore the case of simulating the return of a NumPy array from a child process to a parent process using a <strong>Pipe</strong>.</p>
+<p>In this example, we will create a <strong>Pipe</strong> and share one connection with the child process and keep the other connection in the parent process. The child process will then create a NumPy array and send it to the parent process via the <strong>Pipe</strong>.</p>
+<p>Firstly, we can define a task function that takes a <strong>Pipe</strong> connection as an argument and creates and transmits the array.</p>
+<p>The function first creates an array initialized with one values. It then confirms the contents of the array contains one values and sends it via the <strong>Pipe</strong>.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a child process
+def task(pipe):
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,n))
+    # check some data in the array
+    print(data[:5,:5])
+    # send the array via a pipe
+    pipe.send(data)
+</code></pre>
+<p>Next, the main process will create the <strong>Pipe</strong>.</p>
+<pre><code>...
+# create the shared pipe
+conn1, conn2 = Pipe()</code></pre>
+<p>It then creates the child process and configures it to execute our task function, passing it one of the connection objects as an argument.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(conn2,))</code></pre>
+<p>The child process is then started and the main process blocks waiting to receive the array via the <strong>Pipe</strong>.</p>
+<pre><code>...
+# start the child process
+child.start()
+# read the data from the pipe
+data = conn1.recv()</code></pre>
+<p>Finally, the main process confirms the contents of the received NumPy array.</p>
+<pre><code>...
+# check some data in the array
+print(data[:5,:5])</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of returning an array from a child process
+from multiprocessing import Process
+from multiprocessing import Pipe
+from numpy import ones
+
+# task executed in a child process
+def task(pipe):
+    # define the size of the numpy array
+    n = 10000
+    # create the numpy array
+    data = ones((n,n))
+    # check some data in the array
+    print(data[:5,:5])
+    # send the array via a pipe
+    pipe.send(data)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared pipe
+    conn1, conn2 = Pipe()
+    # create a child process
+    child = Process(target=task, args=(conn2,))
+    # start the child process
+    child.start()
+    # read the data from the pipe
+    data = conn1.recv()
+    # check some data in the array
+    print(data[:5,:5])
+</code></pre>
+<p>Running the example first creates the <strong>Pipe</strong> with the two connection objects.</p>
+<p>Next, the child process is created, configured, and started.</p>
+<p>The main process then blocks, waiting to read the NumPy array from the <strong>Pipe</strong>.</p>
+<p>The child process runs, first creating a NumPy array initialized with one values.</p>
+<p>It then reports on the contents of the array and transmits it to the parent process via the <strong>Pipe</strong>. The child process then terminates.</p>
+<p>The main process reads the NumPy array from the <strong>Pipe</strong> and confirms it contains one values.</p>
+<p>This highlights how we can simulate a NumPy array return value from a child process to a parent process using a <strong>Pipe</strong>.</p>
+<pre><code>[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+[[1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]
+ [1. 1. 1. 1. 1.]]
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share NumPy arrays between processes using a <strong>Pipe</strong>.</p>
+</main>
+</body>
+</html>

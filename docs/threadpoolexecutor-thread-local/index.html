@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread-Local With ThreadPoolExecutor in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread-Local With ThreadPoolExecutor in Python</h1>
+<div class="post-meta">December 2, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You can use <strong>thread local data</strong> by passing an instance of local to task functions in the <a href="../threadpoolexecutor-in-python/"><strong>ThreadPoolExecutor</strong> in Python</a>.</p>
+<p>In this tutorial, you will discover how to use thread local data in Python thread pools.</p>
+<p>Let's get started.</p>
+<h2>Need for Thread Local Data in ThreadPoolExecutor Tasks</h2>
+<p>The <code>ThreadPoolExecutor</code> in Python provides a pool of reusable threads for executing ad hoc tasks.</p>
+<p>You can submit tasks to the thread pool by calling the <code>submit()</code> function and passing in the name of the function you wish to execute on another thread. You can also submit tasks by calling the <code>map()</code> function and specifying the name of the function to execute and the iterable of items to which your function will be applied.</p>
+<p>When using a thread pool, we may need to initialize a variable, data, or resource to be used by each worker thread across all tasks executed by that thread.</p>
+<p>For example, perhaps each thread is required to have its own handle for logging or connection to a remote server to be held open and reused when executing tasks.</p>
+<p>This requires that we initialize data for each worker thread and store it in a way that only each worker thread can access.</p>
+<p>We may be tempted to use global variables, but this would allow any thread to access the data rather than keeping the data private to each worker thread.</p>
+<p>How can we store data for each worker thread in the <meta/><code>ThreadPoolExecutor</code>?</p>
+<h2>How to Use Thread Local Data With The ThreadPoolExecutor</h2>
+<p>Worker threads can store private data using thread local data.</p>
+<p>Thread local data is a context that allows threads to store data that is thread-specific. That is, other threads cannot access it.</p>
+<p>A thread local context can be created by calling the <code>threading.local()</code> function.</p>
+<p>For example:</p>
+<pre><code>...
+# create a local context
+local = local()
+</code></pre>
+<p>Next, we need a way for each worker thread to initialize thread-specific data and store it in the thread local context.</p>
+<p>This can be achieved by defining a custom worker thread initialization function and passing the thread local context as an argument. Each worker thread in the <code>ThreadPoolExecutor</code> can then initialize any required data and store it in the thread local context.</p>
+<p>For example:</p>
+<pre><code># function for initializing the worker threads
+def initializer_worker(local):
+	# prepare data
+	value = 'test'
+	# store data in local
+	local.data = value
+</code></pre>
+<p>Variables with any names we like can be added to the thread local context; here, <code>local.data</code> is arbitrary.</p>
+<p>The value of <meta/><code>local.data</code> will be specific to each thread that adds a variable to the thread local context.</p>
+<p>We can then configure the <meta/><code>ThreadPoolExecutor</code> to call the custom initialization function when each worker thread is created.</p>
+<p>This can be achieved via the <code>initializer</code> argument in the constructor that specifies the name of the custom initialization function, and the <code>initargs</code> argument that specifies a tuple of arguments to the function.</p>
+<pre><code>...
+# configure the thread pool with a custom initialization function
+executor = ThreadPoolExecutor(initializer=initializer_worker, initargs=(local,))
+</code></pre>
+<p>Finally, the target task function can take the thread local context as an argument, allowing each worker thread to access the thread local data.</p>
+<pre><code># target task function
+def task(local):
+	# access thread local data
+	data = local.value
+	# do things...
+</code></pre>
+<p>Now that we know how to store local data for each worker thread in the <meta/><code>ThreadPoolExecutor</code>, let's look at a worked example.</p>
+<h2>Example of Using Thread Local Data in the ThreadPoolExecutor</h2>
+<p>Let's develop an example of storing local data for each worker thread in the <meta/><code>ThreadPoolExecutor</code>.</p>
+<p>First, we can define a custom initializer function that takes a thread local context and sets up a custom variable named <em>key</em> with a unique value between 0.0 and 1.0 for each worker thread.</p>
+<p>We can also report the value stored by each thread, useful for reference later.</p>
+<pre><code># function for initializing the worker thread
+def initializer_worker(local):
+    # generate a unique value for the worker thread
+    local.key = random()
+    # store the unique worker key in a thread local variable
+    print(f'Initializing worker thread {local.key}')
+</code></pre>
+<p>Next, we can then define our target task function to take the same thread local context and to access the thread local variable for the worker thread and make use of it.</p>
+<p>In this case, the target task will sleep to mimic an IO-bound task and use the value stored in the thread local context, that is the specific value for the worker thread executing the task. The task will then report the thread-specific value that was used that will match a value printed during the initialization of the worker thread.</p>
+<pre><code># a mock task that sleeps for a random amount of time less than one second
+def task(local):
+    # access the unique key for the worker thread
+    mykey = local.key
+    # make use of it
+    sleep(mykey)
+    return f'Worker using {mykey}'
+</code></pre>
+<p>We can then configure our new <meta/><code>ThreadPoolExecutor</code> instance to use the initializer with the required local argument.</p>
+<p>First, we create the single thread local context shared between the initializer functions and the task functions.</p>
+<pre><code>...
+# get the local context
+local = threading.local()
+</code></pre>
+<p>Next, we can create the thread pool and specify two worker threads and the custom worker thread initializer function that we defined above and the single argument to the initialization function, which is the thread local context.</p>
+<pre><code>...
+# create a thread pool
+executor = ThreadPoolExecutor(max_workers=2, initializer=initializer_worker, initargs=(local,))
+</code></pre>
+<p>We can then dispatch ten tasks into the thread pool with the same thread local context.</p>
+</main>
+</body>
+</html>

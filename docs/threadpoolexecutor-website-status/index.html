@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Check the Status of Multiple Websites Concurrently in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Check the Status of Multiple Websites Concurrently in Python</h1>
+<div class="post-meta">November 17, 2021&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>The <a href="../threadpoolexecutor-in-python/"><strong>ThreadPoolExecutor</strong> class in Python</a> can be used to check the status of multiple websites concurrently.</p>
+<p>Using threads to check website status can dramatically speed-up the process compared to checking the status of each website sequentially, one by one.</p>
+<p>In this tutorial, you will discover how to concurrently check the status of websites on the internet using thread pools in Python.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul><li>How to check the status of websites on the internet sequentially in Python and how slow it can be.</li><li>How to use the <code>ThreadPoolExecutor</code> to manage a pool of worker threads.</li><li>How to update code to check multiple websites at the same time and dramatically accelerate the process.</li></ul>
+<p>Let's dive in.</p>
+<h2>Check the Status of Websites One-by-One (slowly)</h2>
+<p>Checking the status of websites on the internet is a common task.</p>
+<p>For example:</p>
+<ul><li>You may need to check if a suite of company websites are accessible and take action if they are not.</li><li>You may need to check if websites start generating errors, such as under heavy load.</li><li>You may need to check if your internet connection is working correctly.</li></ul>
+<p>There are professional services we may use for some of these tasks. Nevertheless, sometimes we need a quick script to check on the status of a number of websites.</p>
+<p>There are many ways to check on the status of a website in Python via HTTP.</p>
+<p>Perhaps the most common is to open a connection to the server using the <code>urlopen()</code> function, then call the <code>getcode()</code> function on the open <code>HTTPSConnection</code>.</p>
+<p>You can learn more about these standard library functions here:</p>
+<ul><li><a href="https://docs.python.org/3/library/urllib.request.html">urllib.request - Extensible library for opening URLs</a></li><li><a href="https://docs.python.org/3/library/http.client.html">http.client — HTTP protocol client</a></li></ul>
+<p>For example, we can use the context manager to open the HTTP connection and get the status code, which will ensure that the connection will be closed automatically when we exit the block either normally, or if an exception is raised.</p>
+<pre><code>...
+# open a connection to the server
+with urlopen(url) as connection:
+    # get the response code, e.g. 200
+    code = connection.getcode()
+    # ...
+</code></pre>
+<p>Also, given that we may be calling this script many times under possibly intermittent internet connectivity, we may also want to add a timeout to the connection attempt, perhaps a few seconds.</p>
+<p>This can be achieved when calling the <code>urlopen()</code> function via the <code>timeout</code> argument.</p>
+<pre><code>...
+# open a connection to the server with a timeout
+with urlopen(url, timeout=3) as connection:
+    # get the response code, e.g. 200
+    code = connection.getcode()
+</code></pre>
+<p>Opening an HTTP connection can fail for many reasons, such as malformed URLs to servers.</p>
+<p>We can choose to handle some of these cases and return an appropriate message.</p>
+<p>For example, if we are able to connect but the server reports an error, then an <code>HTTPError</code> will be raised on which we can retrieve the specific HTTP status code.</p>
+<pre><code>...
+# handle connection errors
+try:
+    # open a connection to the server with a timeout
+    with urlopen(url, timeout=3) as connection:
+        # get the response code, e.g. 200
+        code = connection.getcode()
+        # ...
+except HTTPError as e:
+    return e.code
+</code></pre>
+<p>Alternatively, a <code>URLError</code> could be thrown if we are unable to connect, perhaps because the domain could not be resolved via DNS, in which case we might choose to retrieve the error message as the status.</p>
+<pre><code>...
+# handle connection errors
+try:
+    # open a connection to the server with a timeout
+    with urlopen(url, timeout=3) as connection:
+        # get the response code, e.g. 200
+        code = connection.getcode()
+       # ...
+except HTTPError as e:
+    return e.code
+except URLError as e:
+    return e.reason
+</code></pre>
+<p>Finally, if something else happens, and this is always possible, then we can retrieve traps and return more general faults.</p>
+<p>You can learn more about these errors here:</p>
+<ul><li><a href="https://docs.python.org/3/library/urllib.error.html">urllib.error — Exception classes raised by urllib.request</a></li></ul>
+<p>Tying this together, the <code>get_website_status()</code> function below takes a URL and returns the HTTP status, or a useful error message if there is a failure.</p>
+<pre><code># get the status of a website
+def get_website_status(url):
+    # handle connection errors
+    try:
+        # open a connection to the server with a timeout
+        with urlopen(url, timeout=3) as connection:
+            # get the response code, e.g. 200
+            code = connection.getcode()
+            return code
+    except HTTPError as e:
+        return e.code
+    except URLError as e:
+        return e.reason
+    except:
+        return e
+</code></pre>
+<p>Once we have an error status, we need to interpret it.</p>
+<p>Python offers the <code>http</code> module and the <code>HTTPStatus</code> class with constants for the most common HTTP status codes.</p>
+<p>Nevertheless, we can keep our script simple by checking for a status 200 (OK), otherwise reporting an error.</p>
+<p>The <code>get_status()</code> function below takes an HTTP status code returned from the <code>get_website_status()</code> function and interprets it with a human readable message as <code>'OK'</code> or <code>'ERROR'</code>.</p>
+<pre><code># interpret an HTTP response code into a status
+def get_status(code):
+    if code == HTTPStatus.OK:
+        return 'OK'
+    return 'ERROR'
+</code></pre>
+<p>Next, we need to get the status, interpret it, and report the results for each URL in a list of URLs.</p>
+<p>This ties the program together.</p>
+<p>The list of URLs may be loaded from a database or a text file in practice. In this case, we will define a constant named <code>URLS</code> that lists ten of the most popular websites on the internet in no particular order.</p>
+<pre><code># list of urls to check
+URLS = ['https://twitter.com',
+        'https://google.com',
+        'https://facebook.com',
+        'https://reddit.com',
+        'https://youtube.com',
+        'https://amazon.com',
+        'https://wikipedia.org',
+        'https://ebay.com',
+        'https://instagram.com',
+        'https://cnn.com']
+</code></pre>
+<p>We can then define a function that takes a list of URLs and gets the status for each with a call first to the <code>get_website_status()</code> function to get the HTTP code, then to <code>get_status()</code> to interpret the code, before calling the print function to report the status.</p>
+<pre><code>...
+# get the status for the website
+code = get_website_status(url)
+# interpret the status
+status = get_status(code)
+# report status
+print(f'{url:20s}\t{status:5s}\t{code}')
+</code></pre>
+<p>Tying this together, the named <code>check_status_urls()</code> function that reports on the status of a list of URLs is listed below.</p>
+<pre><code># check status of a list of websites
+def check_status_urls(urls):
+    for url in urls:
+        # get the status for the website
+        code = get_website_status(url)
+        # interpret the status
+        status = get_status(code)
+        # report status
+        print(f'{url:20s}\t{status:5s}\t{code}')
+</code></pre>
+<p>We can then call this function without a predefined list of URLs.</p>
+<pre><code>...
+# check all urls
+check_status_urls(URLS)
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example of checking the status of a list of URLs is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of pinging the status of a set of websites
+from urllib.request import urlopen
+from urllib.error import URLError
+from urllib.error import HTTPError
+from http import HTTPStatus
+
+# get the status of a website
+def get_website_status(url):
+    # handle connection errors
+    try:
+        # open a connection to the server with a timeout
+        with urlopen(url, timeout=3) as connection:
+            # get the response code, e.g. 200
+            code = connection.getcode()
+            return code
+    except HTTPError as e:
+        return e.code
+    except URLError as e:
+        return e.reason
+    except:
+        return e
+
+# interpret an HTTP response code into a status
+def get_status(code):
+    if code == HTTPStatus.OK:
+        return 'OK'
+    return 'ERROR'
+
+# check status of a list of websites
+def check_status_urls(urls):
+    for url in urls:
+        # get the status for the website
+        code = get_website_status(url)
+        # interpret the status
+        status = get_status(code)
+        # report status
+        print(f'{url:20s}\t{status:5s}\t{code}')
+
+# list of urls to check
+URLS = ['https://twitter.com',
+        'https://google.com',
+        'https://facebook.com',
+        'https://reddit.com',
+        'https://youtube.com',
+        'https://amazon.com',
+        'https://wikipedia.org',
+        'https://ebay.com',
+        'https://instagram.com',
+        'https://cnn.com']
+# check all urls
+check_status_urls(URLS)
+</code></pre>
+<p>Running the example gets the status code, which is then interpreted and reported for each URL in the list.</p>
+<p>In this case, all URLs report an OK status except amazon.com, which reports a 503 error. It might be because amazon prefers the <code>www</code> prefix, or because it does not like to be pinged by unknown web clients.</p>
+<pre><code>https://twitter.com 	OK   	200
+https://google.com  	OK   	200
+https://facebook.com	OK   	200
+https://reddit.com  	OK   	200
+https://youtube.com 	OK   	200
+https://amazon.com  	ERROR	503
+https://wikipedia.org	OK   	200
+https://ebay.com    	OK   	200
+https://instagram.com	OK   	200
+https://cnn.com     	OK   	200</code></pre>
+<p>Checking the status of websites one-by-one is slow.</p>
+<p>On my system, it took a little less than ten seconds to query all ten websites.</p>
+<p><strong>How long did it take to run on your system?</strong><br/>Let me know in the comments below.</p>
+<p>Next, we will look at the <meta/><code>ThreadPoolExecutor</code> class that can be used to create a pool of worker threads that will allow us to speed up the status checking process.</p>
+<h2>Create a Pool of Worker Threads With ThreadPoolExecutor</h2>
+<p>We can use the <code>ThreadPoolExecutor</code> to speed up the download of multiple files listed on an HTML webpage.</p>
+<p>The <meta/><code>ThreadPoolExecutor</code> class is provided as part of the concurrent.futures module for easily running concurrent tasks.</p>
+<p>The <meta/><code>ThreadPoolExecutor</code> provides a pool of worker threads, which is different from the <meta/><code>ProcessPoolExecutor</code> that provides a pool of worker processes.</p>
+<p>Generally, <meta/><code>ThreadPoolExecutor</code> should be used for concurrent IO-bound tasks, like downloading URLs, and the <code>ProcessPoolExecutor</code> should be used for concurrent CPU-bound tasks, like calculating.</p>
+<p>Using the <meta/><code>ThreadPoolExecutor</code> was designed to be easy and straightforward. It is like the "automatic mode" for Python threads.</p>
+<ol><li>Create the thread pool by calling <code>ThreadPoolExecutor()</code>.</li><li>Submit tasks and get futures by calling <code>submit()</code>.</li><li>Wait and get results as tasks complete by calling <code>as_completed()</code>.</li><li>Shutdown the thread pool by calling <code>shutdown()</code></li></ol>
+<h3>Step 1: Create the Thread Pool</h3>
+<p>First, a <meta/><code>ThreadPoolExecutor</code> instance must be created. </p>
+<p>By default, it will create a pool equal to the number of logical CPUs you have available plus four. </p>
+<p>This is good for most purposes.</p>
+<pre><code>...
+# create a thread pool with the default number of worker threads
+executor = ThreadPoolExecutor()
+</code></pre>
+<p>You can run tens to hundreds of concurrent IO-bound threads per CPU, although perhaps not thousands or tens of thousands. </p>
+<p>You can specify the number of threads to create in the pool via the <code>max_workers</code> argument; for example:</p>
+<pre><code>...
+# create a thread pool with 10 worker threads
+executor = ThreadPoolExecutor(max_workers=10)
+</code></pre>
+<h3>Step 2: Submit Tasks to the Thread Pool</h3>
+<p>Once created, it can send tasks into the pool to be completed using the <code>submit()</code> function.</p>
+<p>This function takes the name of the function to call any and all arguments and returns a <meta/><code>Future</code> object.</p>
+<p>The <code>Future</code> object is a promise to return the results from the task (if any) and provides a way to determine if a specific task has been completed or not.</p>
+<pre><code>...
+# submit a task and receive a future
+future = executor.submit(task, arg1, arg2, ...)
+</code></pre>
+<p>The return from a function executed by the thread pool can be accessed via the <code>result()</code> function on the <meta/><code>Future</code> object. It will wait until the result is available, if needed, or return immediately if the result is available.</p>
+<p>For example:</p>
+<pre><code>...
+# get the result from a future
+result = future.result()
+</code></pre>
+<p>An alternate and perhaps simpler approach to submitting asynchronous tasks to the thread pool is to use the <code>map()</code> function provided on the <code>ThreadPoolExecutor</code>.</p>
+<p>It works just the same as the built-in <meta/><code>map()</code> function. It takes the name of the target task function and an iterable. The target function is then called for each item in the iterable, and because we are using a thread pool, each call is submitted as an asynchronous task.</p>
+<p>The <meta/><code>map()</code> function then returns an iterable over the results from each function call. We can call the <meta/><code>map()</code> function and iterate over the results in a for-loop directly; for example:</p>
+<pre><code># perform all tasks in parallel
+for result in executor.map(task, items):
+	# ...
+</code></pre>
+<h3>Step 3: Get Results as Tasks Complete</h3>
+<p>The beauty of performing tasks concurrently is that we can get results as they become available, rather than waiting for tasks to be completed in the order they were submitted.</p>
+<p>The <code>concurrent.futures</code> module provides an <code>as_completed()</code> function that we can use to get results for tasks as they are completed, just like its name suggests.</p>
+<p>We can call the function and provide it a list of future objects created by calling <code>submit()</code> and it will return future objects as they are completed in whatever order.</p>
+<p>For example, we can use a list comprehension to submit the tasks and create the list of <meta/><code>Future</code> objects:</p>
+</main>
+</body>
+</html>

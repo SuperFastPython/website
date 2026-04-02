@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Use Busy Waiting in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Use Busy Waiting in Python</h1>
+<div class="post-meta">March 8, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can perform <strong>busy waiting</strong> in a thread with a while-loop and an if-condition.</p>
+<p>In this tutorial you will discover how to use busy waiting in Python.</p>
+<p>Let's get started.</p>
+<h2>Need for Busy Waiting</h2>
+<p>A thread is a <strong>thread of execution</strong> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guude:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrency programming we may want to check for a specific result or a change repeatedly in a loop. This is called spinning or busy waiting and can be useful in some circumstances.</p>
+<p><strong>What is busy waiting and how can we perform busy waiting in Python?</strong></p>
+<h2>What is Busy Waiting</h2>
+<p><strong>Busy waiting</strong>, also called spinning, refers to a thread that repeatedly checks a condition in a loop.</p>
+<p>It is referred to as "<em>busy</em>" or "<em>spinning</em>" because the thread continues to execute the same code, such as an if-statement within a while-loop, achieving a wait by executing code (e.g. keeping busy).</p>
+<ul><li><strong>Busy Wait</strong>: When a thread "<em>waits</em>" for a condition by repeatedly checking for the condition in a loop.</li></ul>
+<p>Busy waiting can be compared to waiting by a blocking call, such as a sleep or a wait.</p>
+<p>Busy waiting is typically undesirable in concurrent programming as the tight loop of checking a condition consumes CPU cycles unnecessarily, occupying a CPU core. As such, it is sometimes referred to as an anti-pattern of concurrent programming, a pattern to be avoided.</p>
+<p>That being said, there are some occasions where a busy wait is a preferred solution, such as situations where there communication or signals between threads may be missed due to the unpredictable execution times or race conditions. In such cases, a busy wait can provide an alternative to other concurrency primitives.</p>
+<p>Additionally, if the busy wait involves checking if a mutual exclusion lock is available, this is referred to as a spinlock.</p>
+<ul><li><strong>Spinlock</strong>: A type of busy waiting where a thread is checking and waiting for a mutex lock.</li></ul>
+<p>Now that we are familiar with what busy waiting is, let's look at how we might perform busy waiting in Python.</p>
+<h2>How to Perform Busy Waiting</h2>
+<p>We can perform busy waiting in Python with an if-statement within a while-loop.</p>
+<p>The while-loop may loop forever and the if-statement will check the desired goal state and break the loop.</p>
+<p>For example:</p>
+<pre><code>...
+# busy wait
+while True:
+	# check for the goal state
+	if goal_state():
+		break</code></pre>
+<p>Here, we simplify the if-statement to a function call, but it could be any condition relevant to the program.</p>
+<p>We can see that this tight loop will execute as fast as possible, checking the condition every iteration.</p>
+<p>It is sometimes referred to as an anti-pattern because of so much calculation being dedicated to redundant checks of the same condition.</p>
+<p>The computation used to perform the loop may be lessened some amount. Two approaches may include:</p>
+<ul><li>Adding a sleep to the busy-wait loop, e.g. a call to <strong>time.sleep()</strong>.</li><li>Adding a blocking wait, if a concurrency primitive like a lock or a condition is being used.</li></ul>
+<p>Adding a sleep, even of a fraction of a second, will allow the operating system to context switch to another thread of execution and make progress.</p>
+<pre><code>...
+# busy wait
+while True:
+	# check condition
+	if goal_state():
+		break
+	else:
+		sleep(0.1)</code></pre>
+<p>This may be desirable for some applications, if a small gap in time between the condition being True and the thread checking the condition is acceptable.</p>
+<p>Alternatively a blocking <strong>wait()</strong> call can be made on a shared concurrent primitive like a <strong>threading.Lock</strong> or a <strong>threading.Condition</strong> can be used. Again, a timeout can be set on the blocking call to allow the thread to periodically check the condition.</p>
+<p>This approach can be used in a spinlock to reduce the computational burden waiting for a mutex <strong>threading.Lock</strong> to become available. It can also be used with a <strong>threading.Condition</strong>, if a race condition may mean that a notification from another thread may be missed</p>
+<p>Like adding a sleep, this is only appropriate if the application can tolerate a small gap in time between the condition being <strong>True</strong> and the thread noticing the change.</p>
+<pre><code>...
+# busy wait
+while True:
+	# acquire the condition
+	with condition:
+		# check condition
+		if goal_state():
+			break
+		else:
+			# block with a timeout
+			condition.wait(timeout=0.1)</code></pre>
+<p>Now that we know how to perform busy waiting in Python, let's look at some worked examples</p>
+<h2>Example of Race Condition With Wait and Notify</h2>
+<p>Before we dive in, let's start with a concurrency programming failure case that can be solved using a busy wait.</p>
+<p>An important use case for a busy wait is when one thread is waiting to be notified by another thread, but due to the unpredictable nature of the program it is possible for the waiting thread to miss the notification.</p>
+<p>This is a type of race condition. There are many ways to solve this race condition, and a busy wait is one possible solution.</p>
+<p>We will develop an example where the main thread puts some data in a list and another thread waits for and then uses the data in the list. A condition is used in an attempt to notify the new thread that the data is available. We will then make the execution time of the main thread and the new thread unpredictable and show that sometimes the wait-notify with the condition works, and sometimes it fails due to a race condition.</p>
+<p>First, we can define a function named <strong>task()</strong> to execute in a new thread. The function will take an instance of the shared <strong>threading.Condition</strong> instance and the list in which data will be placed.</p>
+<pre><code># target function
+def task(condition, data):
+	# ...
+</code></pre>
+<p>The function will first block for a fraction of a second to give some unpredictability regarding when exactly it will check if the data has arrived.</p>
+<pre><code>...
+# block for a moment
+sleep(random())</code></pre>
+<p>Next, the thread will acquire a lock on the condition via the context manager, and then wait for the main thread to notify it that the data has arrived.</p>
+<pre><code>...
+# wait for data
+with condition:
+    print('.thread waiting on condition')
+    condition.wait()
+</code></pre>
+<p>The call to <strong>wait()</strong> on the <strong>threading.Thread</strong> will block forever until the notification signal is received. It also releases the lock on the condition until the thread is notified.</p>
+<p>Finally, the function will (optimistically) report the data that was received.</p>
+<pre><code>...
+print(f'Thread got data: {data}')</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function to be executed in a new thread is listed below.</p>
+<pre><code># target function
+def task(condition, data):
+    # block for a moment
+    sleep(random())
+    # wait for data
+    with condition:
+        print('.thread waiting on condition')
+        condition.wait()
+    print(f'Thread got data: {data}')
+</code></pre>
+<p>Next, in the main thread we can create a new <strong>threading.Condition</strong> to be shared between the main thread and the new thread, and a list in which data will be placed.</p>
+<pre><code>...
+# create the condition
+condition = Condition()
+# create the data storage
+data = list()
+</code></pre>
+<p>We can then create a new <strong>threading.Thread</strong> instance and configure it to execute our <strong>task()</strong> function and pass the <strong>threading.Condition</strong> and the list in which data will arrive. Once created the new thread can be started.</p>
+<pre><code>...
+# create a new thread
+thread = Thread(target=task, args=(condition,data))
+# start the new thread
+thread.start()
+</code></pre>
+<p>Next, we can add unpredictability to the execution timing of the main thread by having it block for a random fraction of a second.</p>
+<pre><code>...
+# block for a moment
+sleep(random())</code></pre>
+<p>Finally, the main thread will acquire the condition, add some data and notify the waiting thread.</p>
+<pre><code>...
+# acquire the condition
+with condition:
+    # store data
+    data.append('We did it!')
+    # notify waiting threads
+    print('Main is notifying')
+    condition.notify()
+</code></pre>
+<p>A careful review of this code will show that there is a race condition.</p>
+<p>Specifically, that the new thread may call <strong>wait()</strong> after the main thread calls <strong>notify()</strong> on the <strong>threading.Condition</strong>. If this occurs, the new thread will wait forever. This may happen sometimes, and other times it may be the case that the new thread calls <strong>wait()</strong> then the main thread calls <strong>notify()</strong>, in which case the expected outcome of the new thread receiving the data occurs and the program exits normally.</p>
+<p>Tying this together, the complete example of a race condition with <strong>wait()</strong> and <strong>notify()</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a race condition with wait and notify on a condition
+from time import sleep
+from random import random
+from threading import Thread
+from threading import Condition
+
+# target function
+def task(condition, data):
+    # block for a moment
+    sleep(random())
+    # wait for data
+    with condition:
+        print('.thread waiting on condition')
+        condition.wait()
+    print(f'Thread got data: {data}')
+
+# create the condition
+condition = Condition()
+# create the data storage
+data = list()
+# create a new thread
+thread = Thread(target=task, args=(condition,data))
+# start the new thread
+thread.start()
+# block for a moment
+sleep(random())
+# acquire the condition
+with condition:
+    # store data
+    data.append('We did it!')
+    # notify waiting threads
+    print('Main is notifying')
+    condition.notify()
+</code></pre>
+<p>Running the example may result in a different outcome each time given the use of random numbers. Run the example a number of times.</p>
+<p>Let's look at a normal outcome first, then a race condition outcome.</p>
+<p>The main thread creates the condition, then creates a new thread which starts executing. The new thread calls the <strong>task()</strong> function which acquires the condition and begins waiting on the main thread for the data to arrive.</p>
+<p>The main thread blocks for a moment, wakes-up then acquires the condition, adds the data and then notifies the new thread that data has arrived.</p>
+<p>Finally, the new thread wakes up, given the notification from the main thread, then reports the data.</p>
+<pre><code>.thread waiting on condition
+Main is notifying
+Thread got data: ['We did it!']
+</code></pre>
+<p>This was the normal case, which will occur some of the time when the code is run.</p>
+<p>Other times we may get a race condition.</p>
+<p>The main thread creates the condition, the new thread, and starts the thread as before. The new thread begins executing a block on the call to <strong>sleep()</strong> for a while.</p>
+<p>The main thread carries on, acquires the condition, adds the data, then notifies any threads waiting on the condition and is done.</p>
+<p>The new thread unblocks from the call to <strong>sleep()</strong>, acquires the condition and waits on the condition to be notified that data has arrived.</p>
+<p>In this case a race condition has occurred and it is never notified. The thread waits forever and the program must be killed.</p>
+<pre><code>Main is notifying
+.thread waiting on condition</code></pre>
+<p>Next, let's look at how we might fix this race condition by adding a busy wait.</p>
+<h2>Example of a Busy Waiting</h2>
+<p>We can update the example from the previous section to add a busy wait that will address the race condition with wait and notify on the condition.</p>
+<p>A busy wait can be added to the <strong>task()</strong> function. This involves adding a while-loop that loops forever and an if-statement that checks for the desired goal state. In this case, the goal state is whether or not data has been placed in the list.</p>
+<p>Once data has arrived, we can break out of the while-loop and continue on.</p>
+<p>For example:</p>
+<pre><code># target function
+def task(condition, data):
+    # block for a moment
+    sleep(random())
+    # wait for data
+    while True:
+        print('.thread waiting on condition')
+        # check the data
+        if len(data) &gt; 0:
+            break
+    print(f'Thread got data: {data}')
+</code></pre>
+<p>This would probably work.</p>
+<p>Nevertheless, there is a new race condition between the main thread calling <strong>data.append()</strong> to add the data and the new thread checking the length of the list in the if-statement.</p>
+<p>This race condition can be easily avoided by treating the shared <strong>threading.Condition</strong> as a mutex lock.</p>
+<p>Both the main thread and the new thread must acquire the condition before interacting with the data list. This will remove any race condition with the data list as only one thread can acquire the condition at a time.</p>
+<p>The updated <strong>task()</strong> function with a busy wait and no race condition on the data list is listed below.</p>
+<pre><code># target function
+def task(condition, data):
+    # block for a moment
+    sleep(random())
+    # wait for data
+    while True:
+        with condition:
+            print('.thread waiting on condition')
+            # check the data
+            if len(data) &gt; 0:
+                break
+    print(f'Thread got data: {data}')
+</code></pre>
+<p>The important change here is that the new thread no longer waits on the condition, but instead waits on the goal state directly.</p>
+<p>Another important point is that we acquire the <strong>threading.Condition</strong> within the while loop, so that we can release it each iteration of the loop, allowing the main thread to acquire it. If the loop was nested within the acquisition of the <strong>threading.Condition</strong> then the main loop may never be able to acquire the condition and add the data.</p>
+<p>Tying this together, the complete example of the busy wait is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a busy wait for a condition
+from time import sleep
+from random import random
+from threading import Thread
+from threading import Condition
+
+# target function
+def task(condition, data):
+    # block for a moment
+    sleep(random())
+    # wait for data
+    while True:
+        with condition:
+            print('.thread waiting on condition')
+            # check the data
+            if len(data) &gt; 0:
+                break
+    print(f'Thread got data: {data}')
+
+# create the condition
+condition = Condition()
+# create the data storage
+data = list()
+# create a new thread
+thread = Thread(target=task, args=(condition,data))
+# start the new thread
+thread.start()
+# block for a moment
+sleep(random())
+# acquire the condition
+with condition:
+    # store data
+    data.append('We did it!')
+    # notify waiting threads
+    print('Main is notifying all')
+    condition.notify_all()
+</code></pre>
+<p>Running the example first creates the condition and data list, then creates and starts the new thread.</p>
+<p>The new thread blocks for a fraction of a second then loops checking the state of the data list, reporting lots of messages about waiting.</p>
+<p>The main thread blocks for a fraction of a second, then acquires the condition and adds the data.</p>
+<p>The new thread checks the data list on one of its many iterations of the loop, sees the change to the data list and then breaks the loop reporting the result.</p>
+<pre><code>...
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+Main is notifying all
+.thread waiting on condition
+Thread got data: ['We did it!']
+</code></pre>
+<p>The downside of this busy loop is that it consumes many CPU cycles doing essentially the same redundant check of the data list.</p>
+<p>Next, let's see if we can save some CPU cycles by adding a sleep.</p>
+<h2>Example of Busy Waiting With a Sleep</h2>
+<p>Although a busy-wait can remove a race condition, it can be costly in terms of computation.</p>
+<p>If the application allows it, we can add a sleep within the busy wait loop. This will allow the operating system to context switch to another thread, possibly freeing up a CPU core, although may add some delay between the goal state being triggered and the new thread noticing.</p>
+<p>This can be achieved by adding a call to <strong>sleep()</strong> with some small fraction of a second, such as 100 or 200 milliseconds (e.g. 0.1 or 0.2 seconds). This does not sound like a lot in "user time", but in "CPU time", it is a long time.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for data
+while True:
+    with condition:
+        print('.thread waiting on condition')
+        # check the data
+        if len(data) &gt; 0:
+            break
+    # wait for the data
+    sleep(0.2)
+</code></pre>
+<p>We can still call this a busy wait or busy waiting, although technically the thread is blocking some of the time. The code is still spinning, checking an if-statement in a loop instead of blocking until the goal state is met.</p>
+<p>Importantly, the <strong>sleep()</strong> function is called after we release the <strong>threading.Condition</strong>. The reason is that the <strong>threading.Condition</strong> would not be released if the thread blocks on a sleep call, preventing the main thread from acquiring the condition and doing its work.</p>
+<p>The updated version of the <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># target function
+def task(condition, data):
+    # block for a moment
+    sleep(random())
+    # wait for data
+    while True:
+        with condition:
+            print('.thread waiting on condition')
+            # check the data
+            if len(data) &gt; 0:
+                break
+        # wait for the data
+        sleep(0.2)
+    print(f'Thread got data: {data}')
+</code></pre>
+<p>Tying this together, the complete example of a busy wait with a sleep is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a busy wait for a condition with a sleep
+from time import sleep
+from random import random
+from threading import Thread
+from threading import Condition
+
+# target function
+def task(condition, data):
+    # block for a moment
+    sleep(random())
+    # wait for data
+    while True:
+        with condition:
+            print('.thread waiting on condition')
+            # check the data
+            if len(data) &gt; 0:
+                break
+        # wait for the data
+        sleep(0.2)
+    print(f'Thread got data: {data}')
+
+# create the condition
+condition = Condition()
+# create the data storage
+data = list()
+# create a new thread
+thread = Thread(target=task, args=(condition,data))
+# start the new thread
+thread.start()
+# block for a moment
+sleep(random())
+# acquire the condition
+with condition:
+    # store data
+    data.append('We did it!')
+    # notify waiting threads
+    print('Main is notifying all')
+    condition.notify_all()
+</code></pre>
+<p>Running the example creates and starts the new thread as before.</p>
+<p>The new thread blocks for a fraction of a second then begins the busy wait loop. Each loop, the thread acquires the condition, checks the data list protected by the condition, and if not populated, it sleeps for a fraction of a second.</p>
+<p>The main thread blocks for a moment, then acquires the condition and populates the data. Although the main thread notifies waiting threads, there are no threads listening.</p>
+<p>Finally, the main thread notices the change and reports the arrival of the data.</p>
+<p>The sleep means we achieve many fewer iterations of the busy wait loop before the data list is populated.</p>
+<pre><code>.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+.thread waiting on condition
+Main is notifying all
+.thread waiting on condition
+Thread got data: ['We did it!']
+</code></pre>
+<p>Next, let's look at how we might incorporate a blocking wait to the busy wait loop.</p>
+<h2>Example of Busy Waiting With A Wait</h2>
+<p>We can update the race condition example so that the busy wait loop spins as before, but also waits to be notified by the main thread.</p>
+<p>This may be a more efficient solution as it allows for the race condition by iterating the check in a loop, but also allows the thread to be notified by the main thread at the instant the data arrives.</p>
+<p>This can be achieved by spending most of the time blocking on a call to the <strong>wait()</strong> function on the <strong>threading.Condition</strong>, although with a timeout. Once the timeout elapses (without being notified), the thread will spend a tiny fraction of time checking the condition manually.</p>
+<p>This is a useful pattern if a thread may be waiting on many notifications over time, or if a goal state may be achieved with or without a notification from another thread.</p>
+<p>You may recall that we cannot wait on a <strong>threading.Condition</strong> unless we have acquired the condition, therefore the call to wait() must happen within the context manager block of the condition.</p>
+<p>In fact, we can nest the entire busy wait loop under the <strong>threading.Condition</strong> context manager as the condition will be made available to other threads while the thread holding the condition calls <strong>wait()</strong>.</p>
+<p>The updated busy wait loop with a blocking wait call is listed below. Note the use of a timeout in the call to wait, ensuring that the thread does not block for more than 200 milliseconds.</p>
+<pre><code>...
+# wait for data
+with condition:
+    while True:
+        print('.thread waiting on condition')
+        # check the data
+        if len(data) &gt; 0:
+            break
+        else:
+            # wait to be notified with a timeout
+            condition.wait(timeout=0.2)
+</code></pre>
+<p>This change allows the thread to respond to data changes directly, and/or to notification signals.</p>
+<p>It is still a busy wait as it spins checking the condition each loop, slowed down by blocking wait calls on a shared concurrency primitive known to signal the desired goal state.</p>
+<p>The updated <strong>task()</strong> function is listed below.</p>
+<pre><code># target function
+def task(condition, data):
+    # block for a moment
+    sleep(random())
+    # wait for data
+    with condition:
+        while True:
+            print('.thread waiting on condition')
+            # check the data
+            if len(data) &gt; 0:
+                break
+            else:
+                # wait to be notified with a timeout
+                condition.wait(timeout=0.2)
+    print(f'Thread got data: {data}')
+</code></pre>
+<p>Tying this together, the complete example of a busy wait with a blocking wait call is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a busy wait for a condition with a blocking wait
+from time import sleep
+from random import random
+from threading import Thread
+from threading import Condition
+
+# target function
+def task(condition, data):
+    # block for a moment
+    sleep(random())
+    # wait for data
+    with condition:
+        while True:
+            print('.thread waiting on condition')
+            # check the data
+            if len(data) &gt; 0:
+                break
+            else:
+                # wait to be notified with a timeout
+                condition.wait(timeout=0.2)
+    print(f'Thread got data: {data}')
+
+# create the condition
+condition = Condition()
+# create the data storage
+data = list()
+# create a new thread
+thread = Thread(target=task, args=(condition,data))
+# start the new thread
+thread.start()
+# block for a moment
+sleep(random())
+# acquire the condition
+with condition:
+    # store data
+    data.append('We did it!')
+    # notify waiting threads
+    print('Main is notifying all')
+    condition.notify_all()
+</code></pre>
+<p>Running the example starts the new thread and before.</p>
+<p>The new thread acquires the condition then starts a busy wait loop of checking the data list and waiting on the condition.</p>
+<p>Each run may produce a different result.</p>
+<p>In this case, the thread completes two iterations of the busy wait loop then the main thread acquires the condition, adds the data, and notifies the new threads that reports the result.</p>
+<pre><code>.thread checking the event...
+.thread checking the event...
+Main setting the event...
+.thread checking the event...
+Thread noticed the event is set...finally</code></pre>
+<p>Try running the example a few times.</p>
+<p>In this second run, the main thread acquires the condition, stores the data and notifies waiting threads.</p>
+<p>The new thread has not yet started waiting on the condition, but notices the change directly and reports the result.</p>
+<pre><code>Main is notifying all
+.thread waiting on condition
+Thread got data: ['We did it!']
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a busy wait in Python.</p>
+</main>
+</body>
+</html>

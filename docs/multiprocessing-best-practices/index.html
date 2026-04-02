@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Best Practices – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Best Practices</h1>
+<div class="post-meta">June 25, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>It is important to follow <strong>best practices</strong> when using the <strong>multiprocessing.Process</strong> class in Python.</p>
+<p>Best practices allow you to side-step the most common errors and bugs when using thread for concurrent tasks in your programs.</p>
+<p>In this tutorial you will discover the best practices when using Python thread pools.</p>
+<p>Let's get started.</p>
+<h2>Multiprocessing Best Practices</h2>
+<p>The <a href="../multiprocessing-in-python/"><strong>multiprocessing.Process</strong> class</a> is a flexible and powerful tool for executing tasks concurrently in child processes.</p>
+<p>Once you know how the <strong>multiprocessing.Process</strong> works, it is important to review some best practices to consider when bringing thread pools into our Python programs.</p>
+<p>To keep things simple, there are five best practices when creating new child processes, they are:</p>
+<ol><li>Use Context Managers</li><li>Use Timeouts When Waiting</li><li>Use Main Module Idiom</li><li>Use Shared ctypes</li><li>Use Pipes and Queues</li></ol>
+<p>Let’s get started with the first practice, which is to use the context manager.</p>
+<h2>Tip 1: Use Context Managers</h2>
+<p>Acquire and release locks using a <a href="https://docs.python.org/3.10/library/stdtypes.html#typecontextmanager">context manager</a>, wherever possible.</p>
+<p>Locks can be acquired manually via a call to <strong>acquire()</strong> at the beginning of the critical section followed by a call to <strong>release()</strong> at the end of the critical section.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock manually
+lock.acquire()
+# critical section...
+# release the lock
+lock.release()</code></pre>
+<p>This approach should be avoided wherever possible.</p>
+<p>Traditionally, it was recommended to always acquire and release a lock in a try-finally structure.</p>
+<p>The lock is acquired, the critical section is executed in the try block, and the lock is always released in the finally block.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+try:
+    # critical section...
+finally:
+    # always release the lock
+    lock.release()
+</code></pre>
+<p>This was since replaced with the context manager interface that achieves the same thing with less code.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+    # critical section...
+</code></pre>
+<p>The benefit of the context manager is that the lock is always released as soon as the block is exited, regardless of how it is exited, e.g. normally, a return, an error, or an exception.</p>
+<p>This applies to a number of synchronization primitives, such as:</p>
+<ul><li>Acquiring a mutex lock via the <strong>multiprocessing.Lock</strong> class.</li><li>Acquiring a reentrant mutex lock via the <strong>multiprocessing.RLock</strong> class.</li><li>Acquiring a semaphore via the <strong>multiprocessing.Semaphore</strong> class.</li><li>Acquiring a condition via the <strong>multiprocessing.Condition</strong> class.</li></ul>
+<p>The context manager interface is also supported on other multiprocessing utilities, such as:</p>
+<ul><li>Opening a connection via the <strong>multiprocessing.connection.Connection</strong> class</li><li>Creating a manager via the <strong>multiprocessing.Manager</strong> class</li><li>Creating a process pool via the <strong>multiprocessing.pool.Pool</strong> class.</li><li>Creating a listener via the <strong>multiprocessing.connection.Listener</strong> class.</li></ul>
+<h2>Tip 2: Use Timeouts When Waiting</h2>
+<p>Always use a timeout when waiting on a blocking call.</p>
+<p>Many calls made on synchronization primitives may block.</p>
+<p>For example:</p>
+<ul><li>Waiting to acquire a <strong>multiprocessing.Lock</strong> via <strong>acquire()</strong>.</li><li>Waiting for a process to terminate via <strong>join()</strong>.</li><li>Waiting to be notified on a <strong>multiprocessing.Condition</strong> via <strong>wait()</strong>.</li></ul>
+<p>And more.</p>
+<p>All blocking calls on concurrency primitives take a “<strong>timeout</strong>” argument and return <strong>True</strong> if the call was successful or <strong>False</strong> otherwise.</p>
+<p>Do not call a blocking call without a timeout, wherever possible.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+if not lock.acquire(timeout=2*60):
+    # handle failure case...
+</code></pre>
+<p>This will allow the waiting process to give-up waiting after a fixed time limit and then attempt to rectify the situation, e.g. report an error, force termination, etc.</p>
+<h2>Tip 3: Use Main Module Idiom</h2>
+<p>A Python program that uses multiprocessing should protect the entry point of the program.</p>
+<p>This can be achieved by using an if-statement to check that the entry point is the top-level environment.</p>
+<p>For example:</p>
+<pre><code>...
+# check for top-level environment
+if __name__ == '__main__':
+    # ...
+</code></pre>
+<p>This will help to avoid a <strong>RuntimeError</strong> when creating child processes using the '<strong>spawn</strong>' start method, the default on Windows and MacOS.</p>
+<p>You can learn more about protecting the entry point when using multiprocessing in the tutorial:</p>
+<ul><li><a href="../multiprocessing-spawn-runtimeerror/">Fix RuntimeError When Spawning a Child Process</a></li></ul>
+<p>Additionally, it is a good practice to add freeze support as the first line of a Python program that uses multiprocessing.</p>
+<p>Freezing a Python program is a process that transforms the Python code into C code for packaging and distribution.</p>
+<p>When a program is frozen in order to be distributed, some features of Python are not included or disabled by default.</p>
+<p>This is for performance and/or security reasons.</p>
+<p>One feature that is disabled when freezing a Python program is multiprocessing.</p>
+<p>That is, we cannot create new python processes via multiprocessing.Process instances when freezing our program for distribution.</p>
+<p>Creating a process in a frozen application results in a RuntimeError.</p>
+<p>We can add support for multiprocessing in our program when freezing code via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.freeze_support"><strong>multiprocessing.freeze_support()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# enable support for multiprocessing
+multiprocessing.freeze_support()</code></pre>
+<p>This will have no effect on programs that are not frozen.</p>
+<p>You can learn more about adding freeze support in the tutorial:</p>
+<ul><li><a href="../multiprocessing-freeze-support-in-python/">Multiprocessing Freeze Support in Python</a></li></ul>
+<p>Protecting the entry point and adding freeze support together are referred to as the "<em>main module</em>" idiom when using multiprocessing.</p>
+<p>Using this idiom is a best practice when using multiprocessing.</p>
+<pre><code>        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+</code></pre>
+<h2>Tip 4: Use Shared ctypes</h2>
+<p>Processes do not have shared memory.</p>
+<p>Instead, shared memory must be simulated using sockets and/or files.</p>
+<p>If you need to share simple data variables or arrays of variables between processes, this can be achieved using shared ctypes.</p>
+<p>Shared ctypes provide a mechanism to share data safely between processes in a process-safe manner.</p>
+<p>You can share ctypes among processes using the <strong>multiprocessing.Value</strong> and <strong>multiprocessing.Array</strong> classes.</p>
+<ul><li>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Value"><strong>multiprocessing.Value</strong> class</a> is used to share a ctype of a given type among multiple processes.</li><li>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Array"><strong>multiprocessing.Array</strong> class</a> is used to share an array of ctypes of a given type among multiple processes.</li></ul>
+<p>Share ctypes provide a simple and easy to use way of sharing data between processes.</p>
+<p>For example, a shared ctype value can be defined in a parent process, then shared with multiple child processes. All child processes and the parent process can then safely read and modify the data within the shared value.</p>
+<p>This can be useful in a number of use cases, such as:</p>
+<ul><li>A counter shared among multiple processes.</li><li>Returning data from a child process to a parent process.</li><li>Sharing results of computation among processes.</li></ul>
+<p>Shared ctypes can only be shared among processes on the one system. For sharing data across processes on</p>
+<p>The <strong>multiprocessing.Value</strong> class will create a shared ctype with a specified data type and initial value.</p>
+<p>For example:</p>
+<pre><code>...
+# create a value
+value = multiprocessing.Value(...)</code></pre>
+<p>The first argument defines the data type for the value. It may be a string type code or a Python ctype class. The second argument may be an initial value.</p>
+<p>For example, we can define a signed integer type with the ‘i’ type code and an initial value of zero as follows:</p>
+<pre><code>...
+# create a integer value
+variable = multiprocessing.Value('i', 0)</code></pre>
+<p>Once defined, the value can then be shared and used within multiple processes, such as between a parent and a child process.</p>
+<p>Internally, the <strong>multiprocessing.Value</strong> makes use of a <strong>multiprocessing.RLock</strong> that ensures that access and modification of the data inside the class is mutually exclusive, e.g. process-safe.</p>
+<p>This means that only one process at a time can access or change the data within the <strong>multiprocessing.Value</strong> object.</p>
+<p>The data within the <strong>multiprocessing.Value</strong> object can be accessed via the “<strong>value</strong>” attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# get the data
+data = variable.value</code></pre>
+<p>The data within the <strong>multiprocessing.Value</strong> can be changed by the same “<strong>value</strong>” attribute.</p>
+<p>For example:</p>
+<pre><code>...
+# change the data
+variable.value = 100</code></pre>
+<p>You can learn more about using shared ctypes in the tutorial:</p>
+<ul><li><a href="../multiprocessing-shared-ctypes-in-python/">Multiprocessing Shared ctypes in Python</a></li></ul>
+<h2>Tip 5: Use Pipes and Queues</h2>
+<p>Processes can share messages with each other directly using pipes or queues.</p>
+<p>These are process-safe data structures that allow processes to send or receive pickleable Python objects.</p>
+<p>In multiprocessing, a pipe is a connection between two processes in Python.</p>
+<p>Python provides a simple pipe in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Pipe"><strong>multiprocessing.Pipe</strong> class</a>.</p>
+<p>A pipe can be created by calling the constructor of the multiproce<strong>ssing.Pipe</strong> class, which returns two <strong>multiprocessing.connection.Connection</strong> objects.</p>
+<p>For example:</p>
+<pre><code>...
+# create a pipe
+conn1, conn2 = multiprocessing.Pipe()</code></pre>
+<p>Objects can be shared between processes using the Pipe.</p>
+<p>The <strong>Connection.send()</strong> function can be used to send objects from one process to another.</p>
+<p>The objects sent must be picklable.</p>
+<p>For example:</p>
+<pre><code>...
+# send an object
+conn2.send('Hello world')</code></pre>
+<p>The <strong>Connection.recv()</strong> function can be used to receive objects in one process sent by another.</p>
+<p>The objects received will be automatically un-pickled.</p>
+<p>For example:</p>
+<pre><code>...
+# receive an object
+object = conn1.recv()</code></pre>
+<p>You can learn more about multiprocessing pipes in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pipe-in-python/">Multiprocessing Pipe in Python</a></li></ul>
+<p>Python provides a process-safe queue in the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue"><strong>multiprocessing.Queue</strong> class</a>.</p>
+<p>A queue is a data structure on which items can be added by a call to <strong>put()</strong> and from which items can be retrieved by a call to <strong>get()</strong>.</p>
+<p>The <strong>multiprocessing.Queue</strong> provides a first-in, first-out FIFO queue, which means that the items are retrieved from the queue in the order they were added. The first items added to the queue will be the first items retrieved. This is opposed to other queue types such as last-in, first-out and priority queues.</p>
+<p>The <strong>multiprocessing.Queue</strong> can be used by first creating an instance of the class. This will create an unbounded queue by default, that is, a queue with no size limit.</p>
+<p>For example:</p>
+<pre><code>...
+# created an unbounded queue
+queue = multiprocessing.Queue()</code></pre>
+<p>Items can be added to the queue via a call to <strong>put()</strong>, for example:</p>
+<pre><code>...
+# add an item to the queue
+queue.put(item)</code></pre>
+<p>Items can be retrieved from the queue by calls to <strong>get()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# get an item from the queue
+item = queue.get()</code></pre>
+<p>You can learn more about multiprocessing queues in the tutorial:</p>
+<ul><li><a href="../multiprocessing-queue-in-python/">Multiprocessing Queue in Python</a></li></ul>
+<h2>Takeaways</h2>
+<p>You now know some best practices when creating new child processes in Python.</p>
+</main>
+</body>
+</html>

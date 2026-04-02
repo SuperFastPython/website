@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio wait_for() to Wait With a Timeout – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio wait_for() to Wait With a Timeout</h1>
+<div class="post-meta">November 25, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>It is a good practice that any waiting performed in an asyncio program be limited to a timeout.</p>
+<p>Asyncio provides a way to wait on another task with a timeout via the <strong>asyncio.wait_for()</strong> function. If the timeout elapses before the task completes, the task is canceled.</p>
+<p>In this tutorial, you will discover <strong>how to wait for an asyncio task with a timeout</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>How to wait on another task with a timeout.</li>
+<li>How to handle a timeout while waiting on another task.</li>
+<li>How to handle the failure or cancellation of task that is being waited on with a timeout.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is Asyncio wait_for()</h2>
+<p>The <strong>asyncio.wait_for()</strong> function allows the caller to wait for an asyncio task or coroutine to complete with a timeout.</p>
+<p>If no timeout is specified, the <strong>wait_for()</strong> function will wait until the task is completed.</p>
+<p>If a timeout is specified and elapses before the task is complete, then the task is canceled.</p>
+<blockquote>
+<p>Wait for the aw awaitable to complete with a timeout.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>This allows the caller to both sets an expectation about how long they are willing to wait for a task to complete, and to enforce the timeout by canceling the task if the timeout elapses.</p>
+<p>Now that we know what the <strong>asyncio.wait_for()</strong> function is, let's look at how to use it.</p>
+<h2>How to Use Asyncio wait_for()</h2>
+<p>The <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for"><strong>asyncio.wait_for()</strong> function</a> takes an awaitable and a timeout.</p>
+<p>The awaitable may be a coroutine or a task.</p>
+<p>A timeout must be specified and may be <strong>None</strong> for no timeout, an integer or floating point number of seconds.</p>
+<p>The <strong>wait_for()</strong> function returns a coroutine that is not executed until it is explicitly awaited or scheduled as a task.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for a task to complete
+await asyncio.wait_for(coro, timeout=10)</code></pre>
+<p>If a coroutine is provided, it will be converted to the task when the <strong>wait_for()</strong> coroutine is executed.</p>
+<p>If the timeout elapses before the task is completed, the task is canceled, and an <strong>asyncio.TimeoutError</strong> is raised, which may need to be handled.</p>
+<p>For example:</p>
+<pre><code>...
+# execute a task with a timeout
+try:
+	# wait for a task to complete
+	await asyncio.wait_for(coro, timeout=1)
+except asyncio.TimeoutError:
+	# ...
+</code></pre>
+<p>If the waited-for task fails with an unhandled exception, the exception will be propagated back to the caller that is awaiting on the <strong>wait_for()</strong> coroutine, in which case it may need to be handled.</p>
+<p>For example</p>
+<pre><code>...
+# execute a task that may fail
+try:
+	# wait for a task to complete
+	await asyncio.wait_for(coro, timeout=1)
+except asyncio.TimeoutError:
+	# ...
+except Exception:
+	# ...
+
+</code></pre>
+<p>Next, let's consider some details on how the <strong>wait_for()</strong> function works.</p>
+<h2>How Does Asyncio wait_for() Work</h2>
+<p>The <strong>asyncio.wait_for()</strong> function does not block.</p>
+<p>Instead, it returns a coroutine.</p>
+<p>For example:</p>
+<pre><code>...
+# wait for a task with a timeout
+wait_coro = asyncio.wait_for(task)</code></pre>
+<p>If the provided task that is waited for is a coroutine, then the coroutine is not executed until the <strong>wait_for()</strong> coroutine is executed either directly with an await expression or by scheduling it as a task.</p>
+<p>For example:</p>
+<pre><code>...
+# execute the wait_for
+await wait_coro</code></pre>
+<p>The <strong>wait_for()</strong> coroutine can be wrapped in an <strong>asyncio.Task</strong> and scheduled independently.</p>
+<p>This will provide a <strong>Task</strong> object that can be queried and canceled. Canceling the task that wraps the <strong>wait_for()</strong> coroutine will also cancel the task or coroutine that the <strong>wait_for()</strong> coroutine is waiting on.</p>
+<p>For example:</p>
+<pre><code>...
+# wrap the wait_for in a task and schedule for execution
+wait_task = asyncio.create_task(wait_coro)
+...
+# cancel the wait for the task and the waited for coroutine or task
+wait_task.cancel()</code></pre>
+<p>Now that we know how the <strong>wait_for()</strong> function works, let's look at some worked examples.</p>
+<h2>Example of Asyncio wait_for() With No Timeout</h2>
+<p>We can explore how to wait for a coroutine without a timeout.</p>
+<p>In this example we will define a coroutine that reports a message, blocks for a fraction of a second, then reports a message before it is done.</p>
+<p>The main coroutine creates the task coroutine and then waits for it via the <strong>wait_for()</strong> function without a timeout.</p>
+<p>This is equivalent to waiting for the coroutine directly.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for a coroutine without a timeout
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = random()
+    # report message
+    print(f'&gt;task got {value}')
+    # block for a moment
+    await asyncio.sleep(value)
+    # report all done
+    print('&gt;task done')
+
+# main coroutine
+async def main():
+    # create a task
+    task = task_coro(1)
+    # execute and wait for the task without a timeout
+    await asyncio.wait_for(task, timeout=None)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine creates the task coroutine. It then calls <strong>wait_for()</strong> and passes the task coroutine and sets the timeout to None.</p>
+<p>The <strong>main()</strong> coroutine is suspended and the <strong>task_coro()</strong> is executed. It reports a message, sleeps a moment, then reports its final message before terminating.</p>
+<p>The <strong>main()</strong> coroutine resumes and terminates the program.</p>
+<p>This highlights how we can call the <strong>wait_for()</strong> function without a timeout.</p>
+<p>The output from the program will differ each time it is run given the use of random numbers.</p>
+<pre><code>&gt;task got 0.8259873938851356
+&gt;task done</code></pre>
+<p>Next, let's look at how we can call <strong>wait_for()</strong> with a timeout.</p>
+<h2>Example of Asyncio wait_for() With a Timeout</h2>
+<p>We can explore how to wait for a coroutine with a timeout that elapses before the task is completed.</p>
+<p>In this example, we execute a coroutine as above, except the caller waits a fixed timeout of 0.2 seconds or 200 milliseconds.</p>
+<p>Recall that one second is equal to 1,000 milliseconds.</p>
+<p>The task coroutine is modified so that it sleeps for more than one second, ensuring that the timeout always expires before the task is complete.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for a coroutine with a timeout
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = 1 + random()
+    # report message
+    print(f'&gt;task got {value}')
+    # block for a moment
+    await asyncio.sleep(value)
+    # report all done
+    print('&gt;task done')
+
+# main coroutine
+async def main():
+    # create a task
+    task = task_coro(1)
+    # execute and wait for the task without a timeout
+    try:
+        await asyncio.wait_for(task, timeout=0.2)
+    except asyncio.TimeoutError:
+        print('Gave up waiting, task canceled')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine creates the task coroutine. It then calls <strong>wait_for()</strong> and passes the task coroutine and sets the timeout to 0.2 seconds.</p>
+<p>The <strong>main()</strong> coroutine is suspended and the <strong>task_coro()</strong> is executed. It reports a message and sleeps for a moment.</p>
+<p>The <strong>main()</strong> coroutine resumes after the timeout has elapsed. The <strong>wait_for()</strong> coroutine cancels the <strong>task_coro()</strong> coroutine and the <strong>main()</strong> coroutine is suspended.</p>
+<p>The <strong>task_coro()</strong> runs again and responds to the request to be terminated. It raises a TimeoutError exception and terminates.</p>
+<p>The <strong>main()</strong> coroutine resumes and handles the <strong>TimeoutError</strong> raised by the <strong>task_coro()</strong>.</p>
+<p>This highlights how we can call the <strong>wait_for()</strong> function with a timeout and to cancel a task if it does not completed within a timeout.</p>
+<p>The output from the program will differ each time it is run given the use of random numbers.</p>
+<pre><code>&gt;task got 0.685375224799321
+Gave up waiting, task canceled</code></pre>
+<p>Next, let's look at what happens if we wait on a task that fails with an unhandled exception.</p>
+<h2>Example of Asyncio wait_for() and the Task Fails with an Exception</h2>
+<p>We can explore how to wait for a coroutine with a timeout and a task that fails with an exception.</p>
+<p>If a waited-for task fails with an unhandled exception, the exception is propagated back to the caller.</p>
+<p>In this example, we update the task coroutine so that it fails with an unhandled exception after sleeping. The caller waits for the task to complete and the exception is propagated back to the caller and handled.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for a coroutine that fails with exception
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = 1 * random()
+    # report message
+    print(f'&gt;task got {value}')
+    # block for a moment
+    await asyncio.sleep(value)
+    # fail with an exception
+    raise Exception('Something bad happened')
+    # report all done (never reached)
+    print('&gt;task done')
+
+# main coroutine
+async def main():
+    # create a task
+    task = task_coro(1)
+    # execute and wait for the task without a timeout
+    try:
+        await asyncio.wait_for(task, timeout=2.0)
+    except asyncio.TimeoutError:
+        print('Gave up waiting, task canceled')
+    except Exception as e:
+        print(f'Task failed with: {e}')
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine creates the task coroutine. It then calls <strong>wait_for()</strong> and passes the task coroutine and sets a timeout.</p>
+<p>The <strong>main()</strong> coroutine is suspended and the <strong>task_coro()</strong> is executed. It reports a message, sleeps a moment, then raises an unhandled exception.</p>
+<p>The <strong>main()</strong> coroutine resumes catches the unhandled exception and reports a message</p>
+<p>This highlights how unhandled exceptions raised in the waited-for task or coroutine are propagated to the caller and may need to be handled.</p>
+<p>The output from the program will differ each time it is run given the use of random numbers.</p>
+<pre><code>&gt;task got 0.5142627201191862
+Task failed with: Something bad happened</code></pre>
+<p>Next, let's look at what happens if we wait on a task that is canceled.</p>
+<h2>Example of Asyncio wait_for() and the Task is Canceled</h2>
+<p>We can explore how to wait for a task with a timeout and the waited-for task is canceled by another task.</p>
+<p>If the waited-for task is canceled, the <strong>wait_for()</strong> coroutine stops waiting, and the <strong>asyncio.CancelledError</strong> exception is propagated to the caller.</p>
+<p>In the example below we wrap and schedule our task coroutine in an <strong>asyncio.Task</strong> object so that it can be canceled.</p>
+<p>We then pass the task to the <strong>wait_for()</strong> function and retrieve the coroutine, although do not await it yet.</p>
+<p>We then create a second task for a coroutine that takes a task object, waits a moment, and cancels it. This task is scheduled.</p>
+<p>Finally, the wait_for coroutine is awaited with a timeout.</p>
+<p>The waited-for task is canceled and the <strong>asyncio.CancelledError</strong> exception is propagated back to the caller and handled.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for a task that is canceled
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = 1 + random()
+    # report message
+    print(f'&gt;task got {value}')
+    # block for a moment
+    await asyncio.sleep(value)
+    # report all done
+    print('&gt;task done')
+
+# another coroutine that cancels a task
+async def task_cancel(other_task):
+    # wait a moment
+    await asyncio.sleep(0.3)
+    # cancel the other task
+    other_task.cancel()
+
+# main coroutine
+async def main():
+    # create a task
+    task = asyncio.create_task(task_coro(1))
+    # create the wait for coroutine
+    wait_coro = asyncio.wait_for(task, timeout=1)
+    # create and run the cancel task
+    asyncio.create_task(task_cancel(task))
+    # await the wait-for coroutine
+    try:
+        await wait_coro
+    except asyncio.TimeoutError:
+        print('Gave up waiting, task canceled')
+    except asyncio.CancelledError:
+        print('Task was canceled externally')
+        print(task)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine creates and schedules the <strong>task_coro()</strong> as a task.</p>
+<p>The <strong>wait_for()</strong> is then called to wait on the task with a timeout of one second and the returned coroutine is assigned.</p>
+<p>Next, the <strong>task_cancel()</strong> coroutine is wrapped in a task and scheduled for execution, and passed the task object for the <strong>task_coro()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine is suspended and the <strong>task_coro()</strong> is executed.</p>
+<p>The <strong>task_coro()</strong> task reports a message and then sleeps. The <strong>task_cancel()</strong> sleeps, then resumes and cancels the <strong>task_coro()</strong> task.</p>
+<p>The <strong>task_coro()</strong> task resumes and raises an <strong>asyncio.CancelledError</strong> exception.</p>
+<p>The <strong>main()</strong> coroutine resumes and the <strong>asyncio.CancelledError</strong> exception is re-raised and handled. The details of the waited-for task are reported and it shows that it is done and was canceled.</p>
+<p>This highlights how a waited-for task can be canceled externally and that this may need to be handled.</p>
+<p>The output from the program will differ each time it is run given the use of random numbers.</p>
+<pre><code>&gt;task got 1.5848230431004935
+Task was canceled externally
+&lt;Task cancelled name='Task-2' coro=&lt;task_coro() done, defined at ...&gt;&gt;
+</code></pre>
+<p>Next, let's look at what happens if the <strong>wait_for()</strong> task itself is canceled.</p>
+<h2>Example of Asyncio wait_for() that is Canceled</h2>
+<p>We can explore how to wait for a task with a timeout and the <strong>wait_for()</strong> task itself is canceled.</p>
+<p>The <strong>wait_for()</strong> coroutine can be wrapped in an <strong>asyncio.Task</strong> object and scheduled for execution. This object can be canceled which will cancel the <strong>wait_for()</strong> and in turn cancel the task or coroutine that is being waited for.</p>
+<p>In the example below we update the example above. The <strong>wait_for()</strong> coroutine is wrapped in a task and passed to the canceled task that cancels it after a moment.</p>
+<p>The <strong>wait_for()</strong> is executed and is canceled, which in turn cancels the task being waited for.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of waiting for a task and the waiting task is canceled
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = 1 + random()
+    # report message
+    print(f'&gt;task got {value}')
+    # block for a moment
+    await asyncio.sleep(value)
+    # report all done
+    print('&gt;task done')
+
+# another coroutine that cancels a task
+async def task_cancel(other_task):
+    # wait a moment
+    await asyncio.sleep(0.3)
+    # cancel the other task
+    other_task.cancel()
+
+# main coroutine
+async def main():
+    # create a task
+    task = asyncio.create_task(task_coro(1))
+    # create the wait for coroutine
+    wait_coro = asyncio.wait_for(task, timeout=1)
+    # wrap the wait coroutine in a task and execute
+    wait_task = asyncio.create_task(wait_coro)
+    # create and run the cancel task
+    asyncio.create_task(task_cancel(wait_task))
+    # await the wait-for task
+    try:
+        await wait_task
+    except asyncio.TimeoutError:
+        print('Gave up waiting, task canceled')
+    except asyncio.CancelledError:
+        print('Wait for task was canceled externally')
+        print(task)
+        print(wait_task)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine creates and schedules the <strong>task_coro()</strong> as a task.</p>
+<p>The <strong>wait_for()</strong> is then called to wait on the task with a timeout of one second. The <strong>wait_for()</strong> coroutine is wrapped in a task and scheduled for execution</p>
+<p>Next, the <strong>task_cancel()</strong> coroutine is wrapped in a task and scheduled for execution, and passed the task object for the <strong>wait_for()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine is suspended and the <strong>task_coro()</strong> is executed.</p>
+<p>The <strong>task_coro()</strong> task reports a message and then sleeps. The <strong>task_cancel()</strong> sleeps, then resumes and cancels the <strong>wait_for()</strong> task. The exception is propagated down to the <strong>task_coro()</strong> task.</p>
+<p>The <strong>task_coro()</strong> task resumes and raises an <strong>asyncio.CancelledError</strong> exception.</p>
+<p>The <strong>main()</strong> coroutine resumes and the <strong>asyncio.CancelledError</strong> exception is re-raised and handled. The details of the <strong>task_coro()</strong> task and the <strong>wait_for()</strong> task are reported. We can see that both were canceled and are marked as done.</p>
+<p>This highlights how the <strong>wait_for()</strong> task itself can be canceled which will propagate the cancellation down to the task that is being waited for.</p>
+<p>The output from the program will differ each time it is run given the use of random numbers.</p>
+<pre><code>&gt;task got 1.022061277758374
+Wait for task was canceled externally
+&lt;Task cancelled name='Task-2' coro=&lt;task_coro() done, defined at ...&gt;&gt;
+&lt;Task cancelled name='Task-3' coro=&lt;wait_for() done, defined at ...&gt;&gt;
+</code></pre>
+<p>Next, let's look at a common error of forgetting to await the <strong>wait_for()</strong> coroutine.</p>
+<h2>Example of Asyncio wait_for() that is never Awaited</h2>
+<p>We can explore how to wait for a coroutine that is never awaited.</p>
+<p>In the example below we fail to await the coroutine returned from <strong>wait_for()</strong> and instead wait around for the waited-for task to complete.</p>
+<p>It never does because the <strong>wait_for()</strong> coroutine is not executed with an await expression.</p>
+<p>This is a common error when using the <strong>wait_for()</strong> function.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of never awaiting the wait_for coroutine
+from random import random
+import asyncio
+
+# coroutine to execute in a new task
+async def task_coro(arg):
+    # generate a random value between 0 and 1
+    value = random()
+    # report message
+    print(f'&gt;task got {value}')
+    # block for a moment
+    await asyncio.sleep(value)
+    # report all done
+    print('&gt;task done')
+
+# main coroutine
+async def main():
+    # create a task
+    task = task_coro(1)
+    # get the coroutine
+    coro = asyncio.wait_for(task, timeout=None)
+    # report the details
+    print(coro)
+    # wait a while
+    await asyncio.sleep(2)
+
+# start the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine creates the task coroutine. It then calls <strong>wait_for()</strong> and passes the task coroutine and sets the timeout to None. A coroutine is returned and assigned and the details of the coroutine are reported.</p>
+<p>The <strong>main()</strong> coroutine is suspended with a call to wait. It resumes and the program is terminated,</p>
+<p>The <strong>wait_for()</strong> coroutine is never executed, e.g. never awaited or scheduled as a task. As such, two <strong>RuntimeWarnings</strong> are reported.</p>
+<p>This highlights that the coroutine returned from <strong>wait_for()</strong> must be executed, such as with an await expression or being scheduled as a task.</p>
+<p>The output from the program will differ each time it is run given the use of random numbers.</p>
+<pre><code>&lt;coroutine object wait_for at 0x107d059a0&gt;
+...: RuntimeWarning: coroutine 'wait_for' was never awaited
+  self._context.run(self._callback, *self._args)
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+...: RuntimeWarning: coroutine 'task_coro' was never awaited
+  self._context.run(self._callback, *self._args)
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to wait for an asyncio task with a timeout in Python.</p>
+</main>
+</body>
+</html>

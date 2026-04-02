@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPool Error Callback Functions in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPool Error Callback Functions in Python</h1>
+<div class="post-meta">October 2, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>You can specify a custom error callback function when using the <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async()</strong> methods on the <a href="../threadpool-python/"><strong>ThreadPool</strong> class</a> via the "<strong>error_callback</strong>" argument.</p>
+<p>In this tutorial you will discover <strong>how to use error callback functions with the ThreadPool in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Use Error Callbacks with the ThreadPool</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.ThreadPool"><strong>multiprocessing.pool.ThreadPool</strong> in Python</a> provides a pool of reusable threads for executing ad hoc tasks.</p>
+<blockquote><p>A thread pool object which controls a pool of worker threads to which jobs can be submitted.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The <strong>ThreadPool</strong> class extends the <strong>Pool</strong> class. The <strong>Pool</strong> class provides a pool of worker processes for process-based concurrency.</p>
+<p>Although the <strong>ThreadPool</strong> class is in the <strong>multiprocessing</strong> module it offers thread-based concurrency and is best suited to IO-bound tasks, such as reading or writing from sockets or files.</p>
+<p>A <strong>ThreadPool</strong> can be configured when it is created, which will prepare the new threads.</p>
+<p>We can issue one-off tasks to the <strong>ThreadPool</strong> using methods such as <strong>apply()</strong> or we can apply the same function to an iterable of items using methods such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the methods such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When issuing tasks to the <strong>ThreadPool</strong> asynchronously, we may need to configure an error callback function. That is, we may need to have a custom function called automatically if an error occurs within an issued task.</p>
+<p><strong>How can we use error callback functions with the ThreadPool in Python?</strong></p>
+<h2>How to Configure an Error Callback Function</h2>
+<p>The <strong>ThreadPool</strong> supports custom callback functions.</p>
+<p>Callback functions are called in two situations:</p>
+<ul><li>With the results of a task.</li><li>When an error is raised in a task.</li></ul>
+<p>We are only considering error callbacks called with the results of a task.</p>
+<p>Error callbacks are supported in the <strong>ThreadPool</strong> when issuing tasks asynchronously with any of the following functions:</p>
+<ul><li><strong>apply_async()</strong>: For issuing a single task asynchronously.</li><li><strong>map_async()</strong>: For issuing multiple tasks with a single argument asynchronously.</li><li><strong>starmap_async()</strong>: For issuing multiple tasks with multiple arguments asynchronously.</li></ul>
+<p>An error callback can be specified via the "<strong>error_callback</strong>" argument.</p>
+<p>The argument specifies the name of a custom function to call with the error raised in an asynchronous task.</p>
+<p>Note, the first task to raise an error will be called, not all tasks that raise an error.</p>
+<p>The function may have any name you like, as long as it does not conflict with a function name already in use.</p>
+<blockquote><p>If error_callback is specified then it should be a callable which accepts a single argument. If the target function fails, then the error_callback is called with the exception instance.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example, if <strong>apply_async()</strong> is configured with an error callback, then the callback function will be called with the error raised in the task.</p>
+<pre><code># error callback function
+def custom_callback(error):
+	print(error)
+
+...
+# issue a single task
+result = pool.apply_async(..., error_callback=custom_callback)
+</code></pre>
+<p>Error callbacks should be used to perform a quick action with the error raised by a task in the <strong>ThreadPool</strong>.</p>
+<p>They should not block or execute for an extended period as they will occupy the resources of the <strong>ThreadPool</strong> while running.</p>
+<blockquote><p>Callbacks should complete immediately since otherwise the thread which handles the results will get blocked.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Now that we know how to configure an error callback function, let's look at some worked examples.</p>
+<h2>Example of Error Callback Function for apply_async()</h2>
+<p>We can explore how to use an error callback with the <strong>ThreadPool</strong> when issuing tasks via the <strong>apply_async()</strong> function.</p>
+<p>In this example we will define a task that generates a random number, reports the number, blocks for a moment, then raises an exception. An error callback function will be defined that receives the error from the task function and reports the details.</p>
+<p>Firstly, we can define the error callback function.</p>
+<p>The function takes a single error from a target task function and reports it directly.</p>
+<p>The <strong>handler()</strong> function below implements this.</p>
+<pre><code># error callback function
+def handler(error):
+    print(f'Error: {error}')
+</code></pre>
+<p>Next, we can define a target task function.</p>
+<p>The function takes a unique integer identifier for the task. It then generates a random number between 0 and 1 and sleeps for a fraction of a second to simulate computational effort. Finally, it raises an exception before it has a chance to return the random value that was generated.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker thread
+def task(identifier):
+    # generate a value
+    value = random()
+    # report a message
+    print(f'Task {identifier} executing with {value}')
+    # block for a moment
+    sleep(value)
+    # raise an exception
+    raise Exception('Something bad happened')
+    # return the generated value
+    return value
+</code></pre>
+<p>We then define a <strong>ThreadPool</strong> with the default number of worker threads. In this case we use the context manager interface to ensure the <strong>ThreadPool</strong> closes automatically once we are finished with it.</p>
+<pre><code>...
+# create and configure the thread pool
+with ThreadPool() as pool:
+    # ...
+</code></pre>
+<p>You can learn more about the context manager interface in the tutorial:</p>
+<ul><li><a href="../threadpool-context-manager/">How to Use the ThreadPool Context Manager</a></li></ul>
+<p>We will then issue the task to the <strong>ThreadPool</strong> using the <strong>apply_async()</strong> and specify the error callback function to execute with the result of the task.</p>
+<pre><code>...
+# issue tasks to the thread pool
+result = pool.apply_async(task, args=(0,), error_callback=handler)</code></pre>
+<p>You can learn more about the <strong>apply_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-apply_async/">How to Use ThreadPool apply_async() in Python</a></li></ul>
+<p>Finally, the main thread will close the <strong>ThreadPool</strong> and wait for the issued task to complete.</p>
+<pre><code>...
+# close the thread pool
+pool.close()
+# wait for all tasks to complete
+pool.join()
+</code></pre>
+<p>You can learn more about joining the thread pool in the tutorial:</p>
+<ul><li><a href="../threadpool-join/">How to Join a ThreadPool in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an error callback function for apply_async()
+from random import random
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# error callback function
+def handler(error):
+    print(f'Error: {error}')
+
+# task executed in a worker thread
+def task(identifier):
+    # generate a value
+    value = random()
+    # report a message
+    print(f'Task {identifier} executing with {value}')
+    # block for a moment
+    sleep(value)
+    # raise an exception
+    raise Exception('Something bad happened')
+    # return the generated value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        result = pool.apply_async(task, args=(0,), error_callback=handler)
+        # close the thread pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first starts the <strong>ThreadPool</strong> with the default configuration.</p>
+<p>Then the task is issued to the <strong>ThreadPool</strong> The main thread then closes the pool and then waits for the issued task to complete.</p>
+<p>The task function executes, generating a random number, reporting a message, blocking then raising an exception.</p>
+<p>The error callback function is then called with the exception instance, and the details are reported.</p>
+<p>The task ends and the main thread wakes up and continues on, closing the program.</p>
+<pre><code>Task 0 executing with 0.6484199842270896
+Error: Something bad happened</code></pre>
+<p>Next, let's look at an example of using an error callback function with the <strong>map_async()</strong> function.</p>
+<h2>Example of Error Callback Function for map_async()</h2>
+<p>We can explore how to use an error callback with the <strong>ThreadPool</strong> when issuing tasks via the <strong>map_async()</strong> function.</p>
+<p>In this example, we can update the previous example to issue multiple calls to the <strong>task()</strong> function. All tasks will fail, but only one will call the error callback function and the details will be reported</p>
+<p>The error callback function and task function do not need any change and can be used as-is.</p>
+<p>In the main thread, we will call the <strong>map_async()</strong> function to issue five calls to the task function with integer values from 0 to 9 and to call the error callback function once all tasks are completed.</p>
+<pre><code>...
+# issue tasks to the thread pool
+result = pool.map_async(task, range(5), error_callback=handler)</code></pre>
+<p>You can learn more about the <strong>map_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-map_async/">How to Use ThreadPool map_async() in Python</a></li></ul>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an error callback function for map_async()
+from random import random
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# error callback function
+def handler(error):
+    print(f'Error: {error}')
+
+# task executed in a worker thread
+def task(identifier):
+    # generate a value
+    value = random()
+    # report a message
+    print(f'Task {identifier} executing with {value}')
+    # block for a moment
+    sleep(value)
+    # raise an exception
+    raise Exception('Something bad happened')
+    # return the generated value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        result = pool.map_async(task, range(5), error_callback=handler)
+        # close the thread pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first starts the <strong>ThreadPool</strong> with the default configuration.</p>
+<p>Then the 5 tasks are issued to the <strong>ThreadPool</strong>. The main thread then closes the pool and then waits for the issued tasks to complete.</p>
+<p>The tasks execute in the <strong>ThreadPool</strong>. Each task runs, generating a random number, reporting a message, blocking and then raising an exception.</p>
+<p>The error callback function is then called once, with the error raised by the first task that failed. The details of the exception passed in as an argument are then reported.</p>
+<p>All tasks end, and the main thread wakes up and continues on, closing the program.</p>
+<pre><code>Task 0 executing with 0.9706694296777868
+Task 1 executing with 0.7584220763984467
+Task 2 executing with 0.7007078770335248
+Task 3 executing with 0.7465399018986346
+Task 4 executing with 0.0908651638220992
+Error: Something bad happened</code></pre>
+<p>Next, let's look at an example of using an error callback function with the <strong>starmap_async()</strong> function.</p>
+<h2>Example of Error Callback Function for starmap_async()</h2>
+<p>We can explore how to use an error callback with the <strong>ThreadPool</strong> when issuing tasks via the <strong>starmap_async()</strong> function.</p>
+<p>In this example, we will update the previous example so that the target task function takes two arguments instead of one. The second argument will be a generated random value that will be passed in instead of generated in the task. A list of arguments will be prepared in the main thread that contain the integer identifiers and random values, then tasks with multiple arguments will be issued via the <strong>starmap_async()</strong> function.</p>
+<p>Firstly, we must update the <strong>task()</strong> function to take the random number as a second argument and to not generate a number as part of the task.</p>
+<p>The updated task() function with these changes is listed below.</p>
+<pre><code># task executed in a worker thread
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}')
+    # block for a moment
+    sleep(value)
+    # raise an exception
+    raise Exception('Something bad happened')
+    # return the generated value
+    return value
+</code></pre>
+<p>Next, in the main thread we will first create a list of arguments. Each item in the list will be a tuple of arguments for one call to the target <strong>task()</strong> function, containing an integer and a generated random floating point value.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, random()) for i in range(5)]</code></pre>
+<p>We can then issue the 5 tasks via the <strong>starmap_async()</strong>, configured to call an error callback function once all of the issued tasks have completed.</p>
+<pre><code>...
+# issue tasks to the thread pool
+result = pool.starmap_async(task, items, error_callback=handler)</code></pre>
+<p>You can learn more about the <strong>starmap_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../threadpool-starmap_async/">How to Use ThreadPool starmap_async() in Python</a></li></ul>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an error callback function for starmap_async()
+from random import random
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# error callback function
+def handler(error):
+    print(f'Error: {error}')
+
+# task executed in a worker thread
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}')
+    # block for a moment
+    sleep(value)
+    # raise an exception
+    raise Exception('Something bad happened')
+    # return the generated value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(5)]
+        # issue tasks to the thread pool
+        result = pool.starmap_async(task, items, error_callback=handler)
+        # close the thread pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first starts the <strong>ThreadPool</strong> with the default configuration.</p>
+<p>Then the 5 tasks are issued to the <strong>ThreadPool</strong>. The main thread then closes the pool and then waits for the issued tasks to complete.</p>
+<p>The tasks execute in the ThreadPool. Each task runs, reporting a message, blocking and then raising an exception.</p>
+<p>All tasks complete and their return values are gathered.</p>
+<p>The error callback function is then called with an iterable of the return values. The iterable is traversed and each value is then reported.</p>
+<p>All tasks end, and the main thread wakes up and continues on, closing the program.</p>
+<pre><code>Task 0 executing with 0.4776973492827503
+Task 1 executing with 0.46625825611867566
+Task 2 executing with 0.41610894803790854
+Task 3 executing with 0.26574101654460214
+Task 4 executing with 0.022835556059091933
+Error: Something bad happened</code></pre>
+<p>Next, let's take a look at the specific threads used to execute the error callback function.</p>
+<h2>Which Thread Executes the Error Callback</h2>
+<p>We can explore the specific thread used to execute the error callback function.</p>
+<p>In this example we will define a task that gets and reports the current thread then raises an exception. We expect this to be a worker thread. We will also get and report the current thread in the main thread, which we expect to be the main thread of the main process. Finally, we will get and report the current thread used to execute the error callback.</p>
+<p>Firstly, we can define an error callback function that gets and reports the current thread.</p>
+<p>Recall that we can access the current thread via the <strong>threading.current_thread()</strong> function that returns a <strong>threading.Thread</strong> instance.</p>
+<p>This will report the details of the thread executing the error callback function, most notably the names and the ids.</p>
+<p>The <strong>handler()</strong> function below implements this.</p>
+<pre><code># error callback function
+def handler(error):
+    # get the current thread
+    thread = current_thread()
+    # report the details of the current thread
+    print(f'Callback Thread: {thread}')
+</code></pre>
+<p>Next, we can define a target task function that does the same thing. It gets and reports the current thread used to execute the task, then raises an exception.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker thread
+def task(identifier):
+    # get the current thread
+    thread = current_thread()
+    # report the details of the current thread
+    print(f'Task Thread: {thread}')
+    # raise an exception
+    raise Exception('Something bad happened')
+</code></pre>
+<p>Finally, in the main thread, we will create and configure a <strong>ThreadPool</strong> using the context manager, then issue a single task to the <strong>ThreadPool</strong> via the <strong>apply_async()</strong> function, configured with an error callback function.</p>
+<pre><code>...
+# create and configure the thread pool
+with ThreadPool() as pool:
+    # issue tasks to the thread pool
+    result = pool.apply_async(task, args=(0,), error_callback=handler)
+</code></pre>
+<p>We will then get and report the details of the current thread.</p>
+<pre><code>...
+# get the current thread
+thread = current_thread()
+# report the details of the current thread
+print(f'Main Thread: {thread}')
+</code></pre>
+<p>We will then close the <strong>ThreadPool</strong> and wait for the issued task to complete.</p>
+<pre><code>...
+# close the thread pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of reporting the thread that executes the error callback function
+from random import random
+from time import sleep
+from threading import current_thread
+from multiprocessing.pool import ThreadPool
+
+# error callback function
+def handler(error):
+    # get the current thread
+    thread = current_thread()
+    # report the details of the current thread
+    print(f'Callback Thread: {thread}')
+
+# task executed in a worker thread
+def task(identifier):
+    # get the current thread
+    thread = current_thread()
+    # report the details of the current thread
+    print(f'Task Thread: {thread}')
+    # raise an exception
+    raise Exception('Something bad happened')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        result = pool.apply_async(task, args=(0,), error_callback=handler)
+        # get the current thread
+        thread = current_thread()
+        # report the details of the current thread
+        print(f'Main Thread: {thread}')
+        # close the thread pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first starts the <strong>ThreadPool</strong>.</p>
+<p>The main thread then issues a task to the <strong>ThreadPool</strong>. It then reports the current thread.</p>
+<p>In this case, we can see that the program is executed by the "<em>MainThread</em>" as we might expect.</p>
+<p>You can learn more about the main thread in the tutorial:</p>
+<ul><li><a href="../main-thread/">What is the Main Thread in Python</a></li></ul>
+<p>Next, the task is executed.</p>
+<p>In this case, we can see that the task is executed by the main thread in a worker thread with the type <strong>DummyProcess</strong> and name <em>Thread-1</em>.</p>
+<p>Finally, the error callback function is executed. In this case, we can see that the callback is executed by a helper thread named "<em>Thread-11</em>".</p>
+<p>This highlights that the error callback is executed in the main process by a helper thread provided by the <strong>ThreadPool</strong> class.</p>
+<p>Note, the specific thread ids and names may be different, depending on the specifics of your system.</p>
+<pre><code>Main Thread: &lt;_MainThread(MainThread, started 4505775616)&gt;
+Task Thread: &lt;DummyProcess(Thread-1, started daemon 123145438461952)&gt;
+Callback Thread: &lt;Thread(Thread-11, started daemon 123145606356992)&gt;
+</code></pre>
+<p>Next, let's look at how we might share data with the error callback function.</p>
+<h2>How to Share Data With the Error Callback Function</h2>
+<p>We can explore how to share data with the error callback function.</p>
+<p>As we discovered in the previous section, both the code where we create the <strong>ThreadPool</strong> and issue tasks and the error callback function are executed in the main thread of the application, at least in these examples.</p>
+<p>Therefore, we can define a global variable in the program and have it shared and available to the error callback function.</p>
+<p>We will define a global variable with a random floating point value between 0 and 1. We will then access this global variable in the error callback function, then change it. Once all tasks are finished, we will then report the global variable again and confirm that change was reflected.</p>
+<p>This will demonstrate how the error callback function can both access and change global variables from the program.</p>
+<p>Firstly, we can define an error callback function that declares the global variable named "<strong>data</strong>", reports the value, changes it, then reports the changed value.</p>
+<p>The <strong>handler()</strong> function below implements this.</p>
+<pre><code># error callback function
+def handler(error):
+    global data
+    # report shared global data from main thread
+    print(f'Callback data: {data}')
+    # change it
+    data = random()
+    # report changed global data
+    print(f'Callback data now: {data}')
+</code></pre>
+<p>Next, we can define a target task function that blocks for a moment to simulate computational effort, then raises an exception.</p>
+<pre><code># task executed in a worker thread
+def task(identifier):
+    # block for a moment
+    sleep(1)
+    # raise an exception
+    raise Exception('Something bad happened')
+</code></pre>
+<p>Finally, in the main thread we can define a global variable and assign it a random number.</p>
+<pre><code>...
+# prepare shared global data
+data = random()</code></pre>
+<p>We can then create the <strong>ThreadPool</strong>, issue the task configured with the error callback, then wait for the task to complete.</p>
+<pre><code>...
+# create and configure the thread pool
+with ThreadPool() as pool:
+    # issue tasks to the thread pool
+    result = pool.apply_async(task, args=(0,), error_callback=handler)
+    # close the thread pool
+    pool.close()
+    # wait for all tasks to complete
+    pool.join()
+</code></pre>
+<p>We will then report the global variable in order to confirm the changes made in the error callback function are reflected in the main thread of the main thread.</p>
+<pre><code>...
+# report shared global data again
+print(f'Main data: {data}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing data with the error callback function
+from random import random
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# error callback function
+def handler(error):
+    global data
+    # report shared global data from main thread
+    print(f'Callback data: {data}')
+    # change it
+    data = random()
+    # report changed global data
+    print(f'Callback data now: {data}')
+
+# task executed in a worker thread
+def task(identifier):
+    # block for a moment
+    sleep(1)
+    # raise an exception
+    raise Exception('Something bad happened')
+
+# protect the entry point
+if __name__ == '__main__':
+    # prepare shared global data
+    data = random()
+    print(f'Main data: {data}')
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        result = pool.apply_async(task, args=(0,), error_callback=handler)
+        # close the thread pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+    # report shared global data again
+    print(f'Main data: {data}')
+</code></pre>
+<p>Running the example first creates the global variable and assigns it a random number, then reports the value.</p>
+<p>Next, the <strong>ThreadPool</strong> is created and the task is issued. The main thread then waits for the task in the <strong>ThreadPool</strong> to finish.</p>
+<p>The task executes, blocking for a second, then raises an exception.</p>
+<p>The error callback function is called. It declares the global variable, then reports its value. We can see that the reported value matches the value reported from the main thread. It then assigns a new random value to the global variable and reports its value.</p>
+<p>The main thread continues on and reports the current value of the global variable. We can see that the main thread sees the changed value, matching the value that was set in the error callback function.</p>
+<p>This highlights how data can be made available to the error callback function and how the callback function may make data available to the main thread.</p>
+<p>Note, the results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>Main data: 0.6123364204719952
+Callback data: 0.6123364204719952
+Callback data now: 0.062160756121871885
+Main data: 0.062160756121871885</code></pre>
+<p>Next, let's take a closer look at when an error callback function is executed.</p>
+<h2>When is the Error Callback Executed</h2>
+<p>We can explore when exactly the error callback function is called.</p>
+<p>In this example we will report a message in the main thread, in the task, and in the error callback function, then after the task is completed. The order of the reported messages will give an idea of when exactly the error callback function is executed.</p>
+<p>Firstly, we can define an error callback function that just reports a message that it is finished.</p>
+<pre><code># error callback function
+def handler(error):
+    print(f'Error callback done.')
+</code></pre>
+<p>Similarly, we can define a task function that reports a message that it is finished, then raises an exception.</p>
+<pre><code># task executed in a worker thread
+def task(identifier):
+    print(f'Task {identifier} done.')
+    # raise an exception
+    raise Exception('Something bad happened')
+</code></pre>
+<p>We can create a <strong>ThreadPool</strong> and issue five tasks to the pool, configured with the custom error callback function.</p>
+<pre><code>...
+# create and configure the thread pool
+with ThreadPool() as pool:
+    # issue tasks to the thread pool
+    result = pool.map_async(task, range(5), error_callback=handler)
+</code></pre>
+<p>We can then report a message, wait for the tasks to complete, then report another message.</p>
+<pre><code>...
+# report tasks are issued
+print(f'Main tasks issued.')
+# wait for tasks to complete
+result.wait()
+print(f'Main tasks done.')
+</code></pre>
+<p>Finally, the pool can be closed.</p>
+<pre><code>...
+# close the thread pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of determining when the error callback is called
+from random import random
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# error callback function
+def handler(error):
+    print(f'Error callback done.')
+
+# task executed in a worker thread
+def task(identifier):
+    print(f'Task {identifier} done.')
+    # raise an exception
+    raise Exception('Something bad happened')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        result = pool.map_async(task, range(5), error_callback=handler)
+        # report tasks are issued
+        print(f'Main tasks issued.')
+        # wait for tasks to complete
+        result.wait()
+        print(f'Main tasks done.')
+        # close the thread pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPool</strong>, then issues five tasks.</p>
+<p>The main thread then reports a message that the tasks are issued, then blocks until the tasks are done.</p>
+<p>Next, each task executes and reports a message that they are done, then raises an exception.</p>
+<p>The error callback function is then called and reports that it is done.</p>
+<p>Finally, the main task unblocks, reports a message that all tasks are done, and closes the ThreadPool.</p>
+<p>This highlights that the error callback is called after all issued tasks are completed, but before the caller is made aware that the tasks are done. That is, the error callback is a part of the task from the perspective of the caller waiting on the task to complete.</p>
+<pre><code>Main tasks issued.
+Task 0 done.
+Task 1 done.
+Task 2 done.
+Task 3 done.
+Task 4 done.
+Error callback done.
+Main tasks done.</code></pre>
+<p>Next, let's take a look at what happens if there is an error in a callback function.</p>
+<h2>What Happens if an Error Callback Raises an Exception</h2>
+<p>We can explore what happens if an error occurs in the error callback function.</p>
+<p>In this example, we will define an error callback function that raises an exception. We will then issue the task as per normal and wait for it to complete.</p>
+<p>Firstly, we can define the custom error callback function that reports a message then raises an exception.</p>
+<pre><code># error callback function
+def handler(error):
+    print(f'Error callback running.')
+    # failure
+    raise Exception('Something bad happened')
+</code></pre>
+<p>Next, we will define a target task function that simply reports a message and raises an exception ensuring the error callback is called.</p>
+<pre><code># task executed in a worker thread
+def task(identifier):
+    # report a message
+    print(f'Task {identifier} done.')
+    # raise an exception
+    raise Exception('Something bad happened')
+</code></pre>
+<p>In the main thread, we will create the <strong>ThreadPool</strong>, then issue five tasks to the pool with the configured error callback.</p>
+<pre><code>...
+# create and configure the thread pool
+with ThreadPool() as pool:
+    # issue tasks to the thread pool
+    result = pool.map_async(task, range(5), error_callback=handler)
+</code></pre>
+<p>The main thread will then wait for the tasks to complete, then close the <strong>ThreadPool</strong>.</p>
+<pre><code>...
+# report tasks are issued
+print(f'Main tasks issued.')
+# wait for tasks to complete
+result.wait()
+print(f'Main tasks done.')
+# close the thread pool
+pool.close()
+# wait for all tasks to complete
+pool.join()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of determining what happens if an exception is raised in the error callback
+from multiprocessing.pool import ThreadPool
+
+# error callback function
+def handler(error):
+    print(f'Error callback running.')
+    # failure
+    raise Exception('Something bad happened')
+
+# task executed in a worker thread
+def task(identifier):
+    # report a message
+    print(f'Task {identifier} done.')
+    # raise an exception
+    raise Exception('Something bad happened')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the thread pool
+    with ThreadPool() as pool:
+        # issue tasks to the thread pool
+        result = pool.map_async(task, range(5), error_callback=handler)
+        # report tasks are issued
+        print(f'Main tasks issued.')
+        # wait for tasks to complete
+        result.wait()
+        print(f'Main tasks done.')
+        # close the thread pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first creates the <strong>ThreadPool</strong>.</p>
+<p>It then issues 5 tasks and waits for them to complete.</p>
+<p>Each task executes, reporting a message as per normal, then raising an exception.</p>
+<p>The error callback function is then called after all tasks are finished. A message is reported, then an exception is raised.</p>
+<p>The exception then appears to unwind the helper thread in the <strong>ThreadPool</strong>. This very likely breaks the <strong>ThreadPool</strong>.</p>
+<p>The main thread in the main thread blocks forever waiting for the issued tasks to complete. The tasks never complete because the error callback function never completed successfully.</p>
+<p>This highlights that care must be taken in the error callback function as an error in the callback may bring down the application.</p>
+<p>Note, you will have to manually terminate the program, e.g. Control-C.</p>
+<pre><code>Main tasks issued.
+Task 0 done.
+Task 1 done.
+Task 2 done.
+Task 3 done.
+Task 4 done.
+Error callback running.
+Exception in thread Thread-11:
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened
+</code></pre>
+<h2>Error Callback Common Questions</h2>
+<p>This section lists common questions about error callbacks used with asynchronous tasks in the <strong>ThreadPool</strong>.</p>
+<p><strong>Do you have any questions?</strong><br/>Let me know below.</p>
+<h3>What is an Error Callback Function?</h3>
+<p>An error callback is a function called automatically if an asynchronous task issued to the ThreadPool raises an error or exception.</p>
+<h3>When Should I Use an Error Callback?</h3>
+<p>You can use an error callback function when issuing asynchronous tasks to the ThreadPool.</p>
+<p>An error callback function can be used to handle an unexpected error in a task, such as reporting or logging the failure.</p>
+<p>Error callback functions should not take a long time to execute as they will occupy resources of the ThreadPool.</p>
+<h3>What Argument Does the Error Callback Receive?</h3>
+<p>The error callback function will receive the exception or error raised in the task executed by the ThreadPool.</p>
+<h3>Which Thread Executes the Error Callback Function?</h3>
+<p>The error callback function is executed in a helper thread of the <strong>ThreadPool</strong> in the main process, or the process in which the <strong>ThreadPool</strong> was created and tasks were issued.</p>
+<h3>Will The Result Callback Be Called Before The Error Callback?</h3>
+<p>No.</p>
+<p>If at least one task raises an error, then the result callback will not be called and the error callback function will be called instead.</p>
+<p>You can learn more about the result callback in the tutorial:</p>
+<ul><li><a href="../threadpool-callback/">ThreadPool Callback Functions in Python</a></li></ul>
+<h3>Can I Issue Follow-Up Tasks From the Error Callback?</h3>
+<p>Yes.</p>
+<p>The <strong>ThreadPool</strong> can be made accessible via a global variable and follow-up tasks may be issued directly from within the error callback function.</p>
+<h2>Takeaways</h2>
+<p>You now know how to use error callback functions with the <strong>ThreadPool</strong> in Python.</p>
+</main>
+</body>
+</html>

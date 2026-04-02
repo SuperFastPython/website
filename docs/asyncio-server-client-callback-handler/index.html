@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Server Client Callback Handler – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Server Client Callback Handler</h1>
+<div class="post-meta">March 26, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>The <strong>asyncio server</strong> accepts client connections that call a custom <strong>client callback coroutine</strong>.</p>
+<p>Each time a client is connected to the asyncio server, the client callback coroutine is run in a new asyncio task and the task is not awaited by the server.</p>
+<p>This means that each client connection is isolated from the server. In turn, it means that:</p>
+<ul>
+<li>If a client callback task is canceled, the <strong>CancelledError</strong> will not propagate to the server task. </li>
+<li>If a client callback task fails with an unhandled exception, the exception will not propagate to the server task.</li>
+</ul>
+<p>This means that the task running the server is robust to failures that might occur within the client connection callback tasks.</p>
+<p>In this tutorial, you will discover the client callback coroutine used by the asyncio server to manage connections.</p>
+<p>Let's get started.</p>
+<h2>How to Create an Asyncio Server</h2>
+<p>An asyncio server accepts incoming TCP client connections.</p>
+<p>It is represented in asyncio Python programs via the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#server-objects"><strong>asyncio.Server</strong> class</a>.</p>
+<blockquote>
+<p>The create_server() method returns a Server instance, which wraps the sockets (or other network objects) used to accept requests.</p>
+<cite>-- <a href="https://peps.python.org/pep-3156/#servers">PEP 3156 – Asynchronous IO Support Rebooted: the "asyncio" Module</a></cite></blockquote>
+<p>We use an <strong>asyncio.Server</strong> in our asyncio programs when we want to accept connections from other programs.</p>
+<p>We should not create an asyncio.Server instance directly. Instead, we can create a server using the <strong>asyncio.start_server()</strong> module function.</p>
+<p>This function takes a coroutine handler used to manage each client connection. It also takes details about the server, such as the host address and port number.</p>
+<p>For example:</p>
+<pre><code>...
+# create an asyncio server
+server = await asyncio.start_server(handler, '127.0.0.1', port=8888)</code></pre>
+<p>You can learn more about how to create an asyncio server in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-server/">How to Use Asyncio Stream Server</a></li>
+</ul>
+<p>The handler must take two arguments, a asyncio.<strong>StreamReader</strong> for reading data from the client and an asyncio.<strong>StreamWriter</strong> for writing data to the client.</p>
+<p>A handler coroutine may look as follows:</p>
+<pre><code># handler for client connections
+async def handler(reader, writer):
+    pass
+</code></pre>
+<p>Once created, we can call the <strong>serve_forever()</strong> coroutine to accept connections forever.</p>
+<p>For example:</p>
+<pre><code>...
+# accept client connections forever
+await server.serve_forever()</code></pre>
+<p>This can be performed within the asynchronous context manager of the server, ensuring the server is closed safely and all clients are disconnected if the server fails with an error.</p>
+<p>For example:</p>
+<pre><code>...
+# use the server
+async with server:
+    # accept client connections forever (kill via control-c)
+    await server.serve_forever()
+	# close automatically
+</code></pre>
+<p>You can learn more about how to use the asyncio server context manager in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-server-context-manager/">Asyncio Server Context Manager</a></li>
+</ul>
+<p>Now that we know how to create a server, let's consider the client callback handler in more detail.</p>
+<h2>About the Client Callback Handler</h2>
+<p>The client callback handler in the server is a coroutine that manages each new client connection.</p>
+<blockquote>
+<p>The client_connected_cb callback is called whenever a new client connection is established. It receives a (reader, writer) pair as two arguments, instances of the StreamReader and StreamWriter classes.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Streams, Asyncio API Documentation</a>.</cite></blockquote>
+<p>When a client connects to the asyncio server, this creates a new task and runs the specified callback.</p>
+<p>This is helpful to know because each client that is connected to the server will be running in a separate task.</p>
+<blockquote>
+<p>client_connected_cb can be a plain callable or a coroutine function; if it is a coroutine function, it will be automatically scheduled as a Task.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-stream.html">Streams, Asyncio API Documentation</a>.</cite></blockquote>
+<p>Because each client connection is run in a separate task and this task is not awaited by the server task itself, this has a few implications, such as:</p>
+<ol>
+<li>If a task running a client connection fails with an exception, the exception is not propagated back to the server.</li>
+<li>If a task running a client connection is canceled, raising an <strong>asyncio.CancelledError</strong>, it is not propagated back to the server.</li>
+</ol>
+<p>This means that client tasks are isolated from the server task.</p>
+<p>Now that we understand some details about how client connections are managed by the server, let's look at some worked examples.</p>
+<h2>Example Client Callback Handler Are Separate Tasks</h2>
+<p>We can confirm that client connections are run as separate tasks in the server program.</p>
+<p>In this case, we will develop a server, a client to connect the server, then run both programs and introspect all running tasks in the server after the client has connected.</p>
+<p>We expect to see a separate class for the client connection within the server program.</p>
+<p>Let's dive in.</p>
+<h3>Asyncio Server</h3>
+<p>The first step is to define the asyncio server.</p>
+<p>We can start with the client connection handler.</p>
+<p>In this case, the handler will report that a client is connected, sleep for 2 seconds to slow things down for us, and then report the details of all tasks running in the server asyncio event loop.</p>
+<p>Finally, the handle will disconnect the client and wait for the client to disconnect.</p>
+<p>The <strong>handler()</strong> coroutine below implements this.</p>
+<pre><code># handler for client connections
+async def handler(reader, writer):
+    # report progress
+    print('Client connected')
+    # await a moment
+    await asyncio.sleep(2)
+    # report all tasks in the event loop
+    for task in asyncio.all_tasks():
+        print(task)
+    # close the client connection
+    await writer.close()
+    # wait for the connection o close
+    await writer.wait_closed()
+</code></pre>
+<p>Next, we can define the main coroutine.</p>
+<p>This will create the server and server forever using the context manager interface.</p>
+<p>We can use the walrus operator to await and assign the creation of the server within the context manager block.</p>
+<p>For more on this trick, see the tutorial:</p>
+<ul>
+<li><a href="../asyncio-server-context-manager/">Asyncio Server Context Manager</a></li>
+</ul>
+<p>The <strong>main()</strong> that implements this is listed below.</p>
+<pre><code># main coroutine
+async def main():
+    # create the server and accept clients forever
+    async with (server:= await asyncio.start_server(handler, '127.0.0.1', 8888)):
+        # report progress
+        print('Server is running')
+        # accept client connections forever
+        await server.serve_forever()
+</code></pre>
+<p>Finally, we can start the asyncio event loop.</p>
+<pre><code>...
+# start the asyncio event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example showing client handlers are executed in separate tasks
+import asyncio
+
+# handler for client connections
+async def handler(reader, writer):
+    # report progress
+    print('Client connected')
+    # await a moment
+    await asyncio.sleep(2)
+    # report all tasks in the event loop
+    for task in asyncio.all_tasks():
+        print(task)
+    # close the client connection
+    await writer.close()
+    # wait for the connection o close
+    await writer.wait_closed()
+
+# main coroutine
+async def main():
+    # create the server and accept clients forever
+    async with (server:= await asyncio.start_server(handler, '127.0.0.1', 8888)):
+        # report progress
+        print('Server is running')
+        # accept client connections forever
+        await server.serve_forever()
+
+# start the asyncio event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's develop a client for this server.</p>
+<h3>Asyncio Client</h3>
+<p>We can develop a simple client to connect to the server.</p>
+<p>The client will open a connection and sleep for 10 seconds before closing the connection.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# client for our test server
+import asyncio
+
+# test client
+async def main():
+    print('Connecting...')
+    # open a connection to the server
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+    # report message
+    print('Connected')
+    # wait around
+    await asyncio.sleep(10)
+    # close the connection
+    print('Shutting down...')
+    writer.close()
+    await writer.wait_closed()
+
+# run the event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's run both client and server and review an exchange.</p>
+<h3>Asyncio Client-Server Exchange</h3>
+<p>We can run the server, connect the client, and review the introspection performed in the server.</p>
+<p>Firstly, we can save the server program to a file, such as <strong>server.py</strong>, and run it on the command line.</p>
+<p>For example:</p>
+<pre><code>python server.py</code></pre>
+<p>Next, we can save the client program to a file, such as <strong>client.py</strong>, and run it on the command line.</p>
+<p>For example:</p>
+<pre><code>python client.py</code></pre>
+<p>The client connects to the server and the server handles the connection.</p>
+<p>The server reports a message, sleeps, then reports the details of all tasks running the event loop.</p>
+<p>The server then disconnects the client, and later the client disconnects from the server.</p>
+<p>The server can then be manually terminated, such as via the control-c key combination that sends a SIGINT signal to the server program, causing it to exit.</p>
+<p>Below is a sample output from the server.</p>
+</main>
+</body>
+</html>

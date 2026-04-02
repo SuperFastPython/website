@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Port Scanner in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Port Scanner in Python</h1>
+<div class="post-meta">December 21, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>Asyncio coroutines in Python can be used to scan multiple ports on a server concurrently.</p>
+<p>This can dramatically speed up the process compared to attempting to connect to each port sequentially, one by one.</p>
+<p>In this tutorial, you will discover how to develop a <strong>concurrent port scanner with asyncio in Python</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul><li>How to open a socket connection to each port sequentially and how slow it can be.</li><li>How to execute coroutines concurrently to scan ports and wait for them to complete.</li><li>How to scan port numbers concurrently and report results dynamically as soon as they are available</li><li>How to limit the number of ports scanned concurrently using a queue.</li></ul>
+<p>Let's dive in.</p>
+<h2>Develop and Asyncio Port Scanner</h2>
+<p>We can connect to other computers by opening a socket, called <a href="https://en.wikipedia.org/wiki/Network_socket">socket programming</a>.</p>
+<p>Opening a socket requires both the name or IP address of the server and a port number on which to connect.</p>
+<p>For example, when your web browser opens a web page on python.org, it is opening a socket connection to that server on port 80, then uses the HTTP protocol to request and download (GET) an HTML file. Well, it used to. Now it is port 443 using the HTTPS protocol.</p>
+<p>Socket programming or <a href="https://en.wikipedia.org/wiki/Computer_network_programming">network programming</a> is a lot of fun.</p>
+<p>A good first socket programming project is to develop a <a href="https://en.wikipedia.org/wiki/Port_scanner">port scanner</a>.</p>
+<p>This is a program that reports all of the open sockets on a given server.</p>
+<p>A simple way to implement a port scanner is to loop over all the ports you want to test and attempt to make a socket connection on each. If a connection can be made, we disconnect immediately and report that the port on the server is open.</p>
+<p>For example, we know that port 80 is open on python.org, but what other ports might be open?</p>
+<p>Historically, having many open ports on a server was a security risk, so it is common to lock down a public-facing server and close all non-essential ports to external traffic. This means scanning public servers will likely yield few open ports in the best case or will deny future access in the worst case if the server thinks you're trying to break in.</p>
+<p>As such, although developing a port scanner is a fun socket programming exercise, we must be careful in how we use it and what servers we scan.</p>
+<p>Next, let's look at how we can open a socket connection on a single port.</p>
+<h2>Open a Socket Connection on a Port</h2>
+<p>We can open a socket connection in asyncio using the <a href="https://docs.python.org/3/library/asyncio-stream.html#asyncio.open_connection"><strong>asyncio.open_connection()</strong> function</a>.</p>
+<p>This takes the host and port number and returns a <strong>StreamReader</strong> and <strong>StreamWriter</strong> for interacting with the server via the socket.</p>
+<p>The <strong>asyncio.open_connection()</strong> function is a coroutine and must be awaited. It will return once the connection is open.</p>
+<p>For example:</p>
+<pre><code>...
+# open a socket connection
+reader, writer = asyncio.open_connection('python.org', 80)</code></pre>
+<p>If a connection can be made, the port is open.</p>
+<p>Otherwise, if the connection cannot be made, the port is not open.</p>
+<p>The problem is, how do we know a connection cannot be made?</p>
+<p>If a port is not open, the call may wait for a long time before giving up.</p>
+<p>We need a way to give up after a time limit.</p>
+<p>This can be achieved using the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for"><strong>asyncio.wait_for()</strong> function</a>.</p>
+<p>This is a coroutine that will execute an awaitable and wait a fixed interval in seconds before giving up and raising an <strong>asyncio.TimeoutError</strong> exception.</p>
+<p>You can learn more about the <strong>asyncio.wait_for()</strong> function in the tutorial:</p>
+<ul><li><a href="../asyncio-wait_for/">Asyncio wait_for() to Wait With a Timeout</a></li></ul>
+<p>We can create the coroutine for the <strong>asyncio.open_connection()</strong> function and pass it to the <strong>wait_for()</strong> coroutine.</p>
+<p>This will allow us to attempt to make a socket connection on a given port for a fixed interval, such as one or three seconds.</p>
+<p>For example:</p>
+<pre><code>...
+# create coroutine for opening a connection
+coro = asyncio.open_connection('python.org, 80)
+# execute the coroutine with a timeout
+try:
+    # open the connection and wait for a moment
+    _ = await asyncio.wait_for(coro, 1.0)
+    # ...
+except asyncio.TimeoutError:
+	# ...
+</code></pre>
+<p>If the connection can be made within the time limit we can then close the connection.</p>
+<p>This can be achieved by calling the <strong>close()</strong> method on the <strong>StreamWriter</strong> object returned from <strong>asyncio.open_connection()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# close connection once opened
+writer.close()</code></pre>
+<p>Otherwise, if the <strong>asyncio.TimeoutError</strong> exception is raised, we can assume that the port is probably not open.</p>
+<p>We can tie all of this together into a coroutine function that tests one port on one host and returns <strong>True</strong> if the port is open or <strong>False</strong> otherwise.</p>
+<p>The <strong>test_port_number()</strong> coroutine function below implements this.</p>
+<pre><code># returns True if a connection can be made, False otherwise
+async def test_port_number(host, port, timeout=3):
+    # create coroutine for opening a connection
+    coro = asyncio.open_connection(host, port)
+    # execute the coroutine with a timeout
+    try:
+        # open the connection and wait for a moment
+        _,writer = await asyncio.wait_for(coro, timeout)
+        # close connection once opened
+        writer.close()
+        # indicate the connection can be opened
+        return True
+    except asyncio.TimeoutError:
+        # indicate the connection cannot be opened
+        return False
+</code></pre>
+<h2>Scan a Range of Ports on a Server</h2>
+<p>We can scan a range of ports on a given host.</p>
+<p>Many common internet services are provided on ports between 0 and 1024.</p>
+<p>The viable range of ports is 0 to 65535, and you can see a list of the most common port numbers and the services that use them in the file /etc/services on POSIX systems.</p>
+<p>Wikipedia also has a page that lists the most common port numbers:</p>
+<ul><li><a href="https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers">List of TCP and UDP port numbers</a></li></ul>
+<p>To scan a range of ports, we can repeatedly call our <strong>test_port_number()</strong> coroutine function that we developed in the previous section and report any ports that permit a connection as ‘open’.</p>
+<p>The <strong>main()</strong> coroutine function below implements this reporting any open ports that are discovered.</p>
+<pre><code># main coroutine
+async def main(host, ports):
+    # report a status message
+    print(f'Scanning {host}...')
+    # scan ports sequentially
+    for port in ports:
+        if await test_port_number(host, port):
+            print(f'&gt; {host}:{port} [OPEN]')
+</code></pre>
+<p>Finally, we can call this function and specify the host and range of ports.</p>
+<p>In this case, we will port scan python.org (out of love for python, not malicious intent).</p>
+<pre><code># define a host and ports to scan
+host = 'python.org'
+ports = range(1, 1024)
+# start the asyncio program
+asyncio.run(main(host, ports))
+</code></pre>
+<p>We would expect that at the least port 80 would be open for HTTP connections.</p>
+<p>Tying this together, the complete example of port scanning a host in Python in asyncio is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asyncio sequential port scanner
+import asyncio
+
+# returns True if a connection can be made, False otherwise
+async def test_port_number(host, port, timeout=3):
+    # create coroutine for opening a connection
+    coro = asyncio.open_connection(host, port)
+    # execute the coroutine with a timeout
+    try:
+        # open the connection and wait for a moment
+        _,writer = await asyncio.wait_for(coro, timeout)
+        # close connection once opened
+        writer.close()
+        # indicate the connection can be opened
+        return True
+    except asyncio.TimeoutError:
+        # indicate the connection cannot be opened
+        return False
+
+# main coroutine
+async def main(host, ports):
+    # report a status message
+    print(f'Scanning {host}...')
+    # scan ports sequentially
+    for port in ports:
+        if await test_port_number(host, port):
+            print(f'&gt; {host}:{port} [OPEN]')
+
+# define a host and ports to scan
+host = 'python.org'
+ports = range(1, 1024)
+# start the asyncio program
+asyncio.run(main(host, ports))
+</code></pre>
+<p>Running the example attempts to make a connection for each port number between 1 and 1023 (one minus 1024) and reports all open ports.</p>
+<p>In this case, we can see that port 80 for HTTP is open as expected, and port 443 is also open for HTTPS.</p>
+<p>The program works fine, but it is painfully slow.</p>
+<p>On my system, it took about 51 minutes. This makes sense. If we test 1023 ports and most ports are closed then we expect to wait 3 seconds on each attempt or 1023 * 3 which equals 3069 seconds. Converting this to minutes 3069/60 equals about 51.15 minutes.</p>
+<pre><code>&gt; python.org:80 [OPEN]
+&gt; python.org:443 [OPEN]</code></pre>
+<p>The benefit of asyncio is that it can execute coroutines concurrently, specifically coroutines that perform non-blocking I/O.</p>
+<p>Next, we will look at how to run coroutines concurrently to speed up this port scanning process.</p>
+<h2>Asyncio Concurrent Port Scanner</h2>
+<p>We can scan ports concurrent with asyncio.</p>
+<p>Each port that is being tested is a coroutine that can run concurrently. The three seconds while the <strong>test_port_number()</strong> coroutine is running it will be suspended, allowing other coroutines to run.</p>
+<p>There are perhaps two main approaches we can use to achieve this:</p>
+<ol><li>Run coroutines concurrently with <strong>asyncio.gather()</strong>.</li><li>Issue coroutines as independent tasks and wait with <strong>asyncio.wait()</strong>.</li></ol>
+<p>The first is to create a coroutine for each port to scan, then execute them and wait for them to complete. This can be achieved using the <strong>asyncio.gather()</strong> function.</p>
+<p>The second is to issue each port to scan as an independent task, then wait for all tasks to complete. This can be achieved using the <strong>asyncio.wait()</strong> function.</p>
+<p>Let's take a closer look at each approach in turn.</p>
+<h3>Concurrent Port Scanner with gather()</h3>
+<p>We can create one coroutine per port to scan and then execute them all concurrently.</p>
+<p>This requires first creating the coroutines. With one coroutine per port, this would be a collection of more than 1,000 coroutines.</p>
+<p>We can achieve this using a list comprehension.</p>
+<p>For example:</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to use Asyncio Mutex Locks – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to use Asyncio Mutex Locks</h1>
+<div class="post-meta">December 7, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p><strong>Mutual exclusion locks</strong> or <strong>mutex locks</strong> for short can be used to protect critical sections of code from concurrent execution.</p>
+<p>It is possible to suffer race conditions if two or more coroutines operate upon the same variables, or if tasks are executed out of order.</p>
+<p>We can use locks in asyncio via the <strong>asyncio.Lock</strong> class to define atomic blocks of code where execution is serialized, e.g. made sequential.</p>
+<p>In this tutorial, you will discover <strong>how to use mutex locks to protect critical sections in asyncio</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>The <strong>importance of mutex locks</strong> in concurrent programming.</li>
+<li>How we may <strong>suffer race conditions</strong> in asyncio with coroutines.</li>
+<li><strong>How to use mutex locks</strong> in asyncio programs.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is a Mutual Exclusion Lock</h2>
+<p>A mutual exclusion lock or mutex lock is a synchronization primitive intended to prevent a race condition.</p>
+<p>A race condition is a concurrency failure case when two units of concurrency (processes, threads, or coroutines) run the same code and access or update the same resource (e.g. data variables, stream, etc.) leaving the resource in an unknown and inconsistent state.</p>
+<p>Although race conditions and mutex locks are often described in the context of threads, they are just as relevant and applicable to coroutines in asyncio.</p>
+<p>Race conditions often result in unexpected behavior of a program and/or corrupt data.</p>
+<p>These sensitive parts of code that can be executed by multiple threads concurrently and may result in race conditions are called critical sections. A critical section may refer to a single block of code, but it also refers to multiple accesses to the same data variable or resource from multiple functions.</p>
+<blockquote>
+<p>The most commonly used mechanism for ensuring mutual exclusion is a mutual exclusion lock or mutex, or simply lock. A mutex is a special type of object that has support in the underlying hardware. The basic idea is that each critical section is protected by a lock.</p>
+<cite>-- PAGE 53, <a href="https://amzn.to/3LRljie">AN INTRODUCTION TO PARALLEL PROGRAMMING</a>, 2020.</cite></blockquote>
+<p>A mutex lock can be used to ensure that only one thread at a time executes a critical section of code at a time, while all other threads trying to execute the same code must wait until the currently executing thread is finished with the critical section and releases the lock.</p>
+<blockquote>
+<p>While one thread “owns” the lock—that is, has returned from a call to the lock function but hasn’t yet called the unlock function—any other thread attempting to execute the code in the critical section will wait in its call to the lock function.</p>
+<cite>-- PAGE 53, <a href="https://amzn.to/3LRljie">AN INTRODUCTION TO PARALLEL PROGRAMMING</a>, 2020.</cite></blockquote>
+<p>Each thread must attempt to acquire the lock at the beginning of the critical section. If the lock has not been obtained, then a thread will acquire it and other threads must wait until the thread that acquired the lock releases it.</p>
+<blockquote>
+<p>Before a thread can execute the code in the critical section, it must “obtain” the mutex by calling a mutex function, and when it’s done executing the code in the critical section, it should “relinquish” the mutex by calling an unlock function.</p>
+<cite>-- PAGE 53, <a href="https://amzn.to/3LRljie">AN INTRODUCTION TO PARALLEL PROGRAMMING</a>, 2020.</cite></blockquote>
+<p>If the lock has not been acquired, we might refer to it as being in the “unlocked” state. Whereas if the lock has been acquired, we might refer to it as being in the “locked” state.</p>
+<ul>
+<li><strong>Unlocked</strong>: The lock has not been acquired and can be acquired by the next thread that makes an attempt.</li>
+<li><strong>Locked</strong>: The lock has been acquired by one thread and any thread that makes an attempt to acquire it must wait until it is released.</li>
+</ul>
+<p>Locks are created in the unlocked state.</p>
+<p>Now that we know what a mutex lock is, let's take at why we need a lock in an asyncio program.</p>
+<h2>Why Do We Need a Lock in AsyncIO?</h2>
+<p>All coroutines for an event loop run in one thread, and a thread runs in one process.</p>
+<p>Therefore, coroutines are both thread-safe and process-safe, as long as they are using resources that are not used by other threads or processes.</p>
+<p>Nevertheless, coroutines may access state or resources that are not coroutine-safe.</p>
+<p>How can this be, especially considering only one coroutine can run at a time within an event loop?</p>
+<p>Consider a block of code that may be executed by multiple coroutines concurrently and has at least a point where the coroutine is suspended, e.g. an await expression or similar.</p>
+<p>This block of code may manipulate program state, and data, or access an external resource.</p>
+<p>If multiple coroutines execute this block concurrency, then the program state, data, or external resource may be left in an inconsistent or corrupt state, or data may be lost.</p>
+<p>That is, coroutines may have critical sections that span many lines of code and must be protected from concurrent execution.</p>
+<p>An obvious example is multiple coroutines reading and writing to/from the same socket.</p>
+<p>A less obvious example is multiple coroutines that update program state while executing some task.</p>
+<p>A necessary condition for coroutines to suffer a race condition in an asyncio program is that the critical section must suspend, allowing one or more other coroutines to execute the same critical section, or manipulate the same state or resources.</p>
+<p>You can see an example of an asyncio race condition in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-race-conditions/">Asyncio Race Conditions</a></li>
+</ul>
+<p>Now that we know we need locks in asyncio programs, let's look at how to use the <strong>asyncio.Lock</strong> class.</p>
+<h2>How to Use the asyncio.Lock Class</h2>
+<p>Python provides a mutual exclusion lock for coroutines via the <strong>asyncio.Lock</strong> class.</p>
+<p>Critically, this lock is neither thread-safe nor process-safe. It cannot be used to protect critical sections from multiple threads or multiple processes.</p>
+<blockquote>
+<p>Implements a mutex lock for asyncio tasks. Not thread-safe. An asyncio lock can be used to guarantee exclusive access to a shared resource.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-sync.html">Asyncio Synchronization Primitives</a></cite></blockquote>
+<p>An instance of the lock must be created and shared among coroutines in order to protect a resource or critical sections.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = asyncio.Lock()</code></pre>
+<p>The lock can be acquired by calling the <strong>acquire()</strong> coroutine.</p>
+<p>This is done at the beginning of a critical section.</p>
+<p>This call must be awaited because it may block if the lock is currently being held by another coroutine that is currently suspended.</p>
+<p>This will suspend the calling coroutine and potentially allow the coroutine holding the lock to progress,</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+await lock.acquire()</code></pre>
+<p>Once the critical section is completed, the lock can be released.</p>
+<p>This is not a blocking call.</p>
+<pre><code>...
+# release the lock
+lock.release()</code></pre>
+<p>The lock must always be released.</p>
+<p>If not, other coroutines awaiting it will never be able to acquire the lock and the program may be deadlocked.</p>
+<p>As such, it may be a good practice to enclose the critical section in a try-finally block, ensuring the <strong>release()</strong> function is always recalled regardless of how the critical section block is exited.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+await lock.acquire()
+try:
+    # critical section
+    # ...
+finally:
+	# release the lock
+    lock.release()
+</code></pre>
+<p>We can achieve the same effect using the context manager interface.</p>
+<p>This is preferred as the lock always be released automatically as soon as the enclosed critical section block is exited.</p>
+<p>Recall that we must use an asynchronous context manager via the "<strong>async with</strong>" expression.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+async with lock:
+	# critical section
+    # ...
+# lock is released automatically...
+</code></pre>
+<p>You can learn more about the "<strong>async with</strong>" expression in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-async-with/">What is Asyncio async with</a></li>
+</ul>
+<p>You can learn more about asynchronous context managers in the tutorial:</p>
+<ul>
+<li><a href="../asynchronous-context-manager/">Asynchronous Context Managers in Python</a></li>
+</ul>
+<p>Finally, we can also check if the lock is currently acquired by a coroutine via the <strong>locked()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# check if a lock is currently acquired
+if lock.locked():
+    # ...
+</code></pre>
+<p>The <strong>asyncio.Lock</strong> class is different from the <strong>threading.Lock</strong> and <strong>multiprocessing.Lock</strong> classes in that it does not support a timeout when acquiring the lock, or the ability to acquire the lock without blocking.</p>
+<p>You can more about those classes in the tutorials:</p>
+<ul>
+<li><a href="../thread-mutex-lock/">Threading Mutex Lock in Python</a></li>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<p>Now that we know how to use the lock class, let's look at a worked example.</p>
+<h2>Example of Using the asyncio.Lock</h2>
+<p>We can develop an example to demonstrate how to use the mutex lock.</p>
+<p>First, we can define a target task coroutine that takes a lock as an argument and uses the lock to protect a contrived critical section.</p>
+<p>In this case, the critical section involves reporting a message and blocking for a fraction of a second.</p>
+<p>It is important that the critical section suspend in some way, in order to allow other coroutines to run and potentially interact with the same resources or critical sections that require the lock.</p>
+<p>The <strong>task()</strong> coroutine below implements this.</p>
+<pre><code># task coroutine with a critical section
+async def task(lock, num, value):
+    # acquire the lock to protect the critical section
+    async with lock:
+        # report a message
+        print(f'&gt;coroutine {num} got the lock, sleeping for {value}')
+        # block for a moment
+        await asyncio.sleep(value)
+</code></pre>
+<p>We can then create one instance of the <strong>asyncio.Lock</strong> shared among the coroutines.</p>
+<p>This can be achieved in the <strong>main()</strong> coroutine, used as the entry point to the program.</p>
+<p>We can then create a large number of coroutines and pass the shared lock. Each coroutine will have a unique integer argument and a random floating point value between 0 and 1, which will be how long the coroutine will sleep while holding the lock.</p>
+<p>The coroutines are created in a list comprehension and provided to the <strong>asyncio.gather()</strong> function. The <strong>main()</strong> coroutine will then block until all coroutines are complete.</p>
+<p>The <strong>main()</strong> coroutine that implements this is listed below.</p>
+</main>
+</body>
+</html>

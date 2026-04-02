@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kill All Tasks in the Multiprocessing Pool in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Kill All Tasks in the Multiprocessing Pool in Python</h1>
+<div class="post-meta">July 18, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can <strong>forcefully kill tasks</strong> in the <strong>process pool</strong> by the <strong><a href="../multiprocessing-pool-python/">Pool</a> terminate()</strong> function that will <strong>terminate all child worker processes immediately</strong>.</p>
+<p>In this tutorial you will discover <strong>how to kill tasks in the process pool</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Kill All Tasks</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool</strong> in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When using the process pool, we may need to forcefully kill all running tasks.</p>
+<p>This may be for many reasons such as:</p>
+<ul><li>User requests to close the application.</li><li>An error or fault that negates the tasks.</li><li>A problem accessing a required resource.</li></ul>
+<p><strong>How can we kill all tasks in the process pool?</strong></p>
+<h2>Consider Not Killing Tasks</h2>
+<p>Forcefully killing tasks in the process pool is an aggressive approach.</p>
+<p>It may cause undesirable side effects.</p>
+<p>For example, killing tasks in the process while they are running may mean that resources like files, sockets, and data structures used by running tasks are not closed or left in a useful state.</p>
+<p>An alternative to forcefully killing tasks may be to safely pause or stop a task using a synchronization primitive like a <strong>multiprocessing.Event</strong> object.</p>
+<p>You can learn more about safely stopping running tasks in the process pool in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-stop-all-tasks/">Stop All Tasks in the Process Pool in Python</a></li></ul>
+<p>Tasks in the process pool can be forcefully killed, let's look at how in the next section.</p>
+<h2>How To Kill All Tasks in the Process Pool</h2>
+<p>The <strong>multiprocessing.pool.Pool</strong> does not provide a mechanism to kill all tasks and continue using the pool.</p>
+<p>Nevertheless, the process pool does provide the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.terminate"><strong>terminate()</strong> function</a> which will forcefully terminate all child worker processes immediately, in turn killing all tasks.</p>
+<blockquote><p>Stops the worker processes immediately without completing outstanding work.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# forcefully terminate the process pool and kill all tasks
+pool.terminate()</code></pre>
+<p>This is achieved by sending a <strong>SIGKILL</strong> signal to each child worker process in the process pool. This signal cannot be handled and immediately terminates the child processes.</p>
+<p>You can learn more about shutting down the process pool in the tutorial:</p>
+<ul><li><a href="../shutdown-the-multiprocessing-pool-in-python/">How to Shutdown the Process Pool in Python</a></li></ul>
+<p>The process pool may take a moment to forcefully kill all child processes, so it is a good practice to call the <strong>join()</strong> function after calling <strong>terminate()</strong>. The <strong>join()</strong> function will only return after all child worker processes are completely closed.</p>
+<p>For example:</p>
+<pre><code>...
+# forcefully terminate the process pool and kill all tasks
+pool.terminate()
+# wait a moment for all worker processes to stop
+pool.join()</code></pre>
+<p>You can learn more about joining the process pool in the tutorial:</p>
+<ul><li><a href="../join-a-multiprocessing-pool-in-python/">Join a Process Pool in Python</a></li></ul>
+<p>Killing tasks in the process pool assumes that the main process that issues tasks to the process pool is free and able to kill the process pool.</p>
+<p>This means that tasks issued to the process pool are issued in an asynchronous rather than synchronous manner. This can be achieved using functions such as <strong>apply_async()</strong>, <strong>map_async()</strong> and <strong>starmap_async()</strong> to issue tasks.</p>
+<p>Now that we know how to kill all tasks in the process pool, let's look at some worked examples.</p>
+<h2>Example of Killing All Tasks in the Process Pool</h2>
+<p>We can explore how to forcefully kill running tasks in the process pool with the <strong>terminate()</strong> function.</p>
+<p>In this example we will issue a small number of tasks that run for a long time. We will then wait a moment then forcefully terminate the process pool and all running tasks in the pool.</p>
+<p>First, we can define a custom function to run as tasks in the process pool.</p>
+<p>The function will take an integer argument to identify the task number, report a message, then loop ten times, blocking for one second each loop iteration. Finally, if the task completes it reports an "<em>All Done</em>" message.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    print(f'Task {identifier} running', flush=True)
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+    # report all done
+    print(f'Task {identifier} Done', flush=True)
+</code></pre>
+<p>Next, from the main process, we will create the process pool with the default configuration.</p>
+<p>We will use the context manager interface to use the process pool to ensure it is closed automatically if something goes wrong. The process pool will use the default configuration.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+	# ...
+</code></pre>
+<p>You can learn more about the context manager interface for the process pool in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<p>We can then issue four tasks to the process pool.</p>
+<p>In this case, we will use the <strong>map_async()</strong> function to issue 4 tasks asynchronously so that we can carry on in the main process. We will then ignore the <strong>AsyncResult</strong> object returned.</p>
+<pre><code>...
+# issues tasks to process pool
+_ = pool.map_async(task, range(4))</code></pre>
+<p>If you are new to the <strong>map_async()</strong> for issuing tasks to the process pool, you can learn more in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li></ul>
+<p>The main process will then block for a moment to allow the tasks to start running.</p>
+<pre><code>...
+# wait a moment
+sleep(2)</code></pre>
+<p>We can then forcefully terminate the child worker processes which will kill the running tasks immediately.</p>
+<pre><code>...
+# kill all tasks
+print('Killing all tasks')
+pool.terminate()</code></pre>
+<p>Finally, we can block for a moment until the child worker processes are confirmed to be terminated.</p>
+<pre><code>...
+# wait for the pool to close down
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of killing all tasks in the process pool
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier):
+    print(f'Task {identifier} running', flush=True)
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+    # report all done
+    print(f'Task {identifier} Done', flush=True)
+
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issues tasks to process pool
+        _ = pool.map_async(task, range(4))
+        # wait a moment
+        sleep(2)
+        # kill all tasks
+        print('Killing all tasks')
+        pool.terminate()
+        # wait for the pool to close down
+        pool.join()
+</code></pre>
+<p>Running the example first creates the process pool with the default configuration.</p>
+<p>Four tasks are then issued to the process pool asynchronously. The main process then blocks for a moment.</p>
+<p>Each task starts running, first reporting a message and then lopping and sleeping for a second each loop iteration.</p>
+<p>The main process unblocks and continues on. It reports a message then forcefully terminates the process pool.</p>
+<p>This sends a <strong>SIGKILL</strong> signal to each child worker process causing them to terminate immediately. In turn the tasks that each child worker process is executing is forcefully terminated immediately.</p>
+<p>The main process then blocks for a fraction of a second until the child worker processes are stopped, then continues on, closing the application.</p>
+<pre><code>Task 0 running
+Task 1 running
+Task 2 running
+Task 3 running
+Killing all tasks</code></pre>
+<p>Next, let's explore the case of killing multiple batches of tasks running in the process pool.</p>
+<h2>Kill Multiple Batches of Tasks in the Process Pool</h2>
+<p>We can explore how to forcefully kill multiple batches of tasks in the process pool.</p>
+<p>This can be achieved by updating the example from the previous section to issue multiple batches of tasks to the process pool.</p>
+<p>We can change the single call to <strong>map_async()</strong> into multiple calls that each issue tasks asynchronously into the process pool.</p>
+<pre><code>...
+# issues tasks to process pool
+_ = pool.map_async(task, range(2))
+# issues more tasks to process pool
+_ = pool.map_async(task, range(2))</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of killing all tasks in the process pool
+from time import sleep
+from multiprocessing.pool import Pool
+
+# task executed in a worker process
+def task(identifier):
+    print(f'Task {identifier} running', flush=True)
+    # run for a long time
+    for i in range(10):
+        # block for a moment
+        sleep(1)
+    # report all done
+    print(f'Task {identifier} Done', flush=True)
+
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issues tasks to process pool
+        _ = pool.map_async(task, range(2))
+        # issues more tasks to process pool
+        _ = pool.map_async(task, range(2))
+        # wait a moment
+        sleep(2)
+        # kill all tasks
+        print('Killing all tasks')
+        pool.terminate()
+        # wait for the pool to close down
+        pool.join()
+</code></pre>
+<p>Running the example first creates the process pool with the default configuration.</p>
+<p>Two tasks are then issued to the process pool asynchronously.</p>
+<p>Again, two tasks are then issued to the process pool asynchronously.</p>
+<p>There are now two batches of tasks issued and running in the process pool. The main process then blocks for a moment.</p>
+<p>Each task starts running, first reporting a message and then lopping and sleeping for a second each loop iteration.</p>
+<p>The main process unblocks and continues on. It reports a message then forcefully terminates the process pool.</p>
+<p>This sends a SIGKILL signal to each child worker process causing them to terminate immediately. In turn the tasks that each child worker process is executing is forcefully terminated immediately.</p>
+<p>The main process then blocks for a fraction of a second until the child worker processes are stopped, then continues on, closing the application.</p>
+<pre><code>Task 0 running
+Task 1 running
+Task 0 running
+Task 1 running
+Killing all tasks</code></pre>
+<h2>Common Questions</h2>
+<p>This section lists common questions about killing tasks in the process pool.</p>
+<p><strong>Do you have any questions about killing tasks in the process pool?</strong><br/>Ask your questions in the comments below and I may add them to this section.</p>
+<h3>Can We Kill Tasks Instead of Worker Processes?</h3>
+<p>No.</p>
+<p>The process pool does not provide the capability to kill specific tasks in the process pool.</p>
+<p>This capability could be developed into a custom process pool class.</p>
+<h3>Can We Kill The Worker Processes and Have The Pool Restart Them?</h3>
+<p>No.</p>
+<p>If we manually kill the child worker processes, the <strong>multiprocessing.pool.Pool</strong> class will not detect this case and restart the worker processes.</p>
+<p>This capability could be developed into a custom process pool class.</p>
+<h3>Can We Only Kill Tasks Associated With An AsyncResult?</h3>
+<p>No.</p>
+<p>The <strong>AsyncResult</strong> does not provide a handle on the processes that are executing the tasks or a way to stop the tasks or their worker processes.</p>
+<p>This capability could be developed into a custom process pool class.</p>
+<h2>Takeaways</h2>
+<p>You now know how to kill tasks in the process pool.</p>
+</main>
+</body>
+</html>

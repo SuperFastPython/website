@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log All Silent Exceptions in Asyncio – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Log All Silent Exceptions in Asyncio</h1>
+<div class="post-meta">December 3, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can get the details of <strong>silent never-retrieved exceptions in asyncio</strong> once the program is terminated.</p>
+<p>A custom event loop exception handler can be defined that will be called for each never-retrieved exception, allowing these exceptions to be logged.</p>
+<p>Nevertheless, we can avoid never-retrieved exceptions by retrieving and logging them. This can be achieved manually, or automated using a general done callback function.</p>
+<p>In this tutorial, you will discover how to report and avoid silent never-retrieved exceptions in asyncio.</p>
+<p>Let's get started.</p>
+<h2>Asyncio Can Have Silent Exceptions</h2>
+<p>Exceptions in asyncio programs can be silent.</p>
+<p>This can happen if an exception is raised within an asyncio task and never-checked-for or never-retrieved.</p>
+<p>As such, these exceptions are referred to as: "<strong>never retrieved exceptions</strong>" in asyncio circles.</p>
+<blockquote>
+<p>If a Future.set_exception() is called but the Future object is never awaited on, the exception would never be propagated to the user code. In this case, asyncio would emit a log message when the Future object is garbage collected.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-dev.html">Developing with asyncio</a></cite></blockquote>
+<p>This means that coroutines and tasks may be failing silently in a long-running asyncio program and we may have no visibility of these failures, perhaps until much later.</p>
+<p><strong>How can we get the details of silent exceptions in asyncio programs?</strong></p>
+<p>How can we avoid "<em>never retrieved exceptions</em>"?</p>
+<h2>How to Expose Never-Retrieved Exceptions</h2>
+<p>Asyncio does provide means to get the details of never-retrieved exceptions in asyncio programs.</p>
+<p>For example, they are reported automatically by the event loop once the program is terminated.</p>
+<p>A full trace of never-retrieved exceptions is reported when the asyncio event loop is run in debug mode.</p>
+<p>We can run the asyncio event loop in debug mode by passing <strong>debug=True</strong> to <strong>asyncio.run()</strong> when starting our program.</p>
+<p>Therefore, the two default ways to access never-retrieved exceptions are as follows:</p>
+<ol>
+<li>Report exceptions at the end of the program.</li>
+<li>Report at the end with trace (debug mode)</li>
+</ol>
+<p>You can learn more about running the asyncio event loop in debug mode in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-debug/">How to Debug Asyncio</a></li>
+</ul>
+<h2>How to Avoid Never-Retrieved Exceptions</h2>
+<p>We can use patterns and idioms to avoid never-retrieved exceptions in our asyncio programs.</p>
+<p>This will ensure that exceptions that are raised are handled, or at the very least, logged.</p>
+<p>There are three main methods we can use to avoid never-retrieved exceptions in asyncio, they are:</p>
+<ol>
+<li>Event loop exception handler</li>
+<li>Report exceptions via done callback</li>
+<li>Manually check for exceptions</li>
+</ol>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Use Event Loop Exception Handler</h3>
+<p>We can configure the event loop to call a custom function for each exception raised in an asyncio program.</p>
+<p>This will mean that any never-retrieved exceptions will at least be provided to this handler, allowing us to take action, such as logging them.</p>
+<p>The event loop provides the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.set_exception_handler"><strong>set_exception_handler()</strong> method</a> that takes the name of a custom function to call when an exception is raised.</p>
+<blockquote>
+<p>... handler must be a callable with the signature matching (loop, context), where loop is a reference to the active event loop, and context is a dict object containing the details of the exception</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-eventloop.html">Event Loop API</a></cite></blockquote>
+<p>The handler function provided must have two arguments, the event loop object, and a "<strong>context</strong>" dict containing a suite of details about the task and exception, including:</p>
+<ul>
+<li>‘<strong>message</strong>’: Error message;</li>
+<li>‘<strong>exception</strong>’ (optional): Exception object;</li>
+<li>‘<strong>future</strong>’ (optional): asyncio.Future instance;</li>
+<li>‘<strong>task</strong>’ (optional): asyncio.Task instance;</li>
+<li>‘<strong>handle</strong>’ (optional): asyncio.Handle instance;</li>
+<li>‘<strong>protocol</strong>’ (optional): Protocol instance;</li>
+<li>‘<strong>transport</strong>’ (optional): Transport instance;</li>
+<li>‘<strong>socket</strong>’ (optional): socket.socket instance;</li>
+</ul>
+<p>The full details of the "context" dict are available in the documentation for the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_exception_handler"><strong>loop.call_exception_handler()</strong> function</a>.</p>
+<p>There are two important details about this approach:</p>
+<ol>
+<li>The handler is only called for unhandled exceptions, e.g. exceptions that bubble up to the top level causing the task to terminate.</li>
+<li>The handler is only called for exceptions that are never-retrieved via the <strong>Task.exception()</strong> method.</li>
+<li>The handler is only called after the program has terminated, not in real-time while the program is exiting, at least according to my testing.</li>
+</ol>
+<p>For example, we can define a handler:</p>
+<pre><code># define an exception handler
+def exception_handler(loop, context):
+	# log exception
+    print(context['exception'])
+</code></pre>
+<p>We can then configure the event loop to use this handler when exceptions are raised.</p>
+<p>This should be done shortly after starting the asyncio program.</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# set the exception handler
+loop.set_exception_handler(exception_handler)</code></pre>
+<h3>Report Exceptions Via Done Callback Function</h3>
+<p>We can automatically check for and report exceptions in tasks using a generally done callback function.</p>
+<p>This done callback function can be added to every task we create and schedule in our asyncio program.</p>
+<p>We could do this manually, or define a helper function that creates tasks for us and adds the callback automatically.</p>
+<p>You can learn more about done callback functions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-done-callback-functions/">How to Use Asyncio Task Done Callback Functions</a></li>
+</ul>
+<p>For example, we can define a done callback function that (safely) retrieves the exception and reports it if present.</p>
+<p>Remember, a task may be canceled, in which case the <strong>CancelledError</strong> will be propagated if we try to get the exception.</p>
+<pre><code># callback func called for all tasks
+def helper_done_callback(task):
+    try:
+        # get any exception raised
+        ex = task.exception()
+        # check task for exception
+        if ex:
+            # report the exception
+            print(ex)
+    except asyncio.exceptions.CancelledError:
+        pass
+</code></pre>
+<p>We can then define a helper function that will create a task for us and add the done callback.</p>
+<p>For example:</p>
+<pre><code># helper for creating all tasks
+def create_task_helper(coroutine):
+    # wrap and schedule the task
+    task = asyncio.create_task(coroutine)
+    # add custom callback to task
+    task.add_done_callback(helper_done_callback)
+    # return the task that was created
+    return task
+</code></pre>
+<p>We can then use this helper function to create tasks in our program.</p>
+<p>For example:</p>
+<pre><code>...
+# run the task
+task = create_task_helper(work())</code></pre>
+<h3>Manually Check For Exceptions</h3>
+<p>A final solution to avoiding never-retrieved exceptions in tasks is to retrieve them.</p>
+<p>We can manually retrieve and check exceptions in asyncio tasks before handling any results.</p>
+<p>This can be achieved by calling the <strong>exception()</strong> function.</p>
+<p>Again, it is good practice to handle task cancellation.</p>
+<pre><code>...
+try:
+    # check for exception
+    exp = task.exception()
+    if exp is not None:
+        print(f'Task failed with: {exp}')
+except asyncio.exceptions.CancelledError:
+    pass
+</code></pre>
+<p>You can learn more about checking for exceptions in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-task-exceptions/">How to Handle Asyncio Task Exceptions</a></li>
+</ul>
+<p>Now that we know how to report and avoid never-retrieved exceptions in asyncio, let's look at some worked examples.</p>
+<h2>Example of No Exceptions Until Program Ends</h2>
+<p>We can explore the case where never-retrieved exceptions are reported automatically after the program ends.</p>
+<p>In this example, we will define a coroutine that sleeps one second and then raises an exception.</p>
+<pre><code># task that does work
+async def work():
+    # block for a moment
+    await asyncio.sleep(1)
+    # raise a problem
+    raise Exception('Something Bad Happened')
+
+We will then run this task in the background, sleep, then report a done message.
+
+# main coroutine
+async def main():
+    # report a message
+    print('Starting')
+    # run the task
+    _ = asyncio.create_task(work())
+    # block for a moment
+    await asyncio.sleep(2)
+    # report a message
+    print('Done')
+</code></pre>
+<p>The expectation is that the exception in the <strong>work()</strong> coroutine is never checked and will not interfere with the <strong>main()</strong> coroutine, and will be reported once the program terminates.</p>
+<p>This is the default behavior in asyncio programs.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of unhandled exception not reported until the end
+import asyncio
+
+# task that does work
+async def work():
+    # block for a moment
+    await asyncio.sleep(1)
+    # raise a problem
+    raise Exception('Something Bad Happened')
+
+# main coroutine
+async def main():
+    # report a message
+    print('Starting')
+    # run the task
+    _ = asyncio.create_task(work())
+    # block for a moment
+    await asyncio.sleep(2)
+    # report a message
+    print('Done')
+
+# start
+asyncio.run(main())
+</code></pre>
+<p>Running the program executes the <strong>main()</strong> coroutine, then executes the <strong>work()</strong> coroutine.</p>
+<p>The <strong>work()</strong> coroutine runs, sleeps, and raises an exception. This exception is never retrieved, remaining silent.</p>
+<p>The <strong>main()</strong> coroutine sleeps, reports a final message, then the program terminates.</p>
+<p>During the shutdown of the asyncio event loop, the details of the never-retrieved exception are reported.</p>
+<p>This highlights the default behavior of the asyncio event loop to report never-retrieved exceptions once the program has terminated.</p>
+<pre><code>Starting
+Done
+Task exception was never retrieved
+future: &lt;Task finished name='Task-2' coro=&lt;work() done, defined at ...&gt; exception=Exception('Something Bad Happened')&gt;
+Traceback (most recent call last):
+  File "...", line 10, in work
+    raise Exception('Something Bad Happened')
+Exception: Something Bad Happened
+</code></pre>
+<p>Next, let's explore similar behavior when running the event loop in debug mode.</p>
+<h2>Example of Exception Trace At End With Debug Mode</h2>
+<p>The asyncio event loop can be run in debug by setting <strong>debug=True</strong> in the call to <strong>asyncio.run()</strong> when starting the program.</p>
+<p>This will run extra checks and perform extra logging when running the program.</p>
+<p>Helpfully, asyncio will report the full stack trace of each never-retrieved exception after the program terminates, when the event loop is run in debug mode.</p>
+<p>We can explore this in an example.</p>
+<p>In this case, we can update the previous example to run the event loop in debug mode.</p>
+<pre><code>...
+# start
+asyncio.run(main(), debug=True)</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of trace of unhandled exception show in debug mode
+import asyncio
+
+# task that does work
+async def work():
+    # block for a moment
+    await asyncio.sleep(1)
+    # raise a problem
+    raise Exception('Something Bad Happened')
+
+# main coroutine
+async def main():
+    # report a message
+    print('Starting')
+    # run the task
+    _ = asyncio.create_task(work())
+    # block for a moment
+    await asyncio.sleep(2)
+    # report a message
+    print('Done')
+
+# start
+asyncio.run(main(), debug=True)
+</code></pre>
+<p>Running the program starts the event loop in debug mode.</p>
+<p>The <strong>main()</strong> coroutine is run, then executes the <strong>work()</strong> coroutine.</p>
+<p>The <strong>work()</strong> coroutine runs, sleeps, and raises an exception. This exception is never retrieved, remaining silent.</p>
+<p>The <strong>main()</strong> coroutine sleeps, reports a final message, then the program terminates.</p>
+<p>During the shutdown of the asyncio event loop, the details of the never-retrieved exception are reported, as in the previous example. In addition, the full stack trace of the exception is reported, showing the line that caused the failure.</p>
+<p>This highlights the additional details provided about never-retrieved exceptions when running the asyncio event loop in debug mode.</p>
+<pre><code>Starting
+Done
+Task exception was never retrieved
+future: &lt;Task finished name='Task-2' coro=&lt;work() done, defined at ...:6&gt; exception=Exception('Something Bad Happened') created at .../asyncio/tasks.py:374&gt;
+source_traceback: Object created at (most recent call last):
+  File "...", line 24, in &lt;module&gt;
+    asyncio.run(main(), debug=True)
+  File ".../asyncio/runners.py", line 190, in run
+    return runner.run(main)
+  File ".../asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File ".../asyncio/base_events.py", line 640, in run_until_complete
+    self.run_forever()
+  File ".../asyncio/base_events.py", line 607, in run_forever
+    self._run_once()
+  File ".../asyncio/base_events.py", line 1914, in _run_once
+    handle._run()
+  File ".../asyncio/events.py", line 80, in _run
+    self._context.run(self._callback, *self._args)
+  File "...", line 17, in main
+    _ = asyncio.create_task(work())
+  File ".../asyncio/tasks.py", line 374, in create_task
+    task = loop.create_task(coro)
+Traceback (most recent call last):
+  File "...", line 10, in work
+    raise Exception('Something Bad Happened')
+Exception: Something Bad Happened
+</code></pre>
+<p>Next, let's look at how we might always log exceptions, regardless of whether they were retrieved.</p>
+<h2>Example of Event Loop Exception Handler</h2>
+<p>The asyncio event loop provides the <strong>set_exception_handler()</strong> to register a handler that will be called for all exceptions raised in the program.</p>
+<p>In this example, we will first define a handler function that will retrieve the exception and report its details.</p>
+<pre><code># define an exception handler
+def exception_handler(loop, context):
+    # get the exception
+    ex = context['exception']
+    # log details
+    print(f'Got exception {ex}')
+</code></pre>
+<p>Then, early in our program before we start real work, we can retrieve the event loop and configure our exception handler function.</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# set the exception handler
+loop.set_exception_handler(exception_handler)
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using an event loop exception handler
+import asyncio
+
+# define an exception handler
+def exception_handler(loop, context):
+    # get the exception
+    ex = context['exception']
+    # log details
+    print(f'Got exception {ex}')
+
+# task that does work
+async def work():
+    # block for a moment
+    await asyncio.sleep(1)
+    # raise a problem
+    raise Exception('Something Bad Happened')
+
+# main coroutine
+async def main():
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # set the exception handler
+    loop.set_exception_handler(exception_handler)
+    # report a message
+    print('Starting')
+    # run the task
+    _ = asyncio.create_task(work())
+    # block for a moment
+    await asyncio.sleep(2)
+    # report a message
+    print('Done')
+
+# start
+asyncio.run(main())
+</code></pre>
+<p>Running the program executes the <strong>main()</strong> coroutine and configures our custom exception handler.</p>
+<p>The <strong>main()</strong> coroutine then executes the <strong>work()</strong> coroutine. The <strong>work()</strong> coroutine runs, sleeps, and raises an unhandled exception. This exception is never retrieved, remaining silent.</p>
+<p>The <strong>main()</strong> coroutine sleeps, reports a final message, then the program terminates.</p>
+<p>During the shutdown of the asyncio event loop, our custom exception handler is called, reporting the details of the never-retrieved exception.</p>
+<p>This highlights that we can control how never-retrieved exceptions are handled with a custom function that is called when the event loop is being shut down.</p>
+<pre><code>Starting
+Done
+Got exception Something Bad Happened</code></pre>
+<p>Next, let's look at how we might log exceptions automatically with a done callback function.</p>
+<h2>Example of Reporting Exceptions Via Done Callback Function</h2>
+<p>We can explore how to automatically log task exceptions using a done callback function.</p>
+<p>We can define a done callback function that checks for an exception and logs it if present. It can also handle the case if the task was canceled.</p>
+<pre><code># callback func called for all tasks
+def helper_done_callback(task):
+    try:
+        # get any exception raised
+        ex = task.exception()
+        # check task for exception
+        if ex:
+            # report the exception
+            print(ex)
+    except asyncio.exceptions.CancelledError:
+        pass
+</code></pre>
+<p>We can then define a helper function used to create tasks, that always adds the done callback function to the created tasks.</p>
+<pre><code># helper for creating all tasks
+def create_task_helper(coroutine):
+    # wrap and schedule the task
+    task = asyncio.create_task(coroutine)
+    # add custom callback to task
+    task.add_done_callback(helper_done_callback)
+    # return the task that was created
+    return task
+</code></pre>
+<p>We can then use this helper in our program to create tasks for execution.</p>
+<pre><code>...
+# run the task
+task = create_task_helper(work())</code></pre>
+<p>This means that any tasks created using this helper will have their exceptions logged automatically.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of reporting exceptions via done callback
+import asyncio
+
+# callback func called for all tasks
+def helper_done_callback(task):
+    try:
+        # get any exception raised
+        ex = task.exception()
+        # check task for exception
+        if ex:
+            # report the exception
+            print(ex)
+    except asyncio.exceptions.CancelledError:
+        pass
+
+# helper for creating all tasks
+def create_task_helper(coroutine):
+    # wrap and schedule the task
+    task = asyncio.create_task(coroutine)
+    # add custom callback to task
+    task.add_done_callback(helper_done_callback)
+    # return the task that was created
+    return task
+
+# task that does work
+async def work():
+    # block for a moment
+    await asyncio.sleep(1)
+    # raise a problem
+    raise Exception('Something Bad Happened')
+
+# main coroutine
+async def main():
+    # report a message
+    print('Starting')
+    # run the task
+    task = create_task_helper(work())
+    # block for a moment
+    await asyncio.sleep(2)
+    # report a message
+    print('Done')
+
+# start
+asyncio.run(main())
+</code></pre>
+<p>Running the program executes the <strong>main()</strong> coroutine and reports a message.</p>
+<p>The <strong>main()</strong> coroutine then creates and schedules the <strong>work()</strong> coroutine using the helper function. The helper function creates the task and adds the custom done callback to the task.</p>
+<p>The <strong>work()</strong> coroutine runs, sleeps, and raises an unhandled exception. After the task is completed, the custom callback function is run, retrieving the exception and reporting its details immediately.</p>
+<p>The <strong>main()</strong> coroutine sleeps, reports a final message, then the program terminates.</p>
+<p>This highlights how we can report exceptions as soon as tasks are completed using a done callback function, rather than waiting for the program to terminate, in the case of an event loop exception handler.</p>
+<pre><code>Starting
+Something Bad Happened
+Done</code></pre>
+<p>Next, we can explore an example of manually checking tasks for exceptions.</p>
+<h2>Example of Manually Checking for Exceptions</h2>
+<p>We can manually check a task for an exception.</p>
+<p>This avoids never-retrieved exceptions by explicitly retrieving them in our program, perhaps the simplest solution.</p>
+<p>The problem with this approach is that we may forget to check. This is why we may prefer one of the automated methods described above.</p>
+<p>We can manually check for an exception after the task is completed.</p>
+<p>Calling the <strong>Task.exception()</strong> method raises an <strong>InvalidStateError</strong> exception if the task is not done, and will raise a <strong>CancelledError</strong> exception if the task was canceled. It may be a good practice to check for these.</p>
+<pre><code>...
+try:
+    # check for exception
+    exp = task.exception()
+    if exp is not None:
+        print(f'Task failed with: {exp}')
+except asyncio.CancelledError:
+    pass
+except asyncio.InvalidStateError:
+    pass
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of manually retrieving exception from task
+import asyncio
+
+# task that does work
+async def work():
+    # block for a moment
+    await asyncio.sleep(1)
+    # raise a problem
+    raise Exception('Something Bad Happened')
+
+# main coroutine
+async def main():
+    # report a message
+    print('Starting')
+    # run the task
+    task = asyncio.create_task(work())
+    # block for a moment
+    await asyncio.sleep(2)
+    try:
+        # check for exception
+        exp = task.exception()
+        if exp is not None:
+            print(f'Task failed with: {exp}')
+    except asyncio.CancelledError:
+        pass
+    except asyncio.InvalidStateError:
+        pass
+    # report a message
+    print('Done')
+
+# start
+asyncio.run(main())
+</code></pre>
+<p>Running the program executes the <strong>main()</strong> coroutine and reports a message.</p>
+<p>The <strong>main()</strong> coroutine then creates and schedules the <strong>work()</strong> task. The <strong>work()</strong> coroutine runs, sleeps, and raises an unhandled exception.</p>
+<p>The <strong>main()</strong> coroutine sleeps, then explicitly retrieves the exception from the task, reporting its details.</p>
+<p>It then reports the final message and terminates.</p>
+<p>This highlights how we can explicitly and safely retrieve an exception from a task.</p>
+<pre><code>Starting
+Task failed with: Something Bad Happened
+Done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to report and avoid silent never-retrieved exceptions in asyncio.</p>
+</main>
+</body>
+</html>

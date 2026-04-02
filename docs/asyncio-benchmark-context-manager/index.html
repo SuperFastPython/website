@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Benchmark Context Manager – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Benchmark Context Manager</h1>
+<div class="post-meta">November 9, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Benchmarking</a></div>
+
+<p>You can develop a <strong>custom asynchronous context manager</strong> to <strong>automatically benchmark asyncio code</strong> in Python.</p>
+<p>An asynchronous context manager is a context manager that can be suspended in asyncio when it is entered and exited. We can wrap code that we wish to automatically benchmark using a custom asynchronous context manager.</p>
+<p>In this tutorial, you will discover how to <strong>benchmark asyncio</strong> using an asynchronous context manager.</p>
+<p>Let's get started.</p>
+<h2>Help to Benchmark Asyncio Coroutines and Tasks</h2>
+<p>We can benchmark Python code using the <a href="https://docs.python.org/3/library/time.html"><strong>time</strong> module</a>.</p>
+<p>The <a href="https://docs.python.org/3/library/time.html#time.perf_counter"><strong>time.perf_counter()</strong> function</a> will return a value from a high-performance counter.</p>
+<blockquote>
+<p>Return the value (in fractional seconds) of a performance counter, i.e. a clock with the highest available resolution to measure a short duration.</p>
+<cite>-- <a href="https://docs.python.org/3/library/time.html">time — Time access and conversions</a></cite></blockquote>
+<p>The difference between the two calls to the <strong>time.perf_counter()</strong> function can provide a high-precision estimate of the execution time of a block of code.</p>
+<p>Unlike the <strong>time.time()</strong> function, the <strong>time.perf_counter()</strong> function is not subject to updates, such as daylight saving and synchronizing the system clock with a time server. This makes the <strong>time.perf_counter() function</strong> is a reliable approach to benchmarking Python code.</p>
+<p>We can call the <strong>time.perf_counter()</strong> function at the beginning of the code we wish to benchmark, and again at the end of the code we wish to benchmark.</p>
+<p>For example:</p>
+<pre><code>...
+# record start time
+time_start = time.perf_counter()
+# call benchmark code
+task()
+# record end time
+time_end = time.perf_counter()</code></pre>
+<p>The difference between the start and end time is the total duration of the program in seconds.</p>
+<p>For example:</p>
+<pre><code>...
+# calculate the duration
+time_duration = time_end - time_start
+# report the duration
+print(f'Took {time_duration:.3f} seconds')</code></pre>
+<p>You can learn more about benchmarking Python code with the <strong>time.perf_counter()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../benchmark-time-perf-counter/">Benchmark Python with time.perf_counter()</a></li>
+</ul>
+<p>This approach to benchmarking can be used to benchmark asyncio programs that await coroutines and tasks.</p>
+<p><strong>How can we hide all of this code so that we can benchmark with a simple interface?</strong></p>
+<p>Can we develop a custom asynchronous context manager that will benchmark our code automatically?</p>
+<h2>How to Develop a Benchmark Asynchronous Context Manager</h2>
+<p>We can hide manual benchmarking of asyncio code in an asynchronous context manager.</p>
+<blockquote>
+<p>An asynchronous context manager is a context manager that is able to suspend execution in its __aenter__ and __aexit__ methods.</p>
+<cite>-- <a href="https://docs.python.org/3/reference/datamodel.html#asynchronous-context-managers">Asynchronous Context Managers</a></cite></blockquote>
+<p>Recall that an asynchronous context manager provides is a type of context manager that can be suspended when entering and exiting.</p>
+<p>The <strong>__aenter__</strong> and <strong>__aexit__</strong> methods are defined as coroutines and are awaited by the caller.</p>
+<p>This is achieved using the “<strong>async with</strong>” expression.</p>
+<p>You can learn more about asynchronous context managers in the tutorial:</p>
+<ul>
+<li><a href="../asynchronous-context-manager/">Asynchronous Context Managers in Python</a></li>
+</ul>
+<p>We can define a new class that implements a constructor <strong>__init__()</strong> and the <strong>__aenter__()</strong> and <strong>__aexit__()</strong> coroutines.</p>
+<p>The <strong>__init__()</strong> constructor can take a name argument for the benchmark case and store it in an object attribute.</p>
+<p>For example:</p>
+<pre><code># constructor
+def __init__(self, name):
+    # store the name of this benchmark
+    self.name = name
+</code></pre>
+<p>The <strong>__aenter__()</strong> coroutine can initialize the start time and store it in an object attribute. It can then return an instance of the context manager itself, as a good practice.</p>
+<p>For example:</p>
+<pre><code># enter the async context manager
+async def __aenter__(self):
+    # record the start time
+    self.time_start = perf_counter()
+    # return this object
+    return self
+</code></pre>
+<p>The <strong>__aexit__()</strong> coroutine must take some standard arguments about any exception that occurred while running the context code. It can then record the end time, calculate and store the duration, and report the calculated duration along with the name of the benchmark case.</p>
+<pre><code># exit the async context manager
+async def __aexit__(self, exc_type, exc, tb):
+    # record the end time
+    self.time_end = perf_counter()
+    # calculate the duration
+    self.duration = self.time_end - self.time_start
+    # report the duration
+    print(f'{self.name} took {self.duration:.3f} seconds')
+    # do not suppress any exception
+    return False
+</code></pre>
+<p>Tying this together, we can define a <strong>Benchmark</strong> asynchronous context manager below.</p>
+<pre><code># benchmark asynchronous context manager
+class Benchmark:
+    # constructor
+    def __init__(self, name):
+        # store the name of this benchmark
+        self.name = name
+
+    # enter the async context manager
+    async def __aenter__(self):
+        # record the start time
+        self.time_start = perf_counter()
+        # return this object
+        return self
+
+    # exit the async context manager
+    async def __aexit__(self, exc_type, exc, tb):
+        # record the end time
+        self.time_end = perf_counter()
+        # calculate the duration
+        self.duration = self.time_end - self.time_start
+        # report the duration
+        print(f'{self.name} took {self.duration:.3f} seconds')
+        # do not suppress any exception
+        return False
+</code></pre>
+<p>We can then use it by creating an instance of the <strong>Benchmark</strong> class within the "<strong>async with</strong>" expression and then list any code within the context we wish to benchmark.</p>
+<p>For example:</p>
+<pre><code>...
+# create the benchmark context
+async with Benchmark('Task'):
+    # run the task
+    ...
+</code></pre>
+<p>The code within the context will run as per normal, and once finished, the total execution time will be reported automatically.</p>
+<p>You can learn more about the "<strong>async with</strong>" expression in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-async-with/">How to Use the “async with” Expression in Python</a></li>
+</ul>
+<p>You can learn more about a regular (non-asynchronous) context manager for benchmarking in the tutorial:</p>
+<ul>
+<li><a href="../benchmark-context-manager/">Benchmark Context Manager in Python</a></li>
+</ul>
+<p>Now that we know how to develop and use a benchmark context manager, let's look at some examples.</p>
+<h2>Example of Benchmarking Coroutine with Context Manager</h2>
+<p>We can explore how to use our <strong>Benchmark</strong> asynchronous context manager to benchmark the execution time of a custom coroutine.</p>
+<p>In this example, we will define a coroutine that blocks the event loop with a CPU-bound task.</p>
+<p>The coroutine creates a list of 100 million squared integers in a list comprehension.</p>
+<p>For example:</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPool Exception Handling in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPool Exception Handling in Python</h1>
+<div class="post-meta">October 15, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>You must handle exceptions when using the <a href="../threadpool-python/"><strong>ThreadPool</strong> in Python</a>.</p>
+<p>Exceptions may be raised when initializing worker threads, in target task threads, and in callback functions once tasks are completed.</p>
+<p>In this tutorial, you will discover <strong>how to handle exceptions in a Python ThreadPool</strong>.</p>
+<p>Let's get started.</p>
+<h2>ThreadPool Exception Handling</h2>
+<p>Exception handling is an important consideration when using threads.</p>
+<p>Code may raise an exception when something unexpected happens and the exception should be dealt with by your application explicitly, even if it means logging it and moving on.</p>
+<p>Python threads are well suited for use with IO-bound tasks, and operations within these tasks often raise exceptions, such as if a server cannot be reached, if the network goes down if a file cannot be found, and so on.</p>
+<p>There are three points you may need to consider regarding exception handling when using the <strong>ThreadPool</strong>, they are:</p>
+<ol><li>Worker Initialization</li><li>Task Execution</li><li>Task Completion Callbacks</li></ol>
+<p>Let's take a closer look at each point in turn.</p>
+<h2>Exception Handling in Worker Initialization</h2>
+<p>You can specify a custom initialization function when configuring your <strong>ThreadPool</strong>.</p>
+<p>This can be set via the "<strong>initializer</strong>" argument to specify the function name and "<strong>initargs</strong>" to specify a tuple of arguments to the function.</p>
+<p>Each thread started by the <strong>ThreadPool</strong> will call your initialization function before starting the thread.</p>
+<p>For example:</p>
+<pre><code># worker thread initialization function
+def worker_init():
+	# ...
+
+...
+# create a thread pool and initialize workers
+pool = ThreadPool(initializer=worker_init)
+</code></pre>
+<p>You can learn more about configuring the pool with worker initializer functions in the tutorial:</p>
+<ul><li><a href="../threadpool-worker-initializer/">ThreadPool Initialize Worker Threads in Python</a></li></ul>
+<p>If your initialization function raises an exception it will break your <strong>ThreadPool</strong>.</p>
+<p>We can demonstrate this with an example of a contrived initializer function that raises an exception.</p>
+<pre><code># SuperFastPython.com
+# example of an exception raised in the worker initializer function
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# function for initializing the worker thread
+def init():
+    # raise an exception
+    raise Exception('Something bad happened!')
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool(initializer=init) as pool:
+        # issue a task
+        pool.apply(task)
+</code></pre>
+<p>Running the example fails with an exception, as we expected.</p>
+<p>The <strong>ThreadPool</strong> is created and nearly immediately, the internal worker threads are created and initialized.</p>
+<p>Each worker thread fails to be initialized given that the initialization function raises an exception.</p>
+<p>The <strong>ThreadPool</strong> then attempts to restart new replacement thread workers for each thread that was started and failed. These too fail with exceptions.</p>
+<p>The problem repeats many times until some internal limit is reached and the program exits.</p>
+<p>A truncated example of the output is listed below.</p>
+<pre><code>Exception in thread Exception in thread Thread-2:
+Traceback (most recent call last):
+  ...
+Exception in thread Thread-3:
+Traceback (most recent call last):
+  ...
+Thread-1:
+Traceback (most recent call last):
+  ...
+...
+</code></pre>
+<p>This highlights that if you use a custom initializer function, you must carefully consider the exceptions that may be raised and perhaps handle them, otherwise out at risk for all tasks that depend on the <strong>ThreadPool</strong>.</p>
+<h2>Exception Handling in Task Execution</h2>
+<p>An exception may occur while executing your task.</p>
+<p>This will cause the task to stop executing, but will not break the <strong>ThreadPool</strong>.</p>
+<p>If tasks were issued with a synchronous function, such as <strong>apply()</strong>, <strong>map()</strong>, or <strong>starmap()</strong> the exception will be re-raised in the caller.</p>
+<p>If tasks are issued with an asynchronous function such as <strong>apply_async()</strong>, <strong>map_async()</strong>, or <strong>starmap_async()</strong>, an <strong>AsyncResult</strong> object will be returned. If a task issued asynchronously raises an exception, it will be caught by the <strong>ThreadPool</strong> and re-raised if you call <strong>get()</strong> function in the <strong>AsyncResult</strong> object in order to get the result.</p>
+<p>It means that you have two options for handling exceptions in tasks, they are:</p>
+<ol><li>Handle exceptions within the task function.</li><li>Handle exceptions when getting results from tasks.</li></ol>
+<p>Let's take a closer look at each approach in turn.</p>
+<h3>Exception Handling Within the Task</h3>
+<p>Handling the exception within the task means that you need some mechanism to let the recipient of the result know that something unexpected happened.</p>
+<p>This could be via the return value from the function, e.g. <strong>None</strong>.</p>
+<p>Alternatively, you can re-raise an exception and have the recipient handle it directly. A third option might be to use some broader state or global state, perhaps passed by reference into the call to the function.</p>
+<p>The example below defines a work task that will raise an exception but will catch the exception and return a result indicating a failure case.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    try:
+        raise Exception('Something bad happened!')
+    except Exception:
+        return 'Unable to get the result'
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issue a task
+        result = pool.apply_async(task)
+        # get the result
+        value = result.get()
+        # report the result
+        print(value)
+</code></pre>
+<p>Running the example starts the <strong>ThreadPool</strong> as per normal, issues the task, then blocks waiting for the result.</p>
+<p>The task raises an exception and the result received is an error message.</p>
+<p>This approach is reasonably clean for the recipient code and would be appropriate for tasks issued by both synchronous and asynchronous functions like <strong>apply()</strong>, <strong>apply_async()</strong> and <strong>map()</strong>.</p>
+<p>It may require special handling of a custom return value for the failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<h3>Exception Handling Outside the Task</h3>
+<p>An alternative to handling the exception in the task is to leave the responsibility to the recipient of the result.</p>
+<p>This may feel like a more natural solution, as it matches the synchronous version of the same operation, e.g. if we were performing the function call in a for-loop.</p>
+<p>It means that the recipient must be aware of the types of errors that the task may raise and handle them explicitly.</p>
+<p>The example below defines a simple task that raises an <strong>Exception</strong>, which is then handled by the recipient when issuing the task asynchronously and then attempting to get the result from the returned <strong>AsyncResult</strong> object.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task in the caller
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+    # unreachable return value
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issue a task
+        result = pool.apply_async(task)
+        # get the result
+        try:
+            value = result.get()
+            # report the result
+            print(value)
+        except Exception:
+            print('Unable to get the result')
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and submits the work as per normal.</p>
+<p>The task fails with an exception, the <strong>ThreadPool</strong> catches the exception, stores it, then re-raises it when we call the <strong>get()</strong> function in the <strong>AsyncResult</strong> object.</p>
+<p>The recipient of the result accepts the exception and catches it, reporting a failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<p>This approach will also work for any task issued synchronously to the <strong>ThreadPool</strong>.</p>
+<p>In this case, the exception raised by the task is caught by the <strong>ThreadPool</strong> and re-raised in the caller when getting the result.</p>
+<p>The example below demonstrates handling an exception in the caller for a task issued synchronously.</p>
+<pre><code># SuperFastPython.com
+# example of handling an exception raised within a task in the caller
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+    # unreachable return value
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        try:
+            # issue a task and get the result
+            value = pool.apply(task)
+            # report the result
+            print(value)
+        except Exception:
+            print('Unable to get the result')
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and issues the work as per normal.</p>
+<p>The task fails with an error, the <strong>ThreadPool</strong> catches the exception, stores it, then re-raises it in the caller rather than returning the value.</p>
+<p>The recipient of the result accepts the exception and catches it, reporting a failure case.</p>
+<pre><code>Unable to get the result</code></pre>
+<h3>Check for a Task Exception</h3>
+<p>We can also check for the exception directly via a call to the <strong>successful()</strong> function on the <strong>AsyncResult</strong> object for tasks issued asynchronously to the <strong>ThreadPool</strong>.</p>
+<p>This function must be called after the task has finished and indicates whether the task finished normally (<strong>True</strong>) or whether it failed with an <strong>Exception</strong> or similar (<strong>False</strong>).</p>
+<p>We can demonstrate the explicit checking for an exceptional case in the task in the example below.</p>
+<pre><code># SuperFastPython.com
+# example of checking for an exception raised in the task
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    # fail with an exception
+    raise Exception('Something bad happened!')
+    # unreachable return value
+    return 'Never gets here'
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issue a task
+        result = pool.apply_async(task)
+        # wait for the task to finish
+        result.wait()
+        # check for a failure
+        if result.successful():
+            # get the result
+            value = result.get()
+            # report the result
+            print(value)
+        else:
+            # report the failure case
+            print('Unable to get the result')
+</code></pre>
+<p>Running the example creates and submits the task as per normal.</p>
+<p>The recipient waits for the task to complete and then checks for an unsuccessful case.</p>
+<p>The failure of the task is identified and an appropriate message is reported.</p>
+<pre><code>Unable to get the result</code></pre>
+<h3>Exception Handling When Calling map()</h3>
+<p>We may issue many tasks to the <strong>ThreadPool</strong> using the synchronous version of the <strong>map()</strong> function or <strong>starmap()</strong>.</p>
+<p>One or more of the issued tasks may fail, which will effectively cause all issued tasks to fail as the results will not be accessible.</p>
+<p>We can demonstrate this with an example, listed below.</p>
+<pre><code># SuperFastPython.com
+# exception in one of many tasks issued to the thread pool synchronously
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(value):
+    # block for a moment
+    sleep(1)
+    # check for failure case
+    if value == 2:
+        raise Exception('Something bad happened!')
+    # report a value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issues tasks to the thread pool
+        for result in pool.map(task, range(5)):
+            print(result)
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and issues 5 tasks using <strong>map()</strong>.</p>
+<p>One of the 5 tasks fails with an exception.</p>
+<p>The exception is then re-raised in the caller instead of returning the iterator over return values.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+</code></pre>
+<p>This also happens when issuing tasks using the asynchronous versions of <strong>map()</strong>, such as <strong>map_async()</strong>.</p>
+<p>The example below demonstrates this.</p>
+<pre><code># SuperFastPython.com
+# exception in one of many tasks issued to the thread pool asynchronously
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(value):
+    # block for a moment
+    sleep(1)
+    # check for failure case
+    if value == 2:
+        raise Exception('Something bad happened!')
+    # report a value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issues tasks to the thread pool
+        result = pool.map_async(task, range(5))
+        # iterate over the results
+        for value in result.get():
+            print(value)
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and issues 5 tasks using <strong>map_async()</strong>.</p>
+<p>One of the 5 tasks fails with an exception.</p>
+<p>The exception is then re-raised in the caller instead of returning the iterator over return values.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+</code></pre>
+<p>If we issue tasks with <strong>imap()</strong> and <strong>imap_unordered()</strong>, the exception is not re-raised in the caller until the return value for the specific task that failed is requested from the returned iterator.</p>
+<p>The example below demonstrates this.</p>
+<pre><code># SuperFastPython.com
+# exception in one of many tasks issued to the thread pool synchronously
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# task executed in a worker thread
+def task(value):
+    # block for a moment
+    sleep(1)
+    # check for failure case
+    if value == 2:
+        raise Exception('Something bad happened!')
+    # report a value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issues tasks to the thread pool
+        for result in pool.imap(task, range(5)):
+            print(result)
+</code></pre>
+<p>Running the example creates the <strong>ThreadPool</strong> and issues 5 tasks using <strong>imap()</strong>.</p>
+<p>One of the 5 tasks fails with an exception.</p>
+<p>We see return values for the first two tasks that complete successfully.</p>
+<p>Then, when we access the result for the third task that failed, the exception is re-raised in the caller and the program is terminated.</p>
+<pre><code>0
+1
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+</code></pre>
+<p>These examples highlight that if <strong>map()</strong> or equivalents are used to issue tasks to the ThreadPool, then the tasks should handle their own exceptions or be simple enough that exceptions are not expected.</p>
+<h2>Exception Handling in Task Completion Callbacks</h2>
+<p>A final case we must consider for exception handling when using the <strong>ThreadPool</strong> is in callback functions.</p>
+<p>When issuing tasks to the <strong>ThreadPool</strong> asynchronously with a call to <strong>apply_async()</strong> or <strong>map_async()</strong> we can add a callback function to be called with the result of the task or a callback function to call if there was an error in the task.</p>
+<p>For example:</p>
+<pre><code># result callback function
+def result_callback(result):
+	print(result)
+
+...
+# issue a single task
+result = apply_async(..., callback=result_callback)
+</code></pre>
+<p>You can learn more about using callback function with asynchronous tasks in the tutorial:</p>
+<ul><li><a href="../threadpool-callback/">ThreadPool Callback Functions in Python</a></li></ul>
+<p>The callback function is executed in a helper thread in the main thread, the same thread that creates the <strong>ThreadPool</strong>.</p>
+<p>If an exception is raised in the callback function, it will break the helper thread and in turn break the <strong>ThreadPool</strong>.</p>
+<p>Any tasks waiting for a result from the <strong>ThreadPool</strong> will wait forever and will have to be killed manually.</p>
+<p>We can demonstrate this with a worked example.</p>
+<pre><code># SuperFastPython.com
+# example in a callback function for the thread pool
+from time import sleep
+from multiprocessing.pool import ThreadPool
+
+# callback function
+def handler(result):
+    # report result
+    print(f'Got result {result}')
+    # fail with an exception
+    raise Exception('Something bad happened!')
+
+# task executed in a worker thread
+def task():
+    # block for a moment
+    sleep(1)
+    # return a value
+    return 22
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    with ThreadPool() as pool:
+        # issue a task to the thread pool
+        result = pool.apply_async(task, callback=handler)
+        # wait for the task to finish
+        result.wait()
+</code></pre>
+<p>Running the example starts the <strong>ThreadPool</strong> as per normal and issues the task.</p>
+<p>When the task completes, the callback function is called which fails with a raised exception.</p>
+<p>The helper thread (<em>Thread-3</em> in this case) unwinds and breaks the <strong>ThreadPool</strong>.</p>
+<p>The caller in the main thread of the main thread then waits forever for the result.</p>
+<p>Note, that you must terminate the program forcefully by pressing Control-C.</p>
+<pre><code>Got result 22
+Exception in thread Thread-11:
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened!
+</code></pre>
+<p>This highlights that if callbacks are expected to raise an exception, it must be handled explicitly otherwise it puts the entire thread pool at risk.</p>
+<h2>Takeaways</h2>
+<p>You now know how to handle exceptions when using the <strong>ThreadPool</strong>.</p>
+</main>
+</body>
+</html>

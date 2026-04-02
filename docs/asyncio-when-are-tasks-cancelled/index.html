@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>When Are Asyncio Tasks Canceled – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>When Are Asyncio Tasks Canceled</h1>
+<div class="post-meta">December 17, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p><strong>Asyncio tasks can be canceled at any time.</strong></p>
+<p>Asyncio tasks can be canceled manually while they are scheduled or running.</p>
+<p>Additionally, tasks can be automatically canceled by the asyncio infrastructure, such as after a timeout, after a deadline, when one task in the group fails, and, by the event loop when shutting down.</p>
+<p>In this tutorial, you will discover when asyncio tasks can be canceled in Python.</p>
+<p>Let's get started.</p>
+<h2>What is Asyncio Task Cancellation?</h2>
+<p>Asyncio tasks can be canceled.</p>
+<p>This can be achieved by calling the <strong>cancel()</strong> method on the <strong>asyncio.Task</strong>. This will request that the task be canceled as soon as possible and return <strong>True</strong> if the request was successful or <strong>False</strong> if it was not, e.g. the task is already done.</p>
+<blockquote>
+<p>Request the Task to be cancelled. This arranges for a CancelledError exception to be thrown into the wrapped coroutine on the next cycle of the event loop.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+if task.cancel():
+	# request successful
+</code></pre>
+<p>The next time that the target task that was canceled resumes, a <strong>CancelledError</strong> exception will be raised.</p>
+<p>This exception will bubble up to the top level of the task and cause it to stop running.</p>
+<p>You can learn more about the mechanics of cancellation a task in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-cancel-task/">How to Cancel an Asyncio Task</a></li>
+</ul>
+<p>Next, let's consider when a task can be canceled.</p>
+<h2>When Are Tasks Canceled?</h2>
+<p>A task can be canceled only if it is pending (scheduled) or running.</p>
+<p>A done task cannot be canceled.</p>
+<p>There are two main ways a task may be canceled:</p>
+<ol>
+<li>Manually</li>
+<li>Automatically
+<ol>
+<li>Timeouts</li>
+<li>Failure in Group</li>
+<li>Event Loop Shutdown</li>
+</ol>
+</li>
+</ol>
+<p>Let's consider each of these cases.</p>
+<h2>Manually Canceling a Task</h2>
+<p>A task can be canceled manually by another task calling the cancel() method.</p>
+<p>For example:</p>
+<pre><code>...
+# cancel a task
+_ = task.cancel()</code></pre>
+<p>This is reasonably straightforward.</p>
+<p>Automatic task cancellation is more interesting.</p>
+<h2>Automatically Canceling a Task</h2>
+<p>A task may be canceled automatically by infrastructure in the asyncio module.</p>
+<p>This includes:</p>
+<ol>
+<li>After a timeout.</li>
+<li>When another task in the group fails.</li>
+<li>When the event loop closes.</li>
+</ol>
+<p>Let's take a closer look at each of these in turn.</p>
+<h3>Tasks Canceled After Timeout</h3>
+<p>A task may be canceled automatically by a timeout.</p>
+<p>This can be achieved via the <strong>asyncio.wait_for()</strong> call which will cancel the target task after a fixed number of seconds by raising a <strong>CancelledError</strong> in the task and transforming it into a <strong>TimeoutError</strong>.</p>
+<blockquote>
+<p>If a timeout occurs, it cancels the task and raises TimeoutError.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# handle timeout
+try:
+	# cancel task after a timeout
+	asyncio.wait_for(task, timeout=5)
+except asyncio.TimeoutError:
+	# handle timeout
+</code></pre>
+<p>You can learn more about the <strong>asyncio.wait_for()</strong> call in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-wait_for/">Asyncio wait_for() to Wait With a Timeout</a></li>
+</ul>
+<p>A task may also be canceled by a timeout when using the <strong>asyncio.timeout()</strong> or <strong>asyncio.timeout_at()</strong> context managers.</p>
+<p>Like <strong>asyncio.wait_for()</strong>, the timeout context managers will cancel the target task and raise an <strong>asyncio.TimeoutError</strong> if the timeout or deadline elapses. The difference is the context manager allows multiple tasks to be created and canceled.</p>
+<blockquote>
+<p>the context manager will cancel the current task and handle the resulting asyncio.CancelledError internally, transforming it into a TimeoutError which can be caught and handled.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# handle timeout
+try:
+	# run tasks with timeout
+	asyncio with asyncio.timeout(5):
+		await task1
+		await task2
+		await task3
+except asyncio.TimeoutError:
+	# handle timeout
+</code></pre>
+<p>You can learn more about the <strong>asyncio.timeout()</strong> context manager in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-timeout/">Wait and Cancel Tasks With asyncio.timeout()</a></li>
+</ul>
+<p>You can learn more about the <strong>asyncio.timeout_at()</strong> context manager in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-timeout_at/">Use asyncio.timeout_at() to Run Tasks With Deadlines</a></li>
+</ul>
+<h3>Tasks Canceled By asyncio.TaskGroup</h3>
+<p>Tasks may also be canceled automatically if they are part of a group and one task in the group is canceled.</p>
+<p>This can be achieved by creating tasks as part of an <strong>asyncio.TaskGroup</strong>. If one task in the group fails with an unhandled exception, all remaining tasks in the group will be canceled.</p>
+<blockquote>
+<p>The first time any of the tasks belonging to the group fails with an exception other than asyncio.CancelledError, the remaining tasks in the group are cancelled.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# handle exceptions
+try:
+    # create task group
+    async with asyncio.TaskGroup() as group:
+    	await group.create_task(task1())
+    	await group.create_task(task2())
+    	await group.create_task(task3())
+except asyncio.CancelledError:
+	# handle timeout
+</code></pre>
+<p>You can learn more about how to use <strong>asyncio.TaskGroup</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-taskgroup/">How to use asyncio.TaskGroup</a></li>
+</ul>
+<h3>Tasks Canceled When Event Loop Terminates</h3>
+<p>Tasks will also be canceled when the asyncio event loop is shut down.</p>
+<p>This may be when the main coroutine terminates normally, or it may be when the event loop is terminated via an unexpected exception.</p>
+<p>Now that we know about task cancellation and when tasks are canceled, let's consider some best practices.</p>
+<h2>Example of Manually Canceling a Pending Task</h2>
+<p>We can explore an example of manually canceling a pending (scheduled, but not running) task.</p>
+<p>In this example, we will define a task that runs for a long time. It does not catch the <strong>CancelledError</strong> but does have a try-except block so that we can report when the task is exiting. The program will schedule this task and immediately cancel it, then wait for it to be canceled.</p>
+<p>The expectation is that the task will be canceled before it has had an opportunity to execute the body of the coroutine.</p>
+<p>Firstly, we can define the <strong>work()</strong> coroutine task. It sleeps for 10 seconds and then reports a message that it completed its work. The finally block reports a separate message so that we can see the difference between a normal completion and an early completion.</p>
+<pre><code># task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        print('Task sleep completed normally')
+    finally:
+        print('Task is done')
+</code></pre>
+<p>Next, the <strong>main()</strong> coroutine creates and schedules the task, cancels it, and then awaits the task in order to see the expected <strong>CancelledError</strong> that will be raised by the task.</p>
+<pre><code># main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # cancel the task
+    task.cancel()
+    # await the task
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+</code></pre>
+<p>We can then start the event loop.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a pending task
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        print('Task sleep completed normally')
+    finally:
+        print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # cancel the task
+    task.cancel()
+    # await the task
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> task.</p>
+<p>Before the <strong>work()</strong> task has an opportunity to run, it is canceled.</p>
+<p>The <strong>main()</strong> coroutine then awaits the task.</p>
+<p>The <strong>CancelledError</strong> is handled and a message is reported indicating that the task was canceled.</p>
+<p>Finally, the main coroutine is done and reports its final message.</p>
+<p>No message was seen from the <strong>work()</strong> coroutine.</p>
+<p>This highlights that a task can be manually canceled when it is pending (scheduled, not yet running) and that it will not enter the body of the coroutine.</p>
+<pre><code>Main saw the task cancel
+Main is done</code></pre>
+<p>Next, let's look at an example of canceling a running task.</p>
+<h2>Example of Manually Canceling a Running Task</h2>
+<p>We can explore an example of manually canceling a running task.</p>
+<p>In this case, we can update the above example to allow the new <strong>work()</strong> task to run a moment before it is canceled.</p>
+<pre><code>...
+# create and schedule the task
+task = asyncio.create_task(work())
+# allow the task to start running
+await asyncio.sleep(1)
+# cancel the task
+task.cancel()</code></pre>
+<p>This will allow the body of the <strong>work()</strong> task to begin execution. Once canceled, we should see the finally block of the task executed before it is done.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a running task
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        print('Task sleep completed normally')
+    finally:
+        print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to start running
+    await asyncio.sleep(1)
+    # cancel the task
+    task.cancel()
+    # await the task
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Main saw the task cancel')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> task.</p>
+<p>The <strong>main()</strong> coroutine suspends for a moment, allowing the <strong>work()</strong> coroutine to begin running.</p>
+<p>The <strong>main()</strong> coroutine resumes and cancels the <strong>work()</strong> task, then awaits the task.</p>
+<p>The <strong>work()</strong> task is canceled. A <strong>CancelledError</strong> exception is raised and the finally block is executed, reporting a message from the task before it is terminated.</p>
+<p>The <strong>main()</strong> coroutine handles the <strong>CancelledError</strong> exception and a message is reported indicating that the task was canceled.</p>
+<p>Finally, the main coroutine is done and reports its final message.</p>
+<p>This highlights that a task can be manually canceled while it is running and that we can use a try-finally block to perform cleanup within the task without handling the <strong>CancelledError</strong> exception.</p>
+<pre><code>Task is done
+Main saw the task cancel
+Main is done</code></pre>
+<p>Next, let's look at an example of canceling a done task.</p>
+<h2>Example of Manually Canceling a Done Task</h2>
+<p>We can explore an example of manually canceling a done task.</p>
+<p>In this case, we can update the above example to cancel the <strong>work()</strong> task after it is done.</p>
+<p>This can be achieved by first awaiting the <strong>work()</strong> task until it is done.</p>
+<p>We can then request a cancellation of the task via the <strong>cancel()</strong> method on the task and check the return value to see if the request was successful.</p>
+<pre><code>...
+# create and schedule the task
+task = asyncio.create_task(work())
+# wait for the task to complete
+await task
+# cancel the task
+if task.cancel():
+    print('Request to cancel was successful')
+else:
+    print('Request to cancel was not successful')
+</code></pre>
+<p>Because the task is done, we do not expect the request for cancellation to be successful.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a done task
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        print('Task sleep completed normally')
+    finally:
+        print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # wait for the task to complete
+    await task
+    # cancel the task
+    if task.cancel():
+        print('Request to cancel was successful')
+    else:
+        print('Request to cancel was not successful')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> task.</p>
+<p>The <strong>main()</strong> coroutine suspends and allows the <strong>work()</strong> task to be completed.</p>
+<p>The <strong>work()</strong> task runs and completes normally, reporting its normal completion message, then executes the finally block reporting the task done message.</p>
+<p>The <strong>main()</strong> coroutine resumes and attempts to cancel the <strong>work()</strong> task.</p>
+<p>This request fails, as expected because the task is already done.</p>
+<p>Finally, the main coroutine is done and reports its final message.</p>
+<p>This highlights that a task that is done cannot be canceled.</p>
+<pre><code>Task sleep completed normally
+Task is done
+Request to cancel was not successful
+Main is done</code></pre>
+<p>Next, let's look at an example of automatically canceling a task via a timeout with <strong>asyncio.wait_for()</strong>.</p>
+<h2>Example of Automatically Canceling a Task with asyncio.wait_for()</h2>
+<p>We can explore an example of automatically canceling a running task using a timeout with <strong>asyncio.wait_for()</strong>.</p>
+<p>In this case, we can update the above example so that the <strong>work()</strong> task is created and is allowed to start running for a moment.</p>
+<pre><code>...
+# create and schedule the task
+task = asyncio.create_task(work())
+# allow the task to start running
+await asyncio.sleep(1)
+</code></pre>
+<p>The <strong>main()</strong> coroutine can then await the task with a timeout of 3 seconds using the <strong>asyncio.wait_for()</strong> call.</p>
+<p>This timeout of 3 seconds will not be long enough for the <strong>work()</strong> task to complete, which will trigger a timeout.</p>
+<p>The <strong>work()</strong> task will be canceled and the <strong>asyncio.wait_for()</strong> will transform the <strong>CancelledError</strong> exception into a <strong>TimeoutError</strong> exception.</p>
+<p>The <strong>main()</strong> coroutine will handle the <strong>TimeoutError</strong> exception and report a message.</p>
+<pre><code>...
+# handle timeout
+try:
+    # wait for the task with a timeout
+    await asyncio.wait_for(task, timeout=3)
+except asyncio.TimeoutError:
+    print('Main saw the task timeout')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a task via asyncio.wait_for()
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        print('Task sleep completed normally')
+    finally:
+        print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to start running
+    await asyncio.sleep(1)
+    # handle timeout
+    try:
+        # wait for the task with a timeout
+        await asyncio.wait_for(task, timeout=3)
+    except asyncio.TimeoutError:
+        print('Main saw the task timeout')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> task.</p>
+<p>The main() coroutine suspends for a moment, allowing the <strong>work()</strong> coroutine to begin running.</p>
+<p>The <strong>work()</strong> runs and suspends at the call to sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and awaits the task with a timeout of 3 seconds.</p>
+<p>The timeout expires and the <strong>asyncio.wait_for()</strong> cancels the <strong>work()</strong> task.</p>
+<p>The <strong>work()</strong> task is canceled. A <strong>CancelledError</strong> exception is raised and the finally block within the task is executed, reporting a message from the task before it is terminated.</p>
+<p>The <strong>CancelledError</strong> exception is transformed into a <strong>TimeoutError</strong> by <strong>asyncio.wait_for()</strong> and raised in the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main() </strong>coroutine handles the <strong>TimeoutError</strong> exception and a message is reported indicating that the task was timed out.</p>
+<p>Finally, the main coroutine is done and reports its final message.</p>
+<p>This highlights that a task can be automatically canceled after a timeout via <strong>asyncio.wait_for()</strong>.</p>
+<pre><code>Task is done
+Main saw the task timeout
+Main is done</code></pre>
+<p>Next, let's look at an example of automatically canceling a task via a timeout with <strong>asyncio.timeout()</strong>.</p>
+<h2>Example of Automatically Canceling a Task with asyncio.timeout()</h2>
+<p>We can explore an example of automatically canceling a running task using a timeout with <strong>asyncio.timeout()</strong>.</p>
+<p>In this case, we can update the above example to use the <strong>asyncio.timeout()</strong> context manager with a timeout of 3 seconds.</p>
+<p>This will not be long enough for the <strong>work()</strong> task to complete.</p>
+<p>Within the context manager, we will then await the <strong>work()</strong> task.</p>
+<p>As with <strong>asyncio.wait_for()</strong>, a <strong>TimeoutError</strong> will be raised by the <strong>asyncio.timeout()</strong> context manager if the task is not completed within the timeout. This can be handled by the <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# handle timeout
+try:
+    # wait for the task with a timeout
+    async with asyncio.timeout(3):
+        await task
+except asyncio.TimeoutError:
+    print('Main saw the task timeout')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a task via asyncio.timeout()
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        print('Task sleep completed normally')
+    finally:
+        print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to start running
+    await asyncio.sleep(1)
+    # handle timeout
+    try:
+        # wait for the task with a timeout
+        async with asyncio.timeout(3):
+            await task
+    except asyncio.TimeoutError:
+        print('Main saw the task timeout')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> task.</p>
+<p>The <strong>main()</strong> coroutine suspends for a moment, allowing the <strong>work()</strong> coroutine to begin running.</p>
+<p>The <strong>work()</strong> runs and suspends at the call to sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and opens the <strong>asyncio.timeout()</strong> context manager with a timeout of 3 seconds, then awaits the work() task.</p>
+<p>The timeout expires and the <strong>asyncio.timeout()</strong> cancels the <strong>work()</strong> task.</p>
+<p>The <strong>work()</strong> task is canceled. A <strong>CancelledError</strong> exception is raised and the finally block within the task is executed, reporting a message from the task before it is terminated.</p>
+<p>The <strong>CancelledError</strong> exception is transformed into a <strong>TimeoutError</strong> by <strong>asyncio.timeout()</strong> and raised in the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine handles the <strong>TimeoutError</strong> exception and a message is reported indicating that the task was timed out.</p>
+<p>Finally, the main coroutine is done and reports its final message.</p>
+<p>This highlights that a task can be automatically canceled after a timeout via <strong>asyncio.timeout()</strong> context manager.</p>
+<pre><code>Task is done
+Main saw the task timeout
+Main is done</code></pre>
+<p>Next, let's look at an example of automatically canceling a task via a deadline with <strong>asyncio.timeout_at()</strong>.</p>
+<h2>Example of Automatically Canceling a Task with asyncio.timeout_at()</h2>
+<p>We can explore an example of automatically canceling a running task using a deadline with <strong>asyncio.timeout_at()</strong>.</p>
+<p>In this case, we can update the above example to use the <strong>asyncio.timeout_at()</strong> context manager with a deadline of 3 seconds in the future.</p>
+<p>This will not be long enough for the <strong>work()</strong> task to complete.</p>
+<p>Within the context manager, we will then await the <strong>work()</strong> task.</p>
+<p>As with <strong>asyncio.timeout()</strong> context manager above, a <strong>TimeoutError</strong> will be raised by the <strong>asyncio.timeout_at()</strong> context manager if the task is not completed before the deadline. This can be handled by the <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# handle deadline
+try:
+    # calculate a deadline
+    deadline = asyncio.get_running_loop().time() + 3
+    # wait for the task with a deadline
+    async with asyncio.timeout_at(deadline):
+        await task
+except asyncio.TimeoutError:
+    print('Main saw the task timeout')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a task via asyncio.timeout_at()
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        print('Task sleep completed normally')
+    finally:
+        print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to start running
+    await asyncio.sleep(1)
+    # handle deadline
+    try:
+        # calculate a deadline
+        deadline = asyncio.get_running_loop().time() + 3
+        # wait for the task with a deadline
+        async with asyncio.timeout_at(deadline):
+            await task
+    except asyncio.TimeoutError:
+        print('Main saw the task timeout')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> task.</p>
+<p>The <strong>main()</strong> coroutine suspends for a moment, allowing the <strong>work()</strong> coroutine to begin running.</p>
+<p>The <strong>work()</strong> runs and suspends at the call to sleep.</p>
+<p>The <strong>main()</strong> coroutine resumes and opens the <strong>asyncio.timeout_at()</strong> context deadline of 3 seconds in the future, then awaits the <strong>work()</strong> task.</p>
+<p>The deadline passes and the <strong>asyncio.timeout_at()</strong> context manager cancels the <strong>work()</strong> task.</p>
+<p>The <strong>work()</strong> task is canceled. A <strong>CancelledError</strong> exception is raised and the finally block within the task is executed, reporting a message from the task before it is terminated.</p>
+<p>The <strong>CancelledError</strong> exception is transformed into a <strong>TimeoutError</strong> by <strong>asyncio.timeout_at()</strong> and raised in the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine handles the <strong>TimeoutError</strong> exception and a message is reported indicating that the task was timed out.</p>
+<p>Finally, the main coroutine is done and reports its final message.</p>
+<p>This highlights that a task can be automatically canceled after a deadline via <strong>asyncio.timeout_at()</strong> context manager.</p>
+<pre><code>Task is done
+Main saw the task timeout
+Main is done</code></pre>
+<p>Next, let's look at an example of automatically canceling a task when one task fails via <strong>asyncio.TaskGroup</strong>.</p>
+<h2>Example of Automatically Canceling a Task with asyncio.TaskGroup</h2>
+<p>We can explore an example of automatically canceling a running task when one task fails via <strong>asyncio.TaskGroup</strong>.</p>
+<p>In this case, we can define an additional new task that runs for a moment and then fails with an unhandled exception. The <strong>main()</strong> coroutine will create an <strong>asyncio.TaskGroup</strong> and then create and schedule the long-running task and the new task that will fail. When the new task fails, it will cause the long-running task to be automatically canceled.</p>
+<p>Firstly, we can define a new task that runs for a moment and then fails with an unhandled exception.</p>
+<p>The <strong>bad_work() </strong>coroutine below implements this.</p>
+<pre><code># task that will fail
+async def bad_work():
+    # sleep a moment
+    await asyncio.sleep(2)
+    # fail for some reason
+    raise Exception('Something Bad Happened!')
+</code></pre>
+<p>Next, in the <strong>main()</strong> coroutine, we can create an <strong>asyncio.TaskGroup</strong> using the context manager interface, then create and schedule the <strong>work()</strong> and <strong>bad_work()</strong> coroutines, then wait for them to complete.</p>
+<p>This context manager must be wrapped in a try-except for the expected exception raised by the <strong>bad_work() </strong>coroutine.</p>
+<pre><code>...
+# handle task failure
+try:
+    # create the task group
+    async with asyncio.TaskGroup() as group:
+        # create long running task
+        task1 = group.create_task(work())
+        # create task that fails
+        task2 = group.create_task(bad_work())
+except Exception as e:
+    print(f'Main saw error: {e}')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a task via asyncio.TaskGroup
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        print('Task sleep completed normally')
+    finally:
+        print('Task is done')
+
+# task that will fail
+async def bad_work():
+    # sleep a moment
+    await asyncio.sleep(2)
+    # fail for some reason
+    raise Exception('Something Bad Happened!')
+
+# main coroutine
+async def main():
+    # handle task failure
+    try:
+        # create the task group
+        async with asyncio.TaskGroup() as group:
+            # create long running task
+            task1 = group.create_task(work())
+            # create task that fails
+            task2 = group.create_task(bad_work())
+    except Exception as e:
+        print(f'Main saw error: {e}')
+    print('Main is done')
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>asyncio.TaskGroup</strong>.</p>
+<p>The long-running and failure coroutines are created and scheduled using the <strong>asyncio.TaskGroup</strong>, then <strong>main()</strong> coroutine suspends and awaits the tasks via the context manager's exit call.</p>
+<p>The <strong>work()</strong> runs and suspends on the call to sleep.</p>
+<p>The <strong>bad_work()</strong> runs, suspends on sleep, then resumes and fails with an unhandled exception.</p>
+<p>The exception bubbles up to the <strong>TaskGroup</strong>. This causes the remaining <strong>work()</strong> task to be canceled.</p>
+<p>The <strong>work()</strong> task is canceled. A <strong>CancelledError</strong> exception is raised and the finally block within the task is executed, reporting a message from the task before it is terminated.</p>
+<p>The <strong>main()</strong> task resumes and handles the unhandled exception from <strong>bad_work()</strong> and reports a message.</p>
+<p>Finally, the main coroutine is done and reports its final message.</p>
+<p>This highlights that a task can be automatically canceled if it is part of a <strong>TaskGroup</strong> and another task in the group fails with an unhandled exception.</p>
+<pre><code>Task is done
+Main saw error: unhandled errors in a TaskGroup (1 sub-exception)
+Main is done</code></pre>
+<p>Next, let's look at an example of automatically canceling a task when the event loop is exited.</p>
+<h2>Example of Automatically Canceling a Task When The Event Loop Terminates</h2>
+<p>We can explore an example of automatically canceling a running task when the event loop terminates.</p>
+<p>In this case, we can allow the <strong>work()</strong> coroutine to run for a moment before allowing the <strong>main()</strong> coroutine to resume and then terminate the event loop.</p>
+<p>This will cancel all remaining tasks running in the event loop, such as the <strong>work()</strong> task.</p>
+<pre><code>...
+# create and schedule the task
+task = asyncio.create_task(work())
+# allow the task to start running
+await asyncio.sleep(1)
+# report a message
+print('Main is done')
+# terminate the event loop...</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of canceling a running task when terminating the event loop
+import asyncio
+
+# task that take a long time
+async def work():
+    try:
+        # sleep a long time
+        await asyncio.sleep(10)
+        print('Task sleep completed normally')
+    finally:
+        print('Task is done')
+
+# main coroutine
+async def main():
+    # create and schedule the task
+    task = asyncio.create_task(work())
+    # allow the task to start running
+    await asyncio.sleep(1)
+    # report a message
+    print('Main is done')
+    # terminate the event loop...
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop.</p>
+<p>The <strong>main()</strong> coroutine runs and creates and schedules the <strong>work()</strong> task.</p>
+<p>The <strong>main()</strong> coroutine suspends for a moment, allowing the <strong>work()</strong> coroutine to begin running.</p>
+<p>The <strong>work()</strong> runs and suspends at the call to sleep.</p>
+<p>The main coroutine is done and reports its final message.</p>
+<p>The <strong>work()</strong> task is canceled by the event loop. A <strong>CancelledError</strong> exception is raised and the finally block within the task is executed, reporting a message from the task before it is terminated.</p>
+<p>This highlights that a task can be automatically canceled by the event loop when shutting down.</p>
+<pre><code>Main is done
+Task is done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know when asyncio tasks can be canceled in Python.</p>
+</main>
+</body>
+</html>

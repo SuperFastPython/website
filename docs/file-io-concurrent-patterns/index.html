@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Concurrent File I/O Programming Patterns – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Concurrent File I/O Programming Patterns</h1>
+<div class="post-meta">August 1, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent File I/O</a></div>
+
+<p>You can use reusable concurrent programming patterns when speeding up file IO using concurrency in Python.</p>
+<p>In this tutorial, you will discover patterns for concurrent file IO in Python.</p>
+<p>Let's get started.</p>
+<h2>Types of File I/O Operations</h2>
+<p>We may need to perform file IO in our Python programs.</p>
+<p>There are many types of file IO operations we may want to perform in our program that may vary based on the type of task, e.g. read or write, on the size of the file, small or large, and so on.</p>
+<p>It is helpful to divide the type of IO we wish to perform into two main classes:</p>
+<ol>
+<li>One-off file IO operations.</li>
+<li>Multiple similar file IO operations.</li>
+</ol>
+<p>Let’s take a closer look at each of these cases in turn.</p>
+<h3>One-Off File I/O Operations</h3>
+<p>A one-off file operation, as its name suggests, is a file operation that is one file io task performed on demand.</p>
+<p>For example, we may need to load some data from a file, store state to a file, or append some data to a file.</p>
+<p>Often, our program depends on this task being performed before moving on, in which case it cannot or probably not be performed concurrently.</p>
+<p>For example, a program may need to load data and then process that data. The processing task depends upon the load task and is blocked until the data is loaded. Concurrency offers no benefit in this case.</p>
+<p>In other cases, the one-off operation may not be depended upon by subsequent tasks, in which case it can be performed asynchronously in a fire-and-forget manner.</p>
+<p>For example, a program may need to save the state on request by the user. This activity can be performed in the background.</p>
+<p>A single thread or worker thread in a thread pool can be used. The task can be dispatched and any error handling or notifications can be handled by the task itself.</p>
+<h3>Multiple File I/O Operations</h3>
+<p>Multiple file IO operations, as its name suggests, refer to a task that involves performing many similar file tasks.</p>
+<p>For example, we may need to:</p>
+<ul>
+<li>Delete all files in a directory.</li>
+<li>Copy all files from one directory to another.</li>
+<li>Save each in-memory dataset as a separate file.</li>
+</ul>
+<p>These tasks are both independent and collectively slow to perform.</p>
+<ul>
+<li><strong>Independent</strong>: Each operation is similar or identical, applied to different data. As such, each task is reasonably independent and simple to implement and complete.</li>
+<li><strong>Slow</strong>: There are many of these similar operations that must be performed on demand by the program, e.g. tens, hundreds, thousands, or more. As such, performing all file I/O operations takes a long time to complete.</li>
+</ul>
+<p>Naively these tasks are performed sequentially, one after the other.</p>
+<p>The problem is that as more file I/O operations are added, e.g. more files to load, copy, delete, etc., the slower the overall task takes to perform.</p>
+<p>It is these tasks in particular that require careful attention and can benefit the most from concurrency.</p>
+<p>For example, the duration required to save 1,000 files is the duration to save one file multiplied by 1,000, e.g. it scales linearly with the number of tasks.</p>
+<p>If we can perform the operation using concurrency, it may be reduced by a factor of the number of CPU cores or a factor of the number of concurrent tasks, or similar, depending on the limiting factors of the task itself and the hardware on which it is run.</p>
+<p>It is tasks of this type that we need to focus our attention on.</p>
+<h2>Concurrent Patterns For File I/O Operations</h2>
+<p>The main use case we need to address is how to perform many file IO operations faster using concurrency.</p>
+<p>Because the tasks are generally independent and relatively simple, they are a good candidate for using a pool of workers, instead of creating many one-off threads or processes.</p>
+<p>Therefore, the focus of faster file IO using concurrent will be:</p>
+<ul>
+<li>How to choose between pools of threads and processes, and how the same result can be achieved using coroutines.</li>
+<li>How to configure and arrange the pools of workers.</li>
+</ul>
+<p>With these questions in mind, let's consider some general reusable programming patterns for executing file IO tasks.</p>
+<p>Four reusable programming patterns for concurrent IO we may consider are:</p>
+<ul>
+<li>Pattern 1: Single Worker</li>
+<li>Pattern 2: Pools of Workers</li>
+<li>Pattern 3: Batched Tasks And Pools of Workers</li>
+<li>Pattern 4: Pools of Workers within Each Worker</li>
+</ul>
+<p>Let's take a closer look at each pattern in turn.</p>
+<h3>Pattern 1: Single Worker</h3>
+<p>The simplest pattern is to create a single concurrent worker on demand for a file IO operation.</p>
+<p>This approach would only be helpful in those cases where a single file IO operation can be executed safely in the background while the program continues on with other tasks not dependent on the file IO operation.</p>
+<p>This could involve the creation of a single thread, a single process, or a single coroutine.</p>
+<ul>
+<li>New thread worker via the <strong>Thread</strong> class.</li>
+<li>New process and main thread worker via the <strong>Process</strong> class.</li>
+<li>New coroutine worker via the <strong>Task</strong> class.</li>
+</ul>
+<p>A pool of workers could be used for a one-off task, but it may be overkill, e.g. more costly to setup and operate than a single standalone thread or process.</p>
+<h3>Pattern 2: Pools of Workers</h3>
+<p>We might consider using a pool of workers to complete a suite of similar file IO operations.</p>
+<p>Pools of workers are provided in Python using the modern executor framework, including the <strong>ThreadPoolExecutor</strong> and the <strong>ProcessPoolExecutor</strong>. File IO tasks can be defined as a pure function that is provided the data it needs as an argument and provides any loaded data via a return value.</p>
+<ul>
+<li>Pools of threads in <strong><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor</a></strong>.</li>
+<li>Pools of processes in <strong><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor</a></strong>.</li>
+</ul>
+<p>Asyncio programs can use <strong><a href="../aiofiles-for-asyncio-in-python/">aiofiles</a></strong> that will allow coroutines to issue file IO tasks asynchronously, like any other coroutine. Coroutines can be created and issued in batch and awaited using tools like <strong><a href="../asyncio-gather/">asyncio.gather()</a></strong> and <strong><a href="../asyncio-wait/">asyncio.wait()</a></strong>.</p>
+<ul>
+<li>Pools of coroutines via <strong>asyncio.Task</strong> and <strong>asyncio.gather()</strong>.</li>
+</ul>
+<p>Using one-off threads or processes would not be appropriate. The main reason is that we would expect to have many more tasks than workers. Using a pool of workers allows the program to issue tasks and have them queued until a worker in the pool is available to consume and execute the task.</p>
+<p>If one-off processes or threads were used instead, we would have to develop mechanisms to limit the number of tasks that are able to execute concurrently. It would also result in many threads or processes being created and kept idle, and would consume a lot more memory than having just the tasks themselves sit idle in a pool.</p>
+<h3>Pattern 3: Batched Tasks And Pools of Workers</h3>
+<p>There may be efficiency gains to be had in grouping tasks into batches when executing them with a pool of workers.</p>
+<p>Many file IO tasks may require data in order to be completed or may result in data being loaded.</p>
+<p>If the tasks are performed within a pool of workers, then there may be some overhead in transmitting data from the main program to the workers for each task, and in transmitting data base from workers to the main program.</p>
+<p>We may overcome some of this overhead by executing file IO tasks in batches.</p>
+<p>This might involve configuring the pool of workers itself to automatically collect groups of tasks into chunks for transmission to workers, such as via the "<strong>chunksize</strong>" argument on the <strong>map()</strong> method.</p>
+<p>Alternatively, we may manually chunk the tasks, e.g. create batches of file names to load or delete, then issue each batch of tasks to a worker to process.</p>
+<p>This batching may be used with each type of pool of workers, for example:</p>
+<ul>
+<li>Batched tasks in the <strong>ThreadPoolExecutor</strong>.</li>
+<li>Batched tasks in the <strong>ProcessPoolExecutor</strong>.</li>
+<li>Batched tasks within reach asyncio coroutine.</li>
+</ul>
+<h3>Pattern 4: Pools of Workers within Each Worker</h3>
+<p>We can take these patterns one step further by having a pool of workers within each worker in a pool of workers.</p>
+<p>Not all variations of this pattern make sense.</p>
+<p>A good use of this pattern is to have a pool of worker processes, where each worker process in the pool manages its own pool of worker threads.</p>
+<p>In this way, a batch of file IO tasks can be issued to each worker in the pool for parallel execution and each batch is executed concurrently using threads.</p>
+<ul>
+<li>Batched tasks in the <strong>ProcessPoolExecutor</strong> with <strong>ThreadPoolExecutors</strong></li>
+</ul>
+<h2>How to Choose File IO Pattern</h2>
+<p>Should we use threads or processes for concurrent file IO?</p>
+<p>Further, given the concurrency patterns explored in the previous section, which pattern should we use?</p>
+<p>Intuitively, we may think that threads or perhaps asyncio are best suited for speeding-up file IO operations. The reason is that threads will release the GIL when blocked from performing a read or a write operation. Threads should be best suited to concurrent file IO in theory.</p>
+<p>Sometimes this is the case.</p>
+<p>Alternatively, we may think that hard disk drives are only able to perform one or a few file IO operations at a time, and therefore file IO operations cannot be performed concurrently.</p>
+<p>Again, sometimes this is the case.</p>
+<p>Unfortunately, it is not obvious what file IO operations can be sped-up with concurrency and what type of Python concurrency should be used. Further, it is possible for one approach to offer benefits for a specific operating system or type of hard disk drive, and not another.</p>
+<p>Therefore, it is critical that we perform experiments in order to discover what type of concurrency works well or best for your specific file IO operation and computer system.</p>
+<p>This involves three things:</p>
+<ol>
+<li>Testing threads and processes for a given file IO task.</li>
+<li>Testing different concurrency patterns for a given file IO task.</li>
+<li>Carefully benchmarking and recording the performance of a task under different conditions.</li>
+</ol>
+<p>Testing threads and processes for a given task might be as simple as switching out a <strong>ThreadPoolExecutor</strong> for a <strong>ProcessPoolExecutor</strong>, both of which use the same APIs.</p>
+<p>Testing different concurrency patterns is a little more involved as it may require adding code to automatically or manually grouping file IO operations into batches for execution, or adding a thread pool to each process worker in a process pool.</p>
+<p>Benchmarking the performance of different conditions is essential. In order to choose between threads and processes or one pattern or another is the time taken to complete the task.</p>
+<p>As a baseline, it is a good idea to first develop a sequential version of the task that performs all file IO operations sequentially, one after the other. Recording how long this sequential takes to complete provides a line in the sand that all concurrent versions of the program must out-perform in order to be considered "faster".</p>
+<p>Timing the time taken to execute a program can be performed once and recorded. The problem is that a single run of the program may not be representative, especially if the operating system decided to perform another task at the same time. Therefore, it can be good to repeat a benchmark a few times and calculate the average time taken (e.g. the sum of all times divided by the number of times collected).</p>
+<p>Benchmarking can be performed in the program using code, such as using <strong>time.time()</strong> function and recording the start time, end time, and subtracting the end time from the start time to give the duration in seconds.</p>
+<p>For example:</p>
+<pre><code>...
+# record start time
+time_start = time.time()
+...
+# record end time
+time_end = time.time()
+# calculate duration
+time_duration = time_end - time_start
+# report the duration
+print(f'Took {time_duration} seconds')</code></pre>
+<p>Alternatively, on POSIX workstations like Linux and MacOS, we can use the <a href="https://en.wikipedia.org/wiki/Time_(Unix)"><strong>time</strong> command</a> to calculate how long it takes to execute a Python script with a given concurrency pattern.</p>
+<p>For example:</p>
+<pre><code>time python ./program.py</code></pre>
+<p>The result reports the total time taken in seconds, as well as the portion of time used in user mode and kernel mode while running the script.</p>
+<p>For example:</p>
+<pre><code>real	0m1.051s
+user	0m0.026s
+sys	0m0.012s</code></pre>
+<p>More sophisticated approaches are also available such as the <a href="https://docs.python.org/3/library/timeit.html"><strong>timeit</strong> Python module</a>.</p>
+<h2>Takeaways</h2>
+<p>You now know about patterns for concurrent file IO in Python.</p>
+</main>
+</body>
+</html>

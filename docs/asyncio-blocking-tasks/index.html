@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Run Blocking Tasks in Asyncio – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Run Blocking Tasks in Asyncio</h1>
+<div class="post-meta">January 5, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can run blocking calls asynchronously in an asyncio program via the <strong>asyncio.to_thread()</strong> and <strong>loop.run_in_executor()</strong> functions.</p>
+<p>In this tutorial, you will discover <strong>how to execute blocking calls in asyncio programs</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Run Blocking Tasks in Asyncio</h2>
+<p>The focus of asyncio is asynchronous programming and non-blocking IO.</p>
+<p>Nevertheless, we often need to execute a blocking function call within an asyncio application.</p>
+<p>This could be for many reasons, such as:</p>
+<ol><li>To execute a CPU-bound task like calculating something.</li><li>To execute a blocking IO-bound task like reading or writing from a file.</li><li>To call into a third-party library that does not support asyncio yet.</li></ol>
+<p>Making a blocking call directly in an asyncio program will cause the event loop to stop while the blocking call is executing. It will not allow other coroutines to run in the background.</p>
+<p><strong>How can we execute a blocking call in an asyncio program asynchronously?</strong></p>
+<h2>How to Run Blocking Tasks</h2>
+<p>The asyncio module provides two approaches for executing blocking calls in asyncio programs.</p>
+<p>The first is to use the <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.to_thread"><strong>asyncio.to_thread()</strong> function</a>.</p>
+<p>This is in the high-level API and is intended for application developers.</p>
+<p>The <strong>asyncio.to_thread()</strong> function takes a function name to execute and any arguments.</p>
+<p>The function is executed in a separate thread. It returns a coroutine that can be awaited or scheduled as an independent task.</p>
+<p>For example:</p>
+<pre><code>...
+# execute a function in a separate thread
+await asyncio.to_thread(task)</code></pre>
+<p>The task will not begin executing until the returned coroutine is given an opportunity to run in the event loop.</p>
+<p>You can learn more about how to use the <strong>asyncio.to_thread()</strong> function in the tutorial:</p>
+<ul><li><a href="../asyncio-to_thread/">How to Use Asyncio to_thread()</a></li></ul>
+<p>The <strong>asyncio.to_thread()</strong> function creates a <strong>ThreadPoolExecutor</strong> behind the scenes to execute blocking calls.</p>
+<p>As such, the <strong>asyncio.to_thread()</strong> function is only appropriate for IO-bound tasks.</p>
+<p>An alternative approach is to use the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor"><strong>loop.run_in_executor()</strong> function</a>.</p>
+<p>This is in the low-level asyncio API and first requires access to the event loop, such as via the <a href="https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_running_loop"><strong>asyncio.get_running_loop()</strong> function</a>.</p>
+<p>The <strong>loop.run_in_executor()</strong> function takes an executor and a function to execute.</p>
+<p>If None is provided for the executor, then the default executor is used, which is a <strong>ThreadPoolExecutor</strong>.</p>
+<p>The <strong>loop.run_in_executor()</strong> function returns an awaitable that can be awaited if needed. The task will begin executing immediately, so the returned awaitable does not need to be awaited or scheduled for the blocking call to start executing.</p>
+<p>For example:</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# execute a function in a separate thread
+await loop.run_in_executor(None, task)</code></pre>
+<p>Alternatively, an executor can be created and passed to the <strong>loop.run_in_executor()</strong> function, which will execute the asynchronous call in the executor.</p>
+<p>The caller must manage the executor in this case, shutting it down once the caller is finished with it.</p>
+<p>For example:</p>
+<pre><code>...
+# create a process pool
+with ProcessPoolExecutor as exe:
+	# get the event loop
+	loop = asyncio.get_running_loop()
+	# execute a function in a separate thread
+	await loop.run_in_executor(exe, task)
+	# process pool is shutdown automatically...
+</code></pre>
+<p>These two approaches allow a blocking call to be executed as an asynchronous task in an asyncio program.</p>
+<p>Now that we know how to execute blocking calls in an asyncio program, let's look at some worked examples.</p>
+<h2>Example of Running I/O-Bound Task in Asyncio with to_thread()</h2>
+<p>We can explore how to execute a blocking IO-bound call in an asyncio program using <strong>asyncio.to_thread()</strong>.</p>
+<p>In this example, we will define a function that blocks the caller for a few seconds. We will then execute this function asynchronously in a thread pool from asyncio using the <strong>asyncio.to_thread()</strong> function.</p>
+<p>This will free the caller to continue with other activities.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of running a blocking io-bound task in asyncio
+import asyncio
+import time
+
+# a blocking io-bound task
+def blocking_task():
+    # report a message
+    print('Task starting')
+    # block for a while
+    time.sleep(2)
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # report a message
+    print('Main running the blocking task')
+    # create a coroutine for  the blocking task
+    coro = asyncio.to_thread(blocking_task)
+    # schedule the task
+    task = asyncio.create_task(coro)
+    # report a message
+    print('Main doing other things')
+    # allow the scheduled task to start
+    await asyncio.sleep(0)
+    # await the task
+    await task
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and runs it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a message. It then issues a call to the blocking function call to the thread pool. This returns a coroutine,</p>
+<p>The coroutine is then wrapped in a Task and executed independently.</p>
+<p>The <strong>main()</strong> coroutine is free to continue with other activities. In this case, it sleeps for a moment to allow the scheduled task to start executing. This allows the target function to be issued to the <strong>ThreadPoolExecutor</strong> behind the scenes and start running.</p>
+<p>The <strong>main()</strong> coroutine then suspends and waits for the task to complete.</p>
+<p>The blocking function reports a message, sleeps for 2 seconds, then reports a final message.</p>
+<p>This highlights how we can execute a blocking IO-bound task in a separate thread asynchronously from an asyncio program.</p>
+<pre><code>Main running the blocking task
+Main doing other things
+Task starting
+Task done</code></pre>
+<h2>Example of Running I/O-Bound Task in Asyncio with run_in_executor()</h2>
+<p>We can explore how to execute a blocking IO-bound call in an asyncio program using the <strong>run_in_executor()</strong> method.</p>
+<p>This requires that we first get access to the currently running event loop.</p>
+<p>In this example, we will use the default executor, which will be a <strong>ThreadPoolExecutor</strong>, appropriate for executing IO-bound tasks.</p>
+<p>You can learn more about the <strong>ThreadPoolExecutor</strong> in the guide:</p>
+<ul><li><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor: The Complete Guide</a></li></ul>
+<p>The blocking call will begin executing the thread pool as soon as it is issued. This allows the caller to continue with other activities.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of running a blocking io-bound task in asyncio
+import asyncio
+import time
+
+# a blocking io-bound task
+def blocking_task():
+    # report a message
+    print('Task starting')
+    # block for a while
+    time.sleep(2)
+    # report a message
+    print('Task done')
+
+# main coroutine
+async def main():
+    # report a message
+    print('Main running the blocking task')
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # schedule the function to run
+    awaitable = loop.run_in_executor(None, blocking_task)
+    # report a message
+    print('Main doing other things')
+    # allow the scheduled task to start
+    await asyncio.sleep(3)
+
+# run the asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and runs it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and reports a message. It then gets access to the currently running event loop and issues the blocking IO-bound task.</p>
+<p>This returns an awaitable and begins executing the task immediately using the default executor, which is an instance of the <strong>ThreadPoolExecutor</strong>.</p>
+<p>The <strong>main()</strong> coroutine is free to continue with other activities. In this case, it reports a message and sleeps for a while.</p>
+<p>The blocking task runs, reporting a message, sleeping for two seconds, and reporting a final message.</p>
+<p>This highlights how a blocking IO-bound task can be executed asynchronously in a separate thread using the low-level API.</p>
+<pre><code>Main running the blocking task
+Task starting
+Main doing other things
+Task done</code></pre>
+<h2>Example of Running CPU-Bound Task in Asyncio with run_in_executor()</h2>
+<p>We can explore how to execute a CPU-bound task in an asyncio program.</p>
+<p>In this example, we will use the <strong>run_in_executor()</strong> method on the currently running event loop.</p>
+<p>We will create an instance of a <strong>ProcessPoolExecutor</strong>, configured with 4 workers, appropriate for executing CPU-bound tasks. This process pool will then be passed to the <strong>run_in_executor()</strong> along with the target function.</p>
+<p>You can learn more about the <strong>ProcessPoolExecutor</strong> in the guide:</p>
+<ul><li><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor: The Complete Guide</a></li></ul>
+<p>The task will begin executing immediately in the process pool, asynchronously. This frees the caller to continue with other activities.</p>
+<p>The complete example is listed below.</p>
+</main>
+</body>
+</html>

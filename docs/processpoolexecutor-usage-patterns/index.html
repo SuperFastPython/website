@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>6 Common Usage Patterns for the ProcessPoolExecutor – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>6 Common Usage Patterns for the ProcessPoolExecutor</h1>
+<div class="post-meta">January 22, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>You can adopt one of the <strong>common usage patterns</strong> to get the most out of the <a href="../processpoolexecutor-in-python/"><strong>ProcessPoolExecutor</strong> in Python</a>.</p>
+<p>In this tutorial, you will discover the common usage patterns for Python process pools.</p>
+<p>Let's get started.</p>
+<h2 id="processpoolexecutor-usage-patterns">ProcessPoolExecutor Usage Patterns</h2>
+<p>The <strong>ProcessPoolExecutor</strong> provides a lot of flexibility for executing concurrent tasks in Python.</p>
+<p>Nevertheless, there are a handful of common usage patterns that will fit most program scenarios.</p>
+<p>This section lists the common usage patterns with worked examples that you can copy and paste into your own project and adapt as needed.</p>
+<p>The patterns we will look at are as follows:</p>
+<ol><li>Map and Wait Pattern</li><li>Submit and Use as Completed Pattern</li><li>Submit and Use Sequentially Pattern</li><li>Submit and Use Callback Pattern</li><li>Submit and Wait for All Pattern</li><li>Submit and Wait for First Pattern</li></ol>
+<p>We will use a contrived task in each example that will sleep for a random amount of time equal to less than one second. You can easily replace this example task with your own task in each pattern.</p>
+<p>Also, recall that each Python program has one thread by default called the main thread, where we do our work. We will create the process pool in the main thread in each example and may reference actions in the main thread in some of the patterns, as opposed to actions in processes in the process pool.</p>
+<p>Let's start with the first usage pattern, the map() and wait.</p>
+<h2 id="map-and-wait-pattern">Map and Wait Pattern</h2>
+<p>Perhaps the most common pattern when using the <strong>ProcessPoolExecutor</strong> is to convert a for loop that executes a function on each item in a collection to use processes.</p>
+<p>It assumes that the function has no side effects, meaning it does not access any data outside of the function and does not change the data provided to it. It takes data and produces a result.</p>
+<p>These types of for loops can be written explicitly in Python; for example:</p>
+<pre><code>...
+# apply a function to each element in a collection
+for item in mylist:
+	result = task(item)
+</code></pre>
+<p>A better practice is to use the built-in <strong>map()</strong> function that applies the function to each item in the iterable for you.</p>
+<pre><code>...
+# apply the function to each element in the collection
+results = map(task, mylist)
+</code></pre>
+<p>This does not perform the <strong>task()</strong> function to each item until we iterate the results, so-called lazy evaluation:</p>
+<pre><code>...
+# iterate the results from map
+for result in results:
+	print(result)
+</code></pre>
+<p>Therefore, it is common to see this operation consolidated to the following:</p>
+<pre><code>...
+# iterate the results from map
+for result in map(task, mylist):
+	print(result)
+</code></pre>
+<p>We can perform this same operation using the process pool, except each application of the function to an item in the list is a task that is executed asynchronously. For example:</p>
+<pre><code>...
+# iterate the results from map
+for result in executor.map(task, mylist):
+	print(result)
+</code></pre>
+<p>Although the tasks are executed concurrently, the results are iterated in the order of the iterable provided to the <strong>map()</strong> function, the same as the built-in <strong>map()</strong> function.</p>
+<p>In this way, we can think of the process pool version of <strong>map()</strong> as a concurrent version of the <strong>map()</strong> function and is ideal if you are looking to update your for loop to use processes.</p>
+<p>The example below demonstrates using the map and wait pattern with a task that will sleep a random amount of time less than one second and return the provided value.</p>
+<pre><code># SuperFastPython.com
+# example of the map and wait pattern for the ProcessPoolExecutor
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(name):
+    # sleep for less than a second
+    sleep(random())
+    return name
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # execute tasks concurrently and process results in order
+        for result in executor.map(task, range(10)):
+            # retrieve the result
+            print(result)
+
+if __name__ == '__main__':
+    main()
+
+</code></pre>
+<p>Running the example, we can see that the results are reported in the order that the tasks were created and sent into the process pool.</p>
+<pre><code>0
+1
+2
+3
+4
+5
+6
+7
+8
+9</code></pre>
+<p>The <strong>map()</strong> function supports target functions that take more than one argument by providing more than one iterable as arguments to the call to <strong>map()</strong>.</p>
+<p>For example, we can define a target function for map that takes two arguments, then provide two iterables of the same length to the call to map.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of calling map on a process pool with two iterables
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value1, value2):
+    # sleep for less than a second
+    sleep(random())
+    return (value1, value2)
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit all tasks
+        for result in executor.map(task, ['1', '2', '3'], ['a', 'b', 'c']):
+            print(result)
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example executes the tasks as expected, providing two arguments to map and reporting a result that combines both arguments.</p>
+<pre><code>('1', 'a')
+('2', 'b')
+('3', 'c')
+</code></pre>
+<p>A call to the map function will issue all tasks to the process pool immediately, even if you do not iterate the returned iterable of results.</p>
+<p>This is unlike the built-in <strong>map()</strong> function that is lazy and does not compute each call until you ask for the result during iteration.</p>
+<p>The example below confirms this by issuing all tasks with a call to the <strong>map()</strong> function and not iterating the results.</p>
+<pre><code># SuperFastPython.com
+# example of calling map on the process pool and not iterating the results
+from time import sleep
+from random import random
+from concurrent.futures import ProcessPoolExecutor
+
+# custom task that will sleep for a variable amount of time
+def task(value):
+    # sleep for less than a second
+    sleep(random())
+    print(f'Done: {value}')
+    return value
+
+# entry point
+def main():
+    # start the process pool
+    with ProcessPoolExecutor() as executor:
+        # submit all tasks
+        executor.map(task, range(5))
+    print('All done!')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, we can see that the tasks are sent into the process pool and executed without having to explicitly pass over the iterable of results that was returned.</p>
+<p>The use of the context manager ensured that the process pool did not shutdown until all tasks were complete.</p>
+<pre><code>Done: 0
+Done: 2
+Done: 1
+Done: 3
+Done: 4
+All done!</code></pre>
+<h2 id="submit-and-use-as-completed">Submit and Use as Completed</h2>
+<p>Perhaps the second most common pattern when using the <strong>ProcessPoolExecutor</strong> is to submit tasks and use the results as they become available.</p>
+<p>This can be achieved using the <strong>submit()</strong> function to push tasks into the process pool that returns <strong>Future</strong> objects, then calling the module method <strong>as_completed()</strong> on the list of <strong>Future</strong> objects that will return each <strong>Future</strong> object as its task is completed.</p>
+<p>The example below demonstrates this pattern, submitting the tasks in order from 0 to 9 and showing results in the order that they were completed.</p>
+</main>
+</body>
+</html>

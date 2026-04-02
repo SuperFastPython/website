@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Performance May Not Scale with CPU Cores in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Performance May Not Scale with CPU Cores in Python</h1>
+<div class="post-meta">November 16, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>We expect the performance of executing independent tasks in parallel to scale with the number of physical CPU cores available.</p>
+<p>This assumption is true, but only with some types of tasks. There are some tasks where this expectation does not hold, such as working with large lists.</p>
+<p>In this tutorial, you will <strong>discover some independent tasks</strong> that do scale and some tasks <strong>that do not scale with the number of CPUs in Python</strong>.</p>
+<p>This tutorial was prompted by questions and discussion with William G. Thank you deeply! If you have a question about Python concurrency, <a href="../contact/">message me any time</a>.</p>
+<p>Let's get started.</p>
+<h2>Performance Scales with CPU Cores</h2>
+<p>When we execute independent tasks in parallel, we generally expect the performance to improve as the number of CPU cores is increased.</p>
+<p>That is if we execute 4 equivalent and independent tasks sequentially that it will take 4 units of time to complete, whereas if we execute all 4 tasks in parallel, it takes one unit of time to complete.</p>
+<p>This is the basis of parallel programming.</p>
+<p>We can implement parallel programming in Python using the multiprocessing module and process pools such as the <a href="../multiprocessing-pool-python/"><strong>multiprocessing.Pool</strong> class</a> and the <a href="../processpoolexecutor-in-python/"><strong>concurrent.futures.ProcessPoolExecutor</strong> class</a>.</p>
+<p>These process pools create pools of reusable workers for executing independent tasks using child processes, in parallel.</p>
+<p>Let's explore the case of executing a fixed-duration independent task using a process pool and increasing the number of parallel tasks and parallel workers together in concert.</p>
+<p>If we increase the number of parallel tasks and workers from 1 to the number of CPU cores, then we expect the time taken to execute all tasks to remain fixed at the duration of one task (or close enough, because of any overhead in managing the pool and other things running on the operating system).</p>
+<p>The example below explores this.</p>
+<p>It defines a task that sleeps for one second. I have 4 physical CPU cores (8 logical cores with hyperthreading) in my system. Therefore, as we increase the number of tasks and workers from 1 to 4, we expect the overall duration of the batch of tasks to remain fixed at around one second.</p>
+<p>If we had more workers and tasks than physical CPU cores, we might expect the performance of parallel tasks to begin to degrade as the operating system begins to context-switch between tasks every 100 operations or so.</p>
+<p>The complete example is listed below.</p>
+<p>Adapt the number of iterations based on the number of physical CPU cores in your example as needed.</p>
+<pre><code># SuperFastPython.com
+# example of exploring the duration of fixed-length tasks in a process pool
+from time import time
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# task that does some work
+def task(value):
+    # simulate work for a fixed interval
+    sleep(1)
+
+# entry point
+if __name__ == '__main__':
+    # test an increasing number of processes
+    for i in range(1,5):
+        # record start time
+        start = time()
+        # create the pool
+        with ProcessPoolExecutor(max_workers=i) as exe:
+            # issue one task per processor
+            _ = exe.map(task, range(i))
+            # wait for tasks to complete...
+        # record end time
+        end = time()
+        # calculate time taken in seconds
+        duration = end - start
+        # report duration
+        print(f'&gt;{i} worker/task took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example performs the experiment.</p>
+<p>It runs a loop from 1 to 4, each iteration creating a pool with the given number of child process workers and then issuing the same number of tasks, then waiting for all tasks to complete.</p>
+<p>The time taken for each test is reported and each test is close to 1 second, as expected.</p>
+<pre><code>&gt;1 worker/task took 1.073 seconds
+&gt;2 worker/task took 1.062 seconds
+&gt;3 worker/task took 1.068 seconds
+&gt;4 worker/task took 1.076 seconds
+</code></pre>
+<p>Let's repeat the experiment with a task that takes about one second, but requires engaging the CPU, rather than blocking and doing nothing.</p>
+<p>We can define a task that creates a list of square root numbers.</p>
+<p>The example below provides the updated example with a CPU-bound task.</p>
+<p>Note, I had to finesse the number of iterations in the task to make it take about one second. If you have faster or slower CPU cores, adapt the example accordingly.</p>
+<pre><code># SuperFastPython.com
+# example of exploring the duration of fixed length cpu-bound tasks in a process pool
+from time import time
+from time import sleep
+from math import sqrt
+from concurrent.futures import ProcessPoolExecutor
+
+# task that does some work
+def task(value):
+    # simulate work for a fixed interval
+    data = 
+
+# entry point
+if __name__ == '__main__':
+    # test an increasing number of processes
+    for i in range(1,5):
+        # record start time
+        start = time()
+        # create the pool
+        with ProcessPoolExecutor(max_workers=i) as exe:
+            # issue one task per processor
+            _ = exe.map(task, range(i))
+            # wait for tasks to complete...
+        # record end time
+        end = time()
+        # calculate time taken in seconds
+        duration = end - start
+        # report duration
+        print(f'&gt;{i} worker/task took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example performs the experiment with much the same results.</p>
+<p>The tasks are independent.</p>
+<p>The tasks fully occupy the CPU cores.</p>
+<p>The duration of 1, 2, 3, and 4 parallel tasks is equivalent because I have 4 physical CPU cores.</p>
+<pre><code>&gt;1 worker/task took 1.019 seconds
+&gt;2 worker/task took 1.030 seconds
+&gt;3 worker/task took 1.072 seconds
+&gt;4 worker/task took 1.120 seconds</code></pre>
+<p>No surprises.</p>
+<p>Now, let's look at a task that does not behave as expected.</p>
+<h2>Tasks That Do Not Scale (surprisingly!)</h2>
+<p>It seems there are some typical tasks in regular Python that do not behave as expected when executed in parallel using process-based concurrency.</p>
+<p>An example is those operations that involve <a href="https://docs.python.org/3/tutorial/datastructures.html">large lists</a> of objects, like integers.</p>
+<p>Examples such as:</p>
+<ol>
+<li>Creating a copy of a large list via the <a href="https://docs.python.org/3/library/stdtypes.html#mutable-sequence-types"><strong>copy()</strong> method</a>.</li>
+<li>Using the plus operator to append items to a large list iteratively in a loop, e.g. <strong>a = a + </strong></li>
+<li>Slicing a large list, e.g. <strong>a = b[:]</strong></li>
+</ol>
+<p>Executing operations of this type looks like an independent task.</p>
+<p>Executing two or more of these operations in parallel should scale with the number of physical CPU cores. That is, executing 1, 2, 3, or 4 tasks of this type in parallel should be the duration of one of these tasks.</p>
+<p>Unfortunately, this is not the case.</p>
+<p>The example below demonstrates this.</p>
+<pre><code># SuperFastPython.com
+# example of an independent task that does not scale with the number of cpu cores
+from time import time
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# task that does some work
+def task(value):
+    # create a large list
+    mylist = 
+    # copy the list
+    mylist2 = mylist.copy()
+
+# entry point
+if __name__ == '__main__':
+    # test an increasing number of processes
+    for i in range(1,5):
+        # record start time
+        start = time()
+        # create the pool
+        with ProcessPoolExecutor(max_workers=i) as exe:
+            # issue one task per processor
+            _ = exe.map(task, range(i))
+            # wait for tasks to complete
+        # record end time
+        end = time()
+        # calculate time taken in seconds
+        duration = end - start
+        # report duration
+        print(duration)
+</code></pre>
+<p>Running the example performs 4 experiments.</p>
+<p>The number of tasks and workers in the pool is increased from 1 to 4.</p>
+<p>We expect the overall duration to remain fixed (roughly) for each experiment, because I have 4 physical CPU cores, allowing all tasks to run in parallel.</p>
+<p>Instead, we see a trend of increasingly worse performance from about 1 second to nearly 1.5 seconds with 4 tasks and workers.</p>
+<pre><code>1.0626261234283447
+1.126122236251831
+1.2505171298980713
+1.4071791172027588</code></pre>
+<p>We can exaggerate the trend by making the task take longer, such as 5 seconds.</p>
+<p>The updated example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an independent task that does not scale with the number of cpu cores
+from time import time
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# task that does some work
+def task(value):
+    # create a large list
+    mylist = 
+    # copy the list
+    mylist2 = mylist.copy()
+
+# entry point
+if __name__ == '__main__':
+    # test an increasing number of processes
+    for i in range(1,5):
+        # record start time
+        start = time()
+        # create the pool
+        with ProcessPoolExecutor(max_workers=i) as exe:
+            # issue one task per processor
+            _ = exe.map(task, range(i))
+            # wait for tasks to complete
+        # record end time
+        end = time()
+        # calculate time taken in seconds
+        duration = end - start
+        # report duration
+        print(duration)
+</code></pre>
+<p>Running the example performs the same experiment with a longer duration task.</p>
+<p>As we increase the number of parallel tasks and workers, we see the same pattern of increasing time from about 5 seconds with one task and work to nearly 7 seconds for 4 tasks and workers.</p>
+<pre><code>4.839679002761841
+5.280073881149292
+5.9325501918792725
+6.95676589012146</code></pre>
+<p>Appending items to a large list using the plus operator seems to exaggerate the pattern even more.</p>
+<p>The example below provides an updated task with this change, with each task supposed to take about 7 seconds.</p>
+<pre><code># SuperFastPython.com
+# example of performance degrading with increase in parallel tasks and workers
+from time import time
+from time import sleep
+from concurrent.futures import ProcessPoolExecutor
+
+# task that does some work
+def task(value):
+    # do work
+    test = []
+    for j in range(80000):
+        test = test + 
+
+# entry point
+if __name__ == '__main__':
+    # test an increasing number of processes
+    for i in range(1,5):
+        # record start time
+        start = time()
+        # create the pool
+        with ProcessPoolExecutor(max_workers=i) as exe:
+            # issue one task per processor
+            _ = exe.map(task, range(i))
+            # wait for tasks to complete
+        # record end time
+        end = time()
+        # calculate time taken in seconds
+        duration = end - start
+        # report duration
+        print(duration)
+</code></pre>
+<p>We see the same pattern, but much worse.</p>
+<p>One task takes about 7 seconds.</p>
+<p>Two tasks in parallel take about 7.5 seconds. Longer, but not crazy.</p>
+<p>Three tasks take double the expected duration at 14 seconds.</p>
+<p>Four parallel tasks executed by four parallel workers take about 28 seconds, 4 times longer.</p>
+<p><strong>Yes, 4-times longer. The same length of time expected if the 4 tasks were executed sequentially.</strong></p>
+<p>Why?</p>
+<pre><code>6.903233051300049
+7.598363876342773
+14.149807691574097
+28.29033398628235
+</code></pre>
+<h2>Analysis</h2>
+<p>At first, I thought there was a bug in the experimental code.</p>
+<p>I tried in vain to sniff out the bug.</p>
+<h3>Negative Findings</h3>
+<p>Some things I discovered:</p>
+<p>The behavior is replicated with the task function executed by workers in the <a href="../multiprocessing-pool-python/"><strong>multiprocessing.Pool</strong> class and</a> with separate <a href="../multiprocessing-in-python/"><strong>multiprocessing.Process</strong> instances</a>.</p>
+<p>The behavior is replicated if alternate methods are used to issue the tasks, e.g. <strong><a href="../processpoolexecutor-map-vs-submit/">submit()</a></strong> on the <strong><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor</a></strong> or <strong><a href="../multiprocessing-pool-apply_async/">apply_async()</a></strong> when using <strong>Pool</strong>.</p>
+<p>The behavior is replicated with the '<strong>fork</strong>' and the '<strong>spawn</strong>' <a href="../multiprocessing-start-method/">methods for starting child processes</a>.</p>
+<p>The behavior is replicated when the number of workers is fixed at the number of physical CPU cores for each experimental run.</p>
+<p>The behavior is replicated if the task function returns a value or does not.</p>
+<p>The behavior is replicated regardless of the size of the <a href="../thread-stack-size-in-python/">thread stack space</a>.</p>
+<h3>Positive Findings</h3>
+<p>I did discover a little more about the shape of the issue.</p>
+<p>The issue was discovered and pointed out to me by William G.</p>
+<p>His initial examples used list concatenation in a loop, which remains the most exaggerated example found so far.</p>
+<p>Testing discovered the effect is observed, to a lesser degree, when doing many operations in large lists, like slicing and copying, as stated above.</p>
+<p>Confirming that the scaling of the child process with non-list-based tasks behaves as expected, as we did above, shows that the issue is task-dependent.</p>
+<p>The issue does not appear to replicate with <strong>dict</strong>'s, so it may be something specific about large lists. I have not tried other sequence types, like bytes and chars.</p>
+<p>The issue does appear to replicate with Python 2.7 (using the <strong>Pool</strong> class), Python 3.9, and Python 3.10. This suggests the performance profile is intentional or expected and the task is egregiously bad (anti-pythonic) in some specific way.</p>
+<h3>Hypotheses (I basically have nothing)</h3>
+<p>My guess is that the tasks are interacting in some way.</p>
+<p>This may be in Python, e.g. a lock preventing the tasks from progressing. Not the GIL, as tasks are in separate child processes, but perhaps something deep down in the CPython runtime.</p>
+<p>We are not using NumPy/SciPy in these examples, so there is not some back-end library spinning up C-threads to do list operations in parallel (as far as I know).</p>
+<p>A quick skim of the code for <a href="https://docs.python.org/3/c-api/list.html">list objects</a> (see <a href="https://github.com/python/cpython/blob/main/Objects/listobject.c">listobject.c</a>) does not show anything obvious.</p>
+<p>All tasks occupy their CPU core at 100% for the duration according to <a href="https://en.wikipedia.org/wiki/Top_(software)">top</a>. This may suggest a Python-level lock is less likely, although far from definitive.</p>
+<p>Tasks may be interacting at the operating system level.</p>
+<p>We may be doing too much object creation, somehow, running out of stack or heap memory, then swapping to disk.</p>
+<p>Hard to imagine, and top does not confirm this assumption with memory usage capped at less than 20 megabytes per child process.</p>
+<p>It is probably an issue of thrashing the RAM, somehow?, e.g. a hardware bottleneck of some kind.</p>
+<p><strong>What is going on?</strong></p>
+<p>If you have some good testable theories, please share them in the comments below.</p>
+<p><strong>Update</strong>: There is a discussion of this issue on StackOverflow here: </p>
+<ul>
+<li><a href="https://stackoverflow.com/questions/74142802/python-concurrent-futures-multiprocessing-pool-does-not-scale-with-the-number-of">Python concurrent futures multiprocessing Pool does not scale with the number of processors</a>. </li>
+</ul>
+<p>Comments on SO suggest the issue is a memory bandwidth bottleneck. I'm not yet convinced, it feels hand-wavy. I'd like a way to gather direct evidence in a profiler or similar.</p>
+<h2>Takeaways</h2>
+<p>You now know of some tasks that do not scale with the number of CPU cores when executed in parallel.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Numpy Parallel Random Numbers with Multiprocessing (up to 28x slower) – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Numpy Parallel Random Numbers with Multiprocessing (up to 28x slower)</h1>
+<div class="post-meta">May 11, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can create and populate a <strong>NumPy vector of random numbers</strong> in parallel using <strong>Python multiprocessing</strong>.</p>
+<p>Although possible, this is not recommended.</p>
+<p>Using multiprocessing to generate random numbers in parallel can offer a SLOW DOWN from 8.43x to 28.37x compared to the single-process version, depending on the approach chosen.</p>
+<p>This is a good exercise to learn the limitations of multiprocessing and how to not combine it with NumPy.</p>
+<p>In this tutorial, you will discover how to create a numpy vector of random numbers in parallel using multiprocessing.</p>
+<p>Let's get started.</p>
+<h2>Need a Large Array of Random Numbers in Parallel</h2>
+<p>A common problem is the need to create a large numpy array of random numbers.</p>
+<p>Generating a random number is a relatively slow operation. This slowness is compounded if we need to generate a large vector of numbers, such as 100 million or 1 billion items.</p>
+<p>Given that we have multiple CPU cores in our system, we expect that we can speed up the operation by executing it in parallel.</p>
+<p><strong>How can we create a large numpy vector of random numbers in parallel using all CPU cores?</strong></p>
+<h2>How to Generate Random Numbers in Parallel with Multiprocessing</h2>
+<p>Numpy does not provide an API for creating an array of numpy vectors in parallel.</p>
+<p>Instead, we must develop a solution ourselves.</p>
+<p>One approach is to use process-based concurrency with the <a href="../multiprocessing-in-python/"><strong>multiprocessing</strong> module</a>.</p>
+<p>The <strong>multiprocessing</strong> module is provided in the Python standard library and offers parallelism via process-based concurrency. This is unlike Python threads that are limited to running one at a time due to thread-safety issues with the Python interpreter.</p>
+<p>The <strong>multiprocessing.Pool</strong> class provides a pool of worker processes that can be created once and reused to execute multiple tasks.</p>
+<p>For example, we create a Pool and specify the number of workers to create, one for each CPU core in our system.</p>
+<pre><code>...
+# create the process pool
+with Pool(8) as pool:
+    # ...
+</code></pre>
+<p>Once created, we can call the <strong>map()</strong> or <strong>starmap()</strong> methods to call a function with one or multiple arguments.</p>
+<p>If you are new to the multiprocessing Pool class, you can learn more about it here:</p>
+<ul>
+<li><a href="../multiprocessing-pool-python/">Python Multiprocessing Pool: The Complete Guide</a></li>
+</ul>
+<p>There are two approaches we could explore for creating large arrays of random numbers in parallel, they are:</p>
+<ol>
+<li>Create the arrays in parallel.</li>
+<li>Populate the arrays in parallel.</li>
+</ol>
+<p>Let's take a closer look at each approach.</p>
+<h3>Create NumPy Arrays of Random Values in Parallel</h3>
+<p>One approach to creating a large vector of random numbers is to create multiple small vectors of random numbers in parallel, then combine them together into one large vector.</p>
+<p>This can be achieved by defining a function that creates a random number generator with a unique seed via the <a href="https://numpy.org/doc/stable/reference/random/generator.html"><strong>numpy.random.default_rng()</strong> function</a>, then calling the <strong>random()</strong> method to create an array of a given size.</p>
+<p>For example:</p>
+<pre><code># create and return a vector of random numbers
+def populate(seed, size):
+    # create random number generator with the seed
+    rand = default_rng(seed)
+    # create vector of random floats
+    return rand.random(size=size)
+</code></pre>
+<p>We can then call this function once for each CPU core in our system. It requires that we know how many CPU cores we have, then determine how large each subarray needs to be.</p>
+<p>For example, if we required a vector of 1,000,000,000 (one billion) numbers and we had 8 CPU cores available, then each sub-array would be 1,000,000,000 / 8 or 125,000,000 items in length.</p>
+<p>We could issue these tasks to the process pool via the <a href="../multiprocessing-pool-starmap/"><strong>starmap()</strong> method</a> that allows the target function to take more than one argument.</p>
+<p>For example:</p>
+<pre><code>...
+# create the arguments
+args = [(i+1, 125000000) for i in range(8)]
+# create sub arrays
+result_list = pool.starmap(populate, args)</code></pre>
+<p>We can then combine the list of arrays together into a single vector via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.concatenate.html"><strong>numpy.concatenate()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# convert arrays into one large array
+result = concatenate(result_list)</code></pre>
+<h3>Populate NumPy Array With Random Values in Parallel</h3>
+<p>Another approach is to create a very large numpy array, then populate portions of it with different workers.</p>
+<p>We can create a large empty array via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.empty.html"><strong>numpy.empty()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# create array
+array = empty(1000000000)</code></pre>
+<p>Next, we can define a function that will populate a portion of a provided array with random numbers.</p>
+<p>Again, we can create a random number generator via the <strong>numpy.random.default_rng()</strong> function with a given random seed, then call the <strong>random()</strong> method and specify the portion of the array to populate.</p>
+</main>
+</body>
+</html>

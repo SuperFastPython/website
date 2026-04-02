@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asynchronous Context Managers in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asynchronous Context Managers in Python</h1>
+<div class="post-meta">December 3, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>Context managers are a helpful construct in Python for automatically executing common code before and after a block.</p>
+<p>The problem is that we cannot suspend and await coroutines at the entry and exit of a regular context manager.</p>
+<p>The solution is to use an <strong>asynchronous context manager</strong> where the entry and exit code can be defined using coroutines and awaited automatically via the <a href="../asyncio-async-with/"><strong>async with</strong> expression</a>.</p>
+<p>In this tutorial, you will discover <strong>how to develop and use asynchronous context managers</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>The difference between conventional and <strong>asynchronous context managers</strong>.</li>
+<li>How to develop <strong>asynchronous context managers</strong> for use in asyncio.</li>
+<li>How to use <strong>asynchronous context managers</strong> with the "async with" expression in asyncio.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What is an Asynchronous Context Manager</h2>
+<p>An asynchronous context manager is a Python object that implements the <strong>__aenter__()</strong> and <strong>__aexit__()</strong> methods.</p>
+<p>Before we dive into the details of asynchronous context managers, let's review classical context managers.</p>
+<h3>Context Manager</h3>
+<p>A context manager is a Python object that implements the <strong>__enter__()</strong> and <strong>__exit__()</strong> methods.</p>
+<blockquote>
+<p>A context manager is an object that defines the runtime context to be established when executing a with statement. The context manager handles the entry into, and the exit from, the desired runtime context for the execution of the block of code.</p>
+<cite>-- <a href="https://docs.python.org/3/reference/datamodel.html#context-managers">With Statement Context Managers</a></cite></blockquote>
+<p>The <strong>__enter__()</strong> method defines what happens at the beginning of a block, such as opening or preparing resources, like a file, socket or thread pool.</p>
+<p>The <strong>__exit__()</strong> method defines what happens when the block is exited, such as closing a prepared resource.</p>
+<blockquote>
+<p>Typical uses of context managers include saving and restoring various kinds of global state, locking and unlocking resources, closing opened files, etc.</p>
+<cite>-- <a href="https://docs.python.org/3/reference/datamodel.html#context-managers">With Statement Context Managers</a></cite></blockquote>
+<p>A context manager is used via the "<strong>with</strong>" expression.</p>
+<p>Typically the context manager object is created in the beginning of the "<strong>with</strong>" expression and the <strong>__enter__()</strong> method is called automatically. The body of the content makes use of the resource via the named context manager object, then the <strong>__aexit__()</strong> method is called automatically when the block is exited, normally or via an exception.</p>
+<p>For example:</p>
+<pre><code>...
+# open a context manager
+with ContextManager() as manager:
+	# ...
+# closed automatically
+</code></pre>
+<p>This mirrors a try-finally expression.</p>
+<p>For example:</p>
+<pre><code>...
+# create the object
+manager = ContextManager()
+try:
+	manager.__enter__()
+	# ...
+finally:
+	manager.__exit__()
+</code></pre>
+<p>Next, let's take a look at asynchronous context managers.</p>
+<h3>Asynchronous Context Manager</h3>
+<p>Asynchronous context managers were introduced in "<a href="https://peps.python.org/pep-0492/">PEP 492 – Coroutines with async and await syntax</a>".</p>
+<p>They provide a context manager that can be suspended when entering and exiting.</p>
+<blockquote>
+<p>An asynchronous context manager is a context manager that is able to suspend execution in its __aenter__ and __aexit__ methods.</p>
+<cite>-- <a href="https://docs.python.org/3/reference/datamodel.html#asynchronous-context-managers">Asynchronous Context Managers</a></cite></blockquote>
+<p>The <strong>__aenter__</strong> and <strong>__aexit__</strong> methods are defined as coroutines and are awaited by the caller.</p>
+<p>This is achieved using the "<strong>async with</strong>" expression.</p>
+<p>You can learn more about the "<strong>async with</strong>" expression in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-async-with/">What is Asyncio async with</a></li>
+</ul>
+<p>As such, asynchronous context managers can only be used within asyncio programs, such as within calling coroutines.</p>
+<p>Next, let's take a closer look at the difference between classical and asynchronous context managers.</p>
+<h3>Context Manager vs Asynchronous Context Manager</h3>
+<p>Both classical context managers and asynchronous context managers have a lot in common.</p>
+<p>They both attempt to achieve the same effect of a try-finally expression with minimal code and a well-defined interface.</p>
+<p>Classical context managers use the <strong>__enter__</strong> and <strong>__exit__</strong> methods, whereas asynchronous context managers use the <strong>__aenter__</strong> and <strong>__aexit__</strong> methods.</p>
+<ul>
+<li><strong>Classical context managers</strong>: Implement __enter__() and __exit__() methods.</li>
+<li><strong>Asynchronous context managers</strong>: Implement __aenter__() and __aexit__() methods.</li>
+</ul>
+<p>Classical context managers may be used generally anywhere in Python programs, whereas asynchronous context managers may only be used within asyncio programs, such as within coroutines:</p>
+<ul>
+<li><strong>Classical context managers</strong>: Used anywhere in python programs.</li>
+<li><strong>Asynchronous context managers</strong>: Used in asyncio programs.</li>
+</ul>
+<p>Classical context managers are used via the "<strong>with</strong>" expression, whereas asynchronous context managers are used via the "<strong>async with</strong>" expression.</p>
+<ul>
+<li><strong>Classical context managers</strong>: Used via the "with" expression.</li>
+<li><strong>Asynchronous context managers</strong>: Used via the "async with" expression.</li>
+</ul>
+<p>Now that we know about asynchronous context managers, let's look at how we might use them.</p>
+<h2>How to Use Asynchronous Context Managers</h2>
+<p>In this section, we will explore how we can define, create, and use asynchronous context managers in our asyncio programs.</p>
+<h3>Define an Asynchronous Context Manager</h3>
+<p>We can define an asynchronous context manager as a Python object that implements the <strong>__aenter__()</strong> and <strong>__aexit__()</strong> methods.</p>
+<p>Importantly, both methods must be defined as coroutines using the "<strong>async def</strong>" and therefore must return awaitables.</p>
+<p>For example:</p>
+<pre><code># define an asynchronous context manager
+class AsyncContextManager:
+    # enter the async context manager
+    async def __aenter__(self):
+        # report a message
+        print('&gt;entering the context manager')
+
+    # exit the async context manager
+    async def __aexit__(self, exc_type, exc, tb):
+        # report a message
+        print('&gt;exiting the context manager')
+</code></pre>
+<p>Because each of the methods are coroutines, they may themselves await coroutines or tasks.</p>
+<p>For example:</p>
+<pre><code># define an asynchronous context manager
+class AsyncContextManager:
+    # enter the async context manager
+    async def __aenter__(self):
+        # report a message
+        print('&gt;entering the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+
+    # exit the async context manager
+    async def __aexit__(self, exc_type, exc, tb):
+        # report a message
+        print('&gt;exiting the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+</code></pre>
+<h3>Use an Asynchronous Context Manager</h3>
+<p>An asynchronous context manager is used via the "<strong>async with</strong>" expression.</p>
+<p>This will automatically await the enter and exit coroutines, suspending the calling coroutine as needed.</p>
+<p>For example:</p>
+<pre><code>...
+# use an asynchronous context manager
+async with AsyncContextManager() as manager:
+	# ...
+</code></pre>
+<p>As such, the "<strong>async with</strong>" expression and asynchronous context managers more generally can only be used within asyncio programs, such as within coroutines.</p>
+<p>You can learn more about the "<strong>async with</strong>" expression in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-async-with/">What is Asyncio async with</a></li>
+</ul>
+<p>Now that we know how to use asynchronous context managers, let's look at some worked examples.</p>
+<h2>Example of Using An Asynchronous Context Manager Manually</h2>
+<p>We can explore how to use an asynchronous context manager manually.</p>
+<p>In this example, we will define an asynchronous context manager. The entry and exit methods of the manager will report a message and sleep for a moment. The messages will help us see when the methods are executed relative to our program code and then sleeps to simulate blocking I/O and show that these coroutines can be suspended when calling other coroutines.</p>
+<p>The asynchronous context manager will be used manually.</p>
+<p>That is, we will explicitly call the enter and exit methods, retrieve the awaitables from the coroutines, and await them directly.</p>
+<p>This is a good example to show what exactly is happening automatically when we use more common usage patterns, such as the "<strong>async with</strong>" expression.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using an asynchronous context manager manually
+import asyncio
+
+# define an asynchronous context manager
+class AsyncContextManager:
+    # enter the async context manager
+    async def __aenter__(self):
+        # report a message
+        print('&gt;entering the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+
+    # exit the async context manager
+    async def __aexit__(self, exc_type, exc, tb):
+        # report a message
+        print('&gt;exiting the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+
+# define a simple coroutine
+async def custom_coroutine():
+    # create and use the asynchronous context manager
+    manager = AsyncContextManager()
+    # get the awaitable for entering the manager
+    enter_awaitable = manager.__aenter__()
+    # await the entry
+    await enter_awaitable
+    # execute the body
+    print(f'within the manager')
+    # get the awaitable for exiting the manager
+    exit_awaitable = manager.__aexit__(None, None, None)
+    # await the exit
+    await exit_awaitable
+
+# start the asyncio program
+asyncio.run(custom_coroutine())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates an instance of our <strong>AsyncContextManager</strong> class.</p>
+<p>Next, we call the <strong>__aenter__()</strong> coroutine to get an awaitable coroutine object.</p>
+<p>The awaitable is then awaited, suspending the <strong>main()</strong> coroutine and executing the enter coroutine which reports a message and sleeps for a moment.</p>
+<p>The <strong>main()</strong> coroutine resumes and reports a message.</p>
+<p>It then calls the <strong>__aexit__()</strong> coroutine to get an awaitable coroutine object.</p>
+<p>This second awaitable is awaited, suspending the <strong>main()</strong> coroutine, executing the coroutine that then reports a message and sleeps a moment.</p>
+<p>The <strong>main()</strong> coroutine resumes and terminates the program.</p>
+<p>This unrealistic example highlights what is happening automatically behind the scenes when we use a context manager with the "<strong>async with</strong>" expression, such as in the next section.</p>
+<pre><code>&gt;entering the context manager
+within the manager
+&gt;exiting the context manager</code></pre>
+<p>Next, we will look at how to use a context manager via the "<strong>async with</strong>" expression.</p>
+<h2>Example of an Asynchronous Context Manager and "async with"</h2>
+<p>We can explore how to use an asynchronous context manager via the "<strong>async with</strong>" expression.</p>
+<p>In this example, we will update the above example to use the context manager in a normal manner.</p>
+<p>We will use an "<strong>async with</strong>" expression and on one line, create and enter the context manager. This will automatically await the enter method.</p>
+<p>We can then make use of the manager within the inner block. In this case, we will just report a message.</p>
+<p>Exiting the inner block will automatically await the exit method of the context manager.</p>
+<p>Contrasting this example with the previous example shows how much heavy lifting the "<strong>async with</strong>" expression does for us in an asyncio program.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asynchronous context manager via async with
+import asyncio
+
+# define an asynchronous context manager
+class AsyncContextManager:
+    # enter the async context manager
+    async def __aenter__(self):
+        # report a message
+        print('&gt;entering the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+
+    # exit the async context manager
+    async def __aexit__(self, exc_type, exc, tb):
+        # report a message
+        print('&gt;exiting the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+
+# define a simple coroutine
+async def custom_coroutine():
+    # create and use the asynchronous context manager
+    async with AsyncContextManager() as manager:
+        # report the result
+        print(f'within the manager')
+
+# start the asyncio program
+asyncio.run(custom_coroutine())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates an instance of our <strong>AsyncContextManager</strong> class in an "<strong>async with</strong>" expression.</p>
+<p>This expression automatically calls the enter method and awaits the coroutine. A message is reported and the coroutine blocks for a moment.</p>
+<p>The <strong>main()</strong> coroutine resumes and executes the body of the context manager, printing a message.</p>
+<p>The block is exited and the exit method of the context manager is awaited automatically, reporting a message and sleeping a moment.</p>
+<p>This highlights the normal usage pattern for an asynchronous context manager in an asyncio program.</p>
+<pre><code>&gt;entering the context manager
+within the manager
+&gt;exiting the context manager</code></pre>
+<p>Next, we can look at what happens to an asynchronous context manager when an exception is raised.</p>
+<h2>Example of an Asynchronous Context Manager with an Exception</h2>
+<p>We can explore what happens to an asynchronous context manager when an exception is raised in the inner block.</p>
+<p>In this example, we will update the above example that uses the asynchronous context manager via the "<strong>async with</strong>" expression, and raise an exception within the inner block.</p>
+<p>The goal of this example is to show that regardless of how the inner block of the context manager is exited, the "<strong>async with</strong>" expression will ensure that the exit coroutine is awaited and executed.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asynchronous context manager that exits with an exception
+import asyncio
+
+# define an asynchronous context manager
+class AsyncContextManager:
+    # enter the async context manager
+    async def __aenter__(self):
+        # report a message
+        print('&gt;entering the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+
+    # exit the async context manager
+    async def __aexit__(self, exc_type, exc, tb):
+        # report a message
+        print('&gt;exiting the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+
+# define a simple coroutine
+async def custom_coroutine():
+    # create and use the asynchronous context manager
+    async with AsyncContextManager() as manager:
+        # report the result
+        print(f'within the manager')
+        # fail with an exception
+        raise Exception('Something bad happened')
+
+# start the asyncio program
+asyncio.run(custom_coroutine())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates an instance of our <strong>AsyncContextManager</strong> class in an "<strong>async with</strong>" expression.</p>
+<p>This expression automatically calls the enter method and awaits the coroutine. A message is reported and the coroutine blocks for a moment.</p>
+<p>The <strong>main()</strong> coroutine resumes and executes the body of the context manager, printing a message, and raising an exception.</p>
+<p>The raised exception causes the context manager block to be exited. The exit method of the context manager is awaited automatically, reporting a message and sleeping a moment.</p>
+<p>The exception then terminates the event loop of the asyncio program.</p>
+<p>This highlights that the exit coroutine of an asynchronous context manager is awaited, regardless of how the inner block of the context manager is exited, such as with an unhandled exception.</p>
+<pre><code>&gt;entering the context manager
+within the manager
+&gt;exiting the context manager
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened
+</code></pre>
+<p>Next, we can look at common errors when using asynchronous context managers.</p>
+<h2>Common Errors With Asynchronous Context Managers</h2>
+<p>It is common to stumble when getting started with asynchronous context managers.</p>
+<p>In this section, we will explore a number of common errors when using asynchronous context managers and how they may be overcome.</p>
+<p><strong>Do you have an error not listed below?</strong><br/>Let me know in the comments below and I will do my best to help.</p>
+<h3>Example of an Asynchronous Context Manager and "with" Expression</h3>
+<p>We can explore what happens if we try to use an asynchronous context manager via the "<strong>with</strong>" expression.</p>
+<p>In this example, we update the above example to use the asynchronous context manager normally, except with the wrong "<strong>with</strong>" expression, instead of the "<strong>async with</strong>" expression.</p>
+<p>This is expected to result in an error as our <strong>AsyncContextManager</strong> does not implement the context manager interface, e.g. the <strong>__enter__()</strong> method, and will raise an exception.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asynchronous context manager via with (results in error)
+import asyncio
+
+# define an asynchronous context manager
+class AsyncContextManager:
+    # enter the async context manager
+    async def __aenter__(self):
+        # report a message
+        print('&gt;entering the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+
+    # exit the async context manager
+    async def __aexit__(self, exc_type, exc, tb):
+        # report a message
+        print('&gt;exiting the context manager')
+        # block for a moment
+        await asyncio.sleep(0.5)
+
+# define a simple coroutine
+async def custom_coroutine():
+    # create and use the asynchronous context manager
+    with AsyncContextManager() as manager:
+        # report the result
+        print(f'within the manager')
+
+# start the asyncio program
+asyncio.run(custom_coroutine())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates an instance of our <strong>AsyncContextManager</strong> class in a "<strong>with</strong>" expression.</p>
+<p>This fails as the "<strong>with</strong>" expression expects to execute the <strong>__enter__()</strong> method on the object, which in this case does not exist. Instead, we have a <strong>__aenter__()</strong> method.</p>
+<p>This results in an <strong>AttributeError</strong> that terminates the program.</p>
+<p>The example highlights that asynchronous context managers cannot be used via the "<strong>with</strong>" expression and must be used via the "<strong>async with</strong>" expression within an asyncio program.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+AttributeError: __enter__
+</code></pre>
+<p>Next, we can look at trying to use an asynchronous context manager that does not return awaitables.</p>
+<h3>Example of an Asynchronous Context Manager without Awaitables</h3>
+<p>We can explore what happens if we try to use an asynchronous context manager that was defined using functions instead of coroutines.</p>
+<p>In this example, we will use the asynchronous context manager normally, except update the definition of the class so that the enter and exit methods are Python functions, rather than coroutines.</p>
+<p>This will cause an error as the "<strong>async with</strong>" expression will expect awaitables to be returned, rather than a return value, e.g. a None.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an asynchronous context manager without awaitables (results in error)
+import asyncio
+
+# define an asynchronous context manager
+class AsyncContextManager:
+    # enter the async context manager
+    def __aenter__(self):
+        # report a message
+        print('&gt;entering the context manager')
+
+    # exit the async context manager
+    def __aexit__(self, exc_type, exc, tb):
+        # report a message
+        print('&gt;exiting the context manager')
+
+# define a simple coroutine
+async def custom_coroutine():
+    # create and use the asynchronous context manager
+    async with AsyncContextManager() as manager:
+        # report the result
+        print(f'within the manager')
+
+# start the asyncio program
+asyncio.run(custom_coroutine())
+</code></pre>
+<p>Running the example first creates the <strong>main()</strong> coroutine and uses it as the entry point into the asyncio program.</p>
+<p>The <strong>main()</strong> coroutine runs and creates an instance of our <strong>AsyncContextManager</strong> class in an "<strong>async with</strong>" expression.</p>
+<p>This fails as the "<strong>async with</strong>" expression executes to receive an awaitable when calling the <strong>__aenter__()</strong> coroutine, whereas the <strong>__aenter__()</strong> method was implemented as a normal function and returns a <strong>None</strong> value.</p>
+<p>This highlights that the interface of an asynchronous context manager must be implemented using coroutines that return awaitables.</p>
+<pre><code>&gt;entering the context manager
+Traceback (most recent call last):
+  ...
+TypeError: 'async with' received an object from __aenter__ that does not implement __await__: NoneType
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to create and use asynchronous context managers in Python.</p>
+</main>
+</body>
+</html>

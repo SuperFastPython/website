@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Get the Asyncio Task for a Coroutine – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Get the Asyncio Task for a Coroutine</h1>
+<div class="post-meta">November 27, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can get an <strong>asyncio.Task</strong> for a coroutine by searching through all running tasks.</p>
+<p>In this tutorial, you will discover <strong>how to get an asyncio task for a coroutine</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>Need a Task For a Coroutine</h2>
+<p>A coroutine is a function or routine that can be suspended and resumed. As such it has more than one entry point.</p>
+<p>The "<strong>async def</strong>" expression defines a coroutine.</p>
+<blockquote><p>Functions defined with async def syntax are always coroutine functions, even if they do not contain await or async keywords.</p><cite>-- <a href="https://docs.python.org/3/reference/compound_stmts.html">Python Compound statements</a></cite></blockquote>
+<p>For example:</p>
+<pre><code># define a coroutine
+async def custom_coro():
+	# ...
+</code></pre>
+<p>An asyncio <strong>Task</strong> is an object that schedules and independently runs an asyncio coroutine.</p>
+<p>It provides a handle on a scheduled coroutine that an asyncio program can query and use to interact with the coroutine.</p>
+<blockquote><p>A Task is an object that manages an independently running coroutine.</p><cite>-- <a href="https://peps.python.org/pep-3156/">PEP 3156 – Asynchronous IO Support Rebooted: the "asyncio" Module</a></cite></blockquote>
+<p>An asyncio task is represented via an instance of the <a href="https://docs.python.org/3/library/asyncio-task.html#task-object"><strong>asyncio.Task</strong> class</a>.</p>
+<p>This function takes a coroutine instance and an optional name for the task and returns an <strong>asyncio.Task</strong> instance.</p>
+<p>You can learn more about asyncio tasks in the tutorial:</p>
+<ul><li><a href="../asyncio-task/">What is an Asyncio Task</a></li></ul>
+<p>Often in asyncio programming, we may need an <strong>asyncio.Task</strong> object for a given coroutine.</p>
+<p>This may be for many reasons.</p>
+<p>For example, we may execute the coroutine independently as a task and later require the result from the task in our program.</p>
+<p>For example:</p>
+<pre><code>...
+# create coroutine
+coro = custom_coro()
+# create and execute coroutine as a task
+_ = asyncio.create_task(coro())</code></pre>
+<p>Another example is that we may have shielded the coroutine from cancellation via <strong>asyncio.shield()</strong> and an attempt was made to cancel it, meaning the coroutine continues executing and we require access to its status or result.</p>
+<p>For example:</p>
+<pre><code>...
+# create coroutine
+coro = custom_coro()
+try:
+	# execute coroutine, shielded from cancellation
+	await asyncio.shield(coro)
+except asyncio.CancelledError:
+	# ...
+</code></pre>
+<p>You can learn more about shielding coroutines from cancellation in the tutorial:</p>
+<ul><li><a href="../asyncio-shield/">How to Shield an Asyncio Task from Cancellation</a></li></ul>
+<p><strong>If we have access to the coroutine, how can we get the associated asyncio.Task object?</strong></p>
+<h2>How to Get an asyncio.Task Object for a Coroutine</h2>
+<p>We can get an <strong>asyncio.Task</strong> object for a coroutine by searching through all running tasks.</p>
+<p>This can be achieved by first getting a list of all currently running task objects via the <strong>asyncio.all_tasks()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# get all tasks
+tasks = asyncio.all_tasks()</code></pre>
+<p>We can then call the <strong>get_coro()</strong> function on each to get the coroutine that the task is executing.</p>
+<p>If the coroutine matches the coroutine object we are searching for, we have found the matching task object.</p>
+<p>For example:</p>
+<pre><code>...
+# search for task that is running a given coroutine
+for task in tasks:
+	# check if task is running the coro
+	if task.get_coro() is coro:
+		# found it</code></pre>
+<p>If we do not locate the task object for a given coroutine object it may mean one of a few situations, such as:</p>
+<ul><li>The task is no longer running, e.g. we were too late.</li><li>A task was not created for the coroutine, e.g. we made a mistake.</li><li>A task was not created yet, e.g. it needs time to run.</li></ul>
+<p>This approach assumes that we keep a reference to the coroutine that is used as the basis for the task.</p>
+<p>We can define a helper function to get an <strong>asyncio.Task</strong> or a given coroutine.</p>
+<p>For example:</p>
+<pre><code># returns the task for the given coroutine or none
+def task_for_coro(coro):
+    # search for task that is running a given coroutine
+    for task in asyncio.all_tasks():
+        # check if task is running the coro
+        if task.get_coro() is coro:
+            return task
+    return None
+</code></pre>
+<p>Now that we know how to get a task for a given coroutine, let's look at a worked example.</p>
+<h2>Example of Getting a Task for a Coroutine</h2>
+<p>We can explore how to get a task for a coroutine.</p>
+<p>In this example we will define a task coroutine that reports a message, sleeps, then reports a final message.</p>
+<p>The main coroutine will create the coroutine and then wraps the coroutine in a task and schedule it for execution. It then sleeps for a moment then gets the task object for the coroutine using the helper function developed in the previous section.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of getting a task for a coroutine
+import asyncio
+
+# coroutine run in a task
+async def task_coro():
+    # report a message
+    print('Task is running')
+    # block for a moment
+    await asyncio.sleep(1)
+    # report another message
+    print('Task is done')
+
+# returns the task for the given coroutine or none
+def task_for_coro(coro):
+    # search for task that is running a given coroutine
+    for task in asyncio.all_tasks():
+        # check if task is running the coro
+        if task.get_coro() is coro:
+            return task
+    return None
+
+# main coroutine
+async def main():
+    # create the coroutine
+    coro = task_coro()
+    # create and start the task
+    _ = asyncio.create_task(coro)
+    # wait a moment
+    await asyncio.sleep(0.2)
+    # get the task for the coroutine
+    task = task_for_coro(coro)
+    # report the task
+    print(f'Found: {task}')
+    # wait for the task to be done
+    await task
+
+# start asyncio program
+asyncio.run(main())
+</code></pre>
+<p>Running the example first creates the main() coroutine and uses it as the entry point into the asyncio program,</p>
+<p>The <strong>main()</strong> coroutine then creates the <strong>task_coro()</strong> coroutine and uses it to create and schedule a task. The reference to the <strong>asyncio.Task</strong> object is not kept.</p>
+<p>Next, the <strong>main()</strong> coroutine sleeps and is suspended, the task runs, reports a message, then sleeps.</p>
+<p>The <strong>main()</strong> coroutine resumes and searches for the <strong>Task</strong> object for the coroutine. It is found as expected and the details are reported.</p>
+<p>The <strong>main()</strong> coroutine then awaits the task directly, suspending until the task is done.</p>
+<p>This example highlights how we can locate and use the <strong>asyncio.Task</strong> object for a coroutine, as long as the task is still running and that we have reference to the coroutine.</p>
+<pre><code>Task is running
+Found: &lt;Task pending name='Task-2' coro=&lt;task_coro() running at ...&gt; wait_for=&lt;Future pending cb=[Task.task_wakeup()]&gt;&gt;
+Task is done
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to get an asyncio task for a coroutine.</p>
+</main>
+</body>
+</html>

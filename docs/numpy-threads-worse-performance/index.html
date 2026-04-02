@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Using Threads With Numpy Can Result in Worse Performance – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Using Threads With Numpy Can Result in Worse Performance</h1>
+<div class="post-meta">June 22, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>parallelize numpy operations in Python using threads</strong>.</p>
+<p>Many numpy operations are implemented using multithreaded algorithms, such as those that call the BLAS library. Additionally, most numpy functions release the GIL, allowing tasks that call numpy functions to be parallelized using the GIL.</p>
+<p>Nevertheless, parallelizing numpy programs using threads does not always result in a speed-up. Worse still, attempting to parallelize numpy functions that implement a multithreaded algorithm <strong>can result in worse overall performance</strong>.</p>
+<p>In this tutorial, you will discover that parallelizing tasks in numpy programs with threads does not always result in better performance.</p>
+<p>Let's get started.</p>
+<h2>Can Using Threads With NumPy Be Slower?</h2>
+<p>NumPy supports many linear algebra functions with vectors and arrays by calling into efficient third-party libraries such as BLAS and LAPACK.</p>
+<p>BLAS and LAPACK are specifications for efficient vector, matrix, and linear algebra operations that are implemented using third-party libraries, such as MKL and OpenBLAS. Many of the operations in these libraries are multithreaded.</p>
+<p>You can learn more about NumPy and BLAS in the tutorial:</p>
+<ul>
+<li><a href="../what-is-blas-and-lapack-in-numpy/">What is BLAS and LAPACK in NumPy</a></li>
+</ul>
+<p>Additionally, Numpy performs most math operations like arithmetic and more advanced operations using its own C functions. These functions release the global interpreter lock (GIL) in Python, allowing other Python threads to run.</p>
+<p>The implication is that math operations on arrays in numpy can be executed in parallel using Python threads.</p>
+<p>You can learn more about numpy releasing the GIL in the tutorial:</p>
+<ul>
+<li><a href="../numpy-vs-gil/">NumPy vs the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<p>As such, it is good practice to speed-up a numpy program by using threads. Nevertheless, this is not always the case.</p>
+<p>It is possible to parallelize tasks in a numpy program and see no benefit. In some cases, it is even possible to see worse performance.</p>
+<h2>Using Threads Can Result in No Benefit or Worse Performance</h2>
+<p>Adding threads to a numpy program does not always improve performance.</p>
+<p>Sometimes, parallelizing tasks in a numpy program can offer no benefit.</p>
+<p>Additionally, in some cases, adding threads can result in significantly worse performance.</p>
+<p>There are a number of reasons for this, such as:</p>
+<ol>
+<li>BLAS threads (math operation level) compete with Python threads (task level).</li>
+<li>BLAS math operations are not multithreaded for a specific use case.</li>
+<li>Multithreading a numpy function offers no benefit.</li>
+</ol>
+<p>Let's take a closer look at each case in turn.</p>
+<h3>BLAS Threads Compete with Python Threads</h3>
+<p>The most common cause is if threads are used to parallelize a math operation that is already multithreaded.</p>
+<p>For example, a math operation like a matrix multiplication with the dot() is already executed using a multithreaded algorithm via the third-party BLAS library. If the program needs to execute the multithreaded math operation many times and is parallelized as a task in a thread pool, then the threads at operation level (BLAS threads) and the threads at the task level (Python threads) will compete for resources.</p>
+<p>Each thread will be executing a CPU-bound task and there may be more CPU-bound tasks executing concurrently than the system can support, e.g. more than the number of physical or logical CPU cores. This means the operating system will context switch between the threads in an effort to run all tasks in parallel.</p>
+<p>This may add an unwanted overhead that may result in the overall completion of the program taking longer than if it was only parallelized at the math operation level (BLAS threads) or at the task level (Python threads).</p>
+<p>It may be possible to strike a balance between BLAS and Python threads within the same program and achieve better overall performance.</p>
+<p>You can see an exploration of this in the tutorial:</p>
+<ul>
+<li><a href="../numpy-blas-threading/">Speed-Up NumPy With Threads in Python (up to 3.41x faster)</a></li>
+</ul>
+<h3>BLAS Operation Not Multithreaded In Some Use Cases</h3>
+<p>Many linear algebra math functions are implemented using a multithreaded algorithm via an installed BLAS library.</p>
+<p>Nevertheless, not all uses of these math functions can be multithreaded.</p>
+<p>For example, we may perform a vector multiplication using the dot() function.</p>
+<p>This function will call down to BLAS and will execute a multithreaded algorithm.</p>
+<p>Nevertheless, the nature of the vector-to-vector multiplication may not be able to be executed using multiple threads because of the sequential nature of the operation.</p>
+<p>Alternatively, perhaps a different function is required to perform the desired math operation, such as calling the <a href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.svd.html"><strong>numpy.linalg.svd()</strong> function</a> instead of calculating an SVD manually.</p>
+<h3>Multithreading a Numpy Function Offers no Benefit</h3>
+<p>Most numpy math functions release the GIL.</p>
+<p>This means that we can parallelize tasks that execute numpy functions with threads.</p>
+<p>Nevertheless, even though the design of the program appears appropriate, the implementation may result in no benefit.</p>
+<p>An example is filling a numpy array via the <strong>fill()</strong> method.</p>
+<p>This function releases the GIL. Therefore, if we had to fill many arrays in parallel, we might expect that we can execute these array fill tasks in parallel using threads and achieve a speed-up.</p>
+<p>This may not be the case in general. Alternatively, it may not be the case with some specific ways that the task can be executed, such as the choice of method on a ThreadPool or the choice of configuration such as "<strong>chunksize</strong>" on a map() function.</p>
+<p>Now that we are familiar with some ways in which we may not get a lift performance when adding threads to numpy programs, let's explore some worked examples</p>
+<h2>Example of Adding Threads Results in Worse Performance</h2>
+<p>We can explore an example of multithreading a task that calls a multithreaded numpy function.</p>
+<p>This can result in worse performance in some cases, such as when there are more overall CPU-bound threads then there are physical or logical CPU cores in the system.</p>
+<p>In this case, we will explore parallelizing multiple matrix multiplication tasks.</p>
+<h3>BLAS-level Multithreaded Matrix Multiplication</h3>
+<p>We can develop a baseline case before we attempt to parallelize it with Python threads.</p>
+<p>In this example, we will define two lists of 100 matrices and then multiply each pair of matrices. The matrix multiplication operation executed via the <strong>dot()</strong> method on the numpy array is implemented using BLAS and uses a multithreaded algorithm.</p>
+<p>The complete example is listed below.</p>
+</main>
+</body>
+</html>

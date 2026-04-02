@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Semaphore Examples – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Advanced Semaphore Examples</h1>
+<div class="post-meta">April 17, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can use a <strong>semaphore as a latch</strong>, as a <strong>mutex</strong> and as a <strong>thread-safe counter</strong>.</p>
+<p>In this tutorial you will discover <strong>advanced usages of the semaphore in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Semaphore in Python</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Semaphore_(programming)">semaphore is a concurrency primitive</a>.</p>
+<blockquote><p>This is one of the oldest synchronization primitives in the history of computer science, invented by the early Dutch computer scientist Edsger W. Dijkstra</p><cite>-- <a href="https://docs.python.org/3/library/threading.html#semaphore-objects">Semaphore Objects</a></cite></blockquote>
+<p>A semaphore is an object that manages an internal counter in a thread-safe manner.</p>
+<p>It can be used to limit access to a resource. For example, it can be used to limit the number of <a href="../threading-in-python/">concurrent threads</a> performing an action or executing some code, such as:</p>
+<ul><li>Limit concurrent socket connections to avoid overwhelming a remote server.</li><li>Limit concurrent open files to avoid using too much system memory.</li></ul>
+<p>Python provides a semaphore via the <strong>threading.Semaphore</strong> class.</p>
+<p>A semaphore can be created and the initial value of the counter specified as an argument.</p>
+<p>For example, we may initialize the counter with the number of concurrent accesses to a resource, such as 10:</p>
+<pre><code>...
+# create a semaphore with an initial value of ten
+semaphore = threading.Semaphore(10)</code></pre>
+<p>Typically usage involves acquiring the semaphore, performing an action and then releasing the semaphore.</p>
+<p>The internal counter within the semaphore is decremented by calls to the <strong>acquire()</strong> function and incremented by calls to the <strong>release()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the semaphore (decrement counter)
+semaphore.acquire()
+# perform limited action
+# ...
+# release the semaphore (increment counter)
+semaphore.release()</code></pre>
+<p>The same effect can be achieved using the context manager interface that will acquire the semaphore prior to the block and release it automatically when the block is exited.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the semaphore (decrement counter)
+with semaphore:
+	# perform limited action
+	# ...
+# release the semaphore automatically (increment counter)
+</code></pre>
+<p>In this way, the counter is decremented each time the limited action is performed.</p>
+<p>If the counter is zero, calls to <strong>acquire()</strong> block until the counter is incremented by another thread. This prevents the limited action being performed more than the specified number of times, provided as an argument to the <strong>threading.Semaphore</strong> class.</p>
+<p>You can learn more about the semaphore and its normal usage in this tutorial:</p>
+<ul><li><a href="../thread-semaphore/">How to Use a Semaphore in Python</a></li></ul>
+<p>Now that we have seen the normal usage of a semaphore, let's look at some advanced usages.</p>
+<h2>Advanced Usages of a Semaphore</h2>
+<p>The semaphore can be used in some alternate ways that may not be obvious.</p>
+<p>These include:</p>
+<ul><li>The semaphore can be used as a mutex</li><li>The semaphore can be used as a latch</li><li>The semaphore can be used as a counter.</li></ul>
+<p>Let's take a look at each of these examples in more detail.</p>
+<h2>Example of Semaphore as a Mutex</h2>
+<p>A mutual exclusion lock or mutex for short is a concurrency primitive.</p>
+<p>It can be used to protect a critical section of code from race conditions.</p>
+<p>For example, a critical section can be protected by parallel execution by requiring that a thread first acquire the lock before executing the section. Once the section is executed, the lock can then be released.</p>
+<p>While the lock is held, no other thread can acquire the lock and therefore cannot execute the critical section. Instead, other threads must wait until the lock becomes available after which they can attempt to acquire it.</p>
+<p>Python provides the <strong>threading.Lock</strong> class that implements a mutex lock.</p>
+<p>For example:</p>
+<pre><code>...
+# create a lock
+lock = threading.Lock()
+# ...
+# protect a critical section of code
+with lock:
+	# execute critical section
+	# ...
+</code></pre>
+<p>You can learn more about mutex locks in this tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>The semaphore can be used as a mutex lock.</p>
+<p>This can be achieved by creating a new semaphore with an initial value of one.</p>
+<p>For example:</p>
+<pre><code>...
+# create the semaphore
+semaphore = threading.Semaphore(1)</code></pre>
+<p>This is called a binary semaphore, as it can either have a count of one or zero.</p>
+<ul><li><strong>A Value of One</strong>: The semaphore can be acquired.</li><li><strong>A Value of Zero</strong>: The semaphore cannot be acquired, and callers must block.</li></ul>
+<p>The critical section of code can then be protected by the semaphore. Each time the critical section is executed, a thread must first acquire the semaphore.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the semaphore
+with semaphore:
+	# execute the critical section
+	# ...
+</code></pre>
+<p>This will decrement the counter from 1 to 0. Any other thread attempting to acquire the semaphore will block until the semaphore is released.</p>
+<p>We can demonstrate using a semaphore as a mutex lock with a worked example.</p>
+<p>First, we can define a task that has a critical section that must be protected. The task will simply report a message and then block for a random fraction of a second.</p>
+<p>The critical section will be protected by the semaphore acting as a mutex, ensuring that only one thread can execute the task at any time.</p>
+<p>The <strong>task()</strong> function below implements this, taking the semaphore and an integer to identify the thread uniquely as arguments.</p>
+<pre><code># task for new thread
+def task(semaphore, identifier):
+    # acquire the semaphore
+    with semaphore:
+        # complete task
+        print(f'Thread {identifier} working')
+        sleep(random())
+</code></pre>
+<p>In the main thread, we can create the semaphore and configure it as a mutex lock with a count of one.</p>
+<pre><code>...
+# create shared semaphore
+semaphore = Semaphore(1)</code></pre>
+<p>Next, we can create ten threads to execute our task concurrently, each provided the shared semaphore and a unique id from 0 to 9.</p>
+<pre><code>...
+# configure threads
+threads = [Thread(target=task, args=(semaphore,i)) for i in range(10)]</code></pre>
+<p>Next, the main thread will start all ten threads to run at the same time and execute the task with the critical section.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+    thread.start()
+</code></pre>
+<p>The main thread will then block until all new task threads have terminated.</p>
+<pre><code>...
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a semaphore acting as a mutex
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Semaphore
+
+# task for new thread
+def task(semaphore, identifier):
+    # acquire the semaphore
+    with semaphore:
+        # complete task
+        print(f'Thread {identifier} working')
+        sleep(random())
+
+# create shared semaphore
+semaphore = Semaphore(1)
+# configure threads
+threads = [Thread(target=task, args=(semaphore,i)) for i in range(10)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared semaphore.</p>
+<p>Next, the ten worker threads are created, all configured to execute the task. The threads are started and then the main thread blocks until the new threads terminate.</p>
+<p>Each thread executes the custom task function, first attempting to acquire the semaphore.</p>
+<p>Only a single thread is able to acquire the semaphore at a time, so all other threads are blocked.</p>
+<p>Threads execute the critical section one at a time, block for a random interval of a second, then release the semaphore.</p>
+<p>A sample of the output is provided below. Your results may differ given the use of random numbers.</p>
+<pre><code>Thread 0 working
+Thread 1 working
+Thread 2 working
+Thread 3 working
+Thread 4 working
+Thread 5 working
+Thread 6 working
+Thread 7 working
+Thread 8 working
+Thread 9 working</code></pre>
+<p>Next, let's look at how we might use the semaphore as a latch.</p>
+<h2>Example of Semaphore as a Binary Latch</h2>
+<p>A semaphore can be used as a latch.</p>
+<p>A latch is a concurrency primitive where threads decrement a shared counter until a value of zero is reached, at which point other threads waiting on the latch are notified.</p>
+<p>This type of latch is often called a count down latch or simply latch for short.</p>
+<p>It is like a barrier in that it involves threads decrementing a shared counter and notifying threads when the counter reaches zero. In a barrier, the threads that decrement the counter must also wait for the counter to reach zero, whereas in a latch, the threads that decrement the counter are not blocked and are separate from the thread or threads waiting for the counter to reach zero.</p>
+<p>You can learn more about how to develop a countdown latch from scratch in this tutorial:</p>
+<ul><li><a href="../thread-countdown-latch/">Thread Countdown Latch in Python</a></li></ul>
+<p>We can use a semaphore as a simple latch called a binary latch. This is a latch that is initially closed but may be opened by one or more threads.</p>
+<p>This can be achieved by creating a semaphore in the blocked position, with an initial value of zero.</p>
+<p>For example:</p>
+<pre><code>...
+# initialize the latch
+latch = threading.Semaphore(0)</code></pre>
+<p>The latch will open when any thread increments the counter in the semaphore by calling the <strong>release()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# release the latch (increment counter)
+latch.release()</code></pre>
+<p>This type of binary latch is helpful when you want to block a thread until a specific condition is met, but are not concerned about which thread meets the condition first.</p>
+<p>It may also be useful between just two threads, one that is blocked by the latch and another that will release the latch.</p>
+<p>Note, we are using the semaphore as a simple monitor or condition, e.g. the wait and notify pattern. You can learn more about condition objects in this tutorial:</p>
+<ul><li><a href="../thread-condition/">How to Use A Thread Condition Object in Python</a></li></ul>
+<p>We can demonstrate this with a worked example.</p>
+<p>First, we can define a task that will perform some action, then trigger the latch, then carry on with some other work.</p>
+<p>The <strong>task()</strong> function below implements this, taking the shared latch as an argument.</p>
+<pre><code># task for new thread
+def task(latch):
+    # complete task
+    sleep(2)
+    # indicate complete
+    latch.release()
+    # do some other work
+    sleep(1)
+    # report all done
+    print('Task all done')
+</code></pre>
+<p>Next, we can create the shared latch in the main thread.</p>
+<pre><code>...
+# create shared latch
+latch = Semaphore(0)</code></pre>
+<p>We can then create a new thread configured to execute our task function and start executing it.</p>
+<pre><code>...
+# start a new thread to complete some work
+thread = Thread(target=task, args=(latch,))
+thread.start()</code></pre>
+<p>The main thread will then block, waiting for the task function to complete a unit of work and trigger the latch to open.</p>
+<pre><code>...
+# wait for first part of the task to be done
+print('Main waiting on task')
+latch.acquire()
+# continue on
+print('Main continuing on...')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a semaphore acting as a latch
+from time import sleep
+from threading import Thread
+from threading import Semaphore
+
+# task for new thread
+def task(latch):
+    # complete task
+    sleep(2)
+    # indicate complete
+    latch.release()
+    # do some other work
+    sleep(1)
+    # report all done
+    print('Task all done')
+
+# create shared latch
+latch = Semaphore(0)
+# start a new thread to complete some work
+thread = Thread(target=task, args=(latch,))
+thread.start()
+# wait for first part of the task to be done
+print('Main waiting on task')
+latch.acquire()
+# continue on
+print('Main continuing on...')
+</code></pre>
+<p>Running the example first creates the shared semaphore operating as a latch.</p>
+<p>Next, the new thread is configured and started.</p>
+<p>The main thread then blocks on the latch, waiting for it to open.</p>
+<p>The new thread blocks for a moment, then releases the latch. It then carries on with other work it needs to complete with a blocking call and a print statement.</p>
+<p>The main thread is notified when the latch is opened and is able to carry on executing.</p>
+<pre><code>Main waiting on task
+Main continuing on...
+Task all done</code></pre>
+<p>Next, let's look at how we may use a semaphore as a thread-safe counter.</p>
+<h2>Example of a Semaphore as a Counter</h2>
+<p>A semaphore may be used as a thread-safe counter.</p>
+<p>Internally, the semaphore protects a counter with a lock and a condition object. As such, we can use the semaphore as a shared counter.</p>
+<p>For example, we can create the semaphore with an initial count of zero.</p>
+<pre><code>...
+# create shared semaphore
+semaphore = Semaphore(0)</code></pre>
+<p>We can then increment it in a thread-safe manner by calling the <strong>release()</strong> function.</p>
+<p>For example:</p>
+<pre><code>...
+# increment counter
+semaphore.release()</code></pre>
+<p>We might also want to increase the count by a specific amount, for example:</p>
+<pre><code>...
+# add to the counter
+semaphore.release(10)</code></pre>
+<p>The value of the counter can be reported via the <strong>_value</strong> private attribute on the <strong>threading.Semaphore</strong> class.</p>
+<p>For example:</p>
+<pre><code>...
+# report counter value
+print(semaphore._value)</code></pre>
+<p>The counter can be decremented by calling <strong>acquire()</strong>, but if the counter has a value of zero (or less), it will block. Therefore care must be taken when decrementing.</p>
+<p>For example:</p>
+<pre><code>...
+# decrement counter
+semaphore.acquire()</code></pre>
+<p>We cannot add a negative value to the counter by calling <strong>release()</strong> with a value less than one. This will result in a <strong>ValueError</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# decrement the counter
+semaphore.release(-10) # raises a ValueError</code></pre>
+<p>A downside of using a semaphore as a thread-safe counter is that each call to <strong>release()</strong> will attempt to notify any waiting threads. This adds some minor undesirable computational overhead.</p>
+<p>It would be better to develop a thread-safe counter using a custom class.</p>
+<p>You can learn more about developing a thread-safe counter from scratch in this tutorial:</p>
+<ul><li><a href="../thread-safe-counter-in-python/">Thread-Safe Counter in Python</a></li></ul>
+<p>We can demonstrate using a semaphore as a thread-safe counter.</p>
+<p>First, we can define a task function that will iterate a number of times, block for a random fraction of a second, then increment the counter and report its value.</p>
+<p>The <strong>task()</strong> function below implements this, taking the shared counter as an argument.</p>
+<pre><code># task for incrementing the counter
+def task(counter):
+    for i in range(10):
+        # block
+        sleep(random())
+        # increment counter
+        counter.release()
+        # report counter value
+        print(counter._value)
+</code></pre>
+<p>The main thread can then create the shared counter with an initial value of zero.</p>
+<pre><code>...
+# create shared semaphore
+counter = Semaphore(0)</code></pre>
+<p>We can then create 1,000 new threads configured to execute our <strong>task()</strong> function.</p>
+<pre><code>...
+# configure increment threads
+threads = [Thread(target=task, args=(counter,)) for _ in range(1000)]</code></pre>
+<p>These new threads can then be started, and the main thread can block until the threads terminate.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Finally, the value of the counter can be reported.</p>
+<pre><code>...
+# report counter value
+print(f'Counter Value: {counter._value}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a semaphore acting as a thread-safe counter
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Semaphore
+
+# task for incrementing the counter
+def task(counter):
+    for i in range(10):
+        # block
+        sleep(random())
+        # increment counter
+        counter.release()
+        # report counter value
+        print(counter._value)
+
+# create shared semaphore
+counter = Semaphore(0)
+# configure increment threads
+threads = [Thread(target=task, args=(counter,)) for _ in range(1000)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to terminate
+for thread in threads:
+    thread.join()
+# report counter value
+print(f'Counter Value: {counter._value}')
+</code></pre>
+<p>Running the example first creates the shared thread-safe counter.</p>
+<p>Next, the 1,000 threads are created and started, then the main thread blocks until they are finished.</p>
+<p>Each thread increments the shared counter by 10 in a thread-safe manner and reports the current value of the counter each iteration.</p>
+<p>The new threads terminate and the final value of the counter is reported.</p>
+<p>In this case it has a value of 10,000, which is the correct value given 1,000 threads each incrementing by 10, e.g. 1,000 * 10.</p>
+<pre><code>...
+9991
+9992
+9993
+9994
+9995
+9996
+9997
+9998
+9999
+10000
+Counter Value: 10000</code></pre>
+<h2>Takeaways</h2>
+<p>You now know some advanced usages of a semaphore in Python.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Benchmark Tasks in the ThreadPoolExecutor – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Benchmark Tasks in the ThreadPoolExecutor</h1>
+<div class="post-meta">November 24, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Benchmarking</a></div>
+
+<p>You can <strong>benchmark tasks</strong> executed in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>This can be achieved by benchmarking the overall execution time of the program that executes tasks. We can also benchmark the execution time of individual tasks themselves by manually adding benchmark code to the task functions or using a function decorator and reporting summary statistics for task execution time, such as the minimum, maximum, and mean execution time.</p>
+<p>This can help us determine whether different configurations of the thread pool are faster overall and whether changes to the task functions themselves offer a speedup.</p>
+<p>In this tutorial, you will discover how to benchmark tasks executed in the ThreadPoolExecutor.</p>
+<p>Let's get started.</p>
+<h2>Need to Benchmark Tasks in the ThreadPoolExecutor</h2>
+<p>The <strong>ThreadPoolExecutor</strong> allows us to execute ad hoc tasks concurrently in a thread pool with a simple API.</p>
+<p>Given that it makes use of threads, it is appropriate for tasks that perform blocking I/O such as downloading data or reading and writing files.</p>
+<p>We can use the <strong>ThreadPoolExecutor</strong> by first creating an instance and specifying the number of threads to create in the pool, then calling methods like the <strong>submit()</strong> method to issue tasks to the pool.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor(100) as exe:
+	# issue a task
+	future = exe.submit(task, data)
+</code></pre>
+<p>You can learn more about the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor: The Complete Guide</a></li>
+</ul>
+<p>We typically intend to use the <strong>ThreadPoolExecutor</strong> to speed up our program.</p>
+<p>This is why we wish to perform many blocking I/O bound tasks concurrently so that the overall execution time of the program is reduced.</p>
+<p><strong>How can we know that the execution time is lower after updating our program to use the ThreadPoolExecutor?</strong></p>
+<p>We may also want to seek to optimize the execution time of each task in the thread pool. This might involve changing the code to optimize performance so that each task itself executes faster.</p>
+<p>In this case, we need to be able to benchmark the execution time of individual tasks to confirm that they are completed faster after a change to the code.</p>
+<p>How can we benchmark tasks in the ThreadPoolExecutor?</p>
+<h2>How to Benchmark Tasks in the ThreadPoolExecutor</h2>
+<p>There are a few ways that we can benchmark tasks executed by the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Some approaches include:</p>
+<ul>
+<li>Benchmark the overall execution time of the program.</li>
+<li>Wrap target function in benchmark code.</li>
+<li>Use a benchmark function decorator.</li>
+</ul>
+<p>Let's take a closer look at each in turn.</p>
+<h3>Benchmark Execution Time of Program</h3>
+<p>The simplest approach is to benchmark the execution time of the entire program.</p>
+<p>This can be achieved by recording the start time before all tasks are issued, then again after all tasks are done, and calculating the difference as the overall execution time.</p>
+<p>For example:</p>
+<pre><code>...
+# record start time
+time_start = perf_counter()
+# execute the program
+...
+# record end time
+time_end = perf_counter()
+# calculate execution time
+time_duration = time_end - time_start
+# report execution time
+print(f'Took: {time_duration:.3f} seconds')</code></pre>
+<p>We prefer to use the <strong>time.perf_counter()</strong> function for benchmarking as it uses a high-precision clock that cannot be adjusted, unlike <strong>time.time()</strong>.</p>
+<p>You can learn more about how to benchmark with the <strong>time.perf_counter()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../benchmark-time-perf-counter/">Benchmark Python with time.perf_counter()</a></li>
+</ul>
+<h3>Benchmark The Task Function Manually</h3>
+<p>We can benchmark the execution time of tasks manually.</p>
+<p>This involves updating the task function itself and adding timing code.</p>
+<p>The times can be stored in a global variable, like a list for reporting later.</p>
+<p>For example:</p>
+<pre><code># task to execute in the thread pool
+def task():
+    # record start time
+    time_start = perf_counter()
+    # run the task
+    ...
+    # record end time
+    time_end = perf_counter()
+    # calculate execution time
+    time_duration = time_end - time_start
+    # store time in global variable
+    global task_times
+    task_times.append(time_duration)
+</code></pre>
+<p>After all tasks are completed, the global variable of all task run times can be retrieved and used to report details about task execution times.</p>
+<p>This might include the minimum, average, and maximum task run time.</p>
+<p>For example:</p>
+<pre><code>...
+# reports task benchmark results
+time_min, time_max = min(task_times), max(task_times)
+time_mean = sum(task_times) / len(task_times)
+print(f'Tasks Times: min={time_min:.3f}, mean={time_mean:.3f}, max={time_max:.3f}')</code></pre>
+<p>This is helpful to see if task execution time is faster or slower on average and at the limits after a code change.</p>
+<h3>Benchmark The Task Function With a Decorator</h3>
+<p>We can record the execution time of tasks automatically.</p>
+<p>This can be achieved using a function decorator.</p>
+<p>A decorator can be defined as a function that calls our target function and automatically records the start time, and end time and stores the duration in a global variable.</p>
+<p>For example, the <strong>benchmark_decorator()</strong> function below defines a function decorator.</p>
+<pre><code># define the benchmark decorator
+def benchmark_decorator(func):
+    # inner function that wraps the target function
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        # record start time
+        time_start = perf_counter()
+        try:
+            # call the custom function
+            return func(*args, **kwargs)
+        finally:
+            # calculate the execution time
+            time_duration = perf_counter() - time_start
+            # store time in global variable
+            global task_times
+            task_times.append(time_duration)
+    # return the inner function
+    return wrapper
+</code></pre>
+<p>We can then add the decorator to our task function.</p>
+<p>For example:</p>
+<pre><code># task to execute in the thread pool
+@benchmark_decorator
+def task():
+	# ...
+</code></pre>
+<p>You can learn more about defining a benchmark decorator in the tutorial:</p>
+<ul>
+<li><a href="../benchmark-decorator/">Benchmark Decorator in Python</a></li>
+</ul>
+<p>This has the benefit that we don't have to change our <strong>task()</strong> function and add benchmarking code to it directly.</p>
+<p>Now that we know how to benchmark tasks in the <strong>ThreadPoolExecutor</strong>, let's look at some worked examples.</p>
+<h2>Example of Tasks Executed with the ThreadPoolExecutor</h2>
+<p>Before we explore how to benchmark tasks in the <strong>ThreadPoolExecutor</strong>, let's define a simple program that executes tasks concurrently.</p>
+<p>In this example, we will define a task that takes about 5 seconds to complete and then report a message. We will create a thread pool with 25 worker threads and issue 100 tasks to the pool to complete. Once all tasks are done, a final message is reported.</p>
+<p>With 100 tasks, each taking about 5 seconds, executed by 25 workers, we expect the program to complete in about 20 seconds, e.g. (100/25) * 5 seconds.</p>
+<p>The complete example is listed below.</p>
+</main>
+</body>
+</html>

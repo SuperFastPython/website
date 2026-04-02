@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Pool Callback Functions in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Pool Callback Functions in Python</h1>
+<div class="post-meta">August 1, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing Pool</a></div>
+
+<p>You can specify a <strong>custom callback function</strong> when using the <strong>apply_async()</strong>, <strong>map_async()</strong>, and <strong>starmap_async()</strong> functions in <strong><a href="../multiprocessing-pool-python/">multiprocessing pool</a></strong> class via the "<strong>callback</strong>" argument.</p>
+<p>In this tutorial you will discover how to use <strong>callback functions</strong> with the <strong>multiprocessing pool</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>Need to Use Callbacks with the Process Pool</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool"><strong>multiprocessing.pool.Pool </strong>in Python</a> provides a pool of reusable processes for executing ad hoc tasks.</p>
+<p>A process pool can be configured when it is created, which will prepare the child workers.</p>
+<blockquote><p>A process pool object which controls a pool of worker processes to which jobs can be submitted. It supports asynchronous results with timeouts and callbacks and has a parallel map implementation.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>We can issue one-off tasks to the process pool using functions such as <strong>apply()</strong> or we can apply the same function to an iterable of items using functions such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the functions such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>When issuing tasks to the process pool asynchronously, we may need to configure a callback function. That is, we may need to have a custom function called automatically with the results of each task.</p>
+<p><strong>How can we use callback functions with the process pool in Python?</strong></p>
+<h2>How to Configure a Callback Function</h2>
+<p>The <strong>multiprocessing.pool.Pool</strong> supports custom callback functions.</p>
+<p>Callback functions are called in two situations:</p>
+<ol><li>With the results of a task.</li><li>When an error is raised in a task.</li></ol>
+<p>We are only considering callbacks called with the results of a task, so-called result callbacks.</p>
+<p>Result callbacks are supported in the process pool when issuing tasks asynchronously with any of the following functions:</p>
+<ul><li><strong>apply_async()</strong>: For issuing a single task asynchronously.</li><li><strong>map_async()</strong>: For issuing multiple tasks with a single argument asynchronously.</li><li><strong>starmap_async()</strong>: For issuing multiple tasks with multiple arguments asynchronously.</li></ul>
+<p>A result callback can be specified via the "<strong>callback</strong>" argument.</p>
+<p>The argument specifies the name of a custom function to call with the result of asynchronous task or tasks.</p>
+<p>Note, a configured callback function will be called, even if your task function does not have a return value. In that case, a default return value of <strong>None</strong> will be passed as an argument to the callback function.</p>
+<p>The function may have any name you like, as long as it does not conflict with a function name already in use.</p>
+<blockquote><p>If callback is specified then it should be a callable which accepts a single argument. When the result becomes ready callback is applied to it</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>For example, if <strong>apply_async()</strong> is configured with a callback, then the callback function will be called with the return value of the task function that was executed.</p>
+<pre><code># result callback function
+def result_callback(result):
+	print(result, flush=True)
+
+...
+# issue a single task
+result = apply_async(..., callback=result_callback)
+</code></pre>
+<p>Alternatively, if <strong>map_async()</strong> or <strong>starmap_async()</strong> are configured with a callback, then the callback function will be called with an iterable of return values from all tasks issued to the process pool.</p>
+<pre><code># result callback function
+def result_callback(result):
+	# iterate all results
+	for value in result:
+		print(value, flush=True)
+
+...
+# issue a single task
+result = map_async(..., callback=result_callback)
+</code></pre>
+<p>Result callbacks should be used to perform a quick action with the result or results of issued tasks from the process pool.</p>
+<p>They should not block or execute for an extended period as they will occupy the resources of the process pool while running.</p>
+<blockquote><p>Callbacks should complete immediately since otherwise the thread which handles the results will get blocked.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Now that we know how to configure a result callback function, let's look at some worked examples.</p>
+<h2>Example Callback Function for apply_async()</h2>
+<p>We can explore how to use a result callback with the process pool when issuing tasks via the <strong>apply_async()</strong> function.</p>
+<p>In this example we will define a task that generates a random number, reports the number, blocks for a moment, then returns the value that was generated. A callback function will be defined that receives the return value from the task function and reports the value.</p>
+<p>Firstly, we can define the result callback function.</p>
+<p>The function takes a single return value from a target task function and reports it directly.</p>
+<p>The <strong>result_callback()</strong> function below implements this.</p>
+<pre><code># result callback function
+def result_callback(result):
+    print(f'Callback got: {result}', flush=True)
+</code></pre>
+<p>Next, we can define a target task function.</p>
+<p>The function takes a unique integer identifier for the task. It then generates a random number between 0 and 1 and sleeps for a fraction of a second to simulate computational effort. Finally, it returns the random value that was generated.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    # generate a value
+    value = random()
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return value
+</code></pre>
+<p>We then define a process pool with the default number of worker processes. In this case we use the context manager interface to ensure the process pool closes automatically once we are finished with it.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+    # ...
+</code></pre>
+<p>You can learn more about the context manager interface in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-context-manager/">Process Pool Context Manager</a></li></ul>
+<p>We will then issue the task to the process pool using the <strong>apply_async()</strong> and specify the result callback function to execute with the result of the task.</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.apply_async(task, args=(0,), callback=result_callback)</code></pre>
+<ul><li><a href="../multiprocessing-pool-apply_async/">Multiprocessing Pool.apply_async() in Python</a></li></ul>
+<p>Finally, the main process will close the process pool and wait for the issued task to complete.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>You can learn more about joining the process pool in the tutorial:</p>
+<ul><li><a href="../join-a-multiprocessing-pool-in-python/">Join a Process Pool in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a callback function for apply_async()
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# result callback function
+def result_callback(result):
+    print(f'Callback got: {result}', flush=True)
+
+# task executed in a worker process
+def task(identifier):
+    # generate a value
+    value = random()
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        result = pool.apply_async(task, args=(0,), callback=result_callback)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first starts the process pool with the default configuration.</p>
+<p>Then the task is issued to the process pool. The main process then closes the pool and then waits for the issued task to complete.</p>
+<p>The task function executes, generating a random number, reporting a message, blocking and returning a value.</p>
+<p>The result callback function is then called with the generated value, which is then reported.</p>
+<p>The task ends and the main process wakes up and continues on, closing the program.</p>
+<pre><code>Task 0 executing with 0.2998712545246843
+Callback got: 0.2998712545246843</code></pre>
+<p>Next, let's look at an example of using a callback function with the <strong>map_async()</strong> function.</p>
+<h2>Example Callback Function for map_async()</h2>
+<p>We can explore how to use a result callback with the process pool when issuing tasks via the <strong>map_async()</strong> function.</p>
+<p>In this example, we can update the previous example to issue multiple calls to the <strong>task()</strong> function. The callback function will then be called with an iterable of return values from all tasks, that will be iterated and each value reported.</p>
+<p>Firstly, we must update the callback function to receive an iterable of return values instead of a single return value. It traverses the return values and reports each value.</p>
+<p>The updated <strong>result_callback()</strong> function is listed below.</p>
+<pre><code># result callback function
+def result_callback(result):
+    # iterate over all results
+    for item in result:
+        print(f'Callback got: {item}', flush=True)
+</code></pre>
+<p>The task function does not need any change and can be used as-is.</p>
+<p>Next, in the main process, we will call the <strong>map_async()</strong> function to issue five calls to the task function with integer values from 0 to 9 and to call the callback function once all tasks are completed.</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.map_async(task, range(5), callback=result_callback)</code></pre>
+<p>You can learn more about the map_async() function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-map_async/">Multiprocessing Pool.map_async() in Python</a></li></ul>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a callback function for map_async()
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# result callback function
+def result_callback(result):
+    # iterate over all results
+    for item in result:
+        print(f'Callback got: {item}', flush=True)
+
+# task executed in a worker process
+def task(identifier):
+    # generate a value
+    value = random()
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        result = pool.map_async(task, range(5), callback=result_callback)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first starts the process pool with the default configuration.</p>
+<p>Then the 5 tasks are issued to the process pool. The main process then closes the pool and then waits for the issued tasks to complete.</p>
+<p>The tasks execute in the process pool. Each task runs, generating a random number, reporting a message, blocking and returning a value.</p>
+<p>All tasks complete and their return values are gathered.</p>
+<p>The result callback function is then called with an iterable of the return values. The iterable is traversed and each value is then reported.</p>
+<p>All tasks end, and the main process wakes up and continues on, closing the program.</p>
+<pre><code>Task 0 executing with 0.28084761901957966
+Task 1 executing with 0.7827992273822049
+Task 2 executing with 0.08924616372428673
+Task 3 executing with 0.829206520017164
+Task 4 executing with 0.4014550685167869
+Callback got: 0.28084761901957966
+Callback got: 0.7827992273822049
+Callback got: 0.08924616372428673
+Callback got: 0.829206520017164
+Callback got: 0.4014550685167869</code></pre>
+<p>Next, let's look at an example of using a callback function with the <strong>starmap_async()</strong> function.</p>
+<h2>Example Callback Function for starmap_async()</h2>
+<p>We can explore how to use a result callback with the process pool when issuing tasks via the <strong>starmap_async()</strong> function.</p>
+<p>In this example, we will update the previous example so that the target task function takes two arguments instead of one. The second argument will be a generated random value that will be passed in instead of generated in the task. A list of arguments will be prepared in the main process that contain the integer identifiers and random values, then tasks with multiple arguments will be issued via the <strong>starmap_async()</strong> function.</p>
+<p>Firstly, we must update the task() function to take the random number as a second argument and to not generate a number as part of the task.</p>
+<p>The updated <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return value
+</code></pre>
+<p>Next, in the main process we will first create a list of arguments. Each item in the list will be a tuple of arguments for one call to the target <strong>task()</strong> function, containing an integer and a generated random floating point value.</p>
+<pre><code>...
+# prepare arguments
+items = [(i, random()) for i in range(5)]</code></pre>
+<p>We can then issue the 5 tasks via the <strong>starmap_async()</strong>, configured to call a callback function once all of the issued tasks have completed.</p>
+<pre><code>...
+# issue tasks to the process pool
+result = pool.starmap_async(task, items, callback=result_callback)</code></pre>
+<p>You can learn more about the <strong>starmap_async()</strong> function in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-starmap_async/">Multiprocessing Pool.starmap_async() in Python</a></li></ul>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a callback function for starmap_async()
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# result callback function
+def result_callback(result):
+    # iterate over all results
+    for item in result:
+        print(f'Callback got: {item}', flush=True)
+
+# task executed in a worker process
+def task(identifier, value):
+    # report a message
+    print(f'Task {identifier} executing with {value}', flush=True)
+    # block for a moment
+    sleep(value)
+    # return the generated value
+    return value
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # prepare arguments
+        items = [(i, random()) for i in range(5)]
+        # issue tasks to the process pool
+        result = pool.starmap_async(task, items, callback=result_callback)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first starts the process pool with the default configuration.</p>
+<p>Then the 5 tasks are issued to the process pool. The main process then closes the pool and then waits for the issued tasks to complete.</p>
+<p>The tasks execute in the process pool. Each task runs, reporting a message, blocking and returning a value.</p>
+<p>All tasks complete and their return values are gathered.</p>
+<p>The result callback function is then called with an iterable of the return values. The iterable is traversed and each value is then reported.</p>
+<p>All tasks end, and the main process wakes up and continues on, closing the program.</p>
+<pre><code>Task 0 executing with 0.834942465014341
+Task 1 executing with 0.7453534961538749
+Task 2 executing with 0.07411023076351042
+Task 3 executing with 0.1270685080190611
+Task 4 executing with 0.6265983893158643
+Callback got: 0.834942465014341
+Callback got: 0.7453534961538749
+Callback got: 0.07411023076351042
+Callback got: 0.1270685080190611
+Callback got: 0.6265983893158643</code></pre>
+<p>Next, let's take a look at the specific process and thread used to execute the callback function.</p>
+<h2>Which Process and Thread Executes the Callback</h2>
+<p>We can explore the specific process and thread used to execute the result callback function.</p>
+<p>In this example we will define a task that gets and reports the current process and current thread. We expect this to be the main thread of a child worker process. We will also get and report the current process and current thread in the main process, which we expect to be the main thread of the main process. Finally, we will get and report the current process and thread used to execute the result callback.</p>
+<p>Firstly, we can define a result callback function that gets and reports the current process and current thread.</p>
+<p>Recall that we can access the current process via the <strong>multiprocessing.current_process()</strong> module function that returns a <strong>multiprocessing.Process</strong> instance. Similarly, we can access the current thread via the <strong>threading.current_thread()</strong> function that returns a <strong>threading.Thread</strong> instance.</p>
+<p>This will report the details of the process and thread executing the callback function, most notably the names and the ids.</p>
+<p>The <strong>result_callback()</strong> function below implements this.</p>
+<pre><code># result callback function
+def result_callback(result):
+    # get the current process
+    process = current_process()
+    # report the details of the current process
+    print(f'Callback Process: {process}', flush=True)
+    # get the current thread
+    thread = current_thread()
+    # report the details of the current thread
+    print(f'Callback Thread: {thread}', flush=True)
+</code></pre>
+<p>Next, we can define a target task function that does the same thing. It gets and reports the current process and thread used to execute the task.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    # get the current process
+    process = current_process()
+    # report the details of the current process
+    print(f'Task Process: {process}', flush=True)
+    # get the current thread
+    thread = current_thread()
+    # report the details of the current thread
+    print(f'Task Thread: {thread}', flush=True)
+</code></pre>
+<p>Finally, in the main process, we will create and configure a process pool using the context manager, then issue a single task to the process pool via the <strong>apply_async()</strong> function, configured with a result callback function.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+    # issue tasks to the process pool
+    result = pool.apply_async(task, args=(0,), callback=result_callback)
+</code></pre>
+<p>We will then get and report the details of the current process and thread.</p>
+<pre><code>...
+# get the current process
+process = current_process()
+# report the details of the current process
+print(f'Main Process: {process}', flush=True)
+# get the current thread
+thread = current_thread()
+# report the details of the current thread
+print(f'Main Thread: {thread}', flush=True)
+</code></pre>
+<p>We will then close the process pool and wait for the issued task to complete.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of reporting the process and thread that executes the callback function
+from random import random
+from time import sleep
+from threading import current_thread
+from multiprocessing import current_process
+from multiprocessing.pool import Pool
+
+# result callback function
+def result_callback(result):
+    # get the current process
+    process = current_process()
+    # report the details of the current process
+    print(f'Callback Process: {process}', flush=True)
+    # get the current thread
+    thread = current_thread()
+    # report the details of the current thread
+    print(f'Callback Thread: {thread}', flush=True)
+
+# task executed in a worker process
+def task(identifier):
+    # get the current process
+    process = current_process()
+    # report the details of the current process
+    print(f'Task Process: {process}', flush=True)
+    # get the current thread
+    thread = current_thread()
+    # report the details of the current thread
+    print(f'Task Thread: {thread}', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        result = pool.apply_async(task, args=(0,), callback=result_callback)
+        # get the current process
+        process = current_process()
+        # report the details of the current process
+        print(f'Main Process: {process}', flush=True)
+        # get the current thread
+        thread = current_thread()
+        # report the details of the current thread
+        print(f'Main Thread: {thread}', flush=True)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first starts the process pool.</p>
+<p>The main process then issues a task to the process pool. It then reports the current process and thread.</p>
+<p>In this case, we can see that the program is executed by the "<em>MainProcess</em>" and the "<em>MainThread</em>" as we might expect.</p>
+<p>You can learn more about the main process in the tutorial:</p>
+<ul><li><a href="../main-process-in-python/">Main Process in Python</a></li></ul>
+<p>Next, the task is executed.</p>
+<p>In this case, we can see that the task is executed by the main thread in a child worker process created with the spawn start method (the default on my system), with the names "<em>SpawnProcess</em>" and "<em>_MainThread</em>".</p>
+<p>You can learn more about the child worker processes and their names created in the process pool in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-worker-names/">Get Process Pool Worker Names in Python</a></li></ul>
+<p>Finally, the result callback function is executed. In this case, we can see that the callback is executed by a helper thread named "<em>Thread-3</em>" in the main process named "<em>MainProcess</em>"</p>
+<p>This highlights that the callback is executed in the main process by a helper thread provided by the process pool.</p>
+<p>You can learn more about the helper threads created by the process pool in the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-thread-details/">Details of Threads Used in the Process Pool</a></li></ul>
+<p>Note, the specific process ids and some of the process names may be different, depending on the specifics of your system.</p>
+<pre><code>Main Process: &lt;_MainProcess name='MainProcess' parent=None started&gt;
+Main Thread: &lt;_MainThread(MainThread, started 4795883008)&gt;
+Task Process: &lt;SpawnProcess name='SpawnPoolWorker-3' parent=38978 started daemon&gt;
+Task Thread: &lt;_MainThread(MainThread, started 4422417920)&gt;
+Callback Process: &lt;_MainProcess name='MainProcess' parent=None started&gt;
+Callback Thread: &lt;Thread(Thread-3, started daemon 123145557532672)&gt;
+</code></pre>
+<p>Next, let's look at how we might share data with the callback function.</p>
+<h2>How to Share Data With the Callback Function</h2>
+<p>We can explore how to share data with the callback function.</p>
+<p>As we discovered in the previous section, both the code where we create the process pool and issue tasks and the callback function are executed in the main process of the application, at least in these examples.</p>
+<p>Therefore, we can define a global variable in the program and have it shared and available to the callback function.</p>
+<p>We will define a global variable with a random floating point value between 0 and 1. We will then access this global variable in the callback function, then change it. Once all tasks are finished, we will then report the global variable again and confirm that change was reflected.</p>
+<p>This will demonstrate how the callback function can both access and change global variables from the program.</p>
+<p>Firstly, we can define a callback function that declares the global variable named "<strong>data</strong>", reports the value, changes it, then reports the changed value.</p>
+<p>The <strong>result_callback()</strong> function below implements this.</p>
+<pre><code># result callback function
+def result_callback(result):
+    global data
+    # report shared global data from main process
+    print(f'Callback data: {data}', flush=True)
+    # change it
+    data = random()
+    # report changed global data
+    print(f'Callback data now: {data}', flush=True)
+</code></pre>
+<p>Next, we can define a target task function that blocks for a moment to simulate computational effort.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    sleep(1)
+</code></pre>
+<p>Finally, in the main process we can define a global variable and assign it a random number.</p>
+<pre><code>...
+# prepare shared global data
+data = random()</code></pre>
+<p>We can then create the process pool, issue the task configured with the result callback, then wait for the task to complete.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+    # issue tasks to the process pool
+    result = pool.apply_async(task, args=(0,), callback=result_callback)
+    # close the process pool
+    pool.close()
+    # wait for all tasks to complete
+    pool.join()
+</code></pre>
+<p>We will then report the global variable in order to confirm the changes made in the callback function are reflected in the main thread of the main process.</p>
+<pre><code>...
+# report shared global data again
+print(f'Main data: {data}', flush=True)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing data with the callback function
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# result callback function
+def result_callback(result):
+    global data
+    # report shared global data from main process
+    print(f'Callback data: {data}', flush=True)
+    # change it
+    data = random()
+    # report changed global data
+    print(f'Callback data now: {data}', flush=True)
+
+# task executed in a worker process
+def task(identifier):
+    sleep(1)
+
+# protect the entry point
+if __name__ == '__main__':
+    # prepare shared global data
+    data = random()
+    print(f'Main data: {data}', flush=True)
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        result = pool.apply_async(task, args=(0,), callback=result_callback)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+    # report shared global data again
+    print(f'Main data: {data}', flush=True)
+</code></pre>
+<p>Running the example first creates the global variable and assigns it a random number, then reports the value.</p>
+<p>Next, the process pool is created and the task is issued. The main thread then waits for the task in the process pool to finish.</p>
+<p>The task executes, blocking for a second, then the task finishes.</p>
+<p>The callback function is called, even though there is no return value. E.g. the argument to the function will be None.</p>
+<p>The callback function declares the global variable, then reports its value. We can see that the reported value matches the value reported from the main thread. It then assigns a new random value to the global variable and reports its value.</p>
+<p>The main thread continues on and reports the current value of the global variable. We can see that the main thread sees the changed value, matching the value that was set in the callback function.</p>
+<p>This highlights how data can be made available to the callback function and how the callback function may make data available to the main thread.</p>
+<p>Note, the results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>Main data: 0.9727166653031785
+Callback data: 0.9727166653031785
+Callback data now: 0.2009902690070836
+Main data: 0.2009902690070836</code></pre>
+<p>Next, let's take a closer look at when a callback function is executed.</p>
+<h2>When is the Callback Executed</h2>
+<p>We can explore when exactly the callback function is called.</p>
+<p>IN this example we will report a message in the main process, in the task, and in the callback function, then after the task is completed. The order of the reported messages will give an idea of when exactly the callback function is executed.</p>
+<p>Firstly, we can define a callback function that just reports a message that it is finished.</p>
+<pre><code># result callback function
+def result_callback(result):
+    print(f'Callback done.', flush=True)
+</code></pre>
+<p>Similarly, we can define a task function that reports a message that it is finished.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    print(f'Task {identifier} done.', flush=True)
+</code></pre>
+<p>We can create a process pool and issue five tasks to the pool, configured with the custom callback function.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+    # issue tasks to the process pool
+    result = pool.map_async(task, range(5), callback=result_callback)
+</code></pre>
+<p>We can then report a message, wait for the tasks to complete, then report another message.</p>
+<pre><code>...
+# report tasks are issued
+print(f'Main tasks issued.', flush=True)
+# wait for tasks to complete
+result.wait()
+print(f'Main tasks done.', flush=True)</code></pre>
+<p>Finally, the pool can be closed.</p>
+<pre><code>...
+# close the process pool
+pool.close()
+# wait for all tasks to complete
+pool.join()</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of determining when the result callback is called
+from random import random
+from time import sleep
+from multiprocessing.pool import Pool
+
+# result callback function
+def result_callback(result):
+    print(f'Callback done.', flush=True)
+
+# task executed in a worker process
+def task(identifier):
+    print(f'Task {identifier} done.', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        result = pool.map_async(task, range(5), callback=result_callback)
+        # report tasks are issued
+        print(f'Main tasks issued.', flush=True)
+        # wait for tasks to complete
+        result.wait()
+        print(f'Main tasks done.', flush=True)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first creates the process pool, then issues five tasks.</p>
+<p>The main process then reports a message that the tasks are issued, then blocks until the tasks are done.</p>
+<p>Next, each task executes and reports a message that they are done.</p>
+<p>The callback function is then called and reports that it is done.</p>
+<p>Finally, the main task unblocks, reports a message that all tasks are done, and closes the process pool.</p>
+<p>This highlights that the callback is called after all issued tasks are completed, but before the caller is made aware that the tasks are done. That is, the callback is a part of the task from the perspective of the caller waiting on the task to complete.</p>
+<pre><code>Main tasks issued.
+Task 0 done.
+Task 1 done.
+Task 2 done.
+Task 3 done.
+Task 4 done.
+Callback done.
+Main tasks done.</code></pre>
+<p>Next, let's take a look at what happens if there is an error in a callback function.</p>
+<h2>What Happens if a Callback Raises an Exception</h2>
+<p>We can explore what happens if an error occurs in the result callback function.</p>
+<p>In this example, we will define a result callback function that raises an exception. We will then issue the task as per normal and wait for it to complete.</p>
+<p>Firstly, we can define the custom callback function that reports a message then raises an exception.</p>
+<pre><code># result callback function
+def result_callback(result):
+    print(f'Callback running.', flush=True)
+    # failure
+    raise Exception('Something bad happened')
+</code></pre>
+<p>Next, we will define a target task function that simply reports a message.</p>
+<pre><code># task executed in a worker process
+def task(identifier):
+    print(f'Task {identifier} done.', flush=True)
+</code></pre>
+<p>In the main process, we will create the process pool, then issue five tasks to the pool with the configured callback.</p>
+<pre><code>...
+# create and configure the process pool
+with Pool() as pool:
+    # issue tasks to the process pool
+    result = pool.map_async(task, range(5), callback=result_callback)
+</code></pre>
+<p>The main process will then wait for the tasks to complete, then close the process pool.</p>
+<pre><code>...
+# report tasks are issued
+print(f'Main tasks issued.', flush=True)
+# wait for tasks to complete
+result.wait()
+print(f'Main tasks done.', flush=True)
+# close the process pool
+pool.close()
+# wait for all tasks to complete
+pool.join()
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of determining what happens if an exception is raised in the result callback
+from time import sleep
+from multiprocessing.pool import Pool
+
+# result callback function
+def result_callback(result):
+    print(f'Callback running.', flush=True)
+    # failure
+    raise Exception('Something bad happened')
+
+# task executed in a worker process
+def task(identifier):
+    print(f'Task {identifier} done.', flush=True)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create and configure the process pool
+    with Pool() as pool:
+        # issue tasks to the process pool
+        result = pool.map_async(task, range(5), callback=result_callback)
+        # report tasks are issued
+        print(f'Main tasks issued.', flush=True)
+        # wait for tasks to complete
+        result.wait()
+        print(f'Main tasks done.', flush=True)
+        # close the process pool
+        pool.close()
+        # wait for all tasks to complete
+        pool.join()
+</code></pre>
+<p>Running the example first creates the process pool.</p>
+<p>It then issues 5 tasks and waits for them to complete.</p>
+<p>Each task executes, reporting a message as per normal.</p>
+<p>The callback function is then called after all tasks are finished. A message is reported, then an exception is raised.</p>
+<p>The exception then appears to unwind the helper thread in the process pool. This very likely breaks the process pool.</p>
+<p>The main thread in the main process blocks forever waiting for the issued tasks to complete. The tasks never complete because the callback function never completes successfully.</p>
+<p>This highlights that care must be taken in the callback function as an error in the callback may bring down the application.</p>
+<p>Note, you will have to manually terminate the program, e.g. Control-C.</p>
+<pre><code>Main tasks issued.
+Task 0 done.
+Task 1 done.
+Task 2 done.
+Task 3 done.
+Task 4 done.
+Callback running.
+Exception in thread Thread-3:
+Traceback (most recent call last):
+  ...
+Exception: Something bad happened
+</code></pre>
+<h2>Common Questions</h2>
+<p>This section lists common questions about result callbacks used with asynchronous tasks in the process pool.</p>
+<p><strong>Do you have any questions?</strong><br/>Let me know below.</p>
+<h3>What is a Callback?</h3>
+<p>A callback is a function called automatically once all asynchronous tasks issued to the process pool in a batch have completed.</p>
+<h3>When Should I Use a Callback?</h3>
+<p>You can use a callback function when issuing asynchronous tasks to the process pool.</p>
+<p>A callback function can be used to handle the results of issued tasks, such as reporting, storing, or gathering the results of issued tasks.</p>
+<p>Callback functions should not take a long time to execute as they will occupy resources of the process pool.</p>
+<h3>What Argument Does the Callback Receive?</h3>
+<p>The callback function will receive the return value from the task or tasks issued to the process pool.</p>
+<p>In the case of <strong>apply_asunc()</strong>, the argument will be a single value.</p>
+<p>In the case of <strong>map_async()</strong> and <strong>starmap_async()</strong>, the argument will be an iterable of return values.</p>
+<h3>What if the Task Function Does Not Return a Value?</h3>
+<p>A configured callback function will be called even if your target task function does not return a value.</p>
+<p>In that case, the argument to the callback function will be the default return value of None.</p>
+<h3>Which Process and Thread Executes the Callback Function?</h3>
+<p>The callback function is executed in a helper thread of the process pool in the main process, or the process in which the process pool was created and tasks were issued.</p>
+<h3>Will The Result Callback Be Called Before The Error Callback?</h3>
+<p>No.</p>
+<p>If at least one task raises an error, then the result callback will not be called and the error callback function will be called instead.</p>
+<h3>Can I Issue Follow-Up Tasks From the Result Callback?</h3>
+<p>Yes.</p>
+<p>The process pool can be made accessible via a global variable and follow-up tasks may be issued directly from within the callback function.</p>
+<p>For an example of issuing follow-up tasks automatically from the callback function, see the tutorial:</p>
+<ul><li><a href="../multiprocessing-pool-follow-up-tasks/">Multiprocessing Pool Follow-Up Tasks in Python</a></li></ul>
+<h2>Takeaways</h2>
+<p>You now know how to use callback functions with the process pool in Python.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPoolExecutor Tasks Submit New Tasks – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPoolExecutor Tasks Submit New Tasks</h1>
+<div class="post-meta">July 30, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPoolExecutor</a></div>
+
+<p>You can submit new tasks from tasks running in the <strong>ThreadPoolExecutor</strong> by passing the thread pool as an argument to the task or having the task access the thread pool via a global variable.</p>
+<p>In this tutorial, you will discover how to submit new tasks from tasks running in the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need Tasks To Issue New Tasks</h2>
+<p>The <strong>ThreadPoolExecutor</strong> provides a pool of reusable worker threads using the executor design pattern.</p>
+<p>Tasks executed in new threads are executed concurrently in Python, making the <strong>ThreadPoolExecutor</strong> appropriate for I/O-bound tasks.</p>
+<p>A <strong>ThreadPoolExecutor</strong> can be created directly or via the context manager interface and tasks can be issued one-by-one via the <strong>submit()</strong> method or in batch via the <strong>map()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# create a thread pool
+with ThreadPoolExecutor() as tpe:
+	# issue a task
+	future = tpe.submit(task)
+	# the the task result once the task is done
+	result = future.result()
+</code></pre>
+<p>You can learn more about the <strong>ThreadPoolExecutor</strong> in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-in-python/">ThreadPoolExecutor in Python: The Complete Guide</a></li>
+</ul>
+<p>There are many cases where we may need to issue a new task to the <strong>ThreadPoolExecutor</strong> from within a task already being executed by a task.</p>
+<p>This may be a follow-up task that naturally arises out of the first task and can be executed asynchronously.</p>
+<p>For example:</p>
+<ul>
+<li><a href="../threadpoolexecutor-followup-task/">How to Submit a Follow-up Task to a ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>It may be a retry of the current task if the current task determines that it has failed,</p>
+<p>For example:</p>
+<ul>
+<li><a href="../threadpoolexecutor-retry-tasks/">How to Retry Failed Tasks in the ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>Both of these cases can be solved by a separate thread that manages the <strong>ThreadPoolExecutor</strong>, issues tasks, and checks results to determine whether follow-up or retry tasks are required.</p>
+<p>This is a good design, but sometimes we may prefer to have tasks issue new tasks themselves.</p>
+<p><strong>How can we issue new tasks to the ThreadPoolExecutor from tasks that are currently executing within the ThreadPoolExecutor?</strong></p>
+<h2>How Tasks Can Submit New Tasks to the ThreadPoolExecutor</h2>
+<p>There are many ways that tasks can issue their own tasks to the <strong>ThreadPoolExecutor</strong>.</p>
+<p>Some common approaches include:</p>
+<ol>
+<li>Tasks access the ThreadPoolExecutor directly which is passed via an argument.</li>
+<li>Tasks access the ThreadPoolExecutor directly via a global variable.</li>
+<li>Tasks share requests with new tasks with another thread that issues new tasks on their behalf.</li>
+</ol>
+<p>The major risk when submitting new tasks to the <strong>ThreadPoolExecutor</strong> from tasks executing within the same <strong>ThreadPoolExecutor</strong> is a deadlock.</p>
+<p>A deadlock is a concurrency failure mode where one thread waits on another thread forever. A deadlock can occur when tasks issue new tasks if the task that issues the new task waits for the new task or tasks to complete and the new task or tasks are never allowed to execute because all worker threads are occupied.</p>
+<p>You can see an example of a deadlock of this kind in the tutorial:</p>
+<ul>
+<li><a href="../threadpoolexecutor-deadlock/">How To Identify Deadlocks With The ThreadPoolExecutor in Python</a></li>
+</ul>
+<p>As such, it is generally suggested that tasks should not submit new tasks to the thread pool.</p>
+<p>If tasks must submit new tasks to the thread pool, then they must not wait on the task to complete, or on the result directly.</p>
+<p>Now that we know how to safely submit new tasks from tasks in the thread pool, let's look at some worked examples.</p>
+<h2>Example of Task Submitting a Task via an Argument</h2>
+<p>We can explore an example of submitting a new task to the <strong>ThreadPoolExecutor</strong> from a running task by passing in the <strong>ThreadPoolExecutor</strong> to the running task as an argument.</p>
+<p>In this example, we will define a task that takes a <strong>ThreadPoolExecutor</strong> as an argument, runs for a moment, then submits a second task before terminating. The second task runs as per normal.</p>
+<p>Firstly, we can define the second task.</p>
+<p>This task reports a message, sleeps for a moment to simulate computational effort, then reports a final message.</p>
+<p>The <strong>task2()</strong> function below implements this.</p>
+<pre><code># task executed in the thread pool
+def task2():
+    # report a message
+    print('&gt;&gt;Task 2 is running')
+    # block for a moment to simulate work
+    sleep(1)
+    # report a message
+    print('&gt;&gt;Task 2 is done.')
+</code></pre>
+<p>Next, we can define the first level task.</p>
+<p>This task function takes the <strong>ThreadPoolExecutor</strong> as an argument. It first reports a message, then blocks for a moment to simulate effort. Finally, it submits a new task to the <strong>ThreadPoolExecutor</strong>, in this case, the <strong>task2()</strong> function, before reporting a final message.</p>
+<p>This task does not wait on the result of the submitted task, in an effort to avoid a deadlock.</p>
+<p>The <strong>task1()</strong> function below implements this.</p>
+<pre><code># task executed in the thread pool
+def task1(tpe):
+    # report a message
+    print('&gt;Task 1 is running')
+    # block for a moment to simulate work
+    sleep(1)
+    # issue a new task
+    _ = tpe.submit(task2)
+    # report a message
+    print('&gt;Task 1 is done.')
+</code></pre>
+<p>Finally, in the main thread, will create and start a new <strong>ThreadPoolExecutor</strong> with a default number of workers using the context manager interface.</p>
+<p>We then issue the <strong>task1()</strong> function to the thread pool and wait for it to complete.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPoolExecutor() as tpe:
+    # issue a task to the thread pool
+    future = tpe.submit(task1, tpe)
+    # wait for the task to complete
+    _ = future.result()
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a task submitting a task with the thread pool shared as an argument
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+
+# task executed in the thread pool
+def task2():
+    # report a message
+    print('&gt;&gt;Task 2 is running')
+    # block for a moment to simulate work
+    sleep(1)
+    # report a message
+    print('&gt;&gt;Task 2 is done.')
+
+# task executed in the thread pool
+def task1(tpe):
+    # report a message
+    print('&gt;Task 1 is running')
+    # block for a moment to simulate work
+    sleep(1)
+    # issue a new task
+    _ = tpe.submit(task2)
+    # report a message
+    print('&gt;Task 1 is done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    with ThreadPoolExecutor() as tpe:
+        # issue a task to the thread pool
+        future = tpe.submit(task1, tpe)
+        # wait for the task to complete
+        _ = future.result()
+</code></pre>
+<p>Running the example first creates and starts the thread pool.</p>
+<p>Next, the <strong>task1()</strong> function is submitted to the thread pool for execution with the <strong>ThreadPoolExecutor</strong> as an argument and the main thread blocks until the task is complete.</p>
+<p>The <strong>task1()</strong> function executes, reports a message, and sleeps. The task resumes and submits <strong>task2()</strong> to the thread pool and reports a final message before terminating.</p>
+<p>The <strong>task2()</strong> function is executed by the thread pool. It reports a message and sleeps for a moment. The task then resumes and reports a final message.</p>
+<p>This highlights how one task running in the <strong>ThreadPoolExecutor</strong> can submit a subsequent task to the <strong>ThreadPoolExecutor</strong> by passing the thread pool as an argument to the running task.</p>
+<pre><code>&gt;Task 1 is running
+&gt;&gt;Task 2 is running
+&gt;Task 1 is done.
+&gt;&gt;Task 2 is done.</code></pre>
+<h2>Example of Task Submitting a Task via a Global Variable</h2>
+<p>We can explore the case of submitting a new task to the <strong>ThreadPoolExecutor</strong> from a running task by accessing the <strong>ThreadPoolExecutor</strong> via a global variable.</p>
+<p>In this example, we will update the above example so that <strong>task1()</strong> no longer receives the <strong>ThreadPoolExecutor</strong> as an argument and instead declares the thread pool as a global variable and accesses it directly.</p>
+<p>This can be achieved via the global expression that signals to the Python interpreter that the variable we are accessing, in this case, "<strong>tpe</strong>", is a global variable.</p>
+<pre><code>...
+# declare the thread pool as a global variable
+global tpe
+# issue a new task
+_ = tpe.submit(task2)
+</code></pre>
+<p>The updated version of the <strong>task1()</strong> function with this change is listed below.</p>
+<pre><code># task executed in the thread pool
+def task1():
+    # report a message
+    print('&gt;Task 1 is running')
+    # block for a moment to simulate work
+    sleep(1)
+    # declare the thread pool as a global variable
+    global tpe
+    # issue a new task
+    _ = tpe.submit(task2)
+    # report a message
+    print('&gt;Task 1 is done.')
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a task submitting a task with the thread pool shared as a global variable
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+
+# task executed in the thread pool
+def task2():
+    # report a message
+    print('&gt;&gt;Task 2 is running')
+    # block for a moment to simulate work
+    sleep(1)
+    # report a message
+    print('&gt;&gt;Task 2 is done.')
+
+# task executed in the thread pool
+def task1():
+    # report a message
+    print('&gt;Task 1 is running')
+    # block for a moment to simulate work
+    sleep(1)
+    # declare the thread pool as a global variable
+    global tpe
+    # issue a new task
+    _ = tpe.submit(task2)
+    # report a message
+    print('&gt;Task 1 is done.')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the thread pool
+    tpe = ThreadPoolExecutor()
+    # issue a task to the thread pool
+    future = tpe.submit(task1)
+    # wait for the task to complete
+    _ = future.result()
+    # shutdown the thread pool
+    tpe.shutdown()
+</code></pre>
+<p>Running the example first creates and starts the thread pool.</p>
+<p>Next, the <strong>task1()</strong> function is submitted to the thread pool for execution and the main thread blocks until the task is complete.</p>
+<p>The <strong>task1()</strong> function executes, reports a message, and sleeps.</p>
+<p>The task resumes and declares the <strong>ThreadPoolExecutor</strong> as a global variable and uses it to submit <strong>task2()</strong> to the thread pool before reporting a final message and terminating.</p>
+<p>The <strong>task2()</strong> function is executed by the thread pool. It reports a message and sleeps for a moment. The task then resumes and reports a final message.</p>
+<p>This highlights how one task running in the <strong>ThreadPoolExecutor</strong> can submit a subsequent task to the <strong>ThreadPoolExecutor</strong> by accessing it as a global variable from within a running task.</p>
+<pre><code>&gt;Task 1 is running
+&gt;&gt;Task 2 is running
+&gt;Task 1 is done.
+&gt;&gt;Task 2 is done.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to submit new tasks from tasks running in the <strong>ThreadPoolExecutor</strong>.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProcessPoolExecutor Example in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ProcessPoolExecutor Example in Python</h1>
+<div class="post-meta">February 8, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ProcessPoolExecutor</a></div>
+
+<p>The <strong><a href="../processpoolexecutor-in-python/">ProcessPoolExecutor</a></strong> is a flexible and powerful process pool for executing ad hoc CPU-bound tasks in an asynchronous manner.</p>
+<p>In this tutorial you will discover a <strong>ProcessPoolExecutor</strong> example that you can use as a template for your own project.</p>
+<p>Let's get started.</p>
+<h2 id="processpoolexecutor-example">ProcessPoolExecutor Example</h2>
+<p>Perhaps the most common use case for the <strong>ProcessPoolExecutor</strong> is to perform a repeated calculation in parallel.</p>
+<p>Consider a situation where we might want to check if a word is known to the program or not, e.g. whether it is in a dictionary of known words.</p>
+<p>If the word is known, that is fine, but if not, we might want to take action for the user, perhaps underline it in read like an automatic spell check.</p>
+<p>One approach to implementing this feature would be to load a dictionary of known words and create a hash of each word. We can then hash new words and check if they exist in the set of known hashed words or not.</p>
+<p>Recall that a <strong>hash function</strong> is a mathematical operation that transforms unique values into integers. This is helpful because it is much faster to check a number rather than to compare string values.</p>
+<p>This is a good problem to explore with the <strong>ProcessPoolExecutor</strong> as hashing words can be relatively slow, especially for large dictionaries of hundreds of thousands or millions of known words.</p>
+<p>First, let's develop a serial (non-concurrent) version of the program.</p>
+<h2 id="hash-a-dictionary-of-words-one-by-one">Hash a Dictionary of Words One-By-One</h2>
+<p>The first step is to select a dictionary of words to use.</p>
+<p>On Unix systems, like MacOS and Linux, we have a dictionary already installed, called <strong>Unix Words</strong>.</p>
+<p>It is located in one of the following locations:</p>
+<ul><li>/usr/share/dict/words</li><li>/usr/dict/words</li></ul>
+<p>On my system it is located in '<strong>/usr/share/dict/words</strong>' and contains 235,886 words calculated using the command:</p>
+<pre><code>cat /usr/share/dict/words | wc -l</code></pre>
+<p>We can use this dictionary of words.</p>
+<p>Alternatively, if we are on windows or wish to have a larger dictionary, we can download one of many free lists of words online.</p>
+<p>For example, you can download a list of one million English words from here:</p>
+<ul><li><a href="../zips/1m_words.txt.zip">One Million English Words (1m_words.txt.zip)</a></li></ul>
+<p>Download this file and unzip the archive to your current working directory with the filename "<strong>1m_words.txt</strong>".</p>
+<p>Looking in the file, we can see that indeed we have a long list of words, one per line.</p>
+<pre><code>aaccf
+aalders
+aaren
+aarika
+aaron
+aartjan
+aasen
+ab
+abacus
+abadines
+abagael
+abagail
+abahri
+abasolo
+abazari
+...</code></pre>
+<p>First, we need to load the list of words into memory.</p>
+<p>This can be achieved by first opening the file, then calling the <strong>readlines()</strong> function that will automatically read ASCII lines of text into a list.</p>
+<p>The <strong>load_words()</strong> function below takes a path to the text file and returns a list of words loaded from the file.</p>
+<pre><code># load a file of words
+def load_words(path):
+    # open the file
+    with open(path, encoding='utf-8') as file:
+        # read all data as lines
+        return file.readlines()
+</code></pre>
+<p>Next, we need to hash each word.</p>
+<p>We will intentionally select a slow hash function in this example, specifically the SHA512 algorithm.</p>
+<p>This is available in Python via the <strong>hashlib.sha512()</strong> function.</p>
+<p>You can learn more about the <strong>hashlib</strong> module here:</p>
+<ul><li><a href="https://docs.python.org/3/library/hashlib.html">hashlib — Secure hashes and message digests</a></li></ul>
+<p>First, we can create an instance of the hashing object by calling the <strong>sha512()</strong> function.</p>
+<pre><code>...
+# create the hash object
+hash_object = sha512()</code></pre>
+<p>Next, we can convert a given word to bytes and then hash it using the hash function.</p>
+<pre><code>...
+# convert the string to bytes
+byte_data = word.encode('utf-8')
+# hash the word
+hash_object.update(byte_data)
+</code></pre>
+<p>Finally, we can get a <a href="https://en.wikipedia.org/wiki/Hexadecimal">hex string representation</a> of the hash for the word by calling the <strong>hashlib.hexdigest()</strong> function.</p>
+<pre><code>...
+# get the hex hash of the word
+h = hash_object.hexdigest()</code></pre>
+<p>Tying this together, the <strong>hash_word()</strong> function below takes a word and returns a hex hash code of the word.</p>
+<pre><code># hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+</code></pre>
+<p>That's about all there is to it.</p>
+<p>We can define a function that will drive the program, first loading the list of words by calling our <strong>load_words()</strong> then creating a set of hashes of known words by calling our <strong>hash_word()</strong> for each loaded word.</p>
+<p>The <strong>main()</strong> function below implements this.</p>
+<pre><code># entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # hash all known words
+    known_words = {hash_word(word) for word in words}
+    print(f'Done, with {len(known_words)} hashes')
+</code></pre>
+<p>Tying this all together, the complete example of loading a dictionary of words and creating a set of known word hashes is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of hashing a word list serially
+from hashlib import sha512
+
+# hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+
+# load a file of words
+def load_words(path):
+    # open the file
+    with open(path, encoding='utf-8') as file:
+        # read all data as lines
+        return file.readlines()
+
+# entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # hash all known words
+    known_words = {hash_word(word) for word in words}
+    print(f'Done, with {len(known_words)} hashes')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example, first loads the file and reports that a total of 1,049,938 words were loaded.</p>
+<p>The list of words is then hashed and the hashes are stored in a set.</p>
+<p>The program reports that a total of 979,250 hashes were stored, suggesting thousands of duplicates in the dictionary.</p>
+<p>The program takes about 1.4 seconds to run on a modern system.</p>
+<p><strong>How long does the example take to run on your system?</strong><br/>Let me know in the comments below.</p>
+<pre><code>Loaded 1049938 words from 1m_words.txt
+Done, with 979250 hashes</code></pre>
+<p>Next, we can update the program to hash the words concurrently.</p>
+<h2 id="hash-a-dictionary-of-words-concurrently-with-map">Hash a Dictionary of Words Concurrently with map()</h2>
+<p>Hashing words is relatively slow, but even so, hashing nearly one million words takes under two seconds.</p>
+<p>Nevertheless, we can accelerate the process by making use of all CPUs in the system and hashing the words concurrently.</p>
+<p>This can be achieved using the <strong>ProcessPoolExecutor</strong>.</p>
+<p>Firstly, we can create the process pool and specify the number of concurrent processes to run. I recommend configuring the pool to match the number of physical CPU cores in your system.</p>
+<p>I have four cores, so the example will use four cores, but update it for the number of cores you have available.</p>
+<pre><code>...
+# create the process pool
+with ProcessPoolExecutor(4) as executor:
+	# ...
+</code></pre>
+<p>Next, we need to submit the tasks to the process pool, that is, the hashing of each word.</p>
+<p>Because the task is simply applying a function for each item in a list, we can use the <strong>map()</strong> function directly.</p>
+<p>For example:</p>
+<pre><code>...
+# create a set of word hashes
+known_words = set(executor.map(hash_word, words))
+</code></pre>
+<p>And that's it.</p>
+<p>For example, the updated version of the <strong>main()</strong> function to hash words concurrently is listed below.</p>
+<pre><code># entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # create the process pool
+    with ProcessPoolExecutor(4) as executor:
+        # create a set of word hashes
+        known_words = set(executor.map(hash_word, words))
+    print(f'Done, with {len(known_words)} hashes')
+</code></pre>
+<p>Well, not so fast.</p>
+<p>This would execute, but it would take a very long time to complete.</p>
+<p>The reason is that we would be adding nearly one million tasks to the pool to be executed by four processes, and each task would need to be pickled and queued internally. Repeating these operations so many times results in an overhead that far surpasses the execution time of the task.</p>
+<p>We must reduce the overhead by reducing the number of internal tasks within the process pool.</p>
+<p>This can be achieved by setting the "<strong>chunksize</strong>" parameter when calling map().</p>
+<p>This controls how many items in the iterable map to one task in the process pool. By default, one item is mapped to one task, meaning we have nearly one million tasks.</p>
+<p>Perhaps a good first approach would be to split the number items by the number of processes available, in this case four. This would create four tasks, e.g. four large chunks of words, each to be processed by one process, likely on one CPU core.</p>
+<p>This can be achieved by calculating the length of the list of words and dividing it by the number of worker processes. The division might not be clean, therefore we can use the <strong>math.ceil()</strong> function to round the number of items per task up to the nearest integer.</p>
+<pre><code>...
+# select a chunk size
+chunksize = ceil(len(words) / 4)
+</code></pre>
+<p>We can estimate that this would be (1,049,938 / 4) or about 262,484.5 words per task, e.g. just over a quarter million.</p>
+<p>We can then use this <strong>chunksize</strong> when calling the <strong>map()</strong> function.</p>
+<pre><code>...
+# create a set of word hashes
+known_words = set(executor.map(hash_word, words, chunksize=chunksize))
+</code></pre>
+<p>Tying this together, the complete example of hashing a dictionary of words concurrently using the <strong>ProcessPoolExecutor</strong> is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of hashing a word list concurrently
+from math import ceil
+from hashlib import sha512
+from concurrent.futures import ProcessPoolExecutor
+
+# hash one word using the SHA algorithm
+def hash_word(word):
+    # create the hash object
+    hash_object = sha512()
+    # convert the string to bytes
+    byte_data = word.encode('utf-8')
+    # hash the word
+    hash_object.update(byte_data)
+    # get the hex hash of the word
+    return hash_object.hexdigest()
+
+# load a file of words
+def load_words(path):
+    # open the file
+    with open(path) as file:
+        # read all data as lines
+        return file.readlines()
+
+# entry point
+def main():
+    # load a file of words
+    path = '1m_words.txt'
+    words = load_words(path)
+    print(f'Loaded {len(words)} words from {path}')
+    # create the process pool
+    with ProcessPoolExecutor(4) as executor:
+        # select a chunk size
+        chunksize = ceil(len(words) / 4)
+        # create a set of word hashes
+        known_words = set(executor.map(hash_word, words, chunksize=chunksize))
+    print(f'Done, with {len(known_words)} hashes')
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Running the example loads the words as before then creates the set of hashed words concurrently by splitting it into four tasks, one for each process in the pool.</p>
+<p>This concurrent version does offer a very minor speedup, taking about 1.2 seconds on my system, offering a small speedup.</p>
+<pre><code>Loaded 1049938 words from 1m_words.txt
+Done, with 979250 hashes
+</code></pre>
+<p>Next, let's see if we can get a further improvement by tuning the chunksize argument.</p>
+<h2 id="how-to-tune-chunksize-values-with-map">How to Tune chunksize Values with map()</h2>
+<p>Splitting items into tasks for the process pool is more art than science.</p>
+<p>Getting it wrong, like setting it to one when we have a large number of tasks, can result in much worse performance than the serial case. Setting it naively can result in equivalent or slightly better performance than the serial case.</p>
+<p>As such, we can tune the performance of the application by testing different values of the "<strong>chunksize</strong>" argument.</p>
+<p>In the previous section we saw that a <strong>chunksize</strong> of 262,485 resulted in similar performance to the serial case.</p>
+<p>I recommend testing different chunk sizes in order to discover what works well on your specific system, for example, some numbers you could try include:</p>
+<ul><li>100,000</li><li>50,000</li><li>10,000</li><li>5,000</li><li>1,000</li><li>500</li></ul>
+<p>It is common to perform this type of tuning when working with distributed systems and multi-process systems as the specific cost of serializing and transmitting data between workers depends on the hardware and specific data.</p>
+<p>If the tasks involved were long running or sensitive in some way, you could design a test harness with mock tasks.</p>
+<p>We can define a function to test a given chunksize argument that also calculates how long the task takes to complete, including the fixed cost of setting up the process pool.</p>
+<p>The <strong>test_chunksize()</strong> function below implements this, taking the loaded dictionary of words and <strong>chunksize</strong> to test, and reports how long it took to execute the task for the given <strong>chunksize</strong>.</p>
+<pre><code># test a chunksize
+def test_chunksize(words, size):
+    time1 = time()
+    # create the process pool
+    with ProcessPoolExecutor(4) as executor:
+        # create a set of word hashes
+        _ = set(executor.map(hash_word, words, chunksize=size))
+    time2 = time()
+    total = time2 - time1
+    print(f'{size}: {total:.3f} seconds')
+</code></pre>
+<p>We can call this function from our <strong>main()</strong> function with a list of different chunk size values to test, for example:</p>
+</main>
+</body>
+</html>

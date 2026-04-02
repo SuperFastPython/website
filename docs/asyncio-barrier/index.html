@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Barrier in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Barrier in Python</h1>
+<div class="post-meta">February 25, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>An <strong>asyncio barrier</strong> is a synchronization primitive, like a sempahore and a mutex lock.</p>
+<p>It is used to coordinate the behavior of concurrent tasks at one point, on the barrier itself. Once all expected parties arrive at the barrier, the barrier is lifted and all waiting tasks can resume their activity.</p>
+<p>In this tutorial, you will discover <strong>how to use the barrier in asyncio programs</strong>.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>What is a barrier and what role does it play in concurrent programming.</li>
+<li>How to use a barrier to coordinate the behavior of tasks in asyncio programs.</li>
+<li>How to use barriers with a final action and a timeout.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>Need to Coordinate Coroutines</h2>
+<p>In asyncio programs, sometimes we need to coordinate the behavior of multiple coroutines.</p>
+<p>If there is a coordinating task or coroutine, then the controller can wait for all tasks to be done using <strong><a href="../asyncio-gather/">asyncio.gather()</a></strong> or <strong><a href="../asyncio-wait/">asyncio.wait()</a></strong>.</p>
+<p>Nevertheless, there are situations where we don't want to wait for the coroutines to be done, but instead, reach a point of coordination.</p>
+<p>Alternatively, we may need to coordinate the coroutines without a controller that is aware of all coroutines and therefore is not able to gather or wait for them all.</p>
+<p><strong>How can we coordinate the behavior of many coroutines?</strong></p>
+<h2>What is a Barrier</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Barrier_(computer_science)">barrier</a> is a synchronization primitive.</p>
+<p>It is typically defined in terms of threads, although the same mechanism can be used with processes and coroutines.</p>
+<p>It allows multiple threads to wait on the same barrier object instance (e.g. at the same point in code) until a predefined fixed number of threads arrive (e.g. the barrier is full), after which all threads are then notified and released to continue their execution.</p>
+<blockquote>
+<p>A barrier for a group of threads or processes in the source code means any thread/process must stop at this point and cannot proceed until all other threads/processes reach this barrier.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Barrier_(computer_science)">Barrier (computer science), Wikipedia</a>.</cite></blockquote>
+<p>Internally, a barrier maintains a count of the number of threads waiting on the barrier and a configured maximum number of parties (threads) that are expected. Once the expected number of parties reaches the pre-defined maximum, all waiting threads are notified.</p>
+<p>This provides a useful mechanism to coordinate actions between multiple threads.</p>
+<p>You can learn more about a barrier for threads in the tutorial:</p>
+<ul>
+<li><a href="../thread-barrier-in-python/">Threading Barrier in Python</a></li>
+</ul>
+<p>You can learn more about a barrier for processes in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-barrier-in-python/">Multiprocessing Barrier in Python</a></li>
+</ul>
+<p>Now that we know what a barrier is, let's look at how we might use it in asyncio programs.</p>
+<h2>How To Use the Asyncio Barrier</h2>
+<p>Python provides an asyncio barrier via the <strong>asyncio.Barrier</strong> class.</p>
+<p>The asyncio barrier was introduced in Python 3.11 in 2023.</p>
+<blockquote>
+<p>Added the Barrier class to the synchronization primitives in the asyncio library, and the related BrokenBarrierError exception.</p>
+<cite>-- <a href="https://docs.python.org/3/whatsnew/3.11.html">What’s New In Python 3.11</a></cite></blockquote>
+<p>A barrier instance must first be created and configured via the constructor specifying the number of parties (coroutines) that must arrive before the barrier will be lifted.</p>
+<p>For example:</p>
+<pre><code>...
+# create a barrier
+barrier = asyncio.Barrier(10)</code></pre>
+<p>Once configured, the barrier instance can be shared between coroutines and used.</p>
+<blockquote>
+<p>A barrier is a simple synchronization primitive that allows to block until parties number of tasks are waiting on it. Tasks can wait on the wait() method and would be blocked until the specified number of tasks end up waiting on wait(). At that point all of the waiting tasks would unblock simultaneously.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-sync.html">Synchronization Primitives</a></cite></blockquote>
+<p>A coroutine can reach and wait on the barrier via the <strong>wait()</strong> method which must be awaited, for example:</p>
+<pre><code>...
+# wait on all other tasks to complete
+await barrier.wait()</code></pre>
+<p>This will suspend the caller until all parties reach and wait on the barrier.</p>
+<p>The wait function returns an integer indicating the number of parties remaining to arrive at the barrier.</p>
+<p>If a coroutine was the last coroutine to arrive, then the return value will be zero. This is helpful if you want the last coroutine or one coroutine to perform an action after the barrier is released.</p>
+<p>For example:</p>
+<pre><code>...
+# wait on all other tasks to complete
+position = await barrier.wait()
+# perform action if last to leave the barrier
+if position == 0:
+    # perform some action
+    # ...
+</code></pre>
+<p>Callers can also wait on the <strong>asyncio.Barrier</strong> via the async context interface.</p>
+<p>This is helpful if some action needs to be performed after all coroutine reaches the barrier.</p>
+<p>For example:</p>
+<pre><code>...
+# wait on all other tasks to complete
+async with barrier:
+    # perform some action
+    # ...
+</code></pre>
+<p>We can also abort the barrier.</p>
+<p>Aborting the barrier means that all coroutines waiting on the barrier via the <strong>wait()</strong> method will raise an <strong>asyncio.BrokenBarrierError</strong> and the barrier will be put in the broken state.</p>
+<p>This might be helpful if you wish to cancel the coordination effort.</p>
+<pre><code>...
+# abort the barrier
+await barrier.abort()</code></pre>
+<p>A broken barrier cannot be used. Calls to <strong>wait()</strong> will raise a <strong>BrokenBarrierError</strong>.</p>
+<p>A barrier can be fixed and made ready for use again by calling the <strong>reset()</strong> function.</p>
+<p>This might be helpful if you cancel a coordination effort although you wish to retry it again with the same barrier instance.</p>
+<pre><code>...
+# reset a broken barrier
+await barrier.reset()</code></pre>
+<p>Finally, the status of the barrier can be checked via attributes.</p>
+<ul>
+<li><strong>parties</strong>: reports the configured number of parties that must reach the barrier for it to be lifted.</li>
+<li><strong>n_waiting</strong>: reports the current number of coroutines waiting on the barrier.</li>
+<li><strong>broken</strong>: attribute indicates whether the barrier is currently broken or not.</li>
+</ul>
+<p>Now that we know how to use the barrier in Python, let's look at some worked examples.</p>
+<h2>Example of Using an Asyncio Barrier</h2>
+<p>We can explore how to use an <strong>asyncio.Barrier</strong> with a worked example.</p>
+<p>In this example, we will create a suite of coroutines, each required to perform some blocking calculation. We will use a barrier to coordinate all coroutines after they have finished their work and perform some action in the main coroutine. This is a good proxy for the types of coordination we may need to perform with a barrier.</p>
+<p>First, let's define a target task function to execute by each coroutine. The coroutine will take the barrier as an argument as well as a unique identifier for the task.</p>
+<p>The task will generate a random value between 0 and 10, sleep for that many seconds, report the result, then wait on the barrier for all other tasks to perform their computation.</p>
+<p>The <strong>work()</strong> coroutine below implements this.</p>
+<pre><code># coroutine that prepares work and waits on a barrier
+async def work(barrier, number):
+    # generate a unique value
+    value = random() * 10
+    # suspend for a moment to simulate work
+    await asyncio.sleep(value)
+    # report result
+    print(f'Task {number} done, got: {value}, waiting...')
+    # wait on all other tasks to complete
+    await barrier.wait()
+</code></pre>
+<p>Next, in the main coroutine, we can create the barrier.</p>
+<p>We need one party for each task we intend to create, five in this place, as well as an additional party for the main coroutine that will also wait for all coroutines to reach the barrier.</p>
+<pre><code>...
+# create a barrier
+n_tasks = 5
+barrier = asyncio.Barrier(n_tasks + 1)</code></pre>
+<p>Next, we can create and schedule five <strong>work()</strong> tasks to run in the background, providing the barrier to each.</p>
+</main>
+</body>
+</html>

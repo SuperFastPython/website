@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What is Multiprocessing Shared Memory – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>What is Multiprocessing Shared Memory</h1>
+<div class="post-meta">March 28, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can share memory directly between processes in process-based concurrency using classes in the <strong>multiprocessing.shared_memory</strong> module.</p>
+<p>In this tutorial, you will discover <strong>how to use shared memory between processes</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>Sharing Memory Between Processes</h2>
+<p>Python processes do not have shared memory.</p>
+<p>This is unlike threads that are able to read and write the same memory directly.</p>
+<p>Instead, processes must simulate shared memory.</p>
+<p>One approach is to have new processes receive a copy of data from another process. This can be achieved by forking one process into another, allowing the child to receive a copy of all data. Changes in one process are not reflected in another process.</p>
+<p>Another approach is to share data via message passing. A transport object like <strong>Queue</strong> or <strong>Pipe</strong> can be created and shared among processes. Processes can send messages to each other via the transport object allowing each to update their internal state in response.</p>
+<p>The downside of simulating shared memory with message passing is the added computational cost of using inter-process communication to share data. All data shared between processes using this method must be pickled and unpickled, limiting sharing to those objects that can be pickled, and adding the cost of serialization and deserialization for each item of data shared.</p>
+<p>A final approach is to use a manager to host Python objects in one server process. Proxy objects for the hosted objects can then be distributed among multiple processes and used to interact with the single hosted object.</p>
+<p>Shared memory via manages is probably the closest that processes come to true shared memory experienced with threads.</p>
+<p>Since Python 3.8 a new alternative to shared memory was added to Python in the multiprocessing.shared_memory module.</p>
+<h2>Module multiprocessing.shared_memory</h2>
+<p>The <strong>multiprocessing.shared_memory</strong> module provides shared memory for use with processes.</p>
+<blockquote>
+<p>This module provides a class, SharedMemory, for the allocation and management of shared memory to be accessed by one or more processes on a multicore or symmetric multiprocessor (SMP) machine</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>The benefit of shared memory is speed and efficiency.</p>
+<p>No inter-process communication is required. Instead, processes are able to read and write the same shared memory block directly, although within constraints.</p>
+<blockquote>
+<p>Processes are conventionally limited to only have access to their own process memory space but shared memory permits the sharing of data between processes, avoiding the need to instead send messages between processes containing that data. Sharing data directly via memory can provide significant performance benefits compared to sharing data via disk or socket or other communications requiring the serialization/deserialization and copying of data.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>The module provides three classes to support shared memory, they are:</p>
+<ul>
+<li>multiprocessing.shared_memory.SharedMemory</li>
+<li>multiprocessing.shared_memory.ShareableList</li>
+<li>multiprocessing.managers.SharedMemoryManager</li>
+</ul>
+<p>The <strong>SharedMemory</strong> class is the core class for providing shared memory.</p>
+<p>It allows a shared memory block to be created, named, and attached to. It provides a "<strong>buf</strong>" attribute to read and write data in an array-like structure and can be closed and destroyed.</p>
+<p>A <strong>ShareableList</strong> has an internal <strong>SharedMemory</strong>, although it allows the memory to be used like a fixed-sized Python list, storing any primitive data type.</p>
+<p>The <strong>SharedMemoryManager</strong> is a <strong>multiprocessing.Manager</strong> that allows multiple <strong>SharedMemory</strong> and <strong>ShareableList</strong> to be created via the manager then released as a group when the manager is shut down. The context manager interface of the <strong>SharedMemoryManager</strong> helps to ensure the memory is always released, regardless of the success or failure of the program.</p>
+<p>Now that we know about the support for shared memory, let's look at the life cycle of a shared memory block.</p>
+<h2>Shared Memory Life-Cycle</h2>
+<p>The life-cycle of shared memory has 4 steps, they are:</p>
+<ul>
+<li>1. Create shared memory.
+<ul>
+<li>1a. Attach shared memory.</li>
+</ul>
+</li>
+<li>2. Read/Write shared memory.</li>
+<li>3. Close shared memory.</li>
+<li>4. Destroy shared memory.</li>
+</ul>
+<p>Let's take a closer look at each step in the life cycle.</p>
+<h3>Create Shared Memory</h3>
+<p>Creating shared memory means creating a <strong>SharedMemory</strong> or <strong>ShareableList</strong>.</p>
+<p>It allocates the memory and makes it available to Python processes.</p>
+<h3>Attach Shared Memory</h3>
+<p>Shared memory objects do not need to be shared directly between processes, instead, processes can attach to shared memory.</p>
+<p>Attaching to shared memory allows any Python process to gain access to a shared memory block by name.</p>
+<p>This is just like creating the block. It results in a <strong>SharedMemory</strong> or <strong>ShareableList</strong> object that can then be used as needed.</p>
+<h3>Read/Write Shared Memory</h3>
+<p>Once a shared memory object has been created or acquired, it can be used to store data and access data.</p>
+<p>Data can be read and written directly, which is very efficient.</p>
+<h3>Close Shared Memory</h3>
+<p>Once a process is finished with a shared memory object, it should close it.</p>
+<p>This signals to the Python interpreter that it no longer requires access to the resource.</p>
+<h3>Destroy Shared Memory</h3>
+<p>When all processes have closed the shared memory, the memory can be released.</p>
+<p>This destroys the shared memory and makes it unavailable in the program.</p>
+<p>Only one process should release the memory, typically the process that created it.</p>
+<p>Now that we know the life cycle of shared memory, let's look at how to use each class in the multiprocessing.shared_memory module.</p>
+<h2>How to Use SharedMemory</h2>
+<p>A <strong>SharedMemory</strong> object can be created in a process by calling the constructor and specifying a "<strong>size</strong>" in bytes and the "<strong>create</strong>" argument to True.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared memory
+shared_mem = SharedMemory(size=1024, create=True)</code></pre>
+<p>A shared memory object can be assigned a meaningful name via the "<strong>name</strong>" attribute to the constructor.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shared memory with a name
+shared_mem = SharedMemory(name='MyMemory', size=1024, create=True)</code></pre>
+<p>Another process can access a shared memory via its name. This is called attaching to shared memory.</p>
+<p>This can be achieved by specifying the name of the shared memory that has already been created and setting the "create" argument to False (the default).</p>
+<p>For example:</p>
+<pre><code>...
+# attach to a shared memory
+shared_mem = SharedMemory(name='MyMemory', create=False)</code></pre>
+<p>Once created data can be stored in the shared memory via the "<strong>buf</strong>" attribute that acts like an array of bytes.</p>
+<p>For example:</p>
+<pre><code>...
+# write data to shared memory
+shared_mem.buf[0] = 1</code></pre>
+<p>Data can be read from the "<strong>buf</strong>" attribute in the same manner.</p>
+<p>For example:</p>
+<pre><code>...
+# read data from shared memory
+data = shared_mem[0]</code></pre>
+<p>Once a process is finished using the shared memory, it can be closed to signal that access is no longer required.</p>
+<pre><code>...
+# close access to the shared memory
+shared_mem.close()</code></pre>
+<p>All processes should close the shared memory once they are finished with it.</p>
+<blockquote>
+<p>Closes access to the shared memory from this instance. In order to ensure proper cleanup of resources, all instances should call close() once the instance is no longer needed. Note that calling close() does not cause the shared memory block itself to be destroyed.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>Once all processes are finished with the shared memory, it must be explicitly released.</p>
+<p>This can be achieved by calling the <strong>unklink()</strong> method.</p>
+<blockquote>
+<p>Requests that the underlying shared memory block be destroyed. In order to ensure proper cleanup of resources, unlink() should be called once (and only once) across all processes which have need for the shared memory block.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>Ideally, the process that created the shared memory would also release it.</p>
+<p>For example:</p>
+<pre><code>...
+# destroy the shared memory
+shared_mem.unlink()</code></pre>
+<p>You can learn more about how to use <strong>SharedMemory</strong> in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-sharedmemory/">How to Use SharedMemory in Python</a></li>
+</ul>
+<h2>How to Use ShareableList</h2>
+<p>A <strong>ShareableList</strong> can be created by calling the class constructor and specifying a sequence.</p>
+<p>This initial sequence, like a list or a range, will define both the size of the <strong>ShareableList</strong> and the initial values.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shareable list
+sl = ShareableList([0, 0, 0, 0, 0])</code></pre>
+<p>This name can be used to attach directly to the shareable list from another process.</p>
+<p>This can be achieved by creating a new <strong>ShareableList</strong> and only specifying the name of the existing <strong>ShareableList</strong>, perhaps created in another process.</p>
+<p>For example:</p>
+<pre><code>...
+# attach to a shareable list by name
+sl = ShareableList(name=’MyList))</code></pre>
+<p>Unlike a shared <strong>ctype</strong> <strong>multiprocessing.Array</strong>, the <strong>ShareableList</strong> can hold a variety of types.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shareable list with different types
+sl = ShareableList([0, 1.0, 'test'])</code></pre>
+<p>Once created, the list can be shared directly with multiple processes.</p>
+<p>Values in the list can be accessed and changed like a regular list using the bracket syntax.</p>
+<p>For example:</p>
+<pre><code>...
+# report a value
+print(sl[0])
+# change a value
+sl[1] = 1000</code></pre>
+<p>The <strong>ShareableList</strong> provides methods like <strong>count()</strong> for getting the number of occurrences of a given value and <strong>index()</strong> to return the first index of a value.</p>
+<p>Once we are finished with the <strong>ShareableList</strong>, the shared memory block must be explicitly released.</p>
+<p>This can be achieved by accessing the "<strong>shm</strong>" attribute of the <strong>ShareableList</strong> and calling the <strong>close()</strong> method followed by the <strong>unlink()</strong> method.</p>
+<p>The <strong>close()</strong> method signals that no further access is required to the memory. The <strong>unlink()</strong> method signals that the shared memory block can be destroyed.</p>
+<p>For example:</p>
+<pre><code>...
+# close the shared memory
+sl.shm.close()
+# destroy the shared memory
+sl.shm.unlink()</code></pre>
+<p>Failing to shutdown the <strong>ShareableList</strong> in this way will result in a runtime warning.</p>
+<p>You can learn more about how to use a <strong>ShareableList</strong> in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-sharablelist/">How to use a ShareableList in Python</a></li>
+</ul>
+<h2>How to Use SharedMemoryManager</h2>
+<p>The <strong>SharedMemoryManager</strong> class can be used by creating an example, starting it, using it to create <strong>SharedMemory</strong> and <strong>ShareableList</strong> objects, then shutting it down in order to release all memory.</p>
+<p>Firstly, an instance of the <strong>SharedMemoryManager</strong> class must be created.</p>
+<p>For example:</p>
+<pre><code>...
+# create a memory manager
+manager = SharedMemoryManager()</code></pre>
+<p>Next, the manager must be started.</p>
+<p>This can be achieved by calling the <strong>start()</strong> method.</p>
+<blockquote>
+<p>A call to start() on a SharedMemoryManager instance causes a new process to be started. This new process’s sole purpose is to manage the life cycle of all shared memory blocks created through it.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>This may create internal threads or processes to manage the memory blocks we will create and use in our program.</p>
+<p>For example:</p>
+<pre><code>...
+# start the memory manager
+manager.start()</code></pre>
+<p>Once started, we can use the memory manager to create blocks of shared memory.</p>
+<p>For example:</p>
+<pre><code>...
+# create a shareable list
+shared_list = manager.ShareableList([1, 2, 3])
+# create a memory block
+shared_mem = manager.SharedMemory(1024)</code></pre>
+<p>We cannot specify a name when creating <strong>ShareableList</strong> and <strong>SharedMemory</strong> objects via the manager.</p>
+<p>This means we cannot use the manager to attach to a memory block.</p>
+<p>We must also pass around the objects to child processes directly, such as via arguments. We cannot attach to them via name as we could if we managed the objects manually.</p>
+<p>Once we are finished, we can release all shared memory managed by the manager.</p>
+<p>This can be achieved by calling the <strong>shutdown()</strong> method.</p>
+<blockquote>
+<p>To trigger the release of all shared memory blocks managed by that process, call shutdown() on the instance. This triggers a SharedMemory.unlink() call on all of the SharedMemory objects managed by that process and then stops the process itself.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>This will both close and unlink all shared memory that we have created with the manager.</p>
+<pre><code>...
+# release all shared memory
+manager.shutdown()</code></pre>
+<p>We can manage the startup and shutdown process of the manager using the context manager interface.</p>
+<blockquote>
+<p>When using a SharedMemoryManager in a with statement, the shared memory blocks created using that manager are all released when the with statement's code block finishes execution.</p>
+<cite>-- <a href="https://docs.python.org/3/library/multiprocessing.shared_memory.html">multiprocessing.shared_memory — Shared memory for direct access across processes</a></cite></blockquote>
+<p>This ensures that the <strong>shutdown()</strong> method is always called automatically once the block of the context manager is exited.</p>
+<p>For example:</p>
+<pre><code>...
+# create and start the manager
+with SharedMemoryManager() as manager:
+	# create a shareable list
+	shared_list = manager.ShareableList([1, 2, 3])
+	# ...
+# shutdown automatically.
+</code></pre>
+<p>You can learn more about how to use the <strong>SharedMemoryManager</strong> in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-sharedmemorymanager/">How to Use the SharedMemoryManager in Python</a></li>
+</ul>
+<h2>Takeaways</h2>
+<p>You now know how to use shared memory between processes in Python.</p>
+</main>
+</body>
+</html>

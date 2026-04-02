@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Use a Spinlock in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to Use a Spinlock in Python</h1>
+<div class="post-meta">March 9, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can <strong>create a spinlock</strong> by using a busy wait loop when attempting to acquire a <strong>threading.Lock</strong>.</p>
+<p>In this tutorial you will discover how to use a spinlock in Python.</p>
+<p>Let's get started.</p>
+<h2>Need for a Spinlock</h2>
+<p>A thread is a <strong>thread of execution</strong> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guude:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrency programming, we may want to perform actions while waiting for a lock to become available. Waiting for a mutex lock in a loop is called a spinlock.</p>
+<p><strong>What is a spinlock and how can we make use of it in Python?</strong></p>
+<h2>What is a Spinlock</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Spinlock">spinlock</a> is a busy wait for a mutual exclusion (mutex) lock.</p>
+<p><a href="../thread-busy-waiting-in-python/">Busy waiting</a>, also called spinning, refers to a thread that repeatedly checks a condition.</p>
+<p>It is referred to as "busy" or "spinning" because the thread continues to execute the same code, such as an if-statement within a while-loop, achieving a wait by executing code (e.g. keeping busy).</p>
+<ul><li><strong>Busy Wait</strong>: When a thread "waits" for a condition by repeatedly checking for the condition in a loop.</li></ul>
+<p>Busy waiting is typically undesirable in concurrent programming as the tight loop of checking a condition consumes CPU cycles unnecessarily, occupying a CPU core. As such, it is sometimes referred to as an anti-pattern of concurrent programming, a pattern to be avoided.</p>
+<p>If you are new to busy waiting, you can learn more here:</p>
+<ul><li><a href="../thread-busy-waiting-in-python/">How to Use Busy Waiting in Python</a></li></ul>
+<p>Nevertheless, a busy wait can be used to address race conditions in concurrency programming.</p>
+<p>A spinlock is a type of lock where a thread must perform a busy wait if it is already locked.</p>
+<ul><li><strong>Spinlock</strong>: Using a busy wait loop to acquire a lock.</li></ul>
+<p>Spinlocks are typically implemented at a low-level, such as in the underlying operating system. Nevertheless, we can implement a spinlock at a high-level in our program as a concurrency primitive.</p>
+<p>A spinlock may be a desirable concurrency primitive that gives fine grained control over both how long a thread may wait for a lock (e.g. loop iterations or wait time) and what the thread is able to do while waiting for the lock.</p>
+<p>This latter point of performing actions while waiting for a lock is the most desirable property of a spinlock, as this might include a suite of application specific tasks such as checking application state or logging status.</p>
+<p>Now that we know what a spinlock is, let's look at how we can create one in Python.</p>
+<h2>How to Create a Spinlock</h2>
+<p>We can create a spinlock using a <strong>threading.Lock</strong> in Python.</p>
+<p>This can be achieved by using a mutex lock and having a thread perform a busy wait look in order to acquire it.</p>
+<p>The busy wait loop in a spinlock may look as follows:</p>
+<pre><code>...
+# example of a busy wait loop for a spinlock
+while True:
+    # try and get the lock
+    acquired = lock.acquire(blocking=False)
+    # check if we got the lock
+    if acquired:
+        # stop waiting
+        break
+</code></pre>
+<p>We can see that the busy loop will loop forever until the lock is acquired.</p>
+<p>Each iteration of the loop, we attempt to acquire the lock without blocking. If acquired, the loop will then exit.</p>
+<p>Later, the lock must be released.</p>
+<p>If the critical section protected by the lock is short enough, it can be called directly from within the busy loop, after the lock is acquired.</p>
+<p>We can contrast the above busy wait loop of the spinlock with the alternate of simply blocking until the lock becomes available.</p>
+<pre><code>...
+# block until the lock can be acquired
+lock.acquire()
+</code></pre>
+<p>In this case, the waiting thread is unable to perform any other action while waiting on the lock.</p>
+<p>A limitation of the spinlock is the increased computational burden of executing a tight loop repeatedly.</p>
+<p>The computational burden of the busy wait loop can be lessened by adding a blocking sleep, e.g. a call to <strong>time.sleep()</strong> for a fraction of a second.</p>
+<p>For example:</p>
+<pre><code>...
+# example of a busy wait loop for a spinlock with a sleep
+while True:
+    # try and get the lock
+    acquired = lock.acquire(blocking=False)
+    # check if we got the lock
+    if acquired:
+        # stop waiting
+        break
+    else:
+    	# sleep for a moment
+    	sleep(0.1)</code></pre>
+<p>Alternatively, the attempt to acquire the lock each loop iteration could use a short blocking wait with a timeout of a fraction of a second. The <strong>acquire()</strong> function on the <strong>threading.Lock</strong> takes a "<strong>timeout</strong>" argument that could be set to 100 milliseconds (e.g. 0.1 seconds).</p>
+<pre><code>...
+# example of a busy wait loop for a spinlock with a wait
+while True:
+    # try and get the lock with a timeout
+    acquired = lock.acquire(timeout=0.1)
+    # check if we got the lock
+    if acquired:
+        # stop waiting
+        break
+</code></pre>
+<p>Both approaches would reduce the number of iterations of the busy loop, causing most of the execution time spent sleeping or blocking. This would allow the operating system to context switch the thread and perhaps free-up a CPU core.</p>
+<p>The downside of adding a sleep or a blocking wait, is that it may introduce a delay between the locking becoming available and the thread noticing this fact and acquiring it. The tolerance for such a delay will be application dependent.</p>
+<p>A further improvement would be to give-up attempting to acquire the lock after a fixed time limit or number of iterations of the loop.</p>
+<p>Now that we know how to implement a spinlock in Python, let's look at some worked examples.</p>
+<h2>Example of a Spinlock</h2>
+<p>We can explore how to create a spinlock to acquire a mutex lock.</p>
+<p>In this example, we will set up the situation where the main thread creates a lock then creates and starts a new thread that attempts to acquire the lock using a spinlock. The new thread will introduce a delay before attempting to acquire the lock. In this delay, the main thread itself will acquire and hold the lock, causing the new thread to execute a busy wait loop of the spinlock for many iterations before finally acquiring the lock.</p>
+<p>First, we must define a function that implements the busy wait loop to implement the spinlock.</p>
+<p>We will name the function <strong>task()</strong> and it will take the instance of the shared mutex lock as an argument.</p>
+<pre><code># target function
+def task(lock):
+	# ...
+</code></pre>
+<p>The function must be delayed from executing in order to give the main thread a chance to acquire the lock first and allow us to demonstrate the spinlock in action.</p>
+<pre><code>...
+# block for a moment
+sleep(0.5)</code></pre>
+<p>Next, we can implement the busy wait loop that will loop forever.</p>
+<pre><code># busy wait to get the lock
+while True:
+	# ...
+</code></pre>
+<p>Within an iteration, the thread must first attempt to acquire the lock without blocking.</p>
+<pre><code>...
+# try and get the lock
+print('.thread trying to acquire the lock')
+acquired = lock.acquire(blocking=False)</code></pre>
+<p>If the lock was acquired, we can then execute our critical section, release the lock again and then break the busy loop.</p>
+<p>In this case, our critical section will be simply to report a message.</p>
+<pre><code>...
+# check if we got the lock
+if acquired:
+    # report a message
+    print("Thread got the lock...finally")
+    # release the lock
+    lock.release()
+    # stop waiting
+    break
+</code></pre>
+<p>Tying this together, the complete <strong>task()</strong> function with the spinlock busy wait loop is listed below.</p>
+<pre><code># target function
+def task(lock):
+    # block for a moment
+    sleep(0.5)
+    # busy wait to get the lock
+    while True:
+        # try and get the lock
+        print('.thread trying to acquire the lock')
+        acquired = lock.acquire(blocking=False)
+        # check if we got the lock
+        if acquired:
+            # report a message
+            print("Thread got the lock...finally")
+            # release the lock
+            lock.release()
+            # stop waiting
+            break
+</code></pre>
+<p>In the main thread, we can first create an instance of the shared <strong>threading.Lock</strong> instance.</p>
+<pre><code>...
+# create the mutex lock
+lock = Lock()</code></pre>
+<p>We can then create a new <strong>threading.Thread</strong> instance and configure it to execute our <strong>task()</strong> function with the single lock argument via the "<strong>target</strong>" and "<strong>args</strong>" arguments to the class constructor.</p>
+<pre><code>...
+# create a new thread
+thread = Thread(target=task, args=(lock,))</code></pre>
+<p>The new thread can then be started.</p>
+<pre><code>...
+# start the new thread
+thread.start()</code></pre>
+<p>Finally, the main thread can acquire the lock and hold it for an extended period. This will force the new thread to wait via the busy wait loop for a moment before the lock is made available.</p>
+<pre><code>...
+# acquire the lock
+print('Main acquiring lock')
+with lock:
+    # block for a moment
+    sleep(5)
+    print('Main all done')
+</code></pre>
+<p>Tying this together, the complete example of a spinlock is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a spinlock
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# target function
+def task(lock):
+    # block for a moment
+    sleep(0.5)
+    # busy wait to get the lock
+    while True:
+        # try and get the lock
+        print('.thread trying to acquire the lock')
+        acquired = lock.acquire(blocking=False)
+        # check if we got the lock
+        if acquired:
+            # report a message
+            print("Thread got the lock...finally")
+            # release the lock
+            lock.release()
+            # stop waiting
+            break
+
+# create the mutex lock
+lock = Lock()
+# create a new thread
+thread = Thread(target=task, args=(lock,))
+# start the new thread
+thread.start()
+# acquire the lock
+print('Main acquiring lock')
+with lock:
+    # block for a moment
+    sleep(5)
+    print('Main all done')
+</code></pre>
+<p>Running the example first creates the lock then the new thread which is started.</p>
+<p>The new thread starts executing and blocks for a moment with a sleep.</p>
+<p>The main thread acquires the lock and holds it for five seconds. Meanwhile, the new thread begins executing the busy wait loop of the spin lock and attempts to acquire the lock each iteration.</p>
+<p>The main thread releases the lock. The new thread notices that the lock is available, acquires it, executes its critical section printing a message, then releases the lock again breaking the busy wait loop.</p>
+<p>The computational burden of the spinlock is made clear by five seconds worth of the message "<em>.thread trying to acquire the lock</em>" that is printed to the terminal, once per iteration of the busy wait loop.</p>
+<p>A truncated version of the output is listed below.</p>
+<pre><code>Main acquiring lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+...
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+Main all done
+.thread trying to acquire the lock
+Thread got the lock...finally</code></pre>
+<p>Next, let's explore how we might reduce the computation burden of the spinlock by introducing sleep.</p>
+<h2>Example of a Spinlock With a Sleep</h2>
+<p>We can explore how to reduce the computational burden of the spinlock by adding a sleep.</p>
+<p>This can be achieved by making a call to <strong>time.sleep()</strong> each iteration of the busy wait loop when we know the lock has not been acquired.</p>
+<p>The sleep time can be chosen based on the specifics of the application and the trade-off between and how large a delay can be tolerated between the lock being available and the thread acquiring it versus how much CPU effort should be expended in the loop.</p>
+<p>We will sleep for 500 milliseconds which will reduce the number of iterations of the loop to about 2 hertz, e.g. two iterations of the loop per second.</p>
+<pre><code>...
+# check if we got the lock
+if acquired:
+    # report a message
+    print("Thread got the lock...finally")
+    # release the lock
+    lock.release()
+    # stop waiting
+    break
+else:
+    sleep(0.5)
+</code></pre>
+<p>The updated version of the <strong>task()</strong> function with this change is listed below.</p>
+<pre><code># target function
+def task(lock):
+    # block for a moment
+    sleep(0.5)
+    # busy wait to get the lock
+    while True:
+        # try and get the lock
+        print('.thread trying to acquire the lock')
+        acquired = lock.acquire(blocking=False)
+        # check if we got the lock
+        if acquired:
+            # report a message
+            print("Thread got the lock...finally")
+            # release the lock
+            lock.release()
+            # stop waiting
+            break
+        else:
+            sleep(0.5)
+</code></pre>
+<p>Tying this together, the complete example of a spinlock with a sleep is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a spin lock with a sleep
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# target function
+def task(lock):
+    # block for a moment
+    sleep(0.5)
+    # busy wait to get the lock
+    while True:
+        # try and get the lock
+        print('.thread trying to acquire the lock')
+        acquired = lock.acquire(blocking=False)
+        # check if we got the lock
+        if acquired:
+            # report a message
+            print("Thread got the lock...finally")
+            # release the lock
+            lock.release()
+            # stop waiting
+            break
+        else:
+            sleep(0.5)
+
+# create the mutex lock
+lock = Lock()
+# create a new thread
+thread = Thread(target=task, args=(lock,))
+# start the new thread
+thread.start()
+# acquire the lock
+print('Main acquiring lock')
+with lock:
+    # block for a moment
+    sleep(5)
+    print('Main all done')
+</code></pre>
+<p>Running the example creates the lock, then creates and starts the new thread as before.</p>
+<p>By design, the main thread acquires the lock which forces the new thread to execute the busy wait loop of the spinlock.</p>
+<p>In this case, the computational burden of the busy wait loop is lessened, executing only two iterations per second, spending most of its time blocked in a call to sleep.</p>
+<p>After 10 iterations of the loop, the lock is made available and acquired by the new thread, executes its critical section and then terminates.</p>
+<pre><code>Main acquiring lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+Main all done
+.thread trying to acquire the lock
+Thread got the lock...finally</code></pre>
+<p>Next, let's take a look at how we can introduce a blocking wait into the busy wait loop of the spinlock.</p>
+<h2>Example of a Spinlock With a Blocking Wait</h2>
+<p>We can also reduce the computational burden of the spinlock by using a blocking wait.</p>
+<p>This can be achieved by configuring the attempt to acquire the lock each iteration to block for a fraction of a second.</p>
+<pre><code>...
+# try and get the lock
+acquired = lock.acquire(blocking=True, timeout=0.5)</code></pre>
+<p>The benefit of using a blocking wait in the lock itself, is that there will not be a delay between the lock being available and the new thread acquiring it as there is with using a sleep.</p>
+<p>This means the loop is both more computationally efficient and responsive, while giving fine grained control over how often to execute the busy wait loop in order to perform other required tasks while waiting.</p>
+<p>The updated version of the task function with this change is listed below.</p>
+<pre><code># target function
+def task(lock):
+    # block for a moment
+    sleep(0.5)
+    # busy wait to get the lock
+    while True:
+        # try and get the lock
+        print('.thread trying to acquire the lock')
+        acquired = lock.acquire(blocking=True, timeout=0.5)
+        # check if we got the lock
+        if acquired:
+            # report a message
+            print("Thread got the lock...finally")
+            # release the lock
+            lock.release()
+            # stop waiting
+            break
+</code></pre>
+<p>Tying this together, the complete example of a spinlock with a blocking wait is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of a spin lock with a blocking wait
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# target function
+def task(lock):
+    # block for a moment
+    sleep(0.5)
+    # busy wait to get the lock
+    while True:
+        # try and get the lock
+        print('.thread trying to acquire the lock')
+        acquired = lock.acquire(blocking=True, timeout=0.5)
+        # check if we got the lock
+        if acquired:
+            # report a message
+            print("Thread got the lock...finally")
+            # release the lock
+            lock.release()
+            # stop waiting
+            break
+
+# create the mutex lock
+lock = Lock()
+# create a new thread
+thread = Thread(target=task, args=(lock,))
+# start the new thread
+thread.start()
+# acquire the lock
+print('Main acquiring lock')
+with lock:
+    # block for a moment
+    sleep(5)
+    print('Main all done')
+</code></pre>
+<p>Running the example creates the lock, and starts the new thread.</p>
+<p>The main thread acquires the lock, forcing the new thread to execute its busy wait loop.</p>
+<p>The new thread executes the loop two times per second much like the previous sleep example, although blocks on the lock itself. This means that most of the busy wait loop time is spent waiting on the lock, which once released will notify the waiting thread so it can acquire it.</p>
+<p>The main thread releases the lock, the new thread acquires it and executes its critical section.</p>
+<pre><code>Main acquiring lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+.thread trying to acquire the lock
+Main all done
+Thread got the lock...finally</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to use a spinlock in Python.</p>
+</main>
+</body>
+</html>

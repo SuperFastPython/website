@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Benchmark Helper Coroutine – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Benchmark Helper Coroutine</h1>
+<div class="post-meta">November 5, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Benchmarking</a></div>
+
+<p>You can develop a <strong>helper coroutine</strong> to record and report the overall execution time of coroutines and tasks in asyncio programs.</p>
+<p>The helper coroutine can be implemented using a try-finally block so that it is still able to report the overall benchmark execution time even if the target task fails with an exception or is canceled.</p>
+<p>In this tutorial, you will discover how to develop a helper coroutine to <strong>benchmark asyncio tasks</strong> and coroutines.</p>
+<p>Let's get started.</p>
+<h2>Help to Benchmark Asyncio Coroutines and Tasks</h2>
+<p>We can benchmark Python code using the <a href="https://docs.python.org/3/library/time.html"><strong>time</strong> module</a>.</p>
+<p>The <a href="https://docs.python.org/3/library/time.html#time.perf_counter"><strong>time.perf_counter()</strong> function</a> will return a value from a high-performance counter.</p>
+<blockquote>
+<p>Return the value (in fractional seconds) of a performance counter, i.e. a clock with the highest available resolution to measure a short duration.</p>
+<cite>-- <a href="https://docs.python.org/3/library/time.html">time — Time access and conversions</a></cite></blockquote>
+<p>The difference between the two calls to the <strong>time.perf_counter()</strong> function can provide a high-precision estimate of the execution time of a block of code.</p>
+<p>Unlike the <strong>time.time()</strong> function, the <strong>time.perf_counter()</strong> function is not subject to updates, such as daylight saving and synchronizing the system clock with a time server. This makes the <strong>time.perf_counter() function is </strong>a reliable approach to benchmarking Python code.</p>
+<p>We can call the <strong>time.perf_counter()</strong> function at the beginning of the code we wish to benchmark, and again at the end of the code we wish to benchmark.</p>
+<p>For example:</p>
+<pre><code>...
+# record start time
+time_start = time.perf_counter()
+# call benchmark code
+task()
+# record end time
+time_end = time.perf_counter()</code></pre>
+<p>The difference between the start and end time is the total duration of the program in seconds.</p>
+<p>For example:</p>
+<pre><code>...
+# calculate the duration
+time_duration = time_end - time_start
+# report the duration
+print(f'Took {time_duration:.3f} seconds')</code></pre>
+<p>You can learn more about benchmarking Python code with the <strong>time.perf_counter()</strong> function in the tutorial:</p>
+<ul>
+<li><a href="../benchmark-time-perf-counter/">Benchmark Python with time.perf_counter()</a></li>
+</ul>
+<p>This approach to benchmarking can be used to benchmark asyncio programs that await coroutines and tasks.</p>
+<p><strong>How can we hide all of this code so that we can benchmark with a simple interface?</strong></p>
+<p>Can we develop a custom coroutine that will benchmark our code automatically?</p>
+<h2>How to Develop a Benchmark Coroutine for Asyncio</h2>
+<p>We can develop a helper coroutine to automatically benchmark our Python code.</p>
+<p>Our coroutine can take an awaitable to run. This could be a created coroutine object or an instance of an <strong>asyncio.Task</strong>.</p>
+<p>For example:</p>
+<pre><code># benchmark coroutine
+async def benchmark(awaitable):
+	# ...
+</code></pre>
+<p>We want our benchmark() to be a coroutine so that we can await it and the target awaitable will execute.</p>
+<p>Recall that when we call a coroutine we are in fact creating an instance of a coroutine object that is an awaitable type that can be awaited via the <a href="../async-await-python/"><strong>await</strong> expression</a>.</p>
+<p>You can learn more about coroutines in the tutorial:</p>
+<ul>
+<li><a href="../python-coroutine/">What is a Coroutine in Python</a></li>
+</ul>
+<p>We don't need to provide any arguments to the target, we can assume that the awaitable has been created and is provided ready to be executed.</p>
+<p>Our coroutine can then record the start time, await target awaitable, record the end time, and report the overall duration.</p>
+<p>Importantly, we need to handle the case that the target is canceled for some reason, or perhaps terminated due to an exception.</p>
+<p>Recall that a task can be canceled at any time, even by the event loop when it is shut down.</p>
+<p>We can handle this case by awaiting the target awaitable within a try-finally block and recording and reporting the duration in the finally block.</p>
+<p>For example:</p>
+<pre><code>...
+# record start time
+time_start = perf_counter()
+try:
+    # await the target
+    await awaitable
+finally:
+    # record end time
+    time_end = perf_counter()
+    # calculate the duration
+    time_duration = time_end - time_start
+    # report the duration
+    print(f'Took {time_duration:.3f} seconds')
+</code></pre>
+<p>Tying this together with a helper coroutine for benchmarking arbitrary asyncio tasks and coroutines is listed below.</p>
+<pre><code># benchmark coroutine
+async def benchmark(awaitable):
+    # record start time
+    time_start = perf_counter()
+    try:
+        # await the target
+        await awaitable
+    finally:
+        # record end time
+        time_end = perf_counter()
+        # calculate the duration
+        time_duration = time_end - time_start
+        # report the duration
+        print(f'Took {time_duration:.3f} seconds')
+</code></pre>
+<p>Using this coroutine requires that we import the <strong>time.perf_counter()</strong> function.</p>
+<pre><code>from time import perf_counter</code></pre>
+<p>To benchmark the coroutine we can create a coroutine and pass it as an argument then await the <strong>benchmark()</strong> coroutine directly.</p>
+<p>For example:</p>
+<pre><code>...
+# benchmark a coroutine
+await benchmark(work())</code></pre>
+<p>To benchmark an <strong>asyncio.Task</strong>, we can create the task directly or via a <strong>TaskGroup</strong> then pass it to the <strong>benchmark()</strong> coroutine and await it.</p>
+<p>For example:</p>
+<pre><code>...
+# benchmark a task
+await benchmark(task)</code></pre>
+<p>Now that we know how to develop a helper benchmark coroutine, let's look at some examples.</p>
+<h2>Example of Benchmarking a Coroutine</h2>
+<p>We can explore an example of benchmarking the execution time of a coroutine using our helper.</p>
+<p>In this case, we will define a coroutine that takes a long time performing a CPU-bound task. We will then execute this task via our <strong>benchmark()</strong> coroutine developed above and report the overall execution time.</p>
+<p>Firstly, we can define a coroutine that runs a long time. Our task will prepare a list of 100 million squared integers.</p>
+<p>The <strong>work()</strong> coroutine below implements this.</p>
+</main>
+</body>
+</html>

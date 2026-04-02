@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parallel NumPy Vector Math with Threads – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Parallel NumPy Vector Math with Threads</h1>
+<div class="post-meta">May 18, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can use threads to apply a math function to each item in a numpy vector.</p>
+<p>Most numpy math functions execute C-code and release the Global Interpreter Lock (GIL). This means they can be executed in parallel using Python threads, offering some speed-up.</p>
+<p>In this tutorial, you will discover how to parallelize numpy math functions on vectors using threads.</p>
+<p>Let's get started.</p>
+<h2>Need to Apply Function to NumPy Vector in Parallel</h2>
+<p>Consider the situation where you have a vector of floating point values represented as a numpy array.</p>
+<p>We then need to apply a mathematical operation to each item in the vector to produce a new or transformed vector.</p>
+<p>The mathematical operation could be something complex, but it may also be something simple such as a <strong>numpy.log()</strong>, <strong>numpy.sin()</strong>, or a <strong>numpy.exp()</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# apply math function to vector to create transformed vector
+result = numpy.exp(data)</code></pre>
+<p>If we have a very large vector, such as 10 million, 100 million or billions of items, can we apply the math function on the vector in parallel?</p>
+<h2>How to Do NumPy Vector Math in Parallel with Threads</h2>
+<p>NumPy math functions like <strong>numpy.exp()</strong> are typically implemented in C code and called from Python.</p>
+<p>You can see a long list of them here:</p>
+<ul>
+<li><a href="https://numpy.org/doc/stable/reference/routines.math.html">Numpy Mathematical functions</a></li>
+</ul>
+<p>Similarly, we may call a few of these functions in a sequence in order to perform a custom transform.</p>
+<p>By default, these operations are not implemented to support parallelism, unlike other numpy functions that call down into the <a href="../what-is-blas-and-lapack-in-numpy/">BLAS or LAPACK library</a>, such as <strong>numpy.dot()</strong> and <strong>numpy.linalg.svd()</strong>.</p>
+<p>As such, if we want to perform math operations on a large vector in parallel, we must implement it ourselves.</p>
+<p>There are many ways we can implement this.</p>
+<p>In this tutorial, let's look at a less common approach that few Python developers will reach for when parallelizing code: <strong><a href="../threading-in-python/">threading</a></strong>.</p>
+<p>The Python interpreter is not thread-safe. This means Python will only allow one Python thread to run at a time. In turn, threads cannot be used for parallelism in Python, in most cases.</p>
+<p>One of the exceptions is when Python calls a C-library and explicitly releases the global interpreter lock (GIL), allowing other threads to run.</p>
+<p>Most numpy functions are implemented in C and will release this lock.</p>
+<p>This means that we can use threads to execute numpy math functions on arrays in parallel.</p>
+<blockquote>
+<p>The exceptions are few but important: while a thread is waiting for IO (for you to type something, say, or for something to come in the network) python releases the GIL so other threads can run. And, more importantly for us, while numpy is doing an array operation, python also releases the GIL.</p>
+<cite>-- <a href="https://scipy-cookbook.readthedocs.io/items/ParallelProgramming.html">Parallel Programming with numpy and scipy</a></cite></blockquote>
+<p>You can learn more about numpy releasing the GIL in the tutorial:</p>
+<ul>
+<li><a href="../numpy-vs-gil/">NumPy vs the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<p>Python provides the <a href="../threadpool-python/"><strong>multiprocessing.pool.ThreadPool</strong> class</a> that we can use to create a pool of worker threads to execute arbitrary tasks, such as apply a numpy function to an array.</p>
+<p>For example, we create a <strong>ThreadPool</strong> and specify the number of workers to create, then call the <strong>map()</strong> method in order to apply a numpy math function to an iterable of vectors.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPool(4) as pool:
+    # apply math function to a list of vectors
+    result_list = pool.map(exp, vectors)
+</code></pre>
+<p>If you are new to the <strong>ThreadPool</strong> class, you can learn more in the guide:</p>
+<ul>
+<li><a href="../threadpool-python/">Python ThreadPool: The Complete Guide</a></li>
+</ul>
+<p>If we have a very large vector with millions or billions of items, we can split the vector into smaller pieces, apply the math function to each in parallel, then stitch the results back together.</p>
+<p>The <strong>numpy.split()</strong> function can be used to split a large vector into sub-vectors and the <strong>numpy.concatenate()</strong> function can combine the results back into one large vector again.</p>
+<p>For example:</p>
+<pre><code>...
+# split the array into chunks
+chunks = split(data, n_workers)
+...
+# convert list back to one array
+result = concatenate(result_list)</code></pre>
+<p>Now that we know how to apply numpy math operations to vectors in parallel using threads, let's look at some worked examples.</p>
+<h2>Example of Vector Operation (sequential)</h2>
+<p>Before we look at parallelizing math operations on a vector, let's look at the sequential version.</p>
+<p>In this example, we will first define a 1,000,000,000 (one billion) item vector of random floats via the <strong>numpy.random.rand()</strong> function, then apply the <strong>numpy.exp()</strong> math operation to each item in the vector to produce a result vector.</p>
+<p>We will time the entire program and report the duration in seconds.</p>
+<p>The complete example is listed below.</p>
+<pre><code># example of vector operation
+from numpy.random import rand
+from numpy import exp
+from time import time
+# record start time
+start = time()
+# size of the vector
+n = 1000000000
+# create vector of random floats
+data = rand(n)
+# apply math operation to each item
+result = exp(data)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example on my system takes about 14.459 seconds.</p>
+<p>It may run faster or slower on your system, depending on the speed of your hardware and version of Python and NumPy.</p>
+<pre><code>Took 14.459 seconds</code></pre>
+<p>Next, let's explore applying the math function in parallel.</p>
+<h2>Example of Parallel Vector Operation with ThreadPool</h2>
+<p>We can update the example to apply the math operation to the vector in parallel using threads.</p>
+<p>In doing so, we need to think about the number of workers to use, which defines the number of subtasks or subvectors we will split our large vector into.</p>
+<p>Modern systems have multiple CPU cores. For example, I have 4 physical CPU cores.</p>
+<p>Modern operating systems, like MacOS, Linux, and Windows will see double the number of physical CPU cores. This is because modern CPU cores use hyperthreading that allows each CPU core to function like two CPU cores and offers up to 30% benefit in some use cases. I have 4 CPU cores, so my operating system and Python see 8 logical CPU cores available.</p>
+<p>Therefore, it is good to explore using at least two configurations when parallelizing code:</p>
+<ol>
+<li>One worker per physical CPU core.</li>
+<li>One worker per logical CPU core.</li>
+</ol>
+<p>Let's explore both cases.</p>
+<h3>One Worker Per Physical CPU</h3>
+<p>We can create a <strong>ThreadPool</strong> with one worker per physical CPU core.</p>
+<p>I have 4 CPU cores, so this example will use 4 workers. Update it to match the number of cores in your system.</p>
+<pre><code>...
+# define the number of workers and splits
+n_workers = 4
+# create the process pool
+with ThreadPool(n_workers) as pool:
+	# ...
+</code></pre>
+<p>We can then split the one billion item vector into sub-vectors, issue the tasks to the worker threads, then combine the results back into one large vector.</p>
+<pre><code>...
+# split the array into chunks
+chunks = split(data, n_workers)
+# issue tasks with chunking
+result_list = pool.map(exp, chunks)
+# convert list back to one array
+result = concatenate(result_list)</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># example of partitioned vector operation using a thread pool
+from multiprocessing.pool import ThreadPool
+from numpy.random import rand
+from numpy import exp
+from numpy import concatenate
+from numpy import split
+from time import time
+# record start time
+start = time()
+# size of the vector
+n = 1000000000
+# create vector of random floats
+data = rand(n)
+# define the number of workers and splits
+n_workers = 4
+# create the process pool
+with ThreadPool(n_workers) as pool:
+    # split the array into chunks
+    chunks = split(data, n_workers)
+    # issue tasks to the thread pool
+    result_list = pool.map(exp, chunks)
+    # convert list back to one array
+    result = concatenate(result_list)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>Running the example takes about 12.716 seconds on my system.</p>
+<p>That is about 1.743 seconds faster than the sequential version or a speed-up of about 1.14x.</p>
+<p>Not great, but better than nothing.</p>
+<pre><code>Took 12.716 seconds</code></pre>
+<p>Next, let's look at configuring the example with one worker per logical CPU core, to see if hyperthreading offers an additional benefit.</p>
+<h3>One Worker Per Logical CPU (hyperthreading)</h3>
+<p>We can configure the thread pool with one worker per logical CPU core.</p>
+<p>I have 8 logical CPU cores and will therefore create that many thread pool workers, and that many tasks to issue to the thread pool. Update to match the number of CPU cores in your system.</p>
+<pre><code>...
+# define the number of workers and splits
+n_workers = 8</code></pre>
+<p>If you're not sure how many logical CPU cores you have available, you can find out with a function call. See the tutorial:</p>
+<ul>
+<li><a href="../number-of-cpus-python/">Number of CPUs in Python</a></li>
+</ul>
+<p>The complete example with this change is listed below</p>
+<pre><code># example of partitioned vector operation using a thread pool
+from multiprocessing.pool import ThreadPool
+from numpy.random import rand
+from numpy import exp
+from numpy import concatenate
+from numpy import split
+from time import time
+# record start time
+start = time()
+# size of the vector
+n = 1000000000
+# create vector of random floats
+data = rand(n)
+# define the number of workers and splits
+n_workers = 8
+# create the process pool
+with ThreadPool(n_workers) as pool:
+    # split the array into chunks
+    chunks = split(data, n_workers)
+    # issue tasks to the thread pool
+    result_list = pool.map(exp, chunks)
+    # convert list back to one array
+    result = concatenate(result_list)
+# calculate and report duration
+duration = time() - start
+print(f'Took {duration:.3f} seconds')
+</code></pre>
+<p>The example took about 12.234 seconds to complete on my system.</p>
+<p>That is about 2.225 seconds faster than the sequential version or a 1.18x speed-up.</p>
+<p>This may suggest a benefit of hyperthreading in this case (this specific function, data size, and my system).</p>
+<p>Always test in order to discover the best configuration for a given example.</p>
+<pre><code>Took 12.234 seconds</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to parallelize numpy math functions on vectors using threads.</p>
+</main>
+</body>
+</html>

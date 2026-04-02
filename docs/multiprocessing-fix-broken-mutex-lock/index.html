@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fix a Broken Mutex Lock When Terminating Child Processes – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Fix a Broken Mutex Lock When Terminating Child Processes</h1>
+<div class="post-meta">March 12, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can fix and recover a mutex lock used in a terminated child process by first releasing it before using it again, and handling the case where the lock had not been acquired.</p>
+<p>In this tutorial, you will discover how to <strong>recover a mutex lock used in a terminated child process</strong>.</p>
+<p>Let's get started.</p>
+<h2>Broken Mutex Lock When Terminating Child Processes</h2>
+<p>We can run a task in a child process.</p>
+<p>This can be achieved by creating an instance of the <strong>multiprocessing.Process</strong> class and specify the target function to execute via the "<strong>target</strong>" argument and any arguments to the target function via the "<strong>args</strong>" argument.</p>
+<p>For example:</p>
+<pre><code>...
+# create and configure a child process
+process = multiprocessing.Process(target=task)</code></pre>
+<p>You can learn more about running a function in a child process in the tutorial:</p>
+<ul>
+<li><a href="../run-function-in-new-process/">Run a Function in a Child Process</a></li>
+</ul>
+<p>We may create a mutex lock via the <strong>multiprocessing.Lock</strong> class and share it with the child process.</p>
+<p>For example:</p>
+<pre><code>...
+# create a mutex lock
+lock = multiprocessing.Lock()</code></pre>
+<p>You can learn more about multiprocessing locks in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<p>It is possible to terminate a child process while it has acquired the lock.</p>
+<p>This can be achieved by calling the <strong>terminate()</strong> method on the Process instance.</p>
+<p>For example:</p>
+<pre><code>...
+# terminate the child process
+process.terminate()</code></pre>
+<p>You can learn more about terminating a child process in the tutorial:</p>
+<ul>
+<li><a href="../kill-a-process-in-python/">Kill a Process in Python</a></li>
+</ul>
+<p>Terminating the child process while it holds a mutex lock may leave the lock in an unknown and inconsistent state.</p>
+<p>This case is specifically warned against in the multiprocessing module documentation.</p>
+<p>For example:</p>
+<blockquote>
+<p>Using the Process.terminate method to stop a process is liable to cause any shared resources (such as locks, semaphores, pipes and queues) currently being used by the process to become broken or unavailable to other processes.</p>
+<p>Therefore it is probably best to only consider using Process.terminate on processes which never use any shared resources.</p>
+<cite>--<a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>How can we fix a mutex lock left in an inconsistent state when terminating a child process?</p>
+<h2>How to Fix a Broken Mutex Lock</h2>
+<p>If a mutex lock is used in a child process that is terminated, the lock is not broken.</p>
+<p>Instead, the lock is in an unknown state.</p>
+<p>If the lock had been acquired, it would not have been released if the child process was terminated.</p>
+<p>Therefore, we must explicitly release the lock before using it.</p>
+<p>For example:</p>
+<pre><code>...
+# recover the broken lock
+lock.release()
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>If the lock had not been acquired or had already been released and we acquire it again, a <strong>ValueError</strong> exception will be raised.</p>
+<p>Unlike the <strong>threading.Lock</strong> class, the <strong>multiprocessing.Lock</strong> class does not offer a <strong>locked()</strong> method to check if a mutex lock is currently locked.</p>
+<p>Therefore, if we don't know the state of the mutex lock we can try and release it before acquiring it, and wrap the call in a try-except block.</p>
+<p>For example:</p>
+<pre><code>...
+# try and recover the broken lock
+try:
+    lock.release()
+except ValueError:
+    pass
+# acquire the lock
+with lock:
+    # ...
+</code></pre>
+<p>Now that we know how to recover a lock used in a terminated child process, let's look at some worked examples.</p>
+<h2>Example of a Broken Mutex Lock When Terminating Child Process</h2>
+<p>Before we look at recovering a mutex lock from a child process, let's look at a failure case.</p>
+<p>In this example, we will share a lock with a child process, then terminate the child process while it is holding the lock. The parent process will then attempt to acquire the lock, which will fail with a deadlock as the lock will never be released by the terminated child process.</p>
+<p>Firstly, we can define a task function that takes the lock as an argument, acquires it, and blocks for a few seconds to simulate computational effort.</p>
+<pre><code># task executed in a child process
+def task(lock):
+    # acquire the lock
+    with lock:
+        # block for a while to simulate work
+        print('Task has lock...', flush=True)
+        sleep(2)
+</code></pre>
+<p>Next, in the main process, we can create the shared lock, then create and configure the child process to execute our <strong>task()</strong> function and take the shared lock as an argument.</p>
+<pre><code>...
+# create the shared lock
+lock = Lock()
+# create the child process
+child = Process(target=task, args=(lock,))
+# start the child process
+child.start()
+</code></pre>
+<p>The main process will then wait a moment then terminate the child and wait for it to close.</p>
+<pre><code>...
+# wait a moment
+sleep(1)
+# terminate the child process
+child.terminate()
+# wait for child to terminate
+child.join()
+</code></pre>
+<p>Finally, the main process will attempt to acquire the shared lock.</p>
+<pre><code>...
+print(f'Child is terminated, still alive: {child.is_alive()}')
+# try to acquire the lock
+print('Main acquiring lock...')
+with lock:
+    print('Acquired lock')
+# all done normally
+print('Main done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of terminating a process and breaking a lock
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# task executed in a child process
+def task(lock):
+    # acquire the lock
+    with lock:
+        # block for a while to simulate work
+        print('Task has lock...', flush=True)
+        sleep(2)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared lock
+    lock = Lock()
+    # create the child process
+    child = Process(target=task, args=(lock,))
+    # start the child process
+    child.start()
+    # wait a moment
+    sleep(1)
+    # terminate the child process
+    child.terminate()
+    # wait for child to terminate
+    child.join()
+    print(f'Child is terminated, still alive: {child.is_alive()}')
+    # try to acquire the lock
+    print('Main acquiring lock...')
+    with lock:
+        print('Acquired lock')
+    # all done normally
+    print('Main done')
+</code></pre>
+<p>Running the example first creates the shared lock.</p>
+<p>The child process is then created and configured to execute our <strong>task()</strong> function and is passed the shared lock as an argument.</p>
+<p>The child process is started and the main process then blocks for one second.</p>
+<p>The child process runs, acquires the lock, reports a message then sleeps.</p>
+<p>The main process resumes and terminates the child process and waits for it to close. It then reports that the child process is no longer alive.</p>
+<p>At this point, the lock is acquired and the child process is stopped.</p>
+<p>The main process reports a message and attempts to acquire the lock.</p>
+<p>This is a deadlock. The main process is unable to acquire the lock because it was acquired by the child process and never released.</p>
+<p>It is important to note that even though the child process used the context manager interface, it did not release the lock because the exit of the context manager was never executed when the child process was terminated.</p>
+<pre><code>Task has lock...
+Child is terminated, still alive: False
+Main acquiring lock...</code></pre>
+<p>Next, let's look at how we might recover the lock.</p>
+<h2>Example of Fixing a Broken Mutex Lock</h2>
+<p>We can explore the case of fixing a broken lock before acquiring it.</p>
+<p>In this example, we will update the previous example to first release the lock before acquiring it.</p>
+<p>We know that the lock will be acquired at the time the child process is terminated and therefore we know that all we need to do is release the lock before acquiring it again.</p>
+<p>For example:</p>
+<pre><code>...
+# try and recover the broken lock
+lock.release()
+print(f'Child is terminated, still alive: {child.is_alive()}')
+# try to acquire the lock
+print('Main acquiring lock...')
+with lock:
+    print('Acquired lock')
+# all done normally
+print('Main done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of attempting to recover a broken lock
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# task executed in a child process
+def task(lock):
+    # acquire the lock
+    with lock:
+        # block for a while to simulate work
+        print('Task has lock...', flush=True)
+        sleep(2)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared lock
+    lock = Lock()
+    # create the child process
+    child = Process(target=task, args=(lock,))
+    # start the child process
+    child.start()
+    # wait a moment
+    sleep(1)
+    # terminate the child process
+    child.terminate()
+    # wait for child to terminate
+    child.join()
+    # try and recover the broken lock
+    lock.release()
+    print(f'Child is terminated, still alive: {child.is_alive()}')
+    # try to acquire the lock
+    print('Main acquiring lock...')
+    with lock:
+        print('Acquired lock')
+    # all done normally
+    print('Main done')
+</code></pre>
+<p>Running the example first creates the shared lock.</p>
+<p>The child process is then created and configured to execute our <strong>task()</strong> function and is passed the shared lock as an argument.</p>
+<p>The child process is started and the main process then blocks for one second.</p>
+<p>The child process runs, acquires the lock, reports a message then sleeps.</p>
+<p>The main process resumes and terminates the child process and waits for it to close. It then reports that the child process is no longer alive.</p>
+<p>At this point, the lock is acquired and the child process is stopped.</p>
+<p>The main process then releases the lock. It reports a message and attempts to acquire the lock.</p>
+<p>The lock is acquired normally, as expected.</p>
+<pre><code>Task has lock...
+Child is terminated, still alive: False
+Main acquiring lock...
+Acquired lock
+Main done
+</code></pre>
+<p>This is a contrived situation because we know the state of the lock in the terminated child process.</p>
+<p>Next, let's explore the case where we don't know the state of the lock in the terminated child process.</p>
+<h2>Example of More Safely Fixing a Broken Mutex Lock</h2>
+<p>We can explore the case where we don't know the status of the lock in the terminated child process.</p>
+<p>If we assume the lock is acquired in the child process when it was terminated, then attempt to release it before acquiring it again in the main process, then this will result in a ValueError exception.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>The <strong>task()</strong> function can be updated to block before acquiring the lock.</p>
+<p>The main process will then terminate the child process before the child process is able to acquire the lock. It will then release the lock and attempt to acquire it.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of attempting to recover a broken lock and failing
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# task executed in a child process
+def task(lock):
+    # work before we get the lock
+    sleep(2)
+    # acquire the lock
+    with lock:
+        # block for a while to simulate work
+        print('Task has lock...', flush=True)
+        sleep(2)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared lock
+    lock = Lock()
+    # create the child process
+    child = Process(target=task, args=(lock,))
+    # start the child process
+    child.start()
+    # wait a moment
+    sleep(1)
+    # terminate the child process
+    child.terminate()
+    # wait for child to terminate
+    child.join()
+    # try and recover the broken lock
+    lock.release()
+    print(f'Child is terminated, still alive: {child.is_alive()}')
+    # try to acquire the lock
+    print('Main acquiring lock...')
+    with lock:
+        print('Acquired lock')
+    # all done normally
+    print('Main done')
+</code></pre>
+<p>Running the example first creates the shared lock.</p>
+<p>The child process is then created and configured to execute our <strong>task()</strong> function and is passed the shared lock as an argument.</p>
+<p>The child process is started and the main process then blocks for one second.</p>
+<p>The child process runs and sleeps.</p>
+<p>The main process resumes and terminates the child process and waits for it to close.</p>
+<p>It then attempts to release the lock before acquiring it again.</p>
+<p>This fails with a ValueError exception.</p>
+<pre><code>Traceback (most recent call last):
+  ...
+ValueError: semaphore or lock released too many times
+</code></pre>
+<p>This highlights that we cannot assume the state of the lock in the terminated child process and always release it before acquiring it again.</p>
+<p>Instead, we need a more robust solution.</p>
+<p>We can update the example to still attempt to always release the lock before using it, but protect against a possible ValueError exception, in case the lock was not locked.</p>
+<pre><code>...
+# try and recover the broken lock
+try:
+    lock.release()
+except ValueError:
+    pass
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of attempting to recover a broken lock more safely
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import Lock
+
+# task executed in a child process
+def task(lock):
+    # work before we get the lock
+    sleep(2)
+    # acquire the lock
+    with lock:
+        # block for a while to simulate work
+        print('Task has lock...', flush=True)
+        sleep(2)
+
+# protect the entry point
+if __name__ == '__main__':
+    # create the shared lock
+    lock = Lock()
+    # create the child process
+    child = Process(target=task, args=(lock,))
+    # start the child process
+    child.start()
+    # wait a moment
+    sleep(1)
+    # terminate the child process
+    child.terminate()
+    # wait for child to terminate
+    child.join()
+    # try and recover the broken lock
+    try:
+        lock.release()
+    except ValueError:
+        pass
+    print(f'Child is terminated, still alive: {child.is_alive()}')
+    # try to acquire the lock
+    print('Main acquiring lock...')
+    with lock:
+        print('Acquired lock')
+    # all done normally
+    print('Main done')
+</code></pre>
+<p>Running the example first creates the shared lock.</p>
+<p>The child process is then created and configured to execute our <strong>task() </strong> function and is passed the shared lock as an argument.</p>
+<p>The child process is started and the main process then blocks for one second.</p>
+<p>The child process runs and sleeps.</p>
+<p>The main process resumes and terminates the child process and waits for it to close.</p>
+<p>It then attempts to release the lock before acquiring it again.</p>
+<p>This fails with a ValueError exception, which is caught and ignored. The main process then reports a message, acquires the lock, and reports a message.</p>
+<p>This highlights how we can safely recover a lock from a terminated child process with an unknown state.</p>
+<pre><code>Child is terminated, still alive: False
+Main acquiring lock...
+Acquired lock
+Main done</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to recover a mutex lock used in a terminated child process.</p>
+</main>
+</body>
+</html>

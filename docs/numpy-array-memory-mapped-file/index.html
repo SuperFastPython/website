@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Share NumPy Array Using Memory-Mapped File – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Share NumPy Array Using Memory-Mapped File</h1>
+<div class="post-meta">August 29, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can <strong>share a NumPy array between processes</strong> by using a <strong>memory-mapped file</strong>.</p>
+<p>Each process is able to access the memory-mapped file directly. This means that we don't have the overhead of sharing the array directly between processes, or the handle to the file.</p>
+<p>In this tutorial, you will discover how to share a NumPy array between processes using a memory-mapped file.</p>
+<p>Let's get started.</p>
+<h2>Need to Share NumPy Array Between Processes</h2>
+<p>Python offers process-based concurrency via the multiprocessing module.</p>
+<p>Process-based concurrency is appropriate for those tasks that are CPU-bound, as opposed to thread-based concurrency in Python which is generally suited to IO-bound tasks given the presence of the Global Interpreter Lock (GIL).</p>
+<p>You can learn more about process-based concurrency and the multiprocessing module in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-in-python/">Multiprocessing: The Complete Guide</a></li>
+</ul>
+<p>Consider the situation where we need to share NumPy arrays between processes.</p>
+<p>This may be for many reasons, such as:</p>
+<ul>
+<li>Data is loaded as an array in one process and analyzed differently in different subprocesses.</li>
+<li>Many child processes load small data as arrays that are sent to a parent process for handling.</li>
+<li>Data arrays are loaded in the parent process and processed in a suite of child processes.</li>
+</ul>
+<p>Sharing Python objects and data between processes is slow.</p>
+<p>This is because any data, like NumPy arrays, shared between processes must be transmitted using inter-process communication (ICP) requiring the data first be pickled by the sender and then unpickled by the receiver.</p>
+<p>You can learn more about this in the tutorial:</p>
+<ul>
+<li><a href="../threads-vs-processes-share-data/">Threads are 4x Faster at Sharing Data Than Processes in Python</a></li>
+</ul>
+<p>This means that if we share NumPy arrays between processes, it assumes that we receive some benefit, such as a speedup, that overcomes the slow speed of data transmission.</p>
+<p>For example, it may be the case that the arrays are relatively small and fast to transmit, whereas the computation performed on each array is slow and can benefit from being performed in separate processes.</p>
+<p>Alternatively, preparing the array may be computationally expensive and benefit from being performed in a separate process, and once prepared, the arrays are small and fast to transmit to another process that requires them.</p>
+<p><strong>Given these situations, how can we share data between Processes in Python?</strong></p>
+<h2>What is a NumPy Memory-Mapped File</h2>
+<p>A memory-mapped file is a structure that allows data to look and be used as though it exists in main memory, when in fact it is stored in a file on disk.</p>
+<p>It allows very large data structures to be read and written without having to have the contents of the structure in main memory, as we do normally.</p>
+<blockquote>
+<p>A memory-mapped file is a segment of virtual memory[1] that has been assigned a direct byte-for-byte correlation with some portion of a file or file-like resource. This resource is typically a file that is physically present on disk, but can also be a device, shared memory object, or other resource that the operating system can reference through a file descriptor.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Memory-mapped_file">Memory-mapped file, Wikipedia</a>.</cite></blockquote>
+<p>Numpy offers the ability for a NumPy array to be stored in a memory-mapped file and used as though the array exists in main memory.</p>
+<p>This capability is provided via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.memmap.html"><strong>numpy.memmap()</strong> function</a>.</p>
+<blockquote>
+<p>Memory-mapped files are used for accessing small segments of large files on disk, without reading the entire file into memory. NumPy’s memmap’s are array-like objects.</p>
+<cite>-- <a href="https://numpy.org/doc/stable/reference/generated/numpy.memmap.html">numpy.memmap API</a>.</cite></blockquote>
+<p>To use a memory-mapped file NumPy array, the <strong>numpy.memmap()</strong> function can be called to define the array.</p>
+<p>This includes the filename for where the array data will be stored, the data type of the array, the mode in which the array will be used (e.g. read, write, etc.), and the dimensional or shape of the array.</p>
+<p>For example, we can create a memory-mapped file NumPy array in the current working directory with the filename "<strong>data.np</strong>", to hold floating point values, that can be read and written and is one dimensional in shape with 1000 elements.</p>
+<pre><code>...
+# create a memory mapped numpy array
+data = memmap('data.np', dtype='float32', mode='w+', shape=(1000,))</code></pre>
+<p>The open modes are just like those used to open a file on disk, for example:</p>
+<ul>
+<li>'r' Open the array file in read-only mode.</li>
+<li>'r+' Open an existing array file for reading and writing.</li>
+<li>'w+' Create or overwrite an existing file for reading and writing.</li>
+<li>'c' Only make changes to the data in memory, called copy-on-write.</li>
+</ul>
+<p>The array can then be used as per normal, such as populate it with initial values via the <strong>fill()</strong> method.</p>
+<pre><code>...
+# populate the array
+data.fill(1.0)</code></pre>
+<p>Generally, changes to the array are written when we are finished with it.</p>
+<p>Nevertheless, it is good practice to flush changes from memory back to the file storage via the <strong>flush()</strong> method once a block of atomic changes has been made.</p>
+<blockquote>
+<p>Flush the memmap instance to write the changes to the file.</p>
+<cite>-- <a href="https://numpy.org/doc/stable/reference/generated/numpy.memmap.html">numpy.memmap API</a>.</cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# write changes to file
+data.flush()</code></pre>
+<p>Now that we know what a NumPy memory-mapped file is, let's look at how we might use it to share an array between processes.</p>
+<h2>How to Share NumPy Array Using Memory-Mapped File</h2>
+<p>We can use a NumPy memory-mapped file to share a NumPy array between processes.</p>
+<p>If no array exists, one process can be responsible for creating the array.</p>
+<p>This can be achieved by specifying the filename and dimensional of the array and opening it in create mode, e.g. 'w+'.</p>
+<p>For example:</p>
+<pre><code>...
+# create a memory mapped numpy array
+data = memmap('data.np', dtype='float32', mode='w+', shape=(1000,))</code></pre>
+<p>Changes can be made to the file and then flushed with a call to the flush method.</p>
+<p>For example:</p>
+<pre><code>...
+# write changes to file
+data.flush()</code></pre>
+<p>Once the file exists on disk, other processes can then open the file.</p>
+<p>This might be in read-only mode, e.g. 'r' if the other processes need only read the data.</p>
+<p>For example:</p>
+<pre><code>...
+# open existing memory mapped array in read-only mode
+data = memmap('data.np', dtype='float32', mode='r', shape=(1000,))</code></pre>
+<p>Alternatively, if the processes need to read and then write the data in the array, it can be opened in read-write mode and changes can then be flushed once the process is finished.</p>
+<p>For example:</p>
+<pre><code>...
+# open existing memory-mapped array in read/write mode
+data = memmap('data.np', dtype='float32', mode='r+', shape=(1000,))
+# make changes
+...
+# write changes to file
+data.flush()</code></pre>
+<p>The other processes must open the same file, and use the same data types and array dimensions.</p>
+<p>This information could be provided to other processes from the main process via function arguments.</p>
+<p>For example:</p>
+<pre><code># task to work on shared numpy array
+def task(array_filename, array_type, array_shape):
+    # open existing memory mapped array in read/write mode
+    data = memmap(array_filename, dtype=array_type, mode='r+', shape=array_shape)
+    ...
+</code></pre>
+<p>Finally, it is possible for two or more processes to open the same memory-mapped file array and attempt to make changes at the same time.</p>
+<p>Therefore, it may be a good practice to protect critical sections that operate on the shared array using a mutex lock. This ensures that only one process is able to read and write data on the shared array at the same time.</p>
+<p>This can be achieved via a shared <strong>Lock</strong> instance that could be provided to task functions, along with the details of the memory-mapped array.</p>
+<p>For example:</p>
+<pre><code># task to work on shared numpy array
+def task(array_filename, array_type, array_shape, array_lock):
+    # acquire lock on file first
+    with array_lock:
+        # open existing memory mapped array in read/write mode
+        data = memmap(array_filename, dtype=array_type, mode='r+', shape=array_shape)
+        ...
+</code></pre>
+<p>You can learn more about multiprocessing mutex locks in the tutorial:</p>
+<ul>
+<li><a href="../multiprocessing-mutex-lock-in-python/">Multiprocessing Lock in Python</a></li>
+</ul>
+<p>Now that we know how to use the NumPy memory-mapped array, let's look at some worked examples.</p>
+<h2>Example of Sharing a NumPy Array Using Memory-Mapped File</h2>
+<p>We can explore an example of sharing a NumPy array between processes using a memory-mapped file.</p>
+<p>In this case, we will define a NumPy array backed by a memory-mapped file. The main process will then initialize the array and flush the changes. A new child process will then be created and passed the details of the NumPy array backed by the memory-mapped file. It will load the array in a read/write mode, make changes, and then have those changes flushed. Finally, the main process will resume and confirm the changes made to the array by the child process.</p>
+<p>Firstly, we can define the task function to execute in the child process.</p>
+<p>The function will take the details of the array, including the name of the file and the size, assuming it is one-dimensional.</p>
+<pre><code># load shared array
+def task(filename, n):
+    # ...
+</code></pre>
+<p>The function will then open the file-backed NumPy array in read/write mode and inspect the first few values.</p>
+<pre><code>...
+# load the memory-mapped file
+data = memmap(filename, dtype='float32', mode='r+', shape=(n,))
+# check the status of the data
+print(f'Child: {data[:10]}')</code></pre>
+<p>Next, the child process will update all data in the array, flush the change to the file, and confirm the array was updated.</p>
+<pre><code>...
+# change the data
+data[:] += 1
+# flush the changes
+data.flush()
+# check the status of the data
+print(f'Child: {data[:10]}')</code></pre>
+<p>Tying this together, the <strong>task()</strong> function below implements this.</p>
+<pre><code># load shared array
+def task(filename, n):
+    # load the memory-mapped file
+    data = memmap(filename, dtype='float32', mode='r+', shape=(n,))
+    # check the status of the data
+    print(f'Child: {data[:10]}')
+    # change the data
+    data[:] += 1
+    # flush the changes
+    data.flush()
+    # check the status of the data
+    print(f'Child: {data[:10]}')
+</code></pre>
+<p>Next, the main process will define the size of the array and where the array file will be stored. It then creates the array.</p>
+<pre><code>...
+# define the size of the data
+n = 1000
+# define the filename
+filename = 'data.np'
+# create the memory-mapped file
+data = memmap(filename, dtype='float32', mode='w+', shape=(n,))</code></pre>
+<p>Next, the main process initializes the array, flushes the change from memory to file, and confirms that the array data change was made.</p>
+<pre><code>...
+# populate the array
+data.fill(1.0)
+# flush the changes
+data.flush()
+# check the status of the data
+print(data[:10])</code></pre>
+<p>The main process then creates and starts the child process, passing the details of the memory-mapped file, including the filename and size of the array.</p>
+<p>The main process blocks until the child process is done.</p>
+<pre><code>...
+# create a child process
+child = Process(target=task, args=(filename,n))
+# start the child process
+child.start()
+# wait for the child process to complete
+child.join()</code></pre>
+<p>Once done, the main process then inspects the content of the array and confirms that the child process made changes.</p>
+<pre><code>...
+# check the status of the data
+print(data[:10])</code></pre>
+<p>Tying this together, the complete example of sharing a memory-mapped file NumPy array is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of sharing a memory-mapped numpy array between processes
+from multiprocessing import Process
+from numpy import memmap
+
+# load shared array
+def task(filename, n):
+    # load the memory mapped file
+    data = memmap(filename, dtype='float32', mode='r+', shape=(n,))
+    # check the status of the data
+    print(f'Child: {data[:10]}')
+    # change the data
+    data[:] += 1
+    # flush the changes
+    data.flush()
+    # check the status of the data
+    print(f'Child: {data[:10]}')
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the data
+    n = 1000
+    # define the filename
+    filename = 'data.np'
+    # create the memory mapped file
+    data = memmap(filename, dtype='float32', mode='w+', shape=(n,))
+    # populate the array
+    data.fill(1.0)
+    # flush the changes
+    data.flush()
+    # check the status of the data
+    print(data[:10])
+    # create a child process
+    child = Process(target=task, args=(filename,n))
+    # start the child process
+    child.start()
+    # wait for the child process to complete
+    child.join()
+    # check the status of the data
+    print(data[:10])
+</code></pre>
+<p>Running the example first defines the properties of the memory-mapped file, then creates the file on disk with the given data type and size.</p>
+<p>If the file already exists, it is overwritten. This allows the program to be re-run many times without error.</p>
+<p>Next, the array is initialized to one values and the changes are written to the file. The main process then reports the first 10 values of the array, and we can see that it was initialized correctly.</p>
+<p>Next, the child process is created and configured to execute our <strong>task()</strong> function with the filename and array size as arguments.</p>
+<p>The child process is started and the main process blocks until it is done.</p>
+<p>The child process runs the <strong>task()</strong> function. It starts by opening the memory-mapped file with the given filename and size.</p>
+<p>It is careful to open the file in read-write mode, assuming the file exists. If the file is opened in write/overwrite mode, the contents of the file written by the main process will be lost.</p>
+<p>The child process reports the first 10 values in the array, confirming that the change made by the main process was written correctly and that the child process is able to see that change.</p>
+<p>The child process then updates the content of the array, adding one to all values, then flushes the change to file.</p>
+<p>The child process then reports the first 10 values of the array again, confirming that the content of the array was updated from one values to two values.</p>
+<p>The child process is terminated and the main process resumes.</p>
+<p>The main process finally reports the first 10 values of the array, showing that the change made by the child process was made and stored as expected and is visible to the main process.</p>
+<p>This highlights how we can share a NumPy array between processes using a memory-mapped file.</p>
+<pre><code>[1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+Child: [1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+Child: [2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]</code></pre>
+<h2>Example of Sharing Memory-Mapped File Array With Many Processes</h2>
+<p>We can explore the case of having many processes updating the same memory-mapped file NumPy array in parallel.</p>
+<p>In this case, we will update the above example to have a larger array of 100 million items and then have 100 child processes all attempt to update the content of the array at the same time by adding 1 to the values.</p>
+<p>We expect the final array to have the values of 100, with one added by each child process.</p>
+<p>All explicit flushes are also removed from the example, in an effort to force a race condition.</p>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of many child processes changing the same memory-mapped file array
+from multiprocessing import Process
+from numpy import memmap
+
+# load shared array
+def task(filename, shape):
+    # load the memory-mapped file
+    data = memmap(filename, dtype='float32', mode='r+', shape=shape)
+    # change the data
+    data[:] += 1
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the data
+    shape = (100000000,)
+    # define the filename
+    filename = 'data.np'
+    # create the memory-mapped file
+    data = memmap(filename, dtype='float32', mode='w+', shape=shape)
+    # populate the array
+    data.fill(0.0)
+    # check the status of the data
+    print(data[:10])
+    # create many child tasks
+    children = [Process(target=task, args=(filename,shape)) for _ in range(100)]
+    # start all child tasks
+    for child in children:
+        child.start()
+    # wait for all child tasks to complete
+    for child in children:
+        child.join()
+    # check the status of the data
+    print(data[:10])
+</code></pre>
+<p>Running the example defines the array with 100 million items initialized to zero values.</p>
+<p>A total of 100 child processes are then created and started, all configured to load the same memory-mapped file NumPy array and add one to all values in the array.</p>
+<p>The main process waits for all child processes to complete and then reports the first 10 values.</p>
+<p>We can see that the array appears to have the expected values of 100, with one added for each child process that modified the shared array.</p>
+<p>It seems that even with all 100 child processes modifying the same memory-mapped file and without explicit flushing of changes, no race condition occurred.</p>
+<pre><code>[0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]
+[100. 100. 100. 100. 100. 100. 100. 100. 100. 100.]</code></pre>
+<p>It is possible that the underlying memory-mapped file used by NumPy is thread and process-safe generally or on some platforms.</p>
+<p>Or it may be that it is not thread and process safe, but this simple example above is not enough to trigger a race condition.</p>
+<p>Nevertheless, we can enforce safety as an exercise. This can be achieved by updating the example so that all changes to the memory-mapped file NumPy array are mutually exclusive.</p>
+<p>This can be achieved by creating a mutex lock and sharing it with each child process.</p>
+<pre><code>...
+# create the shared lock
+lock = Lock()
+# create many child tasks
+children = [Process(target=task, args=(filename,shape,lock)) for _ in range(100)]</code></pre>
+<p>Each child process can then explicitly acquire the lock before operating on the shared array, ensuring only one process changes the array at a time.</p>
+<pre><code># load shared array
+def task(filename, shape, lock):
+    # acquire lock
+    with lock:
+        # load the memory-mapped file
+        data = memmap(filename, dtype='float32', mode='r+', shape=shape)
+        # change the data
+        data[:] += 1
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of many child processes changing the same memory-mapped file array
+from multiprocessing import Process
+from multiprocessing import Lock
+from numpy import memmap
+
+# load shared array
+def task(filename, shape, lock):
+    # acquire lock
+    with lock:
+        # load the memory-mapped file
+        data = memmap(filename, dtype='float32', mode='r+', shape=shape)
+        # change the data
+        data[:] += 1
+
+# protect the entry point
+if __name__ == '__main__':
+    # define the size of the data
+    shape = (100000000,)
+    # define the filename
+    filename = 'data.np'
+    # create the memory-mapped file
+    data = memmap(filename, dtype='float32', mode='w+', shape=shape)
+    # populate the array
+    data.fill(0.0)
+    # check the status of the data
+    print(data[:10])
+    # create the shared lock
+    lock = Lock()
+    # create many child tasks
+    children = [Process(target=task, args=(filename,shape,lock)) for _ in range(100)]
+    # start all child tasks
+    for child in children:
+        child.start()
+    # wait for all child tasks to complete
+    for child in children:
+        child.join()
+    # check the status of the data
+    print(data[:10])
+</code></pre>
+<p>Running the example defines the memory-mapped file NumPy array with 100 million items initialized to zero values as before.</p>
+<p>A shared mutex lock is created and shared with all 100 child processes that are created and started.</p>
+<p>The child processes make use of the lock, acquiring it before updating the content of the shared array, and then releasing the lock again before terminating.</p>
+<p>The main process reports the first 10 values of the shared array, confirming that all 100 child processes performed their updates as before.</p>
+<p>Although there is no change in results for this example, we are confident that all writes to the shared array by child processes are atomic and not open to a race condition.</p>
+<pre><code>[0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]
+[100. 100. 100. 100. 100. 100. 100. 100. 100. 100.]</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to share a NumPy array between processes using a memory-mapped file.</p>
+</main>
+</body>
+</html>

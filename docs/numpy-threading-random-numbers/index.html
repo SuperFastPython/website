@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Numpy Parallel Random Numbers (up to 4x faster) – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Numpy Parallel Random Numbers (up to 4x faster)</h1>
+<div class="post-meta">May 14, 2023&ensp;<a class="category" href="../tutorial-archive.html">Concurrent NumPy</a></div>
+
+<p>You can create and populate a <strong>vector of random numbers in parallel</strong> using <strong>Python threads</strong>.</p>
+<p>this can offer a speed-up from 1.81x to 4.05x compared to the single-threaded version, depending on the approach chosen.</p>
+<p>In this tutorial, you will discover how to create a numpy vector of random numbers in parallel using threads.</p>
+<p>Let's get started.</p>
+<h2>Need a Large Array of Random Numbers in Parallel</h2>
+<p>A common problem is the need to create a large numpy array of random numbers.</p>
+<p>Generating a pseudo-random number is a relatively slow operation because it must calculate a mathematical function. This slowness is compounded if we need to generate a large vector of numbers, such as 100 million or one billion items.</p>
+<p>Given that we have multiple CPU cores in our system, we expect that we can speed up the operation by executing it in parallel.</p>
+<p><strong>How can we create a large numpy vector of random numbers in parallel using all CPU cores?</strong></p>
+<h2>Create Large NumPy Arrays in Parallel Using Threads</h2>
+<p>Numpy does not provide an API for creating an array of numpy vectors in parallel.</p>
+<p>Instead, we must develop a solution ourselves using threads.</p>
+<p>The Python interpreter is not thread-safe. This means Python will only allow one Python thread to run at a time. In turn, threads cannot be used for parallelism in Python, in most cases.</p>
+<p>One of the exceptions is when Python calls a C-library and explicitly releases the global interpreter lock (GIL), allowing other threads to run.</p>
+<p>Most numpy functions are implemented in C and will release this lock, including functions for generating random numbers in the <strong>numpy.random</strong> module.</p>
+<p>This means that we can use threads to generate random numbers in parallel.</p>
+<blockquote>
+<p>The exceptions are few but important: while a thread is waiting for IO (for you to type something, say, or for something to come in the network) python releases the GIL so other threads can run. And, more importantly for us, while numpy is doing an array operation, python also releases the GIL.</p>
+<cite>-- <a href="https://scipy-cookbook.readthedocs.io/items/ParallelProgramming.html">Parallel Programming with numpy and scipy</a></cite></blockquote>
+<p>You can learn more about NumPy releasing the GIL in the tutorial:</p>
+<ul>
+<li><a href="../numpy-vs-gil/">NumPy vs the Global Interpreter Lock (GIL)</a></li>
+</ul>
+<p>Python provides the <strong>multiprocessing.pool.ThreadPool</strong> class that we can use to create a pool of worker threads to execute arbitrary tasks.</p>
+<p>For example, we can create a <strong>ThreadPool</strong> and specify the number of workers to create, one for each CPU core in our system.</p>
+<pre><code>...
+# create the thread pool
+with ThreadPool(8) as pool:
+    # ...
+</code></pre>
+<p>Once created, we can call the <strong>map()</strong> or <strong>starmap()</strong> methods to issues tasks to workers in the thread pool.</p>
+<p>If you are new to the <strong>ThreadPool</strong> class, you can learn more in the guide:</p>
+<ul>
+<li><a href="../threadpool-python/">Python ThreadPool: The Complete Guide</a></li>
+</ul>
+<p>Note, we prefer threads over process-based concurrency via the multiprocessing module because threads share memory directly. Processes must transmit data via inter-process communication which is significantly slower.</p>
+<p>There are two approaches we could explore to creating large arrays of random numbers in parallel, they are:</p>
+<ol>
+<li>Create the arrays in parallel.</li>
+<li>Populate the arrays in parallel.</li>
+</ol>
+<p>Let's take a closer look at each approach.</p>
+<h3>Create NumPy Arrays of Random Values in Parallel</h3>
+<p>One approach to creating a large vector of random numbers is to create multiple small vectors of random numbers in parallel, then combine them together into one large vector.</p>
+<p>This can be achieved by defining a function that creates a random number generator with a unique seed via the <strong>numpy.random.default_rng()</strong> function, then calling the <strong>random()</strong> method to create an array of a given size.</p>
+<p>For example:</p>
+<pre><code># create and return a vector of random numbers
+define populate(seed, size):
+    # create random number generator with the seed
+    rand = default_rng(seed)
+    # create vector of random floats
+    return rand.random(size=size)
+</code></pre>
+<p>We can then call this function once for each CPU core in our system. It requires that we know how many CPU cores we have, then determine how large each subarray needs to be.</p>
+<p>For example, if we required a vector of 1,000,000,000 (one billion) numbers and we had 8 CPU cores available, then each sub-array would be 1,000,000,000 / 8 or 125,000,000 items in length.</p>
+<p>We could issue these tasks to the thread pool via the <strong>starmap()</strong> method that allows the target function to take more than one argument.</p>
+<p>For example:</p>
+<pre><code>...
+# create the arguments
+args = [(i+1, 125000000) for i in range(8)]
+# create sub arrays
+result_list = pool.starmap(populate, args)</code></pre>
+<p>We can then combine the list of arrays together into a single vector via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.concatenate.html"><strong>numpy.concatenate()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# convert arrays into one large array
+result = concatenate(result_list)</code></pre>
+<h3>Populate NumPy Array With Random Values in Parallel</h3>
+<p>Another approach is to create a very large numpy array, then populate portions of it with different threads.</p>
+<p>We can create a large empty array via the <a href="https://numpy.org/doc/stable/reference/generated/numpy.empty.html"><strong>numpy.empty()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# create array
+array = empty(1000000000)</code></pre>
+<p>Next, we can define a function that will populate a portion of a provided array with random numbers.</p>
+<p>Again, we can create a random number generator via the <strong>numpy.random.default_rng()</strong> function with a given random seed, then call the <strong>random()</strong> method and specify the portion of the array to populate.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to use an Asyncio BoundedSemaphore – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>How to use an Asyncio BoundedSemaphore</h1>
+<div class="post-meta">December 15, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can use an asyncio bounded semaphore via the <strong>asyncio.BoundedSemaphore</strong> class.</p>
+<p>In this tutorial, you will discover how to use a <strong>bounded semaphore with coroutines</strong> in Python.</p>
+<p>Let's get started.</p>
+<h2>What is a Semaphore</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Semaphore_(programming)">semaphore is a concurrency primitive</a> that allows a limit on the number of threads that can acquire a lock protecting a critical section.</p>
+<p>It is an extension of a mutual exclusion (mutex) lock that adds a count for the number of threads that can acquire the lock before additional threads will block. Once full, new threads can only acquire a position on the semaphore once an existing thread holding the semaphore releases a position.</p>
+<p>Internally, the semaphore maintains a counter protected by a mutex lock that is decremented each time the semaphore is acquired and incremented each time it is released.</p>
+<p>When a semaphore is created, the upper limit on the counter is set. If it is set to be 1, then the semaphore will operate like a mutex lock.</p>
+<p>A semaphore provides a useful concurrency tool for limiting the number of threads that can access a resource concurrently. Some examples include:</p>
+<ul><li>Limiting concurrent socket connections to a server.</li><li>Limiting concurrent file operations on a hard drive.</li><li>Limiting concurrent calculations.</li></ul>
+<p>Although the semaphore is described in terms of threads, it is a primitive that can be used with other units of concurrency.</p>
+<p>For example, the <strong>threading.Semaphore</strong> class allows us to use the semaphore with threads:</p>
+<ul><li><a href="../thread-semaphore/">Threading Semaphore in Python</a></li></ul>
+<p>The <strong>multiprocessing.Semaphore</strong> class allows to us to use a semaphore with processes:</p>
+<ul><li><a href="../multiprocessing-semaphore-in-python/">Multiprocessing Semaphore in Python</a></li></ul>
+<p>And the <strong>asyncio.Semaphore</strong> class allows us to use a semaphore with coroutines in asyncio programs.</p>
+<h2>What is a Bounded Semaphore?</h2>
+<p>A bounded semaphore is the same as a classical (unbounded) semaphore except that the upper limit of the semaphore cannot be increased.</p>
+<p>Semaphores are configured with an initial count value when they are created. Each call to <strong>acquire()</strong> decrements the internal counter and each call to <strong>release()</strong> increments the counter.</p>
+<p>We may call the <strong>release()</strong> method many more times than the <strong>acquire()</strong> method which will allow the internal counter to exceed the initial value.</p>
+<p>For example:</p>
+<pre><code>...
+semaphore = asyncio.Semaphore(2) # counter = 2
+semaphore.release() # counter = 3
+semaphore.release() # counter = 4
+semaphore.release() # counter = 5</code></pre>
+<p>The example above shows how the internal counter for a classical semaphore can be increased from the initial value of 2 to a new value of 5.</p>
+<p>This is not supported on a bounded semaphore.</p>
+<p>Instead, if the internal counter exceeds its initial value, a <strong>ValueError</strong> is raised.</p>
+<blockquote><p>Bounded Semaphore is a version of Semaphore that raises a ValueError in release() if it increases the internal counter above the initial value.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-sync.html">Asyncio Synchronization Primitives</a></cite></blockquote>
+<p>This is why it is called a "<em>bounded</em>" semaphore. The internal counter has an upper bound, unlike a more classical semaphore.</p>
+<h3>Semaphore vs Bounded Semaphore</h3>
+<ul><li><strong>Semaphore</strong>: A semaphore can increase its internal counter value above the initial value.</li><li><strong>Bounded Semaphore</strong>: A bounded semaphore cannot increase its internal counter value above its initial value.</li></ul>
+<p>Why Use a Bounded Semaphore</p>
+<p>We may prefer to use a bounded semaphore instead of a classical semaphore.</p>
+<p>A key reason is that it ensures that the calls to the <strong>acquire()</strong> and <strong>release()</strong> methods are symmetric. If the number comes out of balance with more calls to <strong>release()</strong> that results in the counter exceeding its initial value, then an exception is raised and terminates the program.</p>
+<p>This allows bugs in the usage of the semaphore to be more apparent, like using an assertion.</p>
+<p>An unbounded semaphore may allow access to a critical section or resource by more than an initial number of coroutines. We may choose to use a bounded semaphore to ensure that this cannot be the case, assuming the semaphore is used correctly.</p>
+<p>In fact, most cases when we choose to use a semaphore, we probably should be using a bounded semaphore. Rarely do we have the requirement of increasing the count above the initial value.</p>
+<h2>How to Use an Asyncio BoundedSemaphore</h2>
+<p>Python provides a bounded semaphore via the <strong>asyncio.BoundedSemaphore</strong> class for use with coroutines.</p>
+<p>The <strong>asyncio.BoundedSemaphore</strong> instance must be configured when it is created to set the limit on the internal counter. This limit will match the number of concurrent coroutines that can hold the semaphore at a time.</p>
+<p>For example, we might want to set it to 100:</p>
+<pre><code>...
+# create a semaphore with a limit of 100
+semaphore = asyncio.BoundedSemaphore(100)</code></pre>
+<blockquote><p>A semaphore manages an internal counter which is decremented by each acquire() call and incremented by each release() call. The counter can never go below zero; when acquire() finds that it is zero, it blocks, waiting until some task calls release().</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-sync.html">Asyncio Synchronization Primitives</a></cite></blockquote>
+<p>The bounded semaphore can be acquired by calling the <strong>acquire()</strong> function.</p>
+<p>This returns a coroutine that must be awaited.</p>
+<blockquote><p>Acquire a semaphore. If the internal counter is greater than zero, decrement it by one and return True immediately. If it is zero, wait until a release() is called and return True.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-sync.html">Asyncio Synchronization Primitives</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# acquire the bounded semaphore
+await semaphore.acquire()</code></pre>
+<p>Once acquired, the bounded semaphore can be released again by calling the <strong>release()</strong> function.</p>
+<blockquote><p>Release a semaphore, incrementing the internal counter by one. Can wake up a task waiting to acquire the semaphore.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-sync.html">Asyncio Synchronization Primitives</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# release the bounded semaphore
+semaphore.release()</code></pre>
+<p>Unlike the <strong>asyncio.Semaphore</strong>, the <strong>release()</strong> method on the <strong>BoundedSemaphore</strong> can only be called a limited number of times. Once the internal counter exceeds the initial value the <strong>release()</strong> method will raise a <strong>ValueError</strong> exception.</p>
+<blockquote><p>Bounded Semaphore is a version of Semaphore that raises a ValueError in release() if it increases the internal counter above the initial value.</p><cite>-- <a href="https://docs.python.org/3/library/asyncio-sync.html">Asyncio Synchronization Primitives</a></cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# acquire the bounded semaphore
+semaphore.acquire()
+# do something
+# ...
+# release the bounded semaphore
+semaphore.release()
+# release the bounded semaphore again
+semaphore.release() # ValueError</code></pre>
+<p>The <strong>asyncio.BoundedSemaphore</strong> class supports the context manager interface, which will automatically acquire and release the bounded semaphore for you.</p>
+<p>As such it is the preferred usage, if appropriate for your program.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the bounded semaphore
+async with semaphore:
+	# ...
+</code></pre>
+<p>Finally, a coroutine can check if the bounded semaphore is current at capacity via the <strong>locked()</strong> method.</p>
+<p>It will be <strong>True</strong> if the bounded semaphore cannot be acquired at the time of the call, or False otherwise.</p>
+<p>For example:</p>
+<pre><code>...
+# check if there is space on the bounded semaphore
+if not semaphore.locked():
+	# ...
+</code></pre>
+<p>Now that we know how to use the <strong>asyncio.BoundedSemaphore</strong> in Python, let's look at a worked example.</p>
+<h2>Example of Using an Asyncio BoundedSemaphore</h2>
+<p>We can explore how to use an <strong>asyncio.BoundedSemaphore</strong> with a worked example.</p>
+<p>We will develop an example with a suite of coroutines but a limit on the number of coroutines that can perform an action simultaneously.</p>
+<p>A bounded semaphore will be used to limit the number of concurrent coroutines which will be less than the total number of coroutines, allowing some coroutines to block, wait for a position, then be notified and acquire a position.</p>
+<p>The complete example is listed below.</p>
+</main>
+</body>
+</html>

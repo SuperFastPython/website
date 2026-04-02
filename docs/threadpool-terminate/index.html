@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreadPool Does Not Support terminate() in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>ThreadPool Does Not Support terminate() in Python</h1>
+<div class="post-meta">September 18, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>You <strong>cannot terminate</strong> worker threads in the <a href="../threadpool-python/"><strong>ThreadPool</strong> class</a>.</p>
+<p>In this tutorial you will discover the effect of the <strong>terminate() method</strong> on the <strong>ThreadPool in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>What is the ThreadPool</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.ThreadPool"><strong>multiprocessing.pool.ThreadPool</strong> in Python</a> provides a pool of reusable threads for executing ad hoc tasks.</p>
+<blockquote><p>A thread pool object which controls a pool of worker threads to which jobs can be submitted.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The <strong>ThreadPool</strong> class extends the <strong>Pool</strong> class. The <strong>Pool</strong> class provides a pool of worker processes for process-based concurrency.</p>
+<p>Although the <strong>ThreadPool</strong> class is in the <strong>multiprocessing</strong> module it offers thread-based concurrency and is best suited to IO-bound tasks, such as reading or writing from sockets or files.</p>
+<p>A ThreadPool can be configured when it is created, which will prepare the new threads.</p>
+<p>We can issue one-off tasks to the <strong>ThreadPool</strong> using methods such as <strong>apply()</strong> or we can apply the same function to an iterable of items using methods such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the methods such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<h2>What is terminate()</h2>
+<p>Processes in Python can be terminated.</p>
+<p>This can be achieved via the <strong>terminate()</strong> method on the <strong>multiprocessing.Process</strong> class.</p>
+<p>For example:</p>
+<pre><code>...
+# terminate a process
+process.terminate()</code></pre>
+<p>Calling terminate will raise a <strong>SIGTERM</strong> signal in the target process which if not handled by the process will result in the process terminating (nearly) immediately.</p>
+<blockquote><p>terminate(): Terminate the process. On Unix this is done using the SIGTERM signal; on Windows TerminateProcess() is used. Note that exit handlers and finally clauses, etc., will not be executed.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Similarly the multiprocessing pool of worker processes can be terminated by calling the <strong>terminate()</strong> method on the <strong>multiprocessing.Pool</strong> class.</p>
+<p>For example:</p>
+<pre><code>...
+# terminate the process pool
+pool.terminate()</code></pre>
+<p>This will call the <strong>terminate()</strong> method on the worker processes in the pool, even if they are currently executing a task.</p>
+<blockquote><p>terminate(): Stops the worker processes immediately without completing outstanding work. When the pool object is garbage collected terminate() will be called immediately.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The <strong>terminate()</strong> method on the <strong>Pool</strong> class is also called automatically when using the <strong>Pool</strong> via the context manager interface.</p>
+<p>For example:</p>
+<pre><code>...
+# create a pool via the context manager
+with Pool() as pool:
+	#...
+# terminate() is called automatically
+</code></pre>
+<p>The <strong>multiprocessing.pool.ThreadPool</strong> class extends the <strong>Pool</strong> class and has a <strong>terminate()</strong> method that can be called.</p>
+<p>For example:</p>
+<pre><code>...
+# terminate the thread pool
+pool.terminate()</code></pre>
+<p>There's just one problem, it does nothing.</p>
+<h2>Threads Cannot Be Terminated Directly</h2>
+<p>Threads cannot be terminated.</p>
+<p>The <strong>threading.Thread</strong> class does not have a <strong>terminate()</strong> method.</p>
+<p>As such, we cannot directly terminate or stop a thread in Python.</p>
+<p>Instead, we must use indirect methods, such as having the thread check a variable to choose to stop.</p>
+<p>You can learn more about how to gracefully stop a thread in the tutorial:</p>
+<ul><li><a href="../stop-a-thread-in-python/">How to Stop a Thread in Python</a></li></ul>
+<p>This has an impact on the <strong>ThreadPool</strong> class and calling the <strong>terminate()</strong> method.</p>
+<h2>ThreadPool Does Not Support Terminate</h2>
+<p>Because threads do not support the <strong>terminate()</strong> method, the <strong>ThreadPool</strong> <strong>terminate()</strong> method does not work as expected.</p>
+<p>At the latest at the time of writing in Python version 3.10 and lower.</p>
+<p>As mentioned, the terminate method exists and can be called.</p>
+<p>We can learn more if we check the <a href="https://github.com/python/cpython/blob/3.10/Lib/multiprocessing/pool.py#L711">source code for the <strong>Pool</strong> class</a> which the <strong>ThreadPool</strong> class extends.</p>
+<p>For example, the snippet below is called when the <strong>terminate()</strong> method is called directly or indirectly via the context manager interface:</p>
+<pre><code>...
+# Terminate workers which haven't already finished.
+if pool and hasattr(pool[0], 'terminate'):
+    util.debug('terminating workers')
+    for p in pool:
+        if p.exitcode is None:
+            p.terminate()
+</code></pre>
+<p>It checks that the unit of concurrency, a process or thread, supports the <strong>terminate()</strong> method, and if so, calls it.</p>
+<p>Therefore, when we call <strong>terminate()</strong> in a <strong>ThreadPool</strong> object, it does not terminate the threads.</p>
+<p>Instead, it closes the threads that are not running, and waits for the executing threads to complete.</p>
+<p>Calling <strong>terminate()</strong> on the <strong>ThreadPool</strong> has the same effect as calling the <strong>close()</strong> method.</p>
+<blockquote><p>close(): Prevents any more tasks from being submitted to the pool. Once all the tasks have been completed the worker processes will exit.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>This is not a bug per se, it is just an undocumented feature.</p>
+<p>In fact, the API documentation for the <strong>ThreadPool</strong> class at the time of writing is practically non-existent. Which is why I am writing all of these tutorials.</p>
+<p>We can demonstrate this with a worked example.</p>
+<h2>Example of ThreadPool Not Terminating</h2>
+<p>In this example we can demonstrate that calling <strong>terminate()</strong> on a <strong>ThreadPool</strong> does not terminate tasks that are running.</p>
+<p>In this example we will first create a <strong>ThreadPool</strong>. We will then issue a task that blocks for a long time.</p>
+<p>The main process will then report all the threads that are running in the process, e.g. all the workers and all the helpers.</p>
+<p>It will then terminate the <strong>ThreadPool</strong> by calling the <strong>terminate()</strong> method. It then reports all the running threads in the process again, to confirm non-running threads were closed and running threads are still running.</p>
+<p>This will highlight that <strong>terminate()</strong> does not have the desired effect and operates like calling <strong>close()</strong>.</p>
+<p>Firstly, let's define a task that blocks for 10 seconds then reports a message when it is done.</p>
+<p>This is helpful because if the task is not terminated and is instead closed, we will see the message. Whereas if the task is truly terminated, we will not see the message</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task function executed in a new thread
+def task():
+    # block for a moment
+    sleep(10)
+    # display a message
+    print('This is coming from another thread')
+</code></pre>
+<p>Next, in the main thread, we will create a <strong>ThreadPool</strong>.</p>
+<pre><code>...
+# create a thread pool
+pool = ThreadPool()</code></pre>
+<p>We will then issue a single task asynchronously into the pool, in this case via the <strong>apply_async()</strong> method.</p>
+<pre><code>...
+# execute the task asynchronously
+_ = pool.apply_async(task)</code></pre>
+<p>The main thread will then report all of the threads running in the process.</p>
+<p>This is for reference after we call <strong>terminate()</strong> so we can see what threads were stopped and what threads remain running.</p>
+<pre><code>...
+# report all threads
+print('main reporting all threads:')
+for thread in threading.enumerate():
+    print(f'\t{thread}')
+</code></pre>
+<p>Next, the main thread will wait a moment, then terminate the <strong>ThreadPool</strong> by calling the terminate() method.</p>
+<pre><code>...
+print('Main is waiting a moment...')
+sleep(2)
+# terminate the pool
+print('Main is terminating the pool')
+pool.terminate()</code></pre>
+<p>The main thread then waits a moment more, then reports all of the threads still running in the process, after <strong>terminate()</strong> was called.</p>
+<p>We expect that most workers and helper thread have closed and that the single worker executing our task remains running.</p>
+<pre><code>...
+# wait a moment
+print('Main is waiting a moment...')
+sleep(1)
+# check if the pool is terminated
+print('Main reporting all threads:')
+for thread in threading.enumerate():
+    print(f'\t{thread}')
+</code></pre>
+<p>Finally, the main thread joins the <strong>ThreadPool</strong> and waits for it to close completely. That is, the main thread blocks until all workers have closed.</p>
+<pre><code>...
+# main joining the thread pool
+print('Main joining the pool...')
+pool.join()
+print('Main done.')</code></pre>
+<p>You can learn more about joining the <strong>ThreadPool</strong> in the tutorial:</p>
+<ul><li><a href="../threadpool-join/">How to Join a ThreadPool in Python</a></li></ul>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread workers not being terminated
+from time import sleep
+from multiprocessing.pool import ThreadPool
+import threading
+
+# task function executed in a new thread
+def task():
+    # block for a moment
+    sleep(10)
+    # display a message
+    print('This is coming from another thread')
+
+# protect the entry point
+if __name__ == '__main__':
+    # create a thread pool
+    pool = ThreadPool()
+    # execute the task asynchronously
+    _ = pool.apply_async(task)
+    # report all threads
+    print('main reporting all threads:')
+    for thread in threading.enumerate():
+        print(f'\t{thread}')
+    # wait a moment
+    print('Main is waiting a moment...')
+    sleep(2)
+    # terminate the pool
+    print('Main is terminating the pool')
+    pool.terminate()
+    # wait a moment
+    print('Main is waiting a moment...')
+    sleep(1)
+    # check if the pool is terminated
+    print('Main reporting all threads:')
+    for thread in threading.enumerate():
+        print(f'\t{thread}')
+    # main joining the thread pool
+    print('Main joining the pool...')
+    pool.join()
+    print('Main done.')
+</code></pre>
+<p>Running the example first starts the <strong>ThreadPool</strong> and issues the task.</p>
+<p>The task starts running in a worker within the <strong>ThreadPool</strong> and blocks for 10 seconds.</p>
+<p>The main thread reports all threads running in the process.</p>
+<p>In this case, we can see the main thread, 8 worker threads, and 3 helper threads.</p>
+<p>Note, the number of worker threads will differ depending on the number of logical CPU cores you have in your system.</p>
+<p>The main thread then waits a moment, then terminates the <strong>ThreadPool</strong> and waits a moment more.</p>
+<p>It then reports all running threads in the process.</p>
+<p>This time we can only see the main thread and one worker thread. This is the worker thread executing our task.</p>
+<p>This result highlights that the <strong>terminate()</strong> method indeed does not terminate worker threads that are running and instead only closes workers and helper threads that are not running.</p>
+<p>Finally the main thread joins the <strong>ThreadPool</strong> and the running task completes normally, reporting its message.</p>
+<pre><code>main reporting all threads:
+	&lt;_MainThread(MainThread, started 4460346880)&gt;
+	&lt;DummyProcess(Thread-1, started daemon 123145354792960)&gt;
+	&lt;DummyProcess(Thread-2, started daemon 123145371582464)&gt;
+	&lt;DummyProcess(Thread-3, started daemon 123145388371968)&gt;
+	&lt;DummyProcess(Thread-4, started daemon 123145405161472)&gt;
+	&lt;DummyProcess(Thread-5, started daemon 123145421950976)&gt;
+	&lt;DummyProcess(Thread-6, started daemon 123145438740480)&gt;
+	&lt;DummyProcess(Thread-7, started daemon 123145455529984)&gt;
+	&lt;DummyProcess(Thread-8, started daemon 123145472319488)&gt;
+	&lt;Thread(Thread-9, started daemon 123145489108992)&gt;
+	&lt;Thread(Thread-10, started daemon 123145505898496)&gt;
+	&lt;Thread(Thread-11, started daemon 123145522688000)&gt;
+Main is waiting a moment...
+Main is terminating the pool
+Main is waiting a moment...
+Main reporting all threads:
+	&lt;_MainThread(MainThread, started 4460346880)&gt;
+	&lt;DummyProcess(Thread-1, started daemon 123145354792960)&gt;
+Main joining the pool...
+This is coming from another thread
+Main done.
+</code></pre>
+<h2>Takeaways</h2>
+<p>You now know that <strong>terminate()</strong> does not terminate workers in the <strong>ThreadPool</strong> in Python.</p>
+</main>
+</body>
+</html>

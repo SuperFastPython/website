@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiprocessing Inherit Global Variables in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Multiprocessing Inherit Global Variables in Python</h1>
+<div class="post-meta">June 4, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Multiprocessing</a></div>
+
+<p>You can <strong>inherit global variables</strong> between forked processes, but not spawned processes.</p>
+<p>In this tutorial you will discover how to <strong>inherit global variables between processes in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need to Share Global Variables</h2>
+<p>A <a href="https://en.wikipedia.org/wiki/Process_(computing)">process</a> is a running instance of a computer program.</p>
+<p>Every Python program is executed in a <a href="../multiprocessing-in-python/">Process</a>, which is a new instance of the Python interpreter. This process has the name <em>MainProcess</em> and has one thread used to execute the program instructions called the <em>MainThread</em>. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create new child processes in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process"><strong>multiprocessing.Process</strong> class</a>.</p>
+<p>In concurrent programming, we sometimes need to share data between processes.</p>
+<p>One way to share data between processes is to inherit global variables from a parent process.</p>
+<p><strong>Can we inherit global variables between processes, and if so, how?</strong></p>
+<h2>How to Inherit Global Variables</h2>
+<p>A forked child process can inherit global variables from a parent process.</p>
+<p>Recall that a global variable is a variable defined and assigned within a module, e.g. outside of a function. They are different from variables defined and assigned within a function, which are referred to as local variables.</p>
+<blockquote><p>In Python, variables that are only referenced inside a function are implicitly global. If a variable is assigned a value anywhere within the function's body, it's assumed to be a local unless explicitly declared as global.</p><cite>-- <a href="https://docs.python.org/3/faq/programming.html#what-are-the-rules-for-local-and-global-variables-in-python">What are the rules for local and global variables in Python?</a></cite></blockquote>
+<p>Global variables can be accessed and assigned within a function if they are defined as being global, using the "<strong>global</strong>" keyword before they are used.</p>
+<p>For example:</p>
+<pre><code># a function
+def myfunction():
+	# access an existing global variable
+	global data
+</code></pre>
+<p>A global variable can be inherited by a child process.</p>
+<p>This means that we can define and assign a global variable in a parent process, then access and assign values to it in a function executed by a child process.</p>
+<p>Importantly, changes made to the global variable in the child process will not propagate back up to the parent process.</p>
+<blockquote><p>Bear in mind that if code run in a child process tries to access a global variable, then the value it sees (if any) may not be the same as the value in the parent process at the time that Process.start was called.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Global variables can only be shared or inherited by child processes that are forked from the parent process.</p>
+<p>Specifically, this means that you must create child processes using the 'fork' start method.</p>
+<p>Recall that the '<strong>fork</strong>' start method is the default on Unix platforms, and can be set prior to creating child processes via the <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.set_start_method"><strong>multiprocessing.set_start_method()</strong> function</a>.</p>
+<p>For example:</p>
+<pre><code>...
+# set the start method to fork
+set_start_method('fork')</code></pre>
+<p>The fork start method is not available on all platforms, e.g. it may not be available on Windows.</p>
+<p>Although the global variables are inherited, changes to the variable are not propagated.</p>
+<p>Specifically:</p>
+<ul><li>Changes to a global variable in the parent process are not propagated to the child processes.</li><li>Changes to the global variable in a child process are not propagated back to the parent process or to other child processes.</li></ul>
+<p>This means that the forked child process gets a snapshot of the global variables from the parent process at the time the child process was created.</p>
+<p>You cannot inherit global variables when using the '<strong>spawn</strong>' method to start child processes.</p>
+<p>Recall that the '<strong>spawn</strong>' start method is the default on macOS and Windows.</p>
+<p>Attempting to access and use a global variable in a child process started with the '<strong>spawn</strong>' start method will result in an error.</p>
+<p>You can learn more about process start methods in the tutorial:</p>
+<ul><li><a href="../multiprocessing-start-method/">Multiprocessing Start Methods</a></li></ul>
+<p>Now that we know how to share global variables with child processes, let's look at some worked examples.</p>
+<h2>Global Variables and Spawned Processes</h2>
+<p>We can explore what happens if we try to share global variables with a child process created using the '<strong>spawn</strong>' start method.</p>
+<p>Recall, that child processes created with the spawn start method will not inherit global variables. Attempting to access global variables in a child process that were defined in the parent process will result in an error.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>The parent process will explicitly use the '<strong>spawn</strong>' start method. It will then define a global variable and assign a value to the variable and report the global variable to confirm it was assigned. A child process will then run a custom function that will attempt to access and report the same global variable defined in the parent process. We expect this to result in an error.</p>
+<p>First, we can define a custom function to execute in a child process.</p>
+<pre><code># function to be executed in a new process
+def task():
+	# ...
+</code></pre>
+<p>The function will then define the variable "<strong>data</strong>" as being global.</p>
+<pre><code>...
+# declare global state
+global data</code></pre>
+<p>Next, the function will report the value of the global variable, assign it a new value, then report the variable again to confirm the new value was assigned.</p>
+<pre><code>...
+# report global state
+print(f'child process: {data}')
+# change global state
+data = 'hello hello!'
+# report global state
+print(f'child process: {data}')</code></pre>
+<p>We expect that accessing the global variable will fail with an error as the spawned child process will not inherit it.</p>
+<p>Tying this together, the complete <strong>task()</strong> function is defined below.</p>
+<pre><code># function to be executed in a new process
+def task():
+    # declare global state
+    global data
+    # report global state
+    print(f'child process: {data}')
+    # change global state
+    data = 'hello hello!'
+    # report global state
+    print(f'child process: {data}')
+</code></pre>
+<p>Next, in the main process we can set the start method to '<strong>spawn</strong>'.</p>
+<pre><code>...
+# set the start method to spawn
+set_start_method('spawn')</code></pre>
+<p>We can then define and assign a global variable named "<strong>data</strong>", then report the value of the variable to confirm the assignment worked as expected.</p>
+<pre><code>...
+# define global state
+data = 'Hello there'
+# report global state
+print(f'main process: {data}')</code></pre>
+<p>We can then create a new <strong>multiprocessing.Process</strong> instance, configured to execute our custom <strong>task()</strong> function. The child process can be started and the main process will block until the child process has terminated.</p>
+<pre><code>...
+# start a child process
+process = Process(target=task)
+process.start()
+# wait for the child to terminate
+process.join()</code></pre>
+<p>Finally, the main process will report the value of the global variable again, to see if any change to it occurred.</p>
+<pre><code>...
+# report global state
+print(f'main process: {data}')</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using global state shared between spawned processes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import set_start_method
+
+# function to be executed in a new process
+def task():
+    # declare global state
+    global data
+    # report global state
+    print(f'child process: {data}')
+    # change global state
+    data = 'hello hello!'
+    # report global state
+    print(f'child process: {data}')
+
+# protect entry point
+if __name__ == '__main__':
+    # set the start method to spawn
+    set_start_method('spawn')
+    # define global state
+    data = 'Hello there'
+    # report global state
+    print(f'main process: {data}')
+    # start a child process
+    process = Process(target=task)
+    process.start()
+    # wait for the child to terminate
+    process.join()
+    # report global state
+    print(f'main process: {data}')
+</code></pre>
+<p>Running the example first sets the process start method to '<strong>spawn</strong>'.</p>
+<p>A global variable named '<strong>data</strong>' is then defined, assigned, and reported as per normal.</p>
+<p>A new child process is then created using the '<strong>spawn</strong>' start method to execute our custom function. The process starts and declares a global variable named 'data'. It then attempts to report the value of the global variable.</p>
+<p>This results in a <strong>NameError</strong>, and the child process terminates. This is expected.</p>
+<p>The main parent process blocks while the child process is running, then continues on once the child process terminates.</p>
+<p>The main process then reports the value of the global variable again, reporting no change as expected.</p>
+<p>This highlights that child processes created using the spawn method will not inherit global variables from the parent process.</p>
+<pre><code>main process: Hello there
+Process Process-1:
+Traceback (most recent call last):
+  ...
+NameError: name 'data' is not defined
+main process: Hello there
+</code></pre>
+<p>Next, let's look at how forked child processes will inherit global variables.</p>
+<h2>Global Variables and Forked Processes</h2>
+<p>We can explore how child processes forked from a parent process will inherit the parents global variables.</p>
+<p>In this example, we can update the example from the previous section and change it using the '<strong>fork</strong>' start method instead of the '<strong>spawn</strong>' start method.</p>
+<p>For example:</p>
+<pre><code>...
+# set the start method to fork
+set_start_method('fork')</code></pre>
+<p>This will allow the child process to inherit the '<strong>data</strong>' global variable from the parent process, report it, and assign values to it.</p>
+<p>It will also highlight that changes made to the global variable in the child process are not propagated back to the parent process.</p>
+<p>Recall, the '<strong>fork</strong>' start method is not available on all platforms, e.g. Windows.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of using global state shared between forked processes
+from time import sleep
+from multiprocessing import Process
+from multiprocessing import set_start_method
+
+# function to be executed in a new process
+def task():
+    # declare global state
+    global data
+    # report global state
+    print(f'child process before: {data}')
+    # change global state
+    data = 'hello hello!'
+    # report global state
+    print(f'child process after: {data}')
+
+# protect entry point
+if __name__ == '__main__':
+    # set the start method to fork
+    set_start_method('fork')
+    # define global state
+    data = 'Hello there'
+    # report global state
+    print(f'main process: {data}')
+    # start a child process
+    process = Process(target=task)
+    process.start()
+    # wait for the child to terminate
+    process.join()
+    # report global state
+    print(f'main process: {data}')
+</code></pre>
+<p>Running the example first sets the start method to '<strong>fork</strong>'.</p>
+<p>It then defines a global variable and assigns it the value '<em>Hello there</em>' and reports the variable to confirm that this is the current value.</p>
+<p>A child process is then started using the '<strong>fork</strong>' start method and executes our custom function. The main process then blocks until the child process terminates.</p>
+<p>The child process declares the '<strong>data</strong>' variable as being global.</p>
+<p>It then reports the '<strong>data</strong>' global variable. This works as expected, as the variable was inherited from the parent process. The value is the same as that assigned in the parent value, specifically 'Hello there'.</p>
+<p>The child process then changes the value of the global variable, then reports the value again. This shows that the value was changed to '<em>hello hello!</em>'.</p>
+<p>The child process terminates and the parent process wakes up. It then reports the value of the global variable again, which is unchanged with the value '<em>Hello there</em>'.</p>
+<p>This highlights that indeed a forked child process will inherit global variables, but changes to the global variable are not propagated from the child back to the parent.</p>
+<pre><code>main process: Hello there
+child process before: Hello there
+child process after: hello hello!
+main process: Hello there</code></pre>
+<h2>Best Practice</h2>
+<p>Although a forked child process can inherit global variables from a parent process, it should be avoided.</p>
+<p>The most important reason is because the functionality is only supported on those platforms that support the 'fork' spawn method, e.g. not windows.</p>
+<blockquote><p>On Unix using the fork start method, a child process can make use of a shared resource created in a parent process using a global resource. However, it is better to pass the object as an argument to the constructor for the child process.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>Another reason is that it can be confusing to some developers, e.g. the fact that changes to the global state are not propagated may be surprising.</p>
+<p>As such, alternate techniques should be used to share data between process that work with all process start methods, such as:</p>
+<ul><li>Using shared ctypes, such as the <strong>multiprocessing.Value</strong>.</li><li>Sending data as messages on a <strong>multiprocessing.Pipe</strong> or <strong>multiprocessing.Queue</strong>.</li></ul>
+<h2>Takeaways</h2>
+<p>You now know how to inherit global variables from a parent process.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Disappearing Task Bug – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Disappearing Task Bug</h1>
+<div class="post-meta">December 10, 2023&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>You can have <strong>running background tasks in asyncio suddenly disappear</strong>. This is a known bug and can be avoided by ensuring that you keep a strong reference to all tasks that run in the background.</p>
+<p>In this tutorial, you will discover the <strong>asyncio disappearing task bug</strong> and how to avoid it.</p>
+<p>Let's get started.</p>
+<h2>Asyncio Tasks Can Disappear</h2>
+<p>Tasks in asyncio can disappear.</p>
+<p>Specifically, we can create a task to run in the background via <strong><a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task">asyncio.create_task()</a></strong>, it can start running, then at some point, it can be terminated by the Python garbage collector.</p>
+<p>For example:</p>
+<pre><code>...
+# schedule a task
+asyncio.create_task(coro())
+...</code></pre>
+<p>The reason is that the asyncio event loop only maintains a weak reference to scheduled tasks, e.g., you can see them in asyncio.all_tasks().</p>
+<blockquote>
+<p>Important Save a reference to the result of this function, to avoid a task disappearing mid-execution. The event loop only keeps weak references to tasks. A task that isn't referenced elsewhere may get garbage collected at any time, even before it's done.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>Although a rare event, it is very real and does affect modern versions of Python e.g. 3.11 and beyond.</p>
+<p>Now that we know about the asyncio disappearing task bug, let's look at how we might avoid it.</p>
+<h2>How to Avoid Disappearing Tasks in Asyncio</h2>
+<p>The asyncio API documentation recommends keeping a reference for all scheduled tasks.</p>
+<p>Specifically, for background tasks that are created and ignored, so-called "<em>fire and forget</em>" tasks.</p>
+<blockquote>
+<p>For reliable “fire-and-forget” background tasks, gather them in a collection ...</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a></cite></blockquote>
+<p>This can be achieved by assigning the result of <strong>asyncio.create_task()</strong> to a variable within the calling task, even if you do nothing with it.</p>
+<p>For example:</p>
+<pre><code>...
+# schedule a task
+task = asyncio.create_task(coro())
+...</code></pre>
+<p>The preference in the asyncio API documentation is to create a global variable in your program that maintains a collection of all tasks.</p>
+<p>A done callback is then added to each task to automatically remove each task from the collection of tasks once it is finished.</p>
+<p>The snippet from the <a href="https://docs.python.org/3/library/asyncio-task.html">API documentation</a> is as follows:</p>
+<pre><code>background_tasks = set()
+
+for i in range(10):
+    task = asyncio.create_task(some_coro(param=i))
+
+    # Add task to the set. This creates a strong reference.
+    background_tasks.add(task)
+
+    # To prevent keeping references to finished tasks forever,
+    # make each task remove its own reference from the set after
+    # completion:
+    task.add_done_callback(background_tasks.discard)
+</code></pre>
+<p>Many developers turn this into a helper function that can be called to create tasks in the program and automatically perform these operations.</p>
+<p>For example, a helper function that does this looks as follows:</p>
+<pre><code>...
+# keep track of all tasks (avoid garbage collection)
+ALL_TASKS = set()
+
+# helper function for creating tasks that are not gc'ed
+def create_task_helper(coroutine):
+    # wrap and schedule the coroutine
+    task = asyncio.create_task(coroutine)
+    # store in collection of all tasks
+    global ALL_TASKS
+    ALL_TASKS.add(task)
+    # add a callback to remove from the collection
+    task.add_done_callback(ALL_TASKS.discard)
+    # return the task that was created
+    return task
+</code></pre>
+<p>This helper function could then be used to create background fire-and-forget tasks that cannot disappear as follows:</p>
+<pre><code>...
+# create a task
+create_task_helper(work())</code></pre>
+<p>Now that we know how to avoid the disappearing task bug, let's look at a modern solution.</p>
+<h2>Modern Way to Avoid Disappearing Tasks (v3.11)</h2>
+<p>The modern approach to avoiding disappearing tasks is to use an <strong>asyncio.TaskGroup</strong>.</p>
+<p>This is a context manager that can be used to create one or more tasks, keep track of them, and exit only once all the tasks are done.</p>
+<p>Background tasks can be issued safely, and will only be awaited for when exiting the context manager.</p>
+<p>For example:</p>
+<pre><code>...
+# create a taskgroup
+async with asyncio.TaskGroup() as group:
+	# create a background task
+	group.create_task(coro())
+	...
+</code></pre>
+<p>This feature was added to Python in version 3.11.</p>
+<blockquote>
+<p>Added the TaskGroup class, an asynchronous context manager holding a group of tasks that will wait for all of them upon exit. For new code this is recommended over using create_task() and gather() directly.</p>
+<cite>-- <a href="https://docs.python.org/3/whatsnew/3.11.html">WHAT’S NEW IN PYTHON 3.11</a></cite></blockquote>
+<p>You can learn more about how to use the <strong>asyncio.TaskGroup</strong> in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-taskgroup/">How to use asyncio.TaskGroup</a></li>
+</ul>
+<p>Now that we know how to avoid the asyncio disappearing task bug, let's take a look at how we might trigger it.</p>
+<h2>Example That Does NOT Trigger Disappearing Tasks</h2>
+<p>The asyncio disappearing task bug is relatively hard to trigger.</p>
+<p>For example, we might naively assume that if we issue one of the background asyncio tasks and force the garbage collector to run a lot we will trigger the bug.</p>
+<p>This is what I assumed at first.</p>
+<p>Sadly, this is not the case.</p>
+<p>We can demonstrate this with a worked example.</p>
+<p>Firstly, we can define a task that will run in the background. It needs to let the user know it has started, that it is unique, and when it is done.</p>
+<p>The <strong>background()</strong> coroutine below implements this, taking a unique id and reporting when it is started and when it is done.</p>
+<pre><code># background task
+async def background(i):
+    print(f'Task {i} starting')
+    # wait around a while
+    await asyncio.sleep(5)
+    print(f'Task {i} done')
+</code></pre>
+<p>We then need to start many of these tasks in the background and not keep a reference.</p>
+<p>We can then loop many times and force full garbage collection each iteration. We will ensure that this loop runs longer than the background tasks so that we can see if they are done or not.</p>
+<pre><code># entry point
+async def main():
+    # kick of a ton of tasks, with no local reference
+    for i in range(20):
+        asyncio.create_task(background(i))
+    # allow tasks to start
+    await asyncio.sleep(0)
+    # loop and force lots of garbage collection
+    for i in range(12):
+        # run garbage collector
+        gc.collect()
+        # sleep a moment
+        await asyncio.sleep(0.5)
+        # report a message
+        print(f'Main at iteration {i}')
+    # report a final message
+    print('Main done.')
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of attempting to trigger the disappearing task bug (fails)
+import asyncio
+import gc
+
+# background task
+async def background(i):
+    print(f'Task {i} starting')
+    # wait around a while
+    await asyncio.sleep(5)
+    print(f'Task {i} done')
+
+# entry point
+async def main():
+    # kick of a ton of tasks, with no local reference
+    for i in range(20):
+        asyncio.create_task(background(i))
+    # allow tasks to start
+    await asyncio.sleep(0)
+    # loop and force lots of garbage collection
+    for i in range(12):
+        # run garbage collector
+        gc.collect()
+        # sleep a moment
+        await asyncio.sleep(0.5)
+        # report a message
+        print(f'Main at iteration {i}')
+    # report a final message
+    print('Main done.')
+
+# start event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example does not trigger the disappearing task bug, as I might expect.</p>
+<p>Instead, the tasks are started and completed normally.</p>
+<p>Hammering the garbage collector 12 times while the background tasks are running did not force them to be terminated.</p>
+<p>There's more to it.</p>
+<pre><code>Task 0 starting
+Task 1 starting
+Task 2 starting
+Task 3 starting
+Task 4 starting
+Task 5 starting
+Task 6 starting
+Task 7 starting
+Task 8 starting
+Task 9 starting
+Task 10 starting
+Task 11 starting
+Task 12 starting
+Task 13 starting
+Task 14 starting
+Task 15 starting
+Task 16 starting
+Task 17 starting
+Task 18 starting
+Task 19 starting
+Main at iteration 0
+Main at iteration 1
+Main at iteration 2
+Main at iteration 3
+Main at iteration 4
+Main at iteration 5
+Main at iteration 6
+Main at iteration 7
+Main at iteration 8
+Task 0 done
+Task 1 done
+Task 2 done
+Task 3 done
+Task 4 done
+Task 5 done
+Task 6 done
+Task 7 done
+Task 8 done
+Task 9 done
+Task 10 done
+Task 11 done
+Task 12 done
+Task 13 done
+Task 14 done
+Task 15 done
+Task 16 done
+Task 17 done
+Task 18 done
+Task 19 done
+Main at iteration 9
+Main at iteration 10
+Main at iteration 11
+Main done.
+</code></pre>
+<p>Next, let's look at how we might really trigger the disappearing task bug.</p>
+<h2>How to Trigger Disappearing Tasks?</h2>
+<p>Forcing the disappearing task bug is more challenging.</p>
+<p>People have tried, and some have succeeded, hence why it is mentioned prominently in the asyncio API documentation.</p>
+<p>In fact, there is a closed GitHub issue on the need to mention the bug in the documentation titled "<a href="https://github.com/python/cpython/issues/88831">asyncio.create_task() documentation should mention user needs to keep reference to the task</a>".</p>
+<p>The describes the bug and a symptom, which is the asyncio event loop reporting the message:</p>
+<ul>
+<li><strong>Task was destroyed but it is pending!</strong></li>
+</ul>
+<p>For example:</p>
+<blockquote>
+<p>asyncio will only keep weak references to alive tasks (in _all_tasks). If a user does not keep a reference to a task and the task is not currently executing or sleeping, the user may get "Task was destroyed but it is pending!".</p>
+<cite>-- <a href="https://github.com/python/cpython/issues/88831">asyncio.create_task() documentation should mention user needs to keep reference to the task</a></cite></blockquote>
+<p>As such, if this warning is emitted by our event loop, perhaps on exit, then we might suspect that we have suffered this bug.</p>
+<p>In fact, we can dig further, and find the original bug report titled "<a href="https://github.com/python/cpython/issues/65362">asyncio doesn't warn if a task is destroyed during its execution</a>" circa 2014 in which the warning message was added to the code base.</p>
+<p>The issue links to a StackOverflow answer to the question "<a href="https://stackoverflow.com/questions/71938799/python-asyncio-create-task-really-need-to-keep-a-reference/76823668">Python asyncio.create_task() - really need to keep a reference?</a>".</p>
+<p>The <a href="https://stackoverflow.com/questions/71938799/python-asyncio-create-task-really-need-to-keep-a-reference/76823668#76823668">answer</a> is written by User "<a href="https://stackoverflow.com/users/13944524/s-b">S.B</a>" aka "<a href="https://github.com/amirsoroush">Amir Soroush</a>" on August 02, 2023, and is extensive. Hats off to you sir!</p>
+<p>Critically, it provides an example to reproduce the fault and an explanation of why the fault is caused.</p>
+<blockquote>
+<p>As I realized more and more people(including me) are struggling to understand "why" they need to keep references to the tasks as their code already works just fine, I intended to explain what's going on behind the scene and give more information about the references in different steps and show when their code works, when it doesn't.</p>
+<cite>-- <a href="https://stackoverflow.com/questions/71938799/python-asyncio-create-task-really-need-to-keep-a-reference/76823668#76823668">S.B's Answer: Python asyncio.create_task() - really need to keep a reference?</a></cite></blockquote>
+<p>The crux appears to be to have a task that is suspended but does not schedule another task on the event loop, at least not yet.</p>
+<p>One approach to force this case is to request that the event loop create a new <strong>asyncio.Future</strong> object, as though we plan to use it, but then await it.</p>
+<p>The task will then be suspended, it will be awaiting an <strong>asyncio.Future</strong> that has no reference outside of the task, and the garbage collector may decide to reclaim it, forcing it to terminate.</p>
+<p>For example:</p>
+<pre><code>...
+# get the event loop
+loop = asyncio.get_running_loop()
+# create an empty future
+future = loop.create_future()
+# await the empty future (do nothing)
+await future
+</code></pre>
+<p>The disappearing task cannot just await a call to <strong><a href="../asyncio-sleep/">asyncio.sleep()</a></strong>, as this will create a strong reference to the task.</p>
+<blockquote>
+<p>Yielding from asyncio.sleep() prevents the consumers from being collected: it creates a strong ref to the future in the loop. I suspect also all network-related asyncio coroutines behave this way.</p>
+<cite>-- <a href="https://github.com/python/cpython/issues/65362">asyncio doesn't warn if a task is destroyed during its execution</a></cite></blockquote>
+<p>Additionally, the bug cannot be forced by having the task do a blocking operation, as this will prevent the event loop from progressing, e.g. the task won’t be suspended.</p>
+<p>The author then goes on to provide a real-world example with an echo server and client, where the server executes a similar pattern of code internally and triggers the fault.</p>
+<p>Recall, a major symptom of the fault is the warning message: "<em>Task was destroyed but it is pending!</em>"</p>
+<p>Now that we know how to trigger the disappearing task bug on demand, let's look at a worked example.</p>
+<h2>Example of Forcing Disappearing Tasks in Asyncio</h2>
+<p>We can explore an example of forcing the disappearing task bug.</p>
+<p>All credit to <a href="https://stackoverflow.com/questions/71938799/python-asyncio-create-task-really-need-to-keep-a-reference/76823668#76823668">"S.B" aka Amir Soroush</a>. This is a rewritten version of his answer posed on StackOverflow.</p>
+<p>In this example we will have <strong>main()</strong> coroutine that will create a background task that sleeps, runs the garbage collector, and prints a message. A reference to this task is kept. The <strong>main()</strong> coroutine then creates another background task that creates a future and awaits it. A reference to this task is not kept. The <strong>main()</strong> coroutine then waits a moment and terminates.</p>
+<p>This will trigger the disappearing task bug, specifically for the background task for which no reference is kept that awaits a future to which there are no references outside of the task.</p>
+<p>Firstly, we can define our normal worker task.</p>
+<pre><code># a task that just sleeps and prints
+async def work():
+    # block
+    await asyncio.sleep(1)
+    # run the garbage collector
+    gc.collect()
+    # report a final message
+    print(f'Task is done')
+</code></pre>
+<p>Note the call to the garbage collector. This will cause the disappearing task defined below to be garbage collected.</p>
+<p>Next, we can define our disappearing task.</p>
+<pre><code># a task that will disappear
+async def disappear():
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # create an empty future
+    future = loop.create_future()
+    # await the empty future (do nothing)
+    await future
+    # report a final message
+    print(f'Disappear is done')
+</code></pre>
+<p>Note, the final print message is never reached, regardless of the bug. The awaiting of the future never returns.</p>
+<p>Finally, we can define the main() coroutine that sets things up.</p>
+<pre><code># entry point
+async def main():
+    # create and schedule work task
+    task = asyncio.create_task(work())
+    # create and schedule disappear task
+    asyncio.create_task(disappear())
+    # all the tasks to run
+    await asyncio.sleep(3)
+    # report a final message
+    print('Main is done')
+</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of trigger a disappearing task
+import asyncio
+import gc
+
+# a task that just sleeps and prints
+async def work():
+    # block
+    await asyncio.sleep(1)
+    # run the garbage collector
+    gc.collect()
+    # report a final message
+    print(f'Task is done')
+
+# a task that will disappear
+async def disappear():
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # create an empty future
+    future = loop.create_future()
+    # await the empty future (do nothing)
+    await future
+    # report a final message
+    print(f'Disappear is done')
+
+# entry point
+async def main():
+    # create and schedule work task
+    task = asyncio.create_task(work())
+    # create and schedule disappear task
+    asyncio.create_task(disappear())
+    # all the tasks to run
+    await asyncio.sleep(3)
+    # report a final message
+    print('Main is done')
+
+# start event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the <strong>work()</strong> and keeps a reference, then creates the <strong>disappear()</strong> and does not keep a reference. It then suspends for 3 seconds.</p>
+<p>The <strong>work()</strong> task runs and sleeps for one second.</p>
+<p>The <strong>disappear()</strong> task runs and creates a future and awaits it. This task is now suspended.</p>
+<p>Two preconditions of the bug are now met:</p>
+<ol>
+<li>There are no strong references to <strong>disappear()</strong></li>
+<li><strong>disappear()</strong> is suspended</li>
+</ol>
+<p>The <strong>work()</strong> task runs and executes the garbage collector.</p>
+<p>This terminates the <strong>disappear()</strong> and reports the warning message "<strong>Task was destroyed but it is pending!</strong>" and the details of the <strong>asyncio.Task</strong> object.</p>
+<p>The <strong>work()</strong> task reports its message and terminates normally.</p>
+<p>The <strong>main()</strong> task resumes, reports its final message, and terminates normally.</p>
+<p>This highlights how we can force the disappearing task bug in asyncio.</p>
+<pre><code>Task was destroyed but it is pending!
+task: &lt;Task pending name='Task-3' coro=&lt;disappear() done, defined at ...&gt; wait_for=&lt;Future pending cb=[Task.task_wakeup()]&gt;&gt;
+Task is done
+Main is done
+</code></pre>
+<p>Next, let's look at how this bug can be avoided with one change, keeping a strong reference to the background task.</p>
+<h2>Example of Avoiding Disappearing Tasks By Keeping a Reference</h2>
+<p>The disappearing task bug forced in the previous section can be avoided by keeping a strong reference to the <strong>asyncio.Task</strong> object created for the <strong>disappear()</strong> task.</p>
+<p>For example:</p>
+<pre><code>...
+# create and schedule disappear task
+task2 = asyncio.create_task(disappear())
+</code></pre>
+<p>And that's it.</p>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of fixed disappearing task by keeping reference
+import asyncio
+import gc
+
+# a task that just sleeps and prints
+async def work():
+    # block
+    await asyncio.sleep(1)
+    # run the garbage collector
+    gc.collect()
+    # report a final message
+    print(f'Task is done')
+
+# a task that will disappear
+async def disappear():
+    # get the event loop
+    loop = asyncio.get_running_loop()
+    # create an empty future
+    future = loop.create_future()
+    # await the empty future (do nothing)
+    await future
+    # report a final message
+    print(f'Disappear is done')
+
+# entry point
+async def main():
+    # create and schedule work task
+    task = asyncio.create_task(work())
+    # create and schedule disappear task
+    task2 = asyncio.create_task(disappear())
+    # all the tasks to run
+    await asyncio.sleep(3)
+    # report a final message
+    print('Main is done')
+
+# start event loop
+asyncio.run(main())
+</code></pre>
+<p>Running the example first starts the event loop and runs the <strong>main()</strong> coroutine.</p>
+<p>The <strong>main()</strong> coroutine runs and creates the work() and keeps a reference, then creates the <strong>disappear()</strong>, and this time it keeps a reference to it. It then suspends for 3 seconds.</p>
+<p>The <strong>work()</strong> task runs and sleeps for one second.</p>
+<p>The <strong>disappear()</strong> task runs and creates a future and awaits it. This task is now suspended, and will never resume.</p>
+<p>The <strong>work()</strong> task runs and executes the garbage collector.</p>
+<p>This has no effect on <strong>disappear()</strong>, as the <strong>main()</strong> task has a strong reference to it.</p>
+<p>The <strong>work()</strong> task reports its message and terminates normally.</p>
+<p>The <strong>main()</strong> task resumes, reports its final message and terminates normally.</p>
+<p>The <strong>disappear()</strong> task does not resume, it awaits forever because the <strong>asyncio.Future</strong> does nothing and never returns.</p>
+<p>This highlights how we can avoid the asyncio disappearing task bug by explicitly keeping a strong reference to background tasks.</p>
+<pre><code>Task is done
+Main is done</code></pre>
+<h2>Frequently Ask Questions</h2>
+<p>This section lists some common questions about the disappearing task bug in asyncio.</p>
+<h3>Is the Disappearing Task Bug Still a Thing?</h3>
+<p>Yes.</p>
+<p>As of Python 3.11 in 2023. Probably in Python 3.12 and probably for the foreseeable future.</p>
+<h3>How Do I Know I Suffer From The Disappearing Task Bug?</h3>
+<p>You will see a warning message with the text:</p>
+<ul>
+<li><strong>Task was destroyed but it is pending!</strong></li>
+</ul>
+<p>The warning message may be reported when the disappeared task is deleted, or it may be when the asyncio event loop is terminated.</p>
+<h3>How Do I Avoid The Disappearing Task Bug?</h3>
+<p>Keep a strong reference to background tasks.</p>
+<p>For example:</p>
+<ol>
+<li>Assign the task to a variable and keep the variable around, or:</li>
+<li>Add background tasks to a set and remove them from the set once they are done, or:</li>
+<li>Create tasks using <strong>asyncio.TaskGroup</strong>.</li>
+</ol>
+<p>See the examples above.</p>
+<h3>What Are The Preconditions For The Disappearing Task Bug?</h3>
+<ol>
+<li>You schedule a background task via <strong>asyncio.create_task()</strong> without keeping a reference.</li>
+<li>The background task is suspended at some point.</li>
+<li>The thing the background task awaits is not known outside the task.</li>
+<li>Garbage collection runs while the background task is suspended.</li>
+</ol>
+<p>At least, that's my understanding of the bug, please correct me if you believe otherwise.</p>
+<h2>Takeaways</h2>
+<p>You now know about the asyncio disappearing task bug and how to avoid it.</p>
+</main>
+</body>
+</html>

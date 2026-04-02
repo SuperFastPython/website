@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread-Safe Print in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread-Safe Print in Python</h1>
+<div class="post-meta">April 4, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can make <strong>thread-safe calls to print()</strong> using a <strong>mutex lock</strong> such as <strong>threading.Lock</strong>.</p>
+<p>In this tutorial you will discover how to make calls to <strong>print() thread-safe in Python</strong>.</p>
+<p>Let's get started.</p>
+<h2>Need Thread-Safe Print</h2>
+<p>A thread is a <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread of execution</a> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming, we may want to print statements to the command line (also called the terminal or command prompt) via the print() built-in function.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>Primary output from the program for the user.</li><li>Debugging print statements for threads.</li><li>Reporting progress of tasks in threads.</li></ul>
+<p><strong>Is calling print() from multiple threads thread-safe? If not, how can we make print thread-safe?</strong></p>
+<h2>How to Thread-Safe Print</h2>
+<p>The <a href="https://docs.python.org/3/library/functions.html#print"><strong>print()</strong> function is a built-in function</a> for printing a string on stdout and is not thread-safe.</p>
+<p>The <strong>print()</strong> function takes a string message, or an object that can be converted to a string.</p>
+<p>For example:</p>
+<pre><code>...
+# print a message to the command line
+print('Hi there')</code></pre>
+<p>By default, messages are appended with a newline character '<strong>\n</strong>', although an alternate ending can be specified via the "<strong>end</strong>" argument.</p>
+<p>An "<strong>end</strong>" value of None will not include a separator between messages, printing on the same line.</p>
+<p>For example:</p>
+<pre><code>...
+# print a message without a new line
+print('Hello', end=None)</code></pre>
+<p>By default, messages are not flushed to stdout until an internal buffer is full. Messages can be forced to flush after each call, which can be achieved by setting the "<strong>flush</strong>" argument to <strong>True</strong>.</p>
+<p>For example:</p>
+<pre><code>...
+# always flush the stream
+print('Hello', flush=True)</code></pre>
+<p>By default, it reports messages to stdout, although can be configured to output messages to any file via the "<strong>file</strong>" argument.</p>
+<p>Recall that <a href="https://docs.python.org/3/library/sys.html#sys.stdout">stdout</a> refers to "standard out" or "standard output" which is the stream for output messages in the <a href="https://en.wikipedia.org/wiki/Command-line_interface">command line</a> (also called terminal or command prompt).</p>
+<p>Calls to print from multiple threads is not thread-safe and will likely result in the corruption of messages as threads are context switched.</p>
+<p>In order to make the <strong>print()</strong> function thread-safe, it needs to be treated as a critical section and protected with a mutual exclusion (mutex) lock.</p>
+<p>This can be achieved with an instance of the <strong>threading.Lock</strong> class.</p>
+<p>First, an instance of the lock can be created.</p>
+<pre><code>...
+# create a lock
+lock = threading.Lock()</code></pre>
+<p>The lock can then be shared with all threads that need to print.</p>
+<p>Prior to printing, the thread must acquire the lock, call print, then release the lock.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+lock.acquire()
+# report message
+print('...')
+# release the lock
+lock.release()</code></pre>
+<p>Only one thread can hold the lock at a time. As only one thread can hold the lock, it means that only one thread can print at a time.</p>
+<p>Other threads that attempt to acquire the lock while it is already acquired will automatically wait until the lock is available.</p>
+<p>It is critical that the lock is released after it is no longer needed, to allow other threads to acquire it. Otherwise those threads waiting for the lock will never progress, resulting in a concurrency failure condition called a deadlock.</p>
+<p>An easy way to acquire the lock and release it automatically is via the context manager interface for the <strong>threading.Lock</strong> class.</p>
+<p>For example:</p>
+<pre><code>...
+# acquire the lock
+with lock:
+	# report the message
+	print('...')
+</code></pre>
+<p>You can learn more about mutex locks in this tutorial:</p>
+<ul><li><a href="../thread-mutex-lock/">How to Use a Mutex Lock in Python</a></li></ul>
+<p>Next, let's look at some worked examples of printing in a thread-safe manner.</p>
+<h2>Example of Thread-Unsafe Print</h2>
+<p>Before we look at examples of thread-safe calls to <strong>print()</strong>, let's look at an example of how calling print from multiple threads is not thread-safe.</p>
+<p>In this example we will create 1,000 threads, each of which will generate a random number between 0 and 1, block for that fraction of a second, then report the value by calling print(). The print statements will step on each other and will result in a corrupted stream of messages.</p>
+<p>First, we will define a function that takes a unique integer for the task, generates a random number by calling <strong>random.random()</strong>, blocks by calling <strong>time.sleep()</strong> then reports the number by calling <strong>print()</strong> with a formatted string.</p>
+<p>The <strong>task()</strong> function below implements this.</p>
+<pre><code># task for worker threads
+def task(number):
+    # generate random number between 0 and 1
+    value = random()
+    # block
+    sleep(value)
+    # report
+    print(f'Thread {number} got {value}.')
+</code></pre>
+<p>Next, in the main thread, we can create 1,000 instances of the <strong>threading.Thread</strong> class, each configured to call our <strong>task()</strong> function with a unique integer from 0 to 999.</p>
+<p>We can do this in a list comprehension in order to create a list of <strong>threading.Thread</strong> objects.</p>
+<pre><code>...
+# configure many threads
+threads = [Thread(target=task, args=(i,)) for i in range(1000)]</code></pre>
+<p>We can then call the <strong>start()</strong> method on each thread to start their execution, and then wait for all threads to finish by calling the <strong>join()</strong> method.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>We expect a race condition in the print statement as all 1,000 threads will attempt to print messages concurrently.</p>
+<p>The result will be a corruption of the messages that are printed, rather than a clean one message per line.</p>
+<p>Note, this is still a problem, even if we set the "<strong>flush</strong>" argument to <strong>True</strong>, requiring that the stream always flush messages.</p>
+<pre><code>...
+# report
+print(f'Thread {number} got {value}.', flush=True)</code></pre>
+<p>Tying this together, the complete example of print being not thread-safe is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of print is not thread-safe
+from random import random
+from time import sleep
+from threading import Thread
+
+# task for worker threads
+def task(number):
+    # generate random number between 0 and 1
+    value = random()
+    # block
+    sleep(value)
+    # report
+    print(f'Thread {number} got {value}.')
+
+# configure many threads
+threads = [Thread(target=task, args=(i,)) for i in range(1000)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the 1,000 threads and configures them to execute our <strong>task()</strong> function.</p>
+<p>The threads are started and the main thread blocks until all threads are terminated.</p>
+<p>Each thread generates a random number, blocks and reports its value.</p>
+<p>The result is 1,000 messages printed concurrently to stdout.</p>
+<p>A truncated example of the output is listed below.</p>
+<p>Note, your specific results will differ each time the program is run due to the use of random numbers.</p>
+<pre><code>Thread 142 got 0.00021174829540115958.
+Thread 379 got 0.002046866376592793.Thread 231 got 0.009602303512181054.
+
+Thread 103 got 0.017722001062820292.
+Thread 175 got 0.01806447484727458.
+Thread 99 got 0.024806470811583714.
+Thread 146 got 0.02576741412800998.
+Thread 1 got 0.034946324325054845.
+Thread 357 got 0.02146115453610209.
+Thread 221 got 0.03013721679572312.
+Thread 385 got 0.021983019539983162.Thread 454 got 0.017871263686212946.
+...
+</code></pre>
+<p>This demonstrates that <strong>print()</strong> function is not thread-safe.</p>
+<p>Next, let's look at how we can call print() in a thread-safe manner.</p>
+<h2>Example of Thread-Safe Print</h2>
+<p>We can update the example in the previous section to be thread-safe.</p>
+<p>This can be achieved by creating a mutex lock and sharing among all threads that need to print. The <strong>task()</strong> function can then be updated so that the lock must be acquired prior to calling the print statement.</p>
+<p>First, we can update the <strong>task()</strong> function to take a lock as an argument.</p>
+<pre><code># task for worker threads
+def task(number, lock):
+	# ...
+</code></pre>
+<p>Next, we can update the call to <strong>print()</strong> to be protected by the lock using the context manager interface.</p>
+<pre><code>...
+# report
+with lock:
+    print(f'Thread {number} got {value}.')
+</code></pre>
+<p>In the main thread, we can create an instance of the lock to be shared among all threads.</p>
+<pre><code>...
+# create a shared lock
+lock = Lock()</code></pre>
+<p>We can then pass the lock as an argument to each thread when it is configured.</p>
+<pre><code>...
+# configure many threads
+threads = [Thread(target=task, args=(i,lock)) for i in range(1000)]</code></pre>
+<p>Tying this together, the complete example of calling the <strong>print()</strong> function in a thread-safe manner is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-safe print
+from random import random
+from time import sleep
+from threading import Thread
+from threading import Lock
+
+# task for worker threads
+def task(number, lock):
+    # generate random number between 0 and 1
+    value = random()
+    # block
+    sleep(value)
+    # report
+    with lock:
+        print(f'Thread {number} got {value}.')
+
+# create a shared lock
+lock = Lock()
+# configure many threads
+threads = [Thread(target=task, args=(i,lock)) for i in range(1000)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>First, a shared lock is created.</p>
+<p>Running the example creates and configures 1,000 threads, passing the lock to each.</p>
+<p>The main thread starts all the worker threads then waits for all threads to terminate.</p>
+<p>Each thread generates its random number, blocks, then attempts to acquire the lock. Once acquired, the thread will report its message and then release the lock.</p>
+<p>A truncated example of the output is listed below.</p>
+<p>The result is a clean one message per line with no corruption of messages seen with the thread-unsafe version.</p>
+<p>Note, your specific results will differ each time the program is run due to the use of random numbers.</p>
+<pre><code>Thread 42 got 0.005379425682188854.
+Thread 49 got 0.01657114573560836.
+Thread 430 got 0.0015830746201580537.
+Thread 179 got 0.014964866854160097.
+Thread 13 got 0.03264742234329243.
+Thread 298 got 0.019898887953053612.
+Thread 625 got 0.0033862268764470738.
+Thread 121 got 0.0318745316694633.
+Thread 480 got 0.012546040877055908.
+Thread 208 got 0.0286350084811009.
+Thread 346 got 0.023910737473838983.
+Thread 142 got 0.037197126768493516.
+...
+</code></pre>
+<p>Next, let's look at an example of how we can print in a thread-safe manner using a dedicated thread.</p>
+<h2>Example of Dedicated Print Thread With Queue</h2>
+<p>Another approach to thread-safe printing is to use a single dedicated thread to perform all printing.</p>
+<p>Because only one thread can call <strong>print()</strong>, it is guaranteed to be thread-safe.</p>
+<p>This can be achieved by creating a queue shared among all threads that need to print. Threads can put messages on the queue. A dedicated thread for printing can be created that runs in the background and gets messages from the queue and calls print.</p>
+<p>We can update the thread-unsafe version developed above to use this dedicated printing thread approach.</p>
+<p>First, we can define a task function to be executed by the printing thread. This function will take the shared queue as an argument. It will loop forever and get messages from the queue by calling <strong>get()</strong> and report the messages by calling <strong>print().</strong></p>
+<p>The <strong>printer()</strong> function below implements this.</p>
+<pre><code># task for printing thread
+def printer(queue):
+    while True:
+        # get messages
+        message = queue.get()
+        # print the message
+        print(message)
+</code></pre>
+<p>The printer thread will block until messages appear on the queue via the call to <a href="https://docs.python.org/3/library/queue.html#queue.Queue.get"><strong>Queue.get()</strong>,</a> meaning that it will be computationally efficient.</p>
+<p>You can learn more about blocking calls in this tutorial:</p>
+<ul><li><a href="../thread-blocking-call-in-python/">Thread Blocking Call in Python</a></li></ul>
+<p>Next, we can update our <strong>task()</strong> function executed by worker threads to take the shared queue as an argument and to put messages on the queue instead of calling print.</p>
+<p>The updated <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task for worker threads
+def task(number, queue):
+    # generate random number between 0 and 1
+    value = random()
+    # block
+    sleep(value)
+    # report
+    queue.put(f'Thread {number} got {value}.')
+</code></pre>
+<p>Finally, in the main thread we can create an instance of a queue, such as the <a href="https://docs.python.org/3/library/queue.html"><strong>queue.Queue</strong> class</a>. This is a thread-safe data structure on which messages as objects can be appended via <strong>put()</strong> and removed and retrieved via <strong>get()</strong>.</p>
+<pre><code>...
+# create a shared queue
+queue = Queue()</code></pre>
+<p>We can then create a new thread for printing. We can configure it to call our <strong>printer()</strong> function, to run in the background by setting "<strong>daemon</strong>" to <strong>True</strong> and to give it a useful name like '<strong>Printer</strong>'.</p>
+<pre><code>...
+# create printing thread
+printer_thread = Thread(target=printer, args=(queue,), daemon=True, name='Printer')
+printer_thread.start()</code></pre>
+<p>Because the printer thread is a daemon thread, it will run in the background and will not prevent the Python process from terminating once all worker threads and the main thread terminate.</p>
+<p>You can learn more about daemon threads in this tutorial:</p>
+<ul><li><a href="../daemon-threads-in-python/">How to Use Daemon Threads in Python</a></li></ul>
+<p>Finally, we can pass the instance of the shared queue to each worker thread as an argument.</p>
+<pre><code>...
+# configure many threads
+threads = [Thread(target=task, args=(i,queue)) for i in range(1000)]</code></pre>
+<p>Tying this together, the complete example of using a dedicated printing thread is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of thread-safe print thread and queue
+from random import random
+from time import sleep
+from threading import Thread
+from queue import Queue
+
+# task for printing thread
+def printer(queue):
+    while True:
+        # get messages
+        message = queue.get()
+        # print the message
+        print(message)
+
+# task for worker threads
+def task(number, queue):
+    # generate random number between 0 and 1
+    value = random()
+    # block
+    sleep(value)
+    # report
+    queue.put(f'Thread {number} got {value}.')
+
+# create a shared queue
+queue = Queue()
+# create printing thread
+printer_thread = Thread(target=printer, args=(queue,), daemon=True, name='Printer')
+printer_thread.start()
+# configure many threads
+threads = [Thread(target=task, args=(i,queue)) for i in range(1000)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first creates the shared queue.</p>
+<p>It then creates and configures the printer thread and starts executing it in the background.</p>
+<p>Next, the worker threads are created and configured. Finally, the main thread starts the worker threads and waits for them to terminate.</p>
+<p>Each worker thread performs its task, generating a random number and blocking. It then puts its messages on the queue and terminates.</p>
+<p>The printer thread runs in a loop, each iteration taking one message of the queue and then printing it. Because there is only a single printer thread, it is the only thread calling <strong>print()</strong>, which makes it thread-safe.</p>
+<p>A truncated example of the output is listed below.</p>
+<p>Note, your specific results will differ each time the program is run due to the use of random numbers.</p>
+<pre><code>Thread 41 got 0.0009937726430424565.
+Thread 295 got 0.013061216765592465.
+Thread 490 got 0.002759410610238766.
+Thread 98 got 0.022733778225223267.
+Thread 510 got 0.00517634891577845.
+Thread 593 got 5.049634999099162e-05.
+Thread 297 got 0.01532270411186587.
+Thread 512 got 0.0052914236882953825.
+Thread 380 got 0.014671486167968983.
+Thread 517 got 0.008783940658370293.
+...</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to call <strong>print()</strong> in a thread-safe manner.</p>
+</main>
+</body>
+</html>

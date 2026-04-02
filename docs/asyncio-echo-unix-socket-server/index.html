@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asyncio Echo Unix Socket Server – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Asyncio Echo Unix Socket Server</h1>
+<div class="post-meta">March 31, 2024&ensp;<a class="category" href="../tutorial-archive.html">Python Asyncio</a></div>
+
+<p>We can develop an <strong>echo client and server</strong> with <strong>Unix sockets in asyncio</strong>.</p>
+<p>An echo client and server is a simple protocol where the server expects to receive one message, and then sends it back to the client.</p>
+<p><strong>Unix sockets</strong> are a simple and efficient way of connecting processes using a file-based socket. As their name suggests, they are only supported on Unix and Unix-like platforms such as Linux and macOS.</p>
+<p>In this tutorial, you will discover how to develop an <strong>asyncio echo client and server</strong> with Unix sockets.</p>
+<p>After completing this tutorial, you will know:</p>
+<ul>
+<li>About Unix sockets in asyncio and echo client and server applications.</li>
+<li>How to develop an echo server in asyncio with Unix sockets.</li>
+<li>How to develop an echo client in asyncio with Unix sockets.</li>
+</ul>
+<p>Let's get started.</p>
+<h2>What Are Unix Sockets</h2>
+<p>UNIX sockets, also known as IPC (Inter-Process Communication) sockets or Unix Domain sockets, provide a communication mechanism between processes on the same Unix-like operating system.</p>
+<blockquote>
+<p>A Unix domain socket aka UDS or IPC socket (inter-process communication socket) is a data communications endpoint for exchanging data between processes executing on the same host operating system. It is also referred to by its address family AF_UNIX.</p>
+<cite>-- <a href="https://en.wikipedia.org/wiki/Unix_domain_socket">Unix domain socket, Wikipedia</a>.</cite></blockquote>
+<p>Unlike TCP sockets, UNIX sockets operate locally within a single machine, offering a fast and efficient way for processes to exchange data without the overhead associated with network communication.</p>
+<p>UNIX sockets leverage the file system to establish communication channels between processes. They are represented as special files in the file system hierarchy, residing in the file namespace. Processes can communicate through these sockets using standard file I/O operations, such as reading and writing.</p>
+<p>One notable advantage of UNIX sockets is their low overhead and high speed, as they operate entirely within the kernel and avoid the complexities of network protocols. This makes them ideal for communication between processes on the same machine, providing a lightweight and efficient alternative to network-based communication.</p>
+<p>UNIX sockets are commonly used for communication between different components of a single application or between separate applications running on the same host. They are well-suited for scenarios where low latency and high throughput are crucial, such as communication between a web server and a database server on the same machine.</p>
+<p>Security is another notable aspect of UNIX sockets. Since they operate locally, there is no exposure to network-based attacks. Access to UNIX sockets is governed by file permissions, providing a level of control over which processes can communicate through a particular socket.</p>
+<p>You can learn more about Unix sockets in the article:</p>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Unix_domain_socket">Unix domain socket</a></li>
+</ul>
+<p>Now that we know about Unix sockets, let's look at how to create a Unix socket server in asyncio.</p>
+<h2>How to Create a Unix Socket Server</h2>
+<p>We can create an asyncio Unix socket server using the <a href="https://docs.python.org/3/library/asyncio-stream.html#asyncio.start_unix_server"><strong>asyncio.start_unix_server()</strong> function</a>.</p>
+<p>This function takes many arguments, although critically these include a path to the file that represents the socket.</p>
+<blockquote>
+<p>path is the name of a Unix domain socket, and is required, unless a sock argument is provided.</p>
+<cite>-- <a href="https://docs.python.org/3/library/asyncio-eventloop.html">Event Loop, Asyncio API Documentation</a>.</cite></blockquote>
+<p>For example:</p>
+<pre><code>...
+# create a unix socket server
+server = await asyncio.start_unix_server('./unix.socket')</code></pre>
+<p>The server will accept <strong><a href="https://docs.python.org/3/library/socket.html#socket.AF_UNIX">socket.AF_UNIX</a></strong> family connections that are the stream type, e.g. <strong>socket.SOCK_STREAM</strong>.</p>
+<p>This server can only be created on Unix and Unix-like platforms (e.g. Linux and macOS, not Windows).</p>
+<p>Now that we know how to create a Unix socket server, let's look at an echo client and server.</p>
+<h2>What is An Echo Client and Server</h2>
+<p>An echo client and server is a common first example when learning network programming.</p>
+<p>It is designed to illustrate bidirectional communication between two endpoints: a client and a server.</p>
+<p>Developing an echo client and server program provides an excellent way to learn the basics of how to use streams in asyncio.</p>
+<ul>
+<li><strong>Server</strong>: The echo server listens for incoming connections, and upon receiving data from a client, it sends the same data back.</li>
+<li><strong>Client</strong>: The echo client connects to the server, sends a message, and waits for the reply from the server before disconnecting.</li>
+</ul>
+<p>The client connects once and disconnects, whereas the server accepts multiple concurrent connections.</p>
+<p>Developing an echo client and server in asyncio provides a practical introduction to asynchronous programming concepts, showcasing how tasks can be scheduled efficiently, I/O operations can be non-blocking, and multiple connections can be managed concurrently.</p>
+<p>Now that we know what an echo client and server are, let's look at how to develop an example using Unix sockets.</p>
+<h2>Example of Echo Unix Socket Client and Server</h2>
+<p>We can develop an echo client and server using Unix sockets.</p>
+<p>Note, that this example will only work on those platforms that support Unix sockets (e.g. Linux and macOS) and may not work on Windows.</p>
+<p>This section is divided into three parts:</p>
+<ol>
+<li>Develop an echo server using Unix sockets.</li>
+<li>Develop an echo client using Unix sockets.</li>
+<li>Example interaction between client and server.</li>
+</ol>
+<p>Let's dive in.</p>
+<h3>Example of Unix Socket Server</h3>
+<p>We can explore how to develop an echo server with Unix sockets.</p>
+<p>In this case, the server is divided into two main parts, they are the handler coroutine for handling client socket connections and the main coroutine for accepting client connections.</p>
+<p>Firstly, we can develop the handler for client connections.</p>
+<p>This is the client callback coroutine called when a new client connection is made.</p>
+<p>The protocol for the echo server is simple: read a message and write it back.</p>
+<p>The first step is to report progress to indicate that a client is connected, then to read a message from the client and report it. Messages are read in bytes and can be converted to a Python string via the <strong>decode()</strong> method.</p>
+<p>For example:</p>
+<pre><code>...
+# report progress
+print('Client connected')
+# read the message from the client
+msg_bytes = await reader.readline()
+# report the message
+print(f'Got: {msg_bytes.decode().strip()}')</code></pre>
+<p>Next, we can sleep for a moment to slow down the interaction.</p>
+<pre><code>...
+# wait a moment
+await asyncio.sleep(1)</code></pre>
+<p>We can then echo back the message from the client and wait for the message to be transmitted.</p>
+<pre><code>...
+# report progress
+print('Echoing message...')
+# send the message back
+writer.write(msg_bytes)
+# wait for the buffer to empty
+await writer.drain()</code></pre>
+<p>We can then close the connection with the client and wait for the connection to close.</p>
+<pre><code>...
+# close the connection
+writer.close()
+await writer.wait_closed()
+# report progress
+print('Closing connection')</code></pre>
+<p>Tying this together, the <strong>handle_echo_client()</strong> coroutine below implements the handling of the client connection.</p>
+<pre><code># handle an echo client connection
+async def handle_echo_client(reader, writer):
+    # report progress
+    print('Client connected')
+    # read the message from the client
+    msg_bytes = await reader.readline()
+    # report the message
+    print(f'Got: {msg_bytes.decode().strip()}')
+    # wait a moment
+    await asyncio.sleep(1)
+    # report progress
+    print('Echoing message...')
+    # send the message back
+    writer.write(msg_bytes)
+    # wait for the buffer to empty
+    await writer.drain()
+    # close the connection
+    writer.close()
+    await writer.wait_closed()
+    # report progress
+    print('Closing connection')
+</code></pre>
+<p>For more on how to use asyncio streams, see the tutorial:</p>
+<ul>
+<li><a href="../asyncio-streams/">Asyncio Streams in Python</a></li>
+</ul>
+<p>Next, we can develop the main coroutine to manage the server.</p>
+<p>This involves first creating the server and specifying the client callback coroutine to run for each new connection and the local file used to represent the socket connections.</p>
+<pre><code>...
+# create the server
+server = await asyncio.start_unix_server(handle_echo_client, 'unix.socket')</code></pre>
+<p>Next, we can accept client connections forever. This involves calling the <strong>serve_forever()</strong> method on the server.</p>
+<p>This can be performed within the context manager interface of the server instance, ensuring that the server is closed safely on error or when the program is terminated.</p>
+<pre><code>...
+# run the server
+async with server:
+    # report message
+    print('Server running...')
+    # accept connections
+    await server.serve_forever()
+</code></pre>
+<p>You can learn more about the asyncio server context manager in the tutorial:</p>
+<ul>
+<li><a href="../asyncio-server-context-manager/">Asyncio Server Context Manager</a></li>
+</ul>
+<p>Tying this together, the <strong>main()</strong> coroutine used to manage the server is listed below.</p>
+<pre><code># echo server
+async def main():
+    # create the server
+    server = await asyncio.start_unix_server(handle_echo_client, 'unix.socket')
+    # run the server
+    async with server:
+        # report message
+        print('Server running...')
+        # accept connections
+        await server.serve_forever()
+</code></pre>
+<p>Finally, we can start the event loop and run the <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# start the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an echo server using unix sockets
+import asyncio
+
+# handle an echo client connection
+async def handle_echo_client(reader, writer):
+    # report progress
+    print('Client connected')
+    # read the message from the client
+    msg_bytes = await reader.readline()
+    # report the message
+    print(f'Got: {msg_bytes.decode().strip()}')
+    # wait a moment
+    await asyncio.sleep(1)
+    # report progress
+    print('Echoing message...')
+    # send the message back
+    writer.write(msg_bytes)
+    # wait for the buffer to empty
+    await writer.drain()
+    # close the connection
+    writer.close()
+    await writer.wait_closed()
+    # report progress
+    print('Closing connection')
+
+# echo server
+async def main():
+    # create the server
+    server = await asyncio.start_unix_server(handle_echo_client, 'unix.socket')
+    # run the server
+    async with server:
+        # report message
+        print('Server running...')
+        # accept connections
+        await server.serve_forever()
+
+# start the event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's explore how we might develop an echo client using Unix sockets.</p>
+<h3>Example of Unix Socket Client</h3>
+<p>We can develop an asyncio echo server using Unix sockets.</p>
+<p>In this case, we will split the client into three parts: a coroutine to send a message to the server, a coroutine to read the echoed message from the server and a coroutine to drive the overall process.</p>
+<p>Firstly, We can develop the coroutine to send the message to the server.</p>
+<p>The coroutine takes a string as an argument and the StreamWriter is connected to the server.</p>
+<p>Progress is reported, then the provided message is encoded, sent, and we wait for the buffer to empty and the transmission to complete.</p>
+<p>The <strong>send_message()</strong> coroutine below implements this.</p>
+<pre><code># send message to server
+async def send_message(writer, message):
+    # report progress
+    print(f'Sending message: {message.strip()}')
+    # encode message to bytes
+    msg_bytes = message.encode()
+    # send the message
+    writer.write(msg_bytes)
+    # wait for buffer to empty
+    await writer.drain()
+</code></pre>
+<p>Next, we can develop the coroutine for reading the echoed response from the server.</p>
+<p>This coroutine takes a <strong>StreamReader</strong> connected to the server as an argument.</p>
+<p>It reports progress, reads one line of data from the server, decodes the bytes, and reports the response.</p>
+<p>The <strong>read_response()</strong> coroutine below implements this.</p>
+<pre><code># read response from the server
+async def read_response(reader):
+    # report progress
+    print('Waiting for response...')
+    # read the response
+    result_bytes = await reader.readline()
+    # decode response
+    response = result_bytes.decode()
+    # report the response
+    print(f'Received response: {response.strip()}')
+</code></pre>
+<p>Next, we can develop the main coroutine to drive the client program.</p>
+<p>Firstly, we must open a connection to the Unix socket server, specifying the known socket file used by the server.</p>
+<p>We can call the <a href="https://docs.python.org/3/library/asyncio-stream.html#asyncio.open_unix_connection"><strong>asyncio.open_unix_connection()</strong> function</a> to open a connection.</p>
+<pre><code>...
+# define the socket file
+socket_file = 'unix.socket'
+# report progress
+print(f'Connecting to {socket_file}...')
+# open a connection to the server
+reader, writer = await asyncio.open_unix_connection(socket_file)
+# report message
+print('Connected')
+</code></pre>
+<p>Next, we can write a message by awaiting our <strong>send_message()</strong> coroutine, ensuring that the message ends with a new line, expected by both client and server.</p>
+<pre><code>...
+# send the message
+await send_message(writer, 'Hello There\n')</code></pre>
+<p>We can then read the echoed response by awaiting our <strong>read_response()</strong> coroutine.</p>
+<pre><code>...
+# read response
+await read_response(reader)</code></pre>
+<p>Finally, we can close the connection to the server and wait for the socket to be disconnected.</p>
+<pre><code>...
+# close the connection
+print('Shutting down...')
+writer.close()
+await writer.wait_closed()</code></pre>
+<p>Tying this together, the <strong>main()</strong> coroutine implements the client connection manager.</p>
+<pre><code># echo client
+async def main():
+    # define the socket file
+    socket_file = 'unix.socket'
+    # report progress
+    print(f'Connecting to {socket_file}...')
+    # open a connection to the server
+    reader, writer = await asyncio.open_unix_connection(socket_file)
+    # report message
+    print('Connected')
+    # send the message
+    await send_message(writer, 'Hello There\n')
+    # read response
+    await read_response(reader)
+    # close the connection
+    print('Shutting down...')
+    writer.close()
+    await writer.wait_closed()
+</code></pre>
+<p>We can then start the asyncio event loop and run the <strong>main()</strong> coroutine.</p>
+<pre><code>...
+# run the event loop
+asyncio.run(main())</code></pre>
+<p>Tying this together, the complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of an echo client using unix sockets
+import asyncio
+
+# send message to server
+async def send_message(writer, message):
+    # report progress
+    print(f'Sending message: {message.strip()}')
+    # encode message to bytes
+    msg_bytes = message.encode()
+    # send the message
+    writer.write(msg_bytes)
+    # wait for buffer to empty
+    await writer.drain()
+
+# read response from the server
+async def read_response(reader):
+    # report progress
+    print('Waiting for response...')
+    # read the response
+    result_bytes = await reader.readline()
+    # decode response
+    response = result_bytes.decode()
+    # report the response
+    print(f'Received response: {response.strip()}')
+
+# echo client
+async def main():
+    # define the socket file
+    socket_file = 'unix.socket'
+    # report progress
+    print(f'Connecting to {socket_file}...')
+    # open a connection to the server
+    reader, writer = await asyncio.open_unix_connection(socket_file)
+    # report message
+    print('Connected')
+    # send the message
+    await send_message(writer, 'Hello There\n')
+    # read response
+    await read_response(reader)
+    # close the connection
+    print('Shutting down...')
+    writer.close()
+    await writer.wait_closed()
+
+# run the event loop
+asyncio.run(main())
+</code></pre>
+<p>Next, let's look at an exchange between the client and the server.</p>
+<h3>Example of Client-Server Exchange</h3>
+<p>We can explore an exchange between the echo client and server.</p>
+<p>Firstly, we can save the server to a new Python file, such as <strong>server.py</strong>.</p>
+<p>We can then run it from the command line using the Python interpreter.</p>
+<p>For example:</p>
+<pre><code>python server.py</code></pre>
+<p>This will start the server and begin listening for connections from clients.</p>
+<p>We can then save the client program to a new Python file, such as <strong>client.py</strong>.</p>
+<p>We can then run it from the command line in a new terminal window using the Python interpreter.</p>
+<pre><code>python client.py</code></pre>
+<p>The client runs and opens a connection to the server.</p>
+<p>The server accepts the connection and runs our client callback coroutine.</p>
+<p>The client sends a string message to the server and the server reads and reports the message.</p>
+<p>The server then echos back the message from the client and the client reads and reports it.</p>
+<p>Both client and server then disconnect.</p>
+<p>The client program exits.</p>
+<p>The server remains running and can be manually terminated by the Control-C key combination that sends the interrupt signal (SIGINT) to the process, forcing it to terminate.</p>
+<p>Below is a sample output from the server during the exchange.</p>
+<pre><code>Server running...
+Client connected
+Got: Hello There
+Echoing message...
+Closing connection</code></pre>
+<p>Below is a sample output from the client during the exchange.</p>
+<pre><code>Connecting to unix.socket...
+Connected
+Sending message: Hello There
+Waiting for response...
+Received response: Hello There
+Shutting down...</code></pre>
+<p>This highlights how we can run the Unix socket echo server and client.</p>
+<h2>Takeaways</h2>
+<p>You now know how to develop an asyncio echo client and server in Python.</p>
+</main>
+</body>
+</html>

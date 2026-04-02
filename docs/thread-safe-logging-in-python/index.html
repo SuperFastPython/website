@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread-Safe Logging in Python – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Thread-Safe Logging in Python</h1>
+<div class="post-meta">April 3, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python Threading</a></div>
+
+<p>You can <strong>log directly from multiple threads</strong> because the <strong>logging module is thread-safe</strong>.</p>
+<p>In this tutorial you will discover how to log safely from many threads.</p>
+<p>Let's get started.</p>
+<h2>Need to Log From Multiple Threads</h2>
+<p>A thread is a <a href="https://en.wikipedia.org/wiki/Thread_(computing)">thread of execution</a> in a computer program.</p>
+<p>Every Python program has at least one thread of execution called the main thread. Both processes and threads are created and managed by the underlying operating system.</p>
+<p>Sometimes we may need to create additional threads in our program in order to execute code concurrently.</p>
+<p>Python provides the ability to create and manage new threads via the threading module and the <a href="https://docs.python.org/3/library/threading.html"><strong>threading.Thread</strong> class</a>.</p>
+<p>You can learn more about Python threads in the guide:</p>
+<ul><li><a href="../threading-in-python/">Threading in Python: The Complete Guide</a></li></ul>
+<p>In concurrent programming, we may need to log from multiple threads in the application.</p>
+<p>This may be for many reasons, such as:</p>
+<ul><li>Different threads may perform different tasks and may encounter a range of events.</li><li>Worker threads may encounter exceptions that need to be stored, but should not halt the program.</li><li>Background tasks may need to report progress over the duration of the program.</li></ul>
+<p>What is logging, and is it safe to use from multiple threads?</p>
+<h2>What is Logging</h2>
+<p>Logging is a way of tracking events within a program.</p>
+<p>There are many types of events that may be logged within a program, ranging in different levels of severity, such as debugging and information to warnings, errors and critical events.</p>
+<p>The <a href="https://docs.python.org/3/library/logging.html"><strong>logging </strong>module</a> provides infrastructure for logging within Python programs.</p>
+<blockquote><p>This module defines functions and classes which implement a flexible event logging system for applications and libraries.</p><cite>-- <a href="https://docs.python.org/3/library/logging.html">logging — Logging facility for Python</a></cite></blockquote>
+<p>Logging is achieved by first configuring the log handler and then adding calls to the logging infrastructure at key points in the program.</p>
+<blockquote><p>Handler objects are responsible for dispatching the appropriate log messages (based on the log messages’ severity) to the handler's specified destination.</p><cite>-- <a href="https://docs.python.org/3/howto/logging.html#handlers">Handles, Logging HOWTO</a></cite></blockquote>
+<p>The default handler will report log messages on the command prompt (e.g. terminal or system output stream).</p>
+<p>Alternate handlers can be configured to write log messages to file, to a database, or to custom target locations. The handler can specify the severity of messages to store.</p>
+<p>For example, we can log to file by calling the <strong>logging.basicConfig()</strong> function and specifying the file name and path to log to (e.g. <strong>application.log</strong>), the level of logging to capture to the file (e.g. from <strong>logging.DEBUG</strong> to <strong>logging.CRITICAL</strong>).</p>
+<pre><code>...
+# log everything to file
+logging.basicConfig(filename='application.log', level=logging.DEBUG)</code></pre>
+<p>Events are logged via function calls based on the type of event performed, e.g. <strong>logging.debug()</strong> for debugging messages.</p>
+<blockquote><p>Logging provides a set of convenience functions for simple logging usage. These are debug(), info(), warning(), error() and critical().</p><cite>-- <a href="https://docs.python.org/3/howto/logging.html">Logging HOWTO</a></cite></blockquote>
+<p>For example, we may add information messages to application code by calling <strong>logging.info()</strong> and passing in the string details of the event.</p>
+<pre><code>...
+# log that data was loaded successfully
+logger.info('All data was loaded successfully')</code></pre>
+<p>We may also log failures, such as exceptions that are important but not critical to the program via the <strong>logger.error() </strong>or <strong>logger.exception()</strong> functions.</p>
+<p>For example:</p>
+<pre><code>...
+# try a thing
+try:
+	# ...
+except Exception as err:
+	logger.exception(f'Unable to perform task because: {err.message} ')
+</code></pre>
+<p>These function calls can then be added throughout an application to capture events of different types, and the log handler or runtime configuration can be used to filter the severity of the messages that are actually stored.</p>
+<p>This provides a quick crash-course to Python logging, you can learn more here:</p>
+<ul><li><a href="https://docs.python.org/3/library/logging.html">logging — Logging facility for Python</a></li><li><a href="https://docs.python.org/3/howto/logging.html">Logging HOWTO</a></li></ul>
+<p>Next, let's consider logging from multiple threads.</p>
+<h2>How to Log From Multiple Threads</h2>
+<p>The logging module can be used directly from multiple threads.</p>
+<p>The reason is because the logging module is thread-safe.</p>
+<blockquote><p>The logging module is intended to be thread-safe without any special work needing to be done by its clients.</p><cite>-- <a href="https://docs.python.org/3/library/logging.html#thread-safety">Thread Safety, logging — Logging facility for Python</a>.</cite></blockquote>
+<p>This is achieved using locks.</p>
+<p>Internally, the logging module uses mutual exclusion (mutex) locks to ensure that logging handlers are protected from race conditions from multiple threads.</p>
+<p>For example, locks are used to ensure that only one thread writes to a log file or log stream at a time. This ensures that log messages are serialized and are not corrupted.</p>
+<blockquote><p>It achieves this though using threading locks; there is one lock to serialize access to the module's shared data, and each handler also creates a lock to serialize access to its underlying I/O.</p><cite>-- <a href="https://docs.python.org/3/library/logging.html#thread-safety">Thread Safety, logging — Logging facility for Python</a>.</cite></blockquote>
+<p>Therefore, once the logging module is configured for your process, you can log directly from threads.</p>
+<p>Next, let's look at some examples of logging from multiple threads.</p>
+<h2>Example of Thread-Safe Logging</h2>
+<p>We can explore how to log safely from multiple threads.</p>
+<p>In this example, we will create five worker threads, each of which will execute a task. The task will loop five times and each iteration it will generate a random number between 0 and 1, block for that many seconds, then if the number is below a threshold, the thread will stop.</p>
+<p>We will log whether the task was stopped as a warning message and we will log whether the task was completed successfully as an information message.</p>
+<p>All threads will log the information message and some subset of threads will report a warning message.</p>
+<p>Firstly, we will define a function to execute in each worker thread.</p>
+<p>The task will take a unique integer to represent the thread, and a threshold value as arguments. The task will loop five times, generate a random number, block with a call to <strong>time.sleep() </strong>and check the value of the number to see if the task should stop.</p>
+<p>The <strong>task()</strong> function below implements this, with warning and info level log messages.</p>
+<pre><code># task to be executed by worker threads
+def task(number, threshold):
+    # simulate doing work
+    for i in range(5):
+        # generate value
+        value = random()
+        # block
+        sleep(value)
+        # check if is a problem
+        if value &lt; threshold:
+            logging.warning(f'Thread {number} value less than {threshold}, stopping.')
+            break
+    logging.info(f'Thread {number} completed successfully.')
+</code></pre>
+<p>Next, in the main thread, will first configure the logger.</p>
+<p>First, will acquire an instance of the root logger and then set the level of messages to log to be debug or higher, essentially all messages.</p>
+<pre><code>...
+# configure the log to report all messages
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)</code></pre>
+<p>We will then create five threads configured to execute our task function, each passed a unique integer and a threshold value of 0.1. This is performed in a list comprehension.</p>
+<pre><code>...
+# start the threads
+threads = [Thread(target=task, args=(i, 0.1)) for i in range(5)]</code></pre>
+<p>We then start all worker threads, and the main thread will block until all tasks are complete.</p>
+<pre><code>...
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Tying this together, the complete example of logging from multiple threads is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging from multiple threads
+from random import random
+from time import sleep
+from threading import Thread
+import logging
+
+# task to be executed by worker threads
+def task(number, threshold):
+    # simulate doing work
+    for i in range(5):
+        # generate value
+        value = random()
+        # block
+        sleep(value)
+        # check if is a problem
+        if value &lt; threshold:
+            logging.warning(f'Thread {number} value less than {threshold}, stopping.')
+            break
+    logging.info(f'Thread {number} completed successfully.')
+
+# configure the log to report all messages
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+# start the threads
+threads = [Thread(target=task, args=(i, 0.1)) for i in range(5)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first configures the log to report all messages.</p>
+<p>The default logger reports messages to the console (e.g. standard out).</p>
+<p>The five threads are then created and started and the main thread blocks until the tasks are complete.</p>
+<p>Each worker thread then iterates the task loop, generating a random number, blocking and then checking if the generated number was below the threshold. If below the threshold, a warning message is reported and the task loop is broken.</p>
+<p>In this case, we can see that three of the tasks generated random numbers below the threshold and broke the task.</p>
+<p>Note, your specific results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>WARNING:root:Thread 2 value less than 0.1, stopping.
+INFO:root:Thread 2 completed successfully.
+WARNING:root:Thread 1 value less than 0.1, stopping.
+INFO:root:Thread 1 completed successfully.
+WARNING:root:Thread 3 value less than 0.1, stopping.
+INFO:root:Thread 3 completed successfully.
+INFO:root:Thread 0 completed successfully.
+INFO:root:Thread 4 completed successfully.</code></pre>
+<p>This demonstrates how we can directly log from multiple threads in a thread-safe manner.</p>
+<p>If logging was not thread-safe, then the log messages would not be serialized correctly, possibly overlapping and corrupting as multiple threads attempted to write to the standard output stream concurrently.</p>
+<p>Next, let's look at how we might log to a file from multiple threads.</p>
+<h2>Example of Thread-Safe Logging to File</h2>
+<p>We can explore how multiple threads may log to file in a thread-safe manner.</p>
+<p>This can be achieved by configuring the logger to store messages at or above the desired level to a filename and path.</p>
+<p>For example, we can update the above example to log all messages at debug level or above to a file in the same directory as the Python program named '<strong>application.log</strong>'.</p>
+<p>This can be achieved with a single line that configures the logger with a filename and level.</p>
+<pre><code>...
+# configure the log to report all messages to file
+logging.basicConfig(filename='application.log', encoding='utf-8', level=logging.DEBUG)</code></pre>
+<p>Because we are logging to a file, perhaps we can capture more information for later review.</p>
+<p>In this case, we will update the <strong>task()</strong> function to add an information message for the thread starting the task, and a debug message reporting the specific value generated each iteration.</p>
+<p>The updated version of the <strong>task()</strong> function with these changes is listed below.</p>
+<pre><code># task to be executed by worker threads
+def task(number, threshold):
+    logging.info(f'Thread {number} starting.')
+    # simulate doing work
+    for i in range(5):
+        # generate value
+        value = random()
+        # log all values generated
+        logging.debug(f'Thread {number} got {value}.')
+        # block
+        sleep(value)
+        # check if is a problem
+        if value &lt; threshold:
+            logging.warning(f'Thread {number} value less than {threshold}, stopping.')
+            break
+    logging.info(f'Thread {number} completed successfully.')
+</code></pre>
+<p>Tying this together, the complete example of logging to file from multiple threads is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging to file from multiple threads
+from random import random
+from time import sleep
+from threading import Thread
+import logging
+
+# task to be executed by worker threads
+def task(number, threshold):
+    logging.info(f'Thread {number} starting.')
+    # simulate doing work
+    for i in range(5):
+        # generate value
+        value = random()
+        # log all values generated
+        logging.debug(f'Thread {number} got {value}.')
+        # block
+        sleep(value)
+        # check if is a problem
+        if value &lt; threshold:
+            logging.warning(f'Thread {number} value less than {threshold}, stopping.')
+            break
+    logging.info(f'Thread {number} completed successfully.')
+
+# configure the log to report all messages to file
+logging.basicConfig(filename='application.log', encoding='utf-8', level=logging.DEBUG)
+# start the threads
+threads = [Thread(target=task, args=(i, 0.1)) for i in range(5)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first configures the root logger for the process to log all messages at debug level or above to a file named '<strong>application.log</strong>'.</p>
+<p>Note, this file will be located in the same directory as your Python script, e.g. your current working directory.</p>
+<p>The five threads are then configured and started, then the main thread blocks until the tasks are complete.</p>
+<p>Each thread then executes the task function, logging information messages at the beginning and end of the task, as well as debug messages for each number generated and a warning if a value below the threshold is generated.</p>
+<p>In this case, only two tasks failed, although now we can see a log of all values generated by all threads.</p>
+<p>A sample of the application.log file is provided below.</p>
+<p>Note, your specific results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>INFO:root:Thread 0 starting.
+DEBUG:root:Thread 0 got 0.6872681866195555.
+INFO:root:Thread 1 starting.
+INFO:root:Thread 2 starting.
+DEBUG:root:Thread 1 got 0.5305569731755968.
+INFO:root:Thread 3 starting.
+DEBUG:root:Thread 3 got 0.402768468886029.
+INFO:root:Thread 4 starting.
+DEBUG:root:Thread 2 got 0.6521552026743789.
+DEBUG:root:Thread 4 got 0.39398558409115936.
+DEBUG:root:Thread 4 got 0.5914867417636379.
+DEBUG:root:Thread 3 got 0.5632969425212079.
+DEBUG:root:Thread 1 got 0.6574309780583252.
+DEBUG:root:Thread 2 got 0.2816326597231996.
+DEBUG:root:Thread 0 got 0.24898050248914583.
+DEBUG:root:Thread 0 got 0.7851953102843077.
+DEBUG:root:Thread 2 got 0.5426480165988804.
+DEBUG:root:Thread 3 got 0.06815851358033809.
+DEBUG:root:Thread 4 got 0.28349789050752416.
+WARNING:root:Thread 3 value less than 0.1, stopping.
+INFO:root:Thread 3 completed successfully.
+DEBUG:root:Thread 1 got 0.4748495190874048.
+DEBUG:root:Thread 4 got 0.04795736017794938.
+WARNING:root:Thread 4 value less than 0.1, stopping.
+INFO:root:Thread 4 completed successfully.
+DEBUG:root:Thread 2 got 0.68465010542898.
+DEBUG:root:Thread 1 got 0.4359601833807665.
+DEBUG:root:Thread 0 got 0.5281234755758193.
+DEBUG:root:Thread 1 got 0.8275183394617339.
+DEBUG:root:Thread 2 got 0.6190758962270743.
+DEBUG:root:Thread 0 got 0.20781719936237797.
+INFO:root:Thread 0 completed successfully.
+INFO:root:Thread 2 completed successfully.
+INFO:root:Thread 1 completed successfully.</code></pre>
+<p>This demonstrates how we can log to file from multiple threads in a thread-safe manner.</p>
+<p>Next, let's look at how we might automatically include thread information in log messages.</p>
+<h2>Example of Automatically Logging Thread Details</h2>
+<p>We can automatically include details about threads in the log messages.</p>
+<p>This can be achieved by changing the format of log messages to include attributes such as the thread name or the thread identifier.</p>
+<p>In the previous examples, we manually assigned each thread a unique integer which was used in log messages to differentiate each thread. We can remove this unique integer and include each thread's default and uniquely assigned name in the log messages.</p>
+<p>You can learn more about thread names in this tutorial:</p>
+<ul><li><a href="../thread-name/">How to Change the Thread Name in Python</a></li></ul>
+<p>Firstly, we can create a new <strong>logging.FileHandler</strong> instance, configured to log all messages at debug level or higher to a file named '<strong>application2.log</strong>'.</p>
+<pre><code>...
+# configure log handler to report all messages to file with thread names
+handler = logging.FileHandler('application2.log')
+handler.setLevel(logging.DEBUG)</code></pre>
+<p>We can then create a new instance of a <strong>logging.Formatter</strong> instance specifying the attributes to include in each message. We will include the same attributes as in prior messages with the addition of the thread name.</p>
+<pre><code>...
+handler.setFormatter(logging.Formatter('[%(levelname)s] %(name)s: [%(threadName)s] %(message)s'))</code></pre>
+<p>You can see a list of all attributes that you could include in log messages here:</p>
+<ul><li><a href="https://docs.python.org/3/library/logging.html#logrecord-attributes">LogRecord attributes</a></li></ul>
+<p>Finally, we can configure the logging infrastructure to use our log handler and to log all messages at debug level or above to the handler.</p>
+<pre><code>...
+# set the new log handler
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)</code></pre>
+<p>We can then update the <strong>task()</strong> function to no longer take a unique integer for the thread and to remove it from all log messages.</p>
+<pre><code># task to be executed by worker threads
+def task(threshold):
+    logging.info(f'Thread starting.')
+    # simulate doing work
+    for i in range(5):
+        # generate value
+        value = random()
+        # log all values generated
+        logging.debug(f'Thread got {value}.')
+        # block
+        sleep(value)
+        # check if is a problem
+        if value &lt; threshold:
+            logging.warning(f'Thread value less than {threshold}, stopping.')
+            break
+    logging.info(f'Thread completed successfully.')
+
+</code></pre>
+<p>Finally, we can update the configuration of the new threads to no longer pass each thread a unique integer.</p>
+<pre><code>...
+# start the threads
+threads = [Thread(target=task, args=(0.1,)) for i in range(5)]
+</code></pre>
+<p>Tying this together, the complete example of including thread name in log messages is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of logging to file from multiple threads
+from random import random
+from time import sleep
+from threading import Thread
+import logging
+
+# task to be executed by worker threads
+def task(threshold):
+    logging.info(f'Thread starting.')
+    # simulate doing work
+    for i in range(5):
+        # generate value
+        value = random()
+        # log all values generated
+        logging.debug(f'Thread got {value}.')
+        # block
+        sleep(value)
+        # check if is a problem
+        if value &lt; threshold:
+            logging.warning(f'Thread value less than {threshold}, stopping.')
+            break
+    logging.info(f'Thread completed successfully.')
+
+# configure log handler to report all messages to file with thread names
+handler = logging.FileHandler('application2.log')
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(logging.Formatter('[%(levelname)s] %(name)s: [%(threadName)s] %(message)s'))
+# set the new log handler
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+# start the threads
+threads = [Thread(target=task, args=(0.1,)) for i in range(5)]
+# start threads
+for thread in threads:
+    thread.start()
+# wait for threads to finish
+for thread in threads:
+    thread.join()
+</code></pre>
+<p>Running the example first configures the logging infrastructure to log all messages at debug level or above to a file named <strong>application2.log</strong> located in the current working directory.</p>
+<p>The threads are then configured and started.</p>
+<p>Each thread performs the task, reporting information messages at the beginning and end, debug messages each iteration and a possible warning message if the threshold is crossed.</p>
+<p>Below is a sample of the content of the log file.</p>
+<p>We can see that each message includes the name of the thread executing the task, taken from the "name" attribute on the threading.Thread instance, assigned automatically when the thread was created.</p>
+<p>Note, your specific results will differ each time the program is run given the use of random numbers.</p>
+<pre><code>[INFO] root: [Thread-1] Thread starting.
+[INFO] root: [Thread-2] Thread starting.
+[DEBUG] root: [Thread-1] Thread got 0.09587355831874278.
+[INFO] root: [Thread-3] Thread starting.
+[DEBUG] root: [Thread-2] Thread got 0.45934779035061424.
+[INFO] root: [Thread-4] Thread starting.
+[INFO] root: [Thread-5] Thread starting.
+[DEBUG] root: [Thread-5] Thread got 0.25582402199510756.
+[DEBUG] root: [Thread-4] Thread got 0.7909623659909202.
+[DEBUG] root: [Thread-3] Thread got 0.37683810897376424.
+[WARNING] root: [Thread-1] Thread value less than 0.1, stopping.
+[INFO] root: [Thread-1] Thread completed successfully.
+[DEBUG] root: [Thread-5] Thread got 0.11073163782595619.
+[DEBUG] root: [Thread-5] Thread got 0.8807436123562962.
+[DEBUG] root: [Thread-3] Thread got 0.7628568192811082.
+[DEBUG] root: [Thread-2] Thread got 0.31602229981136387.
+[DEBUG] root: [Thread-2] Thread got 0.34218000315346264.
+[DEBUG] root: [Thread-4] Thread got 0.985050898270823.
+[DEBUG] root: [Thread-2] Thread got 0.7913950145467007.
+[DEBUG] root: [Thread-3] Thread got 0.48335839478464804.
+[DEBUG] root: [Thread-5] Thread got 0.449662466956699.
+[DEBUG] root: [Thread-3] Thread got 0.27453085353883955.
+[DEBUG] root: [Thread-5] Thread got 0.9245155683900323.
+[DEBUG] root: [Thread-4] Thread got 0.7435539607849608.
+[DEBUG] root: [Thread-3] Thread got 0.21712663205469285.
+[DEBUG] root: [Thread-2] Thread got 0.935221427815125.
+[INFO] root: [Thread-3] Thread completed successfully.
+[DEBUG] root: [Thread-4] Thread got 0.6809414273496055.
+[INFO] root: [Thread-5] Thread completed successfully.
+[INFO] root: [Thread-2] Thread completed successfully.
+[DEBUG] root: [Thread-4] Thread got 0.9068906611016891.
+[INFO] root: [Thread-4] Thread completed successfully.</code></pre>
+<h2>Takeaways</h2>
+<p>You now know how to log safely from multiple threads.</p>
+</main>
+</body>
+</html>

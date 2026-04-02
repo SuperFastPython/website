@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why Is the ThreadPool Slower in Python? – SuperFastPython</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/">SuperFastPython</a>
+    <nav>
+      <a href="../tutorial-archive.html">Tutorial Archive</a>
+    </nav>
+  </div>
+</header>
+<main>
+<h1>Why Is the ThreadPool Slower in Python?</h1>
+<div class="post-meta">October 17, 2022&ensp;<a class="category" href="../tutorial-archive.html">Python ThreadPool</a></div>
+
+<p>You can make your program slower by using the <a href="../threadpool-python/"><strong>ThreadPool</strong> in Python</a>.</p>
+<p>In this tutorial, you will discover the <strong>anti-pattern for using the ThreadPool</strong> and how to avoid it on your projects.</p>
+<p>Let's get started.</p>
+<h2>ThreadPool Can Be Slower Than a For Loop</h2>
+<p>The <a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.ThreadPool"><strong>multiprocessing.pool.ThreadPool</strong> in Python</a> provides a pool of reusable threads for executing ad hoc tasks.</p>
+<blockquote><p>A thread pool object which controls a pool of worker threads to which jobs can be submitted.</p><cite>-- <a href="https://docs.python.org/3/library/multiprocessing.html">multiprocessing — Process-based parallelism</a></cite></blockquote>
+<p>The <strong>ThreadPool</strong> class extends the <strong>Pool</strong> class. The <strong>Pool</strong> class provides a pool of worker processes for process-based concurrency.</p>
+<p>Although the <strong>ThreadPool</strong> class is in the <strong>multiprocessing</strong> module it offers thread-based concurrency and is best suited to IO-bound tasks, such as reading or writing from sockets or files.</p>
+<p>A <strong>ThreadPool</strong> can be configured when it is created, which will prepare the new threads.</p>
+<p>We can issue one-off tasks to the <strong>ThreadPool</strong> using methods such as <strong>apply()</strong> or we can apply the same function to an iterable of items using methods such as <strong>map()</strong>.</p>
+<p>Results for issued tasks can then be retrieved synchronously, or we can retrieve the result of tasks later by using asynchronous versions of the methods such as <strong>apply_async()</strong> and <strong>map_async()</strong>.</p>
+<p>The <strong>ThreadPool</strong> is designed to speed up your program by executing tasks concurrently.</p>
+<p>Nevertheless, in some use cases, using the <strong>ThreadPool</strong> can make your program slower. Sometimes dramatically slower than performing the same task in a for loop.</p>
+<p><strong>How can the ThreadPool make your program slower?</strong></p>
+<h2>ThreadPool Can Be Slower for CPU-Bound Tasks</h2>
+<p>Using the <strong>ThreadPool</strong> for a CPU-bound task can be slower than not using it.</p>
+<p>This is because Python threads are constrained by the <a href="https://en.wikipedia.org/wiki/Global_interpreter_lock">Global Interpreter Lock</a>, or GIL.</p>
+<p>The GIL is a programming pattern in the reference Python interpreter (CPython) that uses synchronization to ensure that only one thread can execute instructions at a time within a Python process.</p>
+<p>This means that although we may have multiple threads in the thread pool, only one thread can execute at a time.</p>
+<p>This is fine when the tasks executed by the thread pool are blocking, such as IO-bound tasks that might read from a file or internet connection.</p>
+<p>This is a problem when the tasks executed by the thread pool are CPU-bound, meaning that the speed of their execution is determined by the speed of the CPU. These tasks do not block and therefore run as fast as possible. Because of the GIL, the threads executing these tasks will run one at a time and step on each other via context switching.</p>
+<p><a href="https://en.wikipedia.org/wiki/Context_switch">Context switching</a> is a programming pattern that allows more than one thread of execution to run on one CPU, e.g. changes the "<em>context</em>" for the CPU that executes instructions. In a context switch, the operating system will store the state of the thread that is executing so that it can be resumed later, and allows another thread of execution to run and stores its state.</p>
+<p>This is a problem with CPU-bound tasks because context switching is a relatively expensive operation. Having many threads running at the same time with the same priority on the same type of task will likely force the operating system to context switch between them often, introducing unnecessary computational overhead.</p>
+<p>The result is the overall task will likely be slower when executing it with the ThreadPool compared to executing it directly in a for loop.</p>
+<p>Given that executing CPU-bound tasks with the <strong>ThreadPool</strong> will likely result in the same or worse performance, we might refer to this usage as an <a href="https://en.wikipedia.org/wiki/Anti-pattern">anti-pattern</a>. That is a ThreadPool of usage that can be easily identified and must be avoided, e.g. a bad solution to the problem of concurrency in Python.</p>
+<ul><li>Using the ThreadPool for CPU-bound Tasks is an Anti-pattern.</li></ul>
+<p>The <strong>multiprocessing.pool.Pool</strong> should probably be used instead for CPU-bound tasks. This is because it uses processes instead of threads, and as such, it is not constrained by the GIL.</p>
+<p>Now that we know why using a <strong>ThreadPool</strong> can be slower than a for loop in some cases, let's look at a worked example.</p>
+<h2>Example of ThreadPool Being Slower Than a For Loop</h2>
+<p>Let's look at an example where using a <strong>ThreadPool</strong> can be slower than a for loop.</p>
+<h3>CPU-Bound Tasks in a For Loop</h3>
+<p>First, let's define a simple CPU-bound task to execute many times.</p>
+<p>In this case, we can square a number. That is, given a numeric input, return the squared value.</p>
+<pre><code># perform some math operation
+def operation(value):
+    return value**2
+</code></pre>
+<p>Next, let's perform this operation many times, such as one million (10,000,000) times, and report a message when we are done. That is, we will square the numbers from zero to 9,999,999.</p>
+<p>We can use a list comprehension, which is a pythonic for-loop.</p>
+<pre><code>...
+# perform a math operation many times
+values = 
+print('done')</code></pre>
+<p>This could just as easily be written as a for loop directly; for example:</p>
+<pre><code>...
+# perform a math operation many times
+values = list()
+for i in range(10000000):
+    values.append(operation(i))
+print('done')
+</code></pre>
+<p>Or using the <strong>map()</strong> function, which too might be more pythonic; for example:</p>
+<pre><code>...
+# perform a math operation many times
+values = list(map(operation, range(10000000)))
+print('done')
+</code></pre>
+<p>We'll stick with the list comprehension. The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of performing a simple math task many times in a for loop
+
+# perform some math operation
+def operation(value):
+    return value**2
+
+# protect the entry point
+if __name__ == '__main__':
+    # perform a math operation many times
+    # values = 
+    values = 
+    print('done')
+</code></pre>
+<p>The code runs fast, completing in about 3.2 seconds on my system.</p>
+<p><strong>How long does it take to run on your system?</strong><br/>Let me know in the comments below.</p>
+<p>Next, let's make the task concurrent using the ThreadPool.</p>
+<h3>CPU-Bound Tasks in ThreadPool</h3>
+<p>We can update the code from the previous example to use the <strong>ThreadPool</strong>.</p>
+<p>This would be an anti-pattern as described previously, therefore, we would expect this example to run as fast as pr slower than the for loop version because of the overhead of context switching.</p>
+<p>First, we can create a thread pool with some number of threads, in this case, 4. We can then use the <strong>map()</strong> method on the <strong>ThreadPool</strong> to submit the tasks into the thread pool. Each task will be to square a number, with numbers from 0 to 9,999,999 sent into the pool for execution.</p>
+<pre><code>...
+# perform a math operation many times
+with ThreadPool(4) as pool:
+    results = pool.map(operation, range(10000000))
+</code></pre>
+<p>The complete example is listed below.</p>
+<pre><code># SuperFastPython.com
+# example of how using the thread pool can be slower, an anti-pattern
+from multiprocessing.pool import ThreadPool
+
+# perform some math operation
+def operation(value):
+    return value**2
+
+# protect the entry point
+if __name__ == '__main__':
+    # perform a math operation many times
+    with ThreadPool(4) as pool:
+        results = pool.map(operation, range(10000000))
+    print('done')
+</code></pre>
+<p>Running the example squares all of the numbers as before.</p>
+<p>On my system, it takes about 3.3 seconds to complete compared to the 3.2 seconds taken with the for loop.</p>
+<p>This is slightly slower, 100 milliseconds slower, or roughly the same speed offering no benefit.</p>
+<h2>Why is The ThreadPool not a lot slower?</h2>
+<p>The reason is that by default the <strong>map()</strong> uses a "<strong>chunksize</strong>" argument value other than 1.</p>
+<p>Recall that the "<strong>chunksize</strong>" argument for the <strong>map()</strong> method controls the mapping of issued tasks to internal tasks transmitted to worker threads for execution. It allows issued function calls to be grouped into batches called chunks for execution, which offers a large computational benefit.</p>
+<p>If "<strong>chunksize</strong>" is set to 1, meaning one task per function call, the example runs a lot slower.</p>
+<p>For example:</p>
+<pre><code># SuperFastPython.com
+# example of how using the thread pool can be slower, an anti-pattern
+from multiprocessing.pool import ThreadPool
+
+# perform some math operation
+def operation(value):
+    return value**2
+
+# protect the entry point
+if __name__ == '__main__':
+    # perform a math operation many times
+    with ThreadPool(4) as pool:
+        results = pool.map(operation, range(10000000), chunksize=1)
+    print('done')
+</code></pre>
+<p>Running the example squares all of the numbers as before, but it is dramatically slower.</p>
+<p>On my system, it takes about 44.3 seconds to complete, compared to 3.2 seconds for the for-loop version.</p>
+<p>That is 41.1 seconds longer or 13.8 times slower.</p>
+<p>Again, the reason for the lack of improvement is because the task is a CPU-bound task and the <strong>ThreadPool</strong> uses threads that are subjected to the GIL, meaning only one thread can execute at a time and the operating system will context switch between them, adding a large amount of overhead to the overall task.</p>
+<h2>Common Questions</h2>
+<p>This section answers some commonly asked questions about this example.</p>
+<h3>What If We Use More Threads in the ThreadPool?</h3>
+<p>Using more threads will not improve the performance for the same reason that using 4 threads does not speed up the execution of the tasks.</p>
+<p>The GIL ensures only one thread executes instructions at a time and the operating system will context switch between the tasks, adding significant overhead to the overall task.</p>
+<h3>What If We Use One Thread in the ThreadPool?</h3>
+<p>The <strong>ThreadPool</strong> will still be slower than the for loop even if the thread pool had one thread.</p>
+<p>The reason is because of all of the additional overhead in the thread pool for packaging up each task using internal classes and additional function calls as the task bounces around inside the thread pool for execution.</p>
+<p>This is the reason why even using a multiprocessing <strong>Pool</strong> for such a simple task would likely not provide a speed up, at least for this example.</p>
+<h3>Will the Worker Threads in the ThreadPool Run on Different Cores?</h3>
+<p>Probably not.</p>
+<p>The operating system determines what code will run on each CPU core in your system.</p>
+<p>Because only one thread can execute at a time in this example, it is very likely that a single CPU core would be used.</p>
+<h3>Will Using a Multiprocessing Pool Speed Up This Example?</h3>
+<p>Maybe.</p>
+<p>The operation is very simple and we are performing it millions of times.</p>
+<p>If we push these tasks into a multiprocessing <strong>Pool</strong> using <strong>map()</strong>, we will first have to tune the chunksize argument that defines the mapping of tasks we submit to internal tasks serialized and transmitted to the worker processes in the pool.</p>
+<p>Then executing the tasks in the process pool will add overhead, firstly for the additional wrapping of the tasks using internal objects and the additional function calls that need to be made, and secondly for the inter-process communication needed to share the tasks and their results between processes.</p>
+<p>The example below demonstrates the same example using the multiprocessing <strong>Pool</strong>.</p>
+<pre><code># SuperFastPython.com
+# example of performing a simple math task concurrently
+from multiprocessing.pool import Pool
+
+# perform some math operation
+def operation(value):
+    return value**2
+
+# protect the entry point
+if __name__ == '__main__':
+    # perform a math operation many times
+    with Pool(4) as pool:
+        results = pool.map(operation, range(1000000))
+    print('done')
+</code></pre>
+<p>Running the example does offer a speed-up.</p>
+<p>It completes in about 1.7 seconds, compared to 3.2 without the <strong>Pool</strong> and 3.3 with the <strong>ThreadPool</strong>.</p>
+<p>That is 1.5 seconds faster than no <strong>Pool</strong> or about 1.8 times faster.</p>
+<p>Further benefits could be achieved by tuning the "<strong>chunksize</strong>" argument for the <strong>map()</strong> method.</p>
+<h2>Takeaways</h2>
+<p>You now know how <strong>ThreadPool</strong> can make your programs slower and how to avoid it.</p>
+</main>
+</body>
+</html>
